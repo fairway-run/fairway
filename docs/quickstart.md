@@ -1,6 +1,7 @@
 # Quickstart
 
-> This is the design target for v0.1. The CLI commands referenced are not yet implemented.
+> This tracks the v0.1 implementation path. Some commands are already wired;
+> packaging and the richer dashboard remain in progress.
 
 ## Install
 
