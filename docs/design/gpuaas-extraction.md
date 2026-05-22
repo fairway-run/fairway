@@ -4,6 +4,12 @@ Fairway is a standalone extraction of the agent queue/orchestration model proven
 inside GPUaaS. The GPUaaS implementation remains the reference behavior during
 the rewrite, but repo-specific policy must become configuration or adapters.
 
+GPUaaS itself grew out of earlier experiments in
+[`subashram/poiesis`](https://github.com/subashram/poiesis). Poiesis was a
+provider-backed workflow engine with contract generation, planning, developer,
+reviewer, QA, and red-team agents. Fairway does not inherit that provider
+runtime, but it does keep the coordination lessons that survived into GPUaaS.
+
 ## Source Material
 
 The extraction is informed by these GPUaaS files:
@@ -16,6 +22,7 @@ The extraction is informed by these GPUaaS files:
 | `doc/governance/Agent_Queue_Structured_Store_v1.md` | Source-of-truth split and schema rationale. | None. |
 | `doc/governance/Agent_Queue_State_And_Telemetry_Hardening_v1.md` | Boundary hardening, evidence enforcement, blocked reasons, timing, health, and session reconciliation. | GPUaaS-specific queue task IDs and rollout order. |
 | `doc/governance/Agent_Orchestration_Tool_Extraction_Boundary_v1.md` | Generic core vs adapter boundary. | None. |
+| `subashram/poiesis` | Contract-first task shape, dependency-ready task selection, human approval, QA/red-team evidence, and "context over hardcoded agents." | Provider API calls, automated agent execution loop, generated artifacts directory model, and specialist-agent runtime. |
 
 ## Extraction Boundary
 
@@ -50,6 +57,33 @@ Out of core:
 - product-specific release policy,
 - GPUaaS-specific task IDs, roles, paths, and commands.
 
+## Poiesis Lessons Kept
+
+Poiesis had a useful framing: specialization comes from context, not from
+hardcoded agents. Fairway keeps that by treating roles and providers as config,
+and by making task notes, acceptance checks, contracts, and evidence the durable
+context an agent receives.
+
+Poiesis also made contract boundaries explicit through `input_contract`,
+`output_contract`, and `acceptance_criteria`. Fairway folds those into generic
+task fields instead of requiring a separate contract agent:
+
+- `notes` carries background, assumptions, and contract text,
+- `acceptance_checks` carries executable or human-verifiable checks,
+- `task_evidence` records QA, red-team, test, screenshot, or review artifacts,
+- `task_reviews` records human or role-based approval.
+
+Poiesis had automated rework loops between developer, reviewer, QA, and red-team
+agents. Fairway intentionally does not run those loops in core. If teams want
+automated iteration later, it should be an adapter that claims a task, records
+each review/QA/red-team pass as evidence, and leaves fairway as the state and
+audit authority.
+
+Poiesis encouraged planner-generated atomic tasks. Fairway keeps the useful
+part, small reviewable tasks with explicit dependencies, but the orchestrator
+owns granularity. Agents should not explode an assigned task into internal
+subtasks inside fairway.
+
 ## Non-Negotiable Lessons
 
 The DB is authoritative for mutable execution facts. Imports may seed task
@@ -65,6 +99,10 @@ incident review.
 Provider behavior is intentionally optional. Fairway may record that a role uses
 `codex`, `claude`, `gemini`, or `shell`, but the queue store must work even when
 agents are launched manually.
+
+Automated QA, red-team, and reviewer outputs are evidence, not separate state
+machines. A future runner can add those records, but merge readiness and task
+health should still derive from fairway's DB tables.
 
 ## Parity Targets
 

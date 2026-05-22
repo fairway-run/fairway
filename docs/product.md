@@ -14,6 +14,7 @@ The benchmark: a solo developer with three Claude lanes and one Codex lane open 
 4. **The CLI is feature-complete.** Anything you can do in the dashboard, you can do from the CLI. The dashboard is a view, not a privileged surface.
 5. **Boringly portable.** Pure Go, no CGO, single binary, works the same on macOS / Linux / Windows.
 6. **Hospitable defaults.** A new user gets value from `fairway init` + `fairway dashboard` before they touch a config file.
+7. **Context over hardcoded agents.** Borrowed from Poiesis: durable docs, task notes, contracts, acceptance checks, and evidence make agents specialized; fairway does not need provider-specific agent classes.
 
 ## What "done" looks like for v1.0
 
@@ -73,6 +74,7 @@ If a feature pushes toward any of those, it goes in a different tool.
 | Approach | Why not for fairway |
 |---|---|
 | Pure shell scripts (status quo in GPUaaS) | No state machine, no audit trail, no dashboard. |
+| Poiesis-style provider workflow engine | Useful contract/review/QA lessons, but too coupled to LLM execution. Fairway coordinates agents; it does not run them. |
 | Notion / Linear | External dependency, not local, no git integration. |
 | Temporal / Cadence | Massive overkill; not designed for human-paced coordination. |
 | Custom Kanban app | Does not dispatch to worktrees, does not track sessions. |
