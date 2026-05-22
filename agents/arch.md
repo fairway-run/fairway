@@ -13,6 +13,9 @@ Cross-cutting design decisions:
 - Public CLI surface — verb shape, flag names, exit codes.
 - TOML config shape.
 - Compatibility / migration strategy across versions.
+- Coordinator, packet, checkpoint, session-launch, tracker, and Postgres
+  adapter boundaries before implementation starts.
+- `docs/design/release-cuts.md` — release scope and ship gates.
 
 Arch writes design notes in `docs/design/`. Implementation is handed off to `backend` or `ui`.
 
@@ -23,6 +26,7 @@ Arch writes design notes in `docs/design/`. Implementation is handed off to `bac
 | Implementing an arch-decided spec | `backend` (usually) or `ui` |
 | CI / release plumbing | `ops` |
 | Process / governance docs | `governance` |
+| Provider/session backend glue after the adapter contract is set | `ops` |
 
 ## Standards
 
@@ -33,6 +37,8 @@ Arch writes design notes in `docs/design/`. Implementation is handed off to `bac
 
 - A new `docs/design/*.md` document.
 - An updated [docs/design/open-questions.md](../docs/design/open-questions.md).
+- An updated [docs/design/release-cuts.md](../docs/design/release-cuts.md)
+  when scope moves between releases.
 - A handoff to `backend` referencing the design doc with implementation acceptance checks.
 
 ## Constraints
@@ -40,3 +46,5 @@ Arch writes design notes in `docs/design/`. Implementation is handed off to `bac
 - Schema changes require a migration plan and a backup step.
 - State machine changes require both a default behavior and an opt-in config path (never break existing configs).
 - CLI surface changes require deprecation notes for ≥ 1 minor version before removal post-1.0.
+- Tracker credential/storage policy requires arch sign-off before backend
+  implementation.

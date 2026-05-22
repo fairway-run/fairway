@@ -10,6 +10,9 @@
 - `agents/*.md` — role files.
 - `docs/governance/*.md` — coding standards, testing, review guards, commits, release.
 - `docs/product.md` — product vision and roadmap.
+- `docs/design/release-cuts.md` — scope lock, owned with `arch`.
+- `docs/design/issue-tracker-integrations.md` — product/process framing,
+  owned with `arch`; implementation belongs to `backend`.
 - `CONTRIBUTING.md`, `README.md` (structure; content authority shared with arch).
 - This file.
 
@@ -20,6 +23,8 @@
 | Schema or state machine semantics | `arch` |
 | Code | `backend` or `ui` |
 | CI / release plumbing | `ops` |
+| Jira/Linear API implementation | `backend` |
+| Credential storage/security policy | `arch` |
 
 ## Process for standards changes
 
@@ -35,3 +40,5 @@ Governance owns and edits standards docs. When changing them:
 - Re-read all `docs/governance/*.md` files at the start of each minor version cycle and prune dead rules.
 - Audit per-role `agents/*.md` files when role scope shifts.
 - Keep [docs/design/open-questions.md](../docs/design/open-questions.md) current — close decided items, list new ones.
+- Keep [docs/design/release-cuts.md](../docs/design/release-cuts.md) aligned
+  with the roadmap before implementation tasks are assigned.

@@ -12,6 +12,8 @@ The dashboard frontend:
 - `internal/dashboard/templates/` — HTML templates.
 - Layout, visual hierarchy, interaction patterns of the dashboard.
 - Filter chips, kanban layout, lane card design, activity feed presentation.
+- Presentation of coordinator, packet, watcher, checkpoint, tracker-link, and
+  session state once backend exposes read models.
 
 ## Out of scope — hand off to:
 
@@ -21,6 +23,7 @@ The dashboard frontend:
 | New SQL queries to feed views | `backend` |
 | CSP / security headers | `backend` |
 | Dashboard release packaging | `ops` |
+| Product meaning of tracker/coordinator/checkpoint states | `arch` / `governance` |
 
 ## Standards
 
@@ -43,3 +46,5 @@ The dashboard frontend:
 ## Typical handoffs in
 
 - `backend` adds a new endpoint → `ui` builds the partial template + filter chip.
+- `backend` exposes coordinator/checkpoint/tracker-link read models → `ui`
+  renders badges, filters, and detail sections without adding write actions.
