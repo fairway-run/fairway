@@ -16,6 +16,78 @@ reviews, sessions, checkpoints, and merge-readiness facts.
 Integration must be explicit and operator-driven by default. No background sync
 should overwrite DB-owned execution state.
 
+## Why Not Just Jira Or Linear?
+
+Jira and Linear are excellent planning and tracking systems, but they do not
+model the operational details of multi-agent coding well enough to be fairway's
+execution store.
+
+Fairway tracks facts that issue trackers usually flatten into comments, labels,
+or status fields:
+
+- which role/lane owns the task right now,
+- which worktree and branch are active,
+- which agent session is alive or stale,
+- what evidence command was run and whether it passed, failed, was skipped, or
+  was blocked,
+- who handed off to whom and why,
+- which review route applies and whether the task is merge-ready,
+- which checkpoint or watcher is stale,
+- what the coordinator should do next.
+
+Trying to encode those as Jira/Linear custom fields would make the integration
+fragile and vendor-specific. Fairway keeps those execution facts local and
+structured, then exports concise summaries back to the planning tool when that
+helps humans.
+
+## Storage And Tracking Model
+
+```text
+Jira / Linear / GitHub Issues
+  product planning, stakeholder visibility, external roadmap, epics, cycles
+
+Fairway
+  local execution truth, agent coordination, evidence, handoffs, reviews
+
+Git
+  code truth, branches, commits, PRs
+
+CI
+  verification truth, builds, tests, deploy checks
+```
+
+External trackers may seed and observe fairway; they must not silently override
+fairway's execution facts.
+
+| System | Owns | Fairway interaction |
+|---|---|---|
+| Jira / Linear | Product intent, roadmap grouping, issue discussion, stakeholder status. | Import task definitions, store external links, export summaries. |
+| Fairway DB | Local task state, lane ownership, sessions, evidence, handoffs, reviews, checkpoints. | Source of truth for coordination and merge-readiness. |
+| Git | File changes, branches, commits, PR refs. | Referenced by fairway tasks, evidence, reviews, and merge checks. |
+| CI | Automated verification results and artifacts. | Recorded as fairway evidence; not executed by fairway core. |
+
+## Sync Direction
+
+Integration should follow four explicit moves:
+
+1. Import external issues into fairway task definitions.
+2. Link fairway task IDs to external issue keys or URLs.
+3. Execute and track agent work in fairway.
+4. Export concise status, blocker, evidence, or completion summaries back to
+   the external tracker when requested.
+
+`fairway tracker reconcile --dry-run` should detect drift and propose actions,
+for example:
+
+- external issue closed while the fairway task is still `in_progress`,
+- fairway task done while the external issue is still open,
+- external priority changed,
+- linked external issue was archived or deleted,
+- new external blocker appeared.
+
+Reconcile should show proposed changes first. It should not mutate local
+execution state or remote tracker state without an explicit operator action.
+
 ## Planned Commands
 
 ```bash

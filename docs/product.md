@@ -80,7 +80,7 @@ If a feature pushes toward any of those, it goes in a different tool.
 |---|---|
 | Pure shell scripts (status quo in GPUaaS) | No state machine, no audit trail, no dashboard. |
 | Poiesis-style provider workflow engine | Useful contract/review/QA lessons, but too coupled to LLM execution. Fairway coordinates agents; it does not run them. |
-| Jira / Linear / Notion | Useful planning systems, but external dependencies. Fairway can integrate with them while keeping local execution state in its DB. |
+| Jira / Linear / Notion | Planning and stakeholder tools, not execution stores for agent sessions, worktrees, evidence, handoffs, reviews, and merge readiness. Fairway integrates with them while keeping local execution state in its DB. |
 | Temporal / Cadence | Massive overkill; not designed for human-paced coordination. |
 | Custom Kanban app | Does not dispatch to worktrees, does not track sessions. |
 
