@@ -19,6 +19,7 @@ fairway packet context <task-id> \
   [--current-state <text>] \
   [--architecture-context <text>] \
   [--environment <text>] \
+  [--workflow-regression-pack <id>] \
   [--owned <path-or-system>] \
   [--must-not-touch <path-or-system>] \
   [--command <command>] \
@@ -40,6 +41,7 @@ task_id:
 track_id:
 owner_lane:
 handoff_required:
+workflow_regression_pack:
 
 ## Goal
 
@@ -50,6 +52,8 @@ handoff_required:
 ## Architecture Context
 
 ## Environment
+
+## Workflow Regression Pack
 
 ## Owned Files / Systems
 
@@ -77,6 +81,8 @@ handoff_required:
 - Useful but non-blocking drift becomes a follow-up task.
 - Handoff should include files changed, commands run, pass/fail/skipped
   results, blockers, residual risk, and the next recommended slice.
+- If a workflow regression pack is named, proof must either update/run that
+  pack or record a release-blocking reason why it could not be covered.
 
 ## Relationship To Task Notes
 
@@ -84,3 +90,9 @@ Task `notes` are durable task context. A packet is an execution-time view of
 that context plus current operating constraints. If a packet reveals durable
 requirements, update the task notes or design docs rather than letting the
 packet become the only source.
+
+## Related Packets
+
+Bug fixes use a narrower review packet because reviewers need root cause,
+owning layer, proof, and regression coverage more than full execution context.
+See [regression-packets.md](regression-packets.md).

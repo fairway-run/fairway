@@ -42,7 +42,7 @@ A user can:
 - Worktree commands.
 - Reports (status / health / timing / dispatch).
 - Review routing, merge readiness, and git consistency checks.
-- Coordinator tick, context packets, watcher packets, review checkout, and task checkpoints.
+- Coordinator tick, context packets, watcher packets, review checkout, task checkpoints, regression packs, and bug-fix packets.
 - Import (YAML / JSON).
 
 ### v0.3
@@ -52,7 +52,7 @@ A user can:
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.
 - Homebrew tap.
-- Postgres adapter (likely).
+- Postgres adapter (likely), with compatibility harness first.
 
 ### Beyond v1
 - Multi-repo federation.

@@ -22,6 +22,9 @@ The extraction is informed by these GPUaaS files:
 | `scripts/ops/orchestrate_agents.sh` | Coordinator preflight/status/tick composition. | GPUaaS-specific Make targets and track policy defaults. |
 | `scripts/ops/agent_context_packet.sh` | Bounded side-agent context packet shape. | Environment-specific fields and shell wrapper implementation. |
 | `scripts/ops/agent_watch_task.sh` | Watcher packet shape and typed evidence expectations. | GitLab/demo-specific examples. |
+| `scripts/ops/bugfix_review_packet.sh` | Root-cause, owning-layer, proof, and regression handoff packet. | Environment-variable wrapper. |
+| `scripts/ops/workflow_regression_packs.sh` | Workflow regression pack list/show/validate behavior. | GPUaaS-specific pack catalog contents. |
+| `scripts/ops/agent_queue_postgres_compat.sh` | Postgres compatibility harness shape. | Spike DDL as production migration. |
 | `scripts/ops/agent_session_adapter.sh` | Optional shell/tmux/zellij launch adapter and preflight checks. | Provider command templates as core behavior. |
 | `scripts/ops/codex_subagent_session_bridge.sh` | Session records for coordinator-spawned subagents. | Codex-specific bridge as core behavior. |
 | `doc/governance/Agent_Queue_Structured_Store_v1.md` | Source-of-truth split and schema rationale. | None. |
@@ -30,6 +33,8 @@ The extraction is informed by these GPUaaS files:
 | `doc/governance/Agent_Parallel_Track_Control_v1.md` | Checkpoint discipline, side-track limits, context packets, and drift rules. | Separate `track_checkpoints` identity model. |
 | `doc/governance/Agent_Watcher_Lanes_v1.md` | Watcher-lane operating contract and artifact type taxonomy. | GPUaaS-specific CI/deploy examples. |
 | `doc/governance/Multi_Agent_Lane_Worktrees_v1.md` | Persistent lane worktrees, named review branches, and provider-as-execution-choice guidance. | GPUaaS role names and release branch policy. |
+| `doc/governance/Testing_Standards.md` and `Workflow_Regression_Packs.yaml` | Workflow pack definition, bug-fix definition of done, and regression evidence expectations. | GPUaaS product workflows. |
+| `doc/governance/Agent_Queue_Postgres_Adapter_Semantics_v1.md` | Shared-store compatibility contract and transaction rules. | Ruby implementation details and spike DDL. |
 | `subashram/poiesis` | Contract-first task shape, dependency-ready task selection, human approval, QA/red-team evidence, and "context over hardcoded agents." | Provider API calls, automated agent execution loop, generated artifacts directory model, and specialist-agent runtime. |
 
 ## Extraction Boundary
@@ -46,6 +51,7 @@ Generic fairway core:
 - optional session launch adapters,
 - coordinator preflight/status/tick,
 - context and watcher packet renderers,
+- bug-fix packets and workflow regression pack catalog helpers,
 - task checkpoints,
 - status, health, timing, task-detail, and snapshot reports,
 - worktree setup and branch hygiene.
@@ -80,6 +86,8 @@ also needed:
 - `context packets` to bound side-agent work,
 - `watcher packets` for CI/deploy/smoke monitoring,
 - `task checkpoints` to replace vague active side tracks,
+- `workflow regression packs` and `bugfix review packets` for root-cause and
+  regression discipline,
 - named review branches instead of detached review checkouts,
 - pre-claim worktree checks for branch, cleanliness, and base freshness,
 - optional session launch/bridge adapters for shell, tmux, zellij, and
@@ -154,4 +162,6 @@ against a copied GPUaaS queue DB and task file for:
 - watcher packet rendering and close evidence,
 - checkpoint stale detection,
 - review branch checkout flow,
+- workflow regression pack validation and bug-fix packet rendering,
+- Postgres compatibility harness output,
 - JSON/YAML snapshot export.

@@ -37,6 +37,8 @@ Teams opt in. Defaults are permissive so a new user can get value before configu
 ## 5. Postgres backend
 
 **Decision:** Out of scope for v1. Schema is portable; adapter is v2+ work.
+Capture the adapter compatibility contract now so v2 can prove SQLite/Postgres
+parity command by command. See [postgres-adapter.md](postgres-adapter.md).
 
 ## 6. Dashboard mutations
 
@@ -92,3 +94,13 @@ examples are project policy, so they become config or adapters.
 **Rationale:** GPUaaS used these operational wrappers to keep parallel work
 bounded and observable. They are generic enough to belong in fairway, while
 provider launch commands remain adapters.
+
+## 13. Regression and bugfix packets
+
+**Decision:** Keep workflow regression packs and bug-fix review packets as
+generic catalog/rendering commands. See [regression-packets.md](regression-packets.md).
+
+**Rationale:** GPUaaS added these after live workflow bugs. They are not core
+state-machine concepts, but they are important quality gates: every bug fix
+should explain root cause and regression coverage, and workflow-impacting tasks
+should point at a reusable pack.

@@ -25,10 +25,13 @@ fairway git-check [--base <ref>]
 fairway preflight [--role <role>]                       # validate current worktree before ready/claim
 fairway coordinator preflight | status | tick
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
+fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> --proof-command <cmd> --regression-coverage <text>
+fairway regression-pack list | show <pack-id> | validate [<catalog-path>]
 fairway watcher packet | start | finish | status
 fairway checkpoint record | status | stale
 fairway prune-stale                                     # remove state rows for deleted task definitions
 fairway db backup | export
+fairway db compat --backend postgres [--print-ddl | --apply-ddl]
 fairway import <yaml-or-json-path> [--state-once]        # bootstrap-only; never overwrites mutable state after initial import
 fairway config validate
 fairway dashboard [--no-open] [--listen <addr>] [--multi]
@@ -66,6 +69,10 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   when agents are launched manually.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
+- `packet bugfix` and `regression-pack` are quality surfaces. They render and
+  validate review context; they do not execute product test suites.
+- `db compat --backend postgres` is a planned adapter harness, not the default
+  v1 runtime.
 
 ## Output
 

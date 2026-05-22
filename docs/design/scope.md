@@ -17,6 +17,7 @@ A standalone Go binary plus an embedded SQLite store that coordinates multiple c
 - Session lifecycle tracking (PID, tmux pane, heartbeats).
 - Status, health, timing, task-detail, merge-readiness, and snapshot reports derived from the store.
 - Coordinator preflight/status/tick surfaces, context packets, watcher packets, and task checkpoints for bounded parallel work.
+- Workflow regression pack catalog validation and bug-fix review packet rendering.
 - A local web dashboard for live observation.
 
 ## What fairway is not
@@ -29,7 +30,7 @@ A standalone Go binary plus an embedded SQLite store that coordinates multiple c
 
 ## Out of scope for v1
 
-- Postgres backend (schema is designed to be portable; adapter is v2+).
+- Postgres backend (schema is designed to be portable; adapter is v2+; compatibility harness is planned).
 - Multi-repo federation.
 - LLM provider integration.
 - Webhook / event emission for external systems.
