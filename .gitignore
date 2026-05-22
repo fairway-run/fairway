@@ -1,0 +1,25 @@
+# Build artifacts
+/fairway
+fairway.exe
+/dist/
+/bin/
+
+# State
+.fairway/state.db
+.fairway/state.db-journal
+.fairway/state.db-shm
+.fairway/state.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Coverage
+*.out
+coverage.html

@@ -1,0 +1,66 @@
+# Example: fairway configuration mirroring the GPUaaS 5-lane setup.
+# Drop into a repo as .fairway/config.toml and run `fairway worktree setup`.
+
+[fairway]
+project_name = "gpuaas"
+db_path = ".fairway/state.db"
+main_branch = "main"
+
+[dashboard]
+listen = "127.0.0.1:7878"
+auto_open = true
+
+[worktrees]
+root = "../worktrees"
+naming = "{repo}-{role}"
+
+[[roles]]
+name = "backend"
+branch = "agent/backend"
+provider = "claude"
+
+[[roles]]
+name = "ui"
+branch = "agent/ui"
+provider = "codex"
+
+[[roles]]
+name = "ops"
+branch = "agent/ops"
+provider = "gemini"
+
+[[roles]]
+name = "arch"
+branch = "agent/arch"
+provider = "claude"
+
+[[roles]]
+name = "governance"
+branch = "agent/governance"
+provider = "claude"
+
+# Route reviews based on paths touched in the task's commits.
+# Order matters; first match wins.
+[[review_routes]]
+match = "doc/api/**"
+reviewer = "arch"
+
+[[review_routes]]
+match = "doc/governance/**"
+reviewer = "governance"
+
+[[review_routes]]
+match = "ops/**"
+reviewer = "ops"
+
+[[review_routes]]
+match = "app/**"
+reviewer = "arch"
+
+[states]
+allowed = ["todo", "in_progress", "blocked", "done"]
+terminal = ["done"]
+
+[gates]
+require_evidence_before_done = false
+require_review_before_done = false

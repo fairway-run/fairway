@@ -1,0 +1,80 @@
+# Product
+
+## Vision
+
+Fairway is the smallest tool that makes running 2–6 coding agents in parallel feel coordinated rather than chaotic.
+
+The benchmark: a solo developer with three Claude lanes and one Codex lane open should never lose track of which agent is doing what, why a task is stuck, or who is blocking whom.
+
+## Principles
+
+1. **Local-first.** Single binary, SQLite, no network required for any core feature. The dashboard binds to localhost by default.
+2. **Config over code.** Roles, branches, states, review routing, and gates are TOML. Changing them does not require a rebuild.
+3. **The DB is the source of truth.** Imports are one-shot. No sync, no eventual consistency, no reconciliation worker.
+4. **The CLI is feature-complete.** Anything you can do in the dashboard, you can do from the CLI. The dashboard is a view, not a privileged surface.
+5. **Boringly portable.** Pure Go, no CGO, single binary, works the same on macOS / Linux / Windows.
+6. **Hospitable defaults.** A new user gets value from `fairway init` + `fairway dashboard` before they touch a config file.
+
+## What "done" looks like for v1.0
+
+A user can:
+
+- `brew install fairway`
+- `fairway init` in any git repo
+- Edit five lines of TOML to name their roles
+- `fairway worktree setup` to create the lanes
+- `fairway import tasks.yaml` to seed work
+- `fairway dashboard` to watch agents work
+- Run their day from the CLI with the dashboard always informative
+
+…without reading more than the quickstart.
+
+## Roadmap
+
+### v0.1 — week 1
+- Repo skeleton, schema, state machine, config, dashboard.
+- Read-only dashboard.
+- CLI verbs: `init`, `ready`, `claim`, `set-status`, `record evidence|handoff|review`, `task-detail`.
+
+### v0.2 — week 2–3
+- Session lifecycle (PID, tmux, heartbeats).
+- Worktree commands.
+- Reports (status / health / timing / dispatch).
+- Review routing, merge readiness, and git consistency checks.
+- Import (YAML / JSON).
+
+### v0.3
+- Dashboard mutations (with CSRF, audit).
+- TUI mode (`fairway tui`) for SSH / headless use.
+
+### v1.0
+- Stable schema. Migrations guaranteed forward-compatible.
+- Homebrew tap.
+- Postgres adapter (likely).
+
+### Beyond v1
+- Multi-repo federation.
+- Webhooks / event emission.
+
+## Anti-goals
+
+These will never be in fairway:
+
+- A workflow / DAG engine.
+- An IAM / permissions system.
+- An LLM provider abstraction.
+- A CI runner.
+- A SaaS hosted offering.
+
+If a feature pushes toward any of those, it goes in a different tool.
+
+## Competing approaches considered
+
+| Approach | Why not for fairway |
+|---|---|
+| Pure shell scripts (status quo in GPUaaS) | No state machine, no audit trail, no dashboard. |
+| Notion / Linear | External dependency, not local, no git integration. |
+| Temporal / Cadence | Massive overkill; not designed for human-paced coordination. |
+| Custom Kanban app | Does not dispatch to worktrees, does not track sessions. |
+
+Fairway sits between "shell scripts" and "issue tracker" — closer to the former in weight, closer to the latter in affordances.
