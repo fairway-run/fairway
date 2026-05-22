@@ -16,6 +16,7 @@ A standalone Go binary plus an embedded SQLite store that coordinates multiple c
 - A handoff / evidence / review chain so work can be passed between roles with an audit trail.
 - Session lifecycle tracking (PID, tmux pane, heartbeats).
 - Status, health, timing, task-detail, merge-readiness, and snapshot reports derived from the store.
+- Coordinator preflight/status/tick surfaces, context packets, watcher packets, and task checkpoints for bounded parallel work.
 - A local web dashboard for live observation.
 
 ## What fairway is not

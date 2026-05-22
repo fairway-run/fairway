@@ -42,6 +42,7 @@ A user can:
 - Worktree commands.
 - Reports (status / health / timing / dispatch).
 - Review routing, merge readiness, and git consistency checks.
+- Coordinator tick, context packets, watcher packets, review checkout, and task checkpoints.
 - Import (YAML / JSON).
 
 ### v0.3

@@ -19,9 +19,17 @@ The extraction is informed by these GPUaaS files:
 | `scripts/ops/agent_queue_store.rb` | Store schema, state transitions, evidence, handoffs, reviews, sessions, reports, merge readiness checks. | Hardcoded roles, branch names, review regexes, DB path, and YAML state sync. |
 | `scripts/ops/agent_queue.sh` | Operator command shape and preflight flow. | Makefile wrapper names and GPUaaS-specific branch freshness checks. |
 | `scripts/ops/agent_role_config.sh` | Role to branch/provider/worktree mapping concept. | Specific role names, providers, and path templates. |
+| `scripts/ops/orchestrate_agents.sh` | Coordinator preflight/status/tick composition. | GPUaaS-specific Make targets and track policy defaults. |
+| `scripts/ops/agent_context_packet.sh` | Bounded side-agent context packet shape. | Environment-specific fields and shell wrapper implementation. |
+| `scripts/ops/agent_watch_task.sh` | Watcher packet shape and typed evidence expectations. | GitLab/demo-specific examples. |
+| `scripts/ops/agent_session_adapter.sh` | Optional shell/tmux/zellij launch adapter and preflight checks. | Provider command templates as core behavior. |
+| `scripts/ops/codex_subagent_session_bridge.sh` | Session records for coordinator-spawned subagents. | Codex-specific bridge as core behavior. |
 | `doc/governance/Agent_Queue_Structured_Store_v1.md` | Source-of-truth split and schema rationale. | None. |
 | `doc/governance/Agent_Queue_State_And_Telemetry_Hardening_v1.md` | Boundary hardening, evidence enforcement, blocked reasons, timing, health, and session reconciliation. | GPUaaS-specific queue task IDs and rollout order. |
 | `doc/governance/Agent_Orchestration_Tool_Extraction_Boundary_v1.md` | Generic core vs adapter boundary. | None. |
+| `doc/governance/Agent_Parallel_Track_Control_v1.md` | Checkpoint discipline, side-track limits, context packets, and drift rules. | Separate `track_checkpoints` identity model. |
+| `doc/governance/Agent_Watcher_Lanes_v1.md` | Watcher-lane operating contract and artifact type taxonomy. | GPUaaS-specific CI/deploy examples. |
+| `doc/governance/Multi_Agent_Lane_Worktrees_v1.md` | Persistent lane worktrees, named review branches, and provider-as-execution-choice guidance. | GPUaaS role names and release branch policy. |
 | `subashram/poiesis` | Contract-first task shape, dependency-ready task selection, human approval, QA/red-team evidence, and "context over hardcoded agents." | Provider API calls, automated agent execution loop, generated artifacts directory model, and specialist-agent runtime. |
 
 ## Extraction Boundary
@@ -35,6 +43,10 @@ Generic fairway core:
 - handoff, evidence, and review records,
 - merge readiness and git consistency checks,
 - session lifecycle and stale-session reconciliation,
+- optional session launch adapters,
+- coordinator preflight/status/tick,
+- context and watcher packet renderers,
+- task checkpoints,
 - status, health, timing, task-detail, and snapshot reports,
 - worktree setup and branch hygiene.
 
@@ -48,6 +60,7 @@ Config or adapter layer:
 - task source format,
 - acceptance-check conventions,
 - evidence and review gates.
+- session launch backends and provider commands.
 
 Out of core:
 
@@ -56,6 +69,24 @@ Out of core:
 - CI execution,
 - product-specific release policy,
 - GPUaaS-specific task IDs, roles, paths, and commands.
+
+## GPUaaS Operations Kept
+
+The queue model alone was not enough in GPUaaS. The day-to-day operating loop
+also needed:
+
+- `coordinator preflight/status/tick` to compose queue, git, session,
+  checkpoint, and health checks before dispatch,
+- `context packets` to bound side-agent work,
+- `watcher packets` for CI/deploy/smoke monitoring,
+- `task checkpoints` to replace vague active side tracks,
+- named review branches instead of detached review checkouts,
+- pre-claim worktree checks for branch, cleanliness, and base freshness,
+- optional session launch/bridge adapters for shell, tmux, zellij, and
+  coordinator-spawned subagents.
+
+Fairway should implement these as generic commands and adapters. The GPUaaS
+Makefile target names are compatibility examples, not the core API.
 
 ## Poiesis Lessons Kept
 
@@ -119,4 +150,8 @@ against a copied GPUaaS queue DB and task file for:
 - task-detail output,
 - status / timing / health reports,
 - session status and reconciliation,
+- coordinator tick and preflight summaries,
+- watcher packet rendering and close evidence,
+- checkpoint stale detection,
+- review branch checkout flow,
 - JSON/YAML snapshot export.

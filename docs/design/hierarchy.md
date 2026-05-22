@@ -138,8 +138,16 @@ prefer --sibling. To suppress this warning, pass --child --force.
 
 `--sibling` (the default) and `--child` from `epic` / `story` are not warned. This catches the common misuse without blocking legitimate "sub-epic discovery from within an epic."
 
-## Drop: `track_checkpoints`
+## Replace `track_checkpoints`
 
-The original `track_checkpoints` table is removed from the schema. The use case (long-running initiative boards) is now covered by `kind = "epic"` tasks. If you were using track checkpoints to record per-track notes, those notes belong on the epic task's `notes` field.
+The original standalone `track_checkpoints` identity model is removed. The work
+it tried to represent is now covered by `kind = "epic"` / `kind = "story"`
+tasks, while operating updates are recorded as append-only `task_checkpoints`
+against those tasks.
+
+If you were using track checkpoints to record durable per-track requirements,
+those notes belong on the epic task's `notes` field. If you were recording
+current operating state, such as active, parked, blocked, review, or target
+close date, use `fairway checkpoint record`.
 
 There is no automatic migration; week 1 has no live data to preserve.

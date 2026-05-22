@@ -46,6 +46,12 @@
 
 `internal/report/` — status / health / timing / dispatch report generators. Reads from store; renders text or JSON.
 
+`internal/coordinator/` — composed preflight/status/tick logic. Calls config,
+store, git, session, and report packages; does not mutate tasks automatically.
+
+`internal/packet/` — context and watcher packet rendering. Produces Markdown or
+JSON artifacts from task/config inputs.
+
 `internal/dashboard/` — HTTP server, HTML templates, SSE. Embeds `assets/` (HTMX, CSS) via `//go:embed`. Read-only views over the store. Supports both single-project and multi-project (`ATTACH DATABASE`) data sources via a swappable view layer.
 
 `internal/registry/` — reads / writes `~/.fairway/registry.toml`. Used by `fairway register`, `fairway projects`, and the multi-project dashboard. The only fairway code that touches paths outside the current project.
@@ -105,6 +111,8 @@
 | Migration runner | `internal/store/migrations` |
 | tmux / PID detection | `internal/session` |
 | Worktree shellouts | `internal/git` |
+| Coordinator preflight/status/tick | `internal/coordinator` |
+| Context and watcher packet rendering | `internal/packet` |
 | HTML templates, SSE | `internal/dashboard` |
 | Text / JSON report rendering | `internal/report` |
 | Project registry (`~/.fairway/registry.toml`) | `internal/registry` |

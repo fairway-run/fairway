@@ -2,7 +2,7 @@
 
 Fairway uses SQLite via `modernc.org/sqlite` (pure Go, no CGO). The database lives at the path configured by `[fairway] db_path` (default `.fairway/state.db`).
 
-Seven tables, plus `schema_migrations` for migration tracking. Task hierarchy (epics, stories, subtasks) lives in `task_definitions` via a self-referential `parent_id` — see [hierarchy.md](hierarchy.md).
+Eight tables, plus `schema_migrations` for migration tracking. Task hierarchy (epics, stories, subtasks) lives in `task_definitions` via a self-referential `parent_id` — see [hierarchy.md](hierarchy.md). Checkpoints attach append-only operating notes to tasks; see [checkpoints.md](checkpoints.md).
 
 ## Project scope
 
@@ -199,6 +199,27 @@ Lifecycle for a single agent process attached to a lane.
 Primary key: `(project_id, id)`.
 Index: `(project_id, role, ended_at)` — find the live session for a role.
 
+### `task_checkpoints`
+
+Append-only operating checkpoints for epics, stories, side tracks, and watcher
+work.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `project_id` | TEXT NOT NULL | |
+| `task_id` | TEXT NOT NULL | |
+| `state` | TEXT NOT NULL | `planned` / `active` / `blocked` / `review` / `done` / `parked` / `abandoned`. |
+| `owner` | TEXT | Role or lane responsible for the checkpoint. |
+| `target_close_by` | DATE | Optional date for stale-track checks. |
+| `summary` | TEXT NOT NULL | Current operating summary. |
+| `artifact_path` | TEXT | Optional evidence link. |
+| `created_at` | DATETIME NOT NULL | |
+
+FK: `(project_id, task_id) → task_definitions(project_id, id)`.
+Index: `(project_id, task_id, created_at)`.
+Index: `(project_id, state, target_close_by)`.
+
 ## Migration strategy
 
 - One SQL file per migration in `internal/store/migrations/`, named `001_init.sql`, `002_*.sql`, ...
@@ -220,3 +241,9 @@ Index: `(project_id, role, ended_at)` — find the live session for a role.
 completed work needs command-level proof even when there is no durable file
 artifact. Artifact paths remain optional references; large logs, screenshots,
 and transcripts stay out of the DB.
+
+**Why keep checkpoints after dropping `track_checkpoints`.** Fairway does not
+need a separate track identity table because epics/stories already represent
+bounded work. It still needs append-only operating decisions for active, parked,
+blocked, and watcher-style work; `task_checkpoints` provides that without
+creating a second task hierarchy.

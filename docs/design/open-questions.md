@@ -46,9 +46,9 @@ Teams opt in. Defaults are permissive so a new user can get value before configu
 
 ## 7. Task hierarchy (epics / stories / subtasks)
 
-**Decision:** Self-referential `parent_id` on `task_definitions`. N-level tree. Optional `kind` label (`epic`, `story`, `task`, `bug`, `spike`) configured via `[task_kinds]`. Drop `track_checkpoints`. New `fairway spawn` command auto-parents under the current claimed task's parent (sibling) or the current task (`--child`) to prevent context loss when agents discover work mid-task. See [hierarchy.md](hierarchy.md).
+**Decision:** Self-referential `parent_id` on `task_definitions`. N-level tree. Optional `kind` label (`epic`, `story`, `task`, `bug`, `spike`) configured via `[task_kinds]`. Drop the separate `track_checkpoints` identity model, but keep append-only task checkpoints for operating decisions. New `fairway spawn` command auto-parents under the current claimed task's parent (sibling) or the current task (`--child`) to prevent context loss when agents discover work mid-task. See [hierarchy.md](hierarchy.md) and [checkpoints.md](checkpoints.md).
 
-**Rationale:** GPUaaS's `track_checkpoints` was a separate concept that never quite tracked the work; the real need is "epics with multiple tasks, and when an agent discovers a new bug, it stays connected to the epic." A self-referential tree handles all of that with one nullable column. Epics are tasks; the state machine applies uniformly.
+**Rationale:** GPUaaS's `track_checkpoints` was a separate concept that never quite tracked the work; the real need is "epics with multiple tasks, checkpointed operating decisions, and when an agent discovers a new bug, it stays connected to the epic." A self-referential tree handles the work model, while `task_checkpoints` handles active/parked/blocked side-track state. Epics are tasks; the state machine applies uniformly.
 
 ## 8. Ordering: priority and sequence
 
@@ -84,3 +84,11 @@ Sort order for `fairway ready` and dashboard backlog: priority asc → sequence 
 handoffs, reviews, sessions, merge readiness, and reports. Its role names,
 review regexes, branch names, provider commands, DB path, and acceptance-check
 examples are project policy, so they become config or adapters.
+
+## 12. Coordinator operating model
+
+**Decision:** Add first-class coordinator, packet, watcher, checkpoint, and review-lane command surfaces. See [coordinator-loop.md](coordinator-loop.md), [context-packets.md](context-packets.md), [watchers.md](watchers.md), [checkpoints.md](checkpoints.md), and [review-lanes.md](review-lanes.md).
+
+**Rationale:** GPUaaS used these operational wrappers to keep parallel work
+bounded and observable. They are generic enough to belong in fairway, while
+provider launch commands remain adapters.

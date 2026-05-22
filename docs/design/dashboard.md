@@ -36,6 +36,7 @@ One card per configured role. Each card shows:
 - Current task ID + title, or "idle".
 - Session heartbeat age. Green < 1 min, amber < 5 min, red older or session missing.
 - Last commit short SHA + age.
+- Active watcher or latest checkpoint badge when present.
 - tmux pane (when present) rendered as `attach: agents:0.2`. Clickable to copy the attach command to clipboard.
 
 ### Backlog sort order
@@ -78,6 +79,8 @@ Counters that double as filter links:
 - Tasks blocked > 24h.
 - Unrouted reviews.
 - Handoffs not acknowledged after 1h.
+- Stale checkpoints.
+- Active watchers past expected duration.
 
 ### Task detail page
 
@@ -86,6 +89,7 @@ Single scrollable page per task with:
 - Definition (notes, acceptance checks, dependencies, kind).
 - Current state.
 - Full history (transitions, handoffs, evidence, reviews) merged into one timeline.
+- Latest checkpoints and watcher packets.
 - Read-only in v0.1.
 
 ### Epic page
@@ -94,6 +98,7 @@ Route `/epics/<id>` (any task with descendants):
 - Descendant tree.
 - Aggregate progress (X of Y descendants done).
 - Bottleneck callout: descendant blocked the longest.
+- Latest checkpoint state, owner, target close date, and stale flag.
 - Per-kind counts when `[task_kinds]` is configured.
 
 See [hierarchy.md](hierarchy.md) for the underlying model.

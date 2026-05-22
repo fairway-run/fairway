@@ -18,6 +18,17 @@ auto_open = true                       # open browser when `fairway dashboard` s
 [worktrees]
 root = "../worktrees"
 naming = "{repo}-{role}"
+review_branch_naming = "review/{role}"
+
+[sessions]
+default_backend = "shell"              # shell | tmux | zellij
+stale_after = "12h"
+
+[coordinator]
+max_primary_tracks = 1
+max_sidecar_tracks = 1
+max_review_tracks = 1
+checkpoint_stale_after = "24h"
 
 [[roles]]
 name = "backend"
@@ -87,6 +98,23 @@ levels = [
 |---|---|---|---|
 | `root` | string | `../worktrees` | Parent directory for per-role worktrees. Relative to repo root. |
 | `naming` | string | `{repo}-{role}` | Worktree directory name template. `{repo}` is the basename of the primary checkout, `{role}` is the role name. |
+| `review_branch_naming` | string | `review/{role}` | Local branch template used by `fairway review checkout`. |
+
+### `[sessions]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `default_backend` | string | `shell` | Default backend for optional `fairway session launch`. Core queue operations do not require launch adapters. |
+| `stale_after` | duration | `12h` | Session reconciliation threshold for missing PID/backend sessions. |
+
+### `[coordinator]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `max_primary_tracks` | int | `1` | Advisory limit for active primary work in `fairway coordinator preflight`. |
+| `max_sidecar_tracks` | int | `1` | Advisory limit for active side tracks/checkpoints. |
+| `max_review_tracks` | int | `1` | Advisory limit for active review/verification tracks. |
+| `checkpoint_stale_after` | duration | `24h` | Checkpoints older than this are stale unless the task is blocked, done, parked, or abandoned. |
 
 ### `[[roles]]`
 

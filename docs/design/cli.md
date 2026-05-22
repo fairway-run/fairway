@@ -15,11 +15,19 @@ fairway record handoff <task-id> --to <role> --payload <text-or-@file>
 fairway record review <task-id> --reviewer <role-or-user> --verdict <approve|changes|reject> [--reason <text>] [--commit <sha>]
 fairway route review <task-id>                          # apply review routing rules from config
 fairway merge-ready <task-id> [--ref <ref>] [--base <ref>] # verify evidence/review/handoff/git gates
+fairway review checkout <task-id> [--source-role <role>] # create/reset named review branch
 fairway session upsert | end | status | reconcile
+fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] # adapter; optional
 fairway worktree setup | status | prune
 fairway task-detail <task-id>
 fairway status-report | health-report | timing-report | dispatch-plan
 fairway git-check [--base <ref>]
+fairway preflight [--role <role>]                       # validate current worktree before ready/claim
+fairway coordinator preflight | status | tick
+fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
+fairway watcher packet | start | finish | status
+fairway checkpoint record | status | stale
+fairway prune-stale                                     # remove state rows for deleted task definitions
 fairway db backup | export
 fairway import <yaml-or-json-path> [--state-once]        # bootstrap-only; never overwrites mutable state after initial import
 fairway config validate
@@ -54,6 +62,10 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   skipped checks, and blocked checks can still leave an auditable row.
 - `--state-once` is for legacy migration only. Subsequent imports update task
   definitions but never overwrite DB-owned execution state.
+- `session launch` is an adapter command. The queue/session model works even
+  when agents are launched manually.
+- `coordinator tick` composes reports and recommendations. It does not claim,
+  merge, or mutate tasks automatically.
 
 ## Output
 

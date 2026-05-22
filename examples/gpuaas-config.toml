@@ -13,6 +13,17 @@ auto_open = true
 [worktrees]
 root = "../worktrees"
 naming = "{repo}-{role}"
+review_branch_naming = "review/{role}"
+
+[sessions]
+default_backend = "shell"
+stale_after = "12h"
+
+[coordinator]
+max_primary_tracks = 1
+max_sidecar_tracks = 1
+max_review_tracks = 1
+checkpoint_stale_after = "24h"
 
 [[roles]]
 name = "backend"
@@ -64,3 +75,6 @@ terminal = ["done"]
 [gates]
 require_evidence_before_done = false
 require_review_before_done = false
+require_handoff_before_merge_ready = false
+require_blocked_reason = true
+allow_force_without_reason = false
