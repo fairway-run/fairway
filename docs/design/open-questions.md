@@ -104,3 +104,12 @@ generic catalog/rendering commands. See [regression-packets.md](regression-packe
 state-machine concepts, but they are important quality gates: every bug fix
 should explain root cause and regression coverage, and workflow-impacting tasks
 should point at a reusable pack.
+
+## 14. Issue tracker integrations
+
+**Decision:** Add Jira and other issue trackers as adapters, not as core
+dependencies. See [issue-tracker-integrations.md](issue-tracker-integrations.md).
+
+**Rationale:** Existing tools should keep owning product planning and external
+stakeholder visibility. Fairway should import/link/export deliberately while
+keeping local execution facts in its own DB.

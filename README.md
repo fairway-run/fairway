@@ -60,6 +60,7 @@ Design:
 - [Checkpoints](docs/design/checkpoints.md)
 - [Review lanes](docs/design/review-lanes.md)
 - [Postgres adapter](docs/design/postgres-adapter.md)
+- [Issue tracker integrations](docs/design/issue-tracker-integrations.md)
 - [Worktrees](docs/design/worktrees.md)
 - [Dashboard](docs/design/dashboard.md)
 - [Multi-project mode](docs/design/multi-project.md)

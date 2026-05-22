@@ -53,10 +53,13 @@ A user can:
 - Stable schema. Migrations guaranteed forward-compatible.
 - Homebrew tap.
 - Postgres adapter (likely), with compatibility harness first.
+- Issue tracker adapter design and import/link/export prototype, with Jira as
+  the first target.
 
 ### Beyond v1
 - Multi-repo federation.
 - Webhooks / event emission.
+- Deeper issue tracker integrations for Jira, Linear, and GitHub Issues.
 
 ## Anti-goals
 
@@ -76,7 +79,7 @@ If a feature pushes toward any of those, it goes in a different tool.
 |---|---|
 | Pure shell scripts (status quo in GPUaaS) | No state machine, no audit trail, no dashboard. |
 | Poiesis-style provider workflow engine | Useful contract/review/QA lessons, but too coupled to LLM execution. Fairway coordinates agents; it does not run them. |
-| Notion / Linear | External dependency, not local, no git integration. |
+| Jira / Linear / Notion | Useful planning systems, but external dependencies. Fairway can integrate with them while keeping local execution state in its DB. |
 | Temporal / Cadence | Massive overkill; not designed for human-paced coordination. |
 | Custom Kanban app | Does not dispatch to worktrees, does not track sessions. |
 

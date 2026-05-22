@@ -37,6 +37,8 @@ A standalone Go binary plus an embedded SQLite store that coordinates multiple c
 - Authn / authz beyond OS user attribution.
 - Write actions from the dashboard (v0.1 is observation-only; mutations are CLI-only).
 - Provider launch orchestration as a core requirement. Provider/session launchers may exist as adapters, but the queue works without them.
+- Required issue tracker integration. Jira/Linear/GitHub Issues adapters are
+  planned, but fairway must remain useful without any external tracker.
 
 ## Audience
 
