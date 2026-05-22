@@ -53,13 +53,14 @@ A user can:
 - Stable schema. Migrations guaranteed forward-compatible.
 - Homebrew tap.
 - Postgres adapter (likely), with compatibility harness first.
-- Issue tracker adapter design and import/link/export prototype, with Jira as
-  the first target.
+- Issue tracker adapter design and import/link/export prototype, with Jira and
+  Linear as first targets.
 
 ### Beyond v1
 - Multi-repo federation.
 - Webhooks / event emission.
-- Deeper issue tracker integrations for Jira, Linear, and GitHub Issues.
+- Deeper issue tracker integrations for Jira, Linear, GitHub Issues, and
+  similar planning tools.
 
 ## Anti-goals
 

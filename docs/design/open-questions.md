@@ -107,7 +107,7 @@ should point at a reusable pack.
 
 ## 14. Issue tracker integrations
 
-**Decision:** Add Jira and other issue trackers as adapters, not as core
+**Decision:** Add Jira, Linear, and other issue trackers as adapters, not as core
 dependencies. See [issue-tracker-integrations.md](issue-tracker-integrations.md).
 
 **Rationale:** Existing tools should keep owning product planning and external
