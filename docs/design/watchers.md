@@ -11,13 +11,13 @@ as `ops/watch`, `ui/watch`, or `backend/watch`.
 ## Commands
 
 ```bash
-fairway watcher packet <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
+fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
 fairway watcher start <watch-id> --task <task-id>
 fairway watcher finish <watch-id> --result <pass|fail|blocked> [--artifact <path-or-url>] [--duration-seconds <n>] [--notes <text>]
 fairway watcher status [--include-done]
 ```
 
-`watcher packet` prints a bounded watch brief. `start` and `finish` record
+`packet watcher` prints a bounded watch brief. `start` and `finish` record
 normal fairway evidence and checkpoint rows; they do not run the watched command
 unless a future runner adapter is configured.
 

@@ -24,11 +24,12 @@ Tasks flow through the configured state machine (see [docs/design/state-machine.
 
 Every agent must read:
 
-1. [docs/governance/coding-standards.md](docs/governance/coding-standards.md)
-2. [docs/governance/testing.md](docs/governance/testing.md)
-3. [docs/governance/review-guards.md](docs/governance/review-guards.md)
-4. [docs/governance/commits.md](docs/governance/commits.md)
-5. Your role file (linked above).
+1. [docs/design/release-cuts.md](docs/design/release-cuts.md)
+2. [docs/governance/coding-standards.md](docs/governance/coding-standards.md)
+3. [docs/governance/testing.md](docs/governance/testing.md)
+4. [docs/governance/review-guards.md](docs/governance/review-guards.md)
+5. [docs/governance/commits.md](docs/governance/commits.md)
+6. Your role file (linked above).
 
 ## Operating principles
 
@@ -38,6 +39,7 @@ Every agent must read:
 4. **Evidence over assertion.** Even when `[gates] require_evidence_before_done = false`, prefer recording artifact paths over silence.
 5. **One worktree, one role.** Do not switch roles by changing branches inside a worktree.
 6. **Do not subdivide assigned tasks into fairway sub-tasks.** Track internal execution steps in your own scratch (todo file, Claude's task list, `WORKLOG.md`). Use `fairway spawn --sibling` only for *genuinely new* work the orchestrator should see. If a task is too big, hand it back to `arch` with a suggested split — do not split it yourself. See [hierarchy.md](docs/design/hierarchy.md#task-granularity-who-decides).
+7. **Bound side work with packets and checkpoints.** Long-running side work, watcher work, or newly discovered follow-up needs a context packet and fresh checkpoint rather than an untracked thread summary. See [context-packets.md](docs/design/context-packets.md) and [checkpoints.md](docs/design/checkpoints.md).
 
 ## Architecture
 

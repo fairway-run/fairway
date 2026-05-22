@@ -56,10 +56,20 @@ Cross-package rules:
 ## SQL
 
 - Schema lives in `internal/store/migrations/NNN_*.sql`.
-- Queries live in Go source as `const`s with descriptive names: `const qClaimTask = "..."`.
+- Queries live in Go source as descriptive `const`s or in shared query files
+  under `internal/store/queries/`.
 - Use placeholders (`?`), never string concatenation for user input.
 - Every multi-statement write is wrapped in `BEGIN ... COMMIT`.
 - Indices declared in the same migration that creates the table, unless added later via a deliberate migration.
+- SQL under `internal/store/queries/` must be reviewed for Postgres portability
+  even while SQLite is the only v1 runtime.
+- Do not use SQLite-only JSON1 functions, `rowid`, recursive CTE behavior, or
+  autoincrement assumptions in shared query files.
+- If a SQLite-specific construct is necessary, isolate it under
+  `internal/store/sqlite/` behind the store interface and document the Postgres
+  equivalent or incompatibility.
+- State-changing store methods must make transaction boundaries explicit in the
+  method or helper name.
 
 ## CSS (for the ui agent)
 

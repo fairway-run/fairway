@@ -49,6 +49,8 @@ Start here:
 Design:
 
 - [Scope and non-goals](docs/design/scope.md)
+- [Concepts](docs/design/concepts.md)
+- [Release cuts](docs/design/release-cuts.md)
 - [Schema](docs/design/schema.md)
 - [State machine](docs/design/state-machine.md)
 - [GPUaaS extraction](docs/design/gpuaas-extraction.md)
@@ -59,6 +61,7 @@ Design:
 - [Watchers](docs/design/watchers.md)
 - [Checkpoints](docs/design/checkpoints.md)
 - [Review lanes](docs/design/review-lanes.md)
+- [Session launch](docs/design/session-launch.md)
 - [Postgres adapter](docs/design/postgres-adapter.md)
 - [Issue tracker integrations](docs/design/issue-tracker-integrations.md)
 - [Worktrees](docs/design/worktrees.md)

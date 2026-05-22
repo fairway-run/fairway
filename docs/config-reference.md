@@ -114,7 +114,7 @@ levels = [
 | `max_primary_tracks` | int | `1` | Advisory limit for active primary work in `fairway coordinator preflight`. |
 | `max_sidecar_tracks` | int | `1` | Advisory limit for active side tracks/checkpoints. |
 | `max_review_tracks` | int | `1` | Advisory limit for active review/verification tracks. |
-| `checkpoint_stale_after` | duration | `24h` | Checkpoints older than this are stale unless the task is blocked, done, parked, or abandoned. |
+| `checkpoint_stale_after` | duration | `24h` | Checkpoints older than this are stale unless the checkpoint state is `awaiting_input`, `done`, `parked`, or `abandoned`. |
 
 ### `[[roles]]`
 
@@ -172,3 +172,17 @@ Lower `rank` is more urgent. Priority is cross-cutting — it overrides epic bou
 ## Validation
 
 `fairway init` writes a default config. `fairway config validate` checks an existing one. Errors are reported with file path and line number.
+
+## `fairway init` defaults
+
+`fairway init` writes the concrete defaults shown above, not a commented sample.
+The initial config has permissive completion gates but requires a reason when a
+task enters `blocked`:
+
+- `require_evidence_before_done = false`
+- `require_review_before_done = false`
+- `require_handoff_before_merge_ready = false`
+- `require_blocked_reason = true`
+- `allow_force_without_reason = false`
+
+This keeps first-run friction low while ensuring blocked work is explainable.

@@ -49,8 +49,8 @@
 `internal/coordinator/` — composed preflight/status/tick logic. Calls config,
 store, git, session, and report packages; does not mutate tasks automatically.
 
-`internal/packet/` — context and watcher packet rendering. Produces Markdown or
-JSON artifacts from task/config inputs.
+`internal/packet/` — context, bugfix, and watcher packet rendering. Produces
+Markdown or JSON artifacts from task/config inputs.
 
 `internal/dashboard/` — HTTP server, HTML templates, SSE. Embeds `assets/` (HTMX, CSS) via `//go:embed`. Read-only views over the store. Supports both single-project and multi-project (`ATTACH DATABASE`) data sources via a swappable view layer.
 
@@ -61,7 +61,7 @@ JSON artifacts from task/config inputs.
 1. CLI parses args, resolves role (worktree path → config), loads config.
 2. Opens the store via `internal/store`.
 3. Calls `state.Validate(currentStatus, target, config.States)`.
-4. On valid: store opens a write transaction → `UPDATE task_state` → `INSERT task_state_history` → `COMMIT`.
+4. On valid: store opens `BEGIN IMMEDIATE`, performs a guarded `UPDATE task_state ... WHERE claimant IS NULL`, inserts `task_state_history`, then commits. A losing concurrent claim returns `ErrAlreadyClaimed`.
 5. CLI prints confirmation.
 6. Dashboard SSE pollers (1Hz) pick up the new history row within ~1s and push it to connected clients.
 
@@ -91,6 +91,8 @@ JSON artifacts from task/config inputs.
 - One `*sql.DB` per process.
 - WAL mode enabled at open (`PRAGMA journal_mode=WAL`).
 - All writes wrapped in transactions.
+- Claim uses `BEGIN IMMEDIATE` plus a guarded update so two claimers cannot both
+  win on SQLite.
 - The dashboard is fully read-only against the store; it never holds locks across requests.
 
 ## Build & distribution
@@ -112,7 +114,7 @@ JSON artifacts from task/config inputs.
 | tmux / PID detection | `internal/session` |
 | Worktree shellouts | `internal/git` |
 | Coordinator preflight/status/tick | `internal/coordinator` |
-| Context and watcher packet rendering | `internal/packet` |
+| Context, bugfix, and watcher packet rendering | `internal/packet` |
 | HTML templates, SSE | `internal/dashboard` |
 | Text / JSON report rendering | `internal/report` |
 | Project registry (`~/.fairway/registry.toml`) | `internal/registry` |

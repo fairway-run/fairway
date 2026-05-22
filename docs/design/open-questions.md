@@ -50,7 +50,7 @@ parity command by command. See [postgres-adapter.md](postgres-adapter.md).
 
 **Decision:** Self-referential `parent_id` on `task_definitions`. N-level tree. Optional `kind` label (`epic`, `story`, `task`, `bug`, `spike`) configured via `[task_kinds]`. Drop the separate `track_checkpoints` identity model, but keep append-only task checkpoints for operating decisions. New `fairway spawn` command auto-parents under the current claimed task's parent (sibling) or the current task (`--child`) to prevent context loss when agents discover work mid-task. See [hierarchy.md](hierarchy.md) and [checkpoints.md](checkpoints.md).
 
-**Rationale:** GPUaaS's `track_checkpoints` was a separate concept that never quite tracked the work; the real need is "epics with multiple tasks, checkpointed operating decisions, and when an agent discovers a new bug, it stays connected to the epic." A self-referential tree handles the work model, while `task_checkpoints` handles active/parked/blocked side-track state. Epics are tasks; the state machine applies uniformly.
+**Rationale:** GPUaaS's `track_checkpoints` was a separate concept that never quite tracked the work; the real need is "epics with multiple tasks, checkpointed operating decisions, and when an agent discovers a new bug, it stays connected to the epic." A self-referential tree handles the work model, while `task_checkpoints` handles active/parked/awaiting-input side-track state. Epics are tasks; the state machine applies uniformly.
 
 ## 8. Ordering: priority and sequence
 
@@ -113,3 +113,15 @@ dependencies. See [issue-tracker-integrations.md](issue-tracker-integrations.md)
 **Rationale:** Existing tools should keep owning product planning and external
 stakeholder visibility. Fairway should import/link/export deliberately while
 keeping local execution facts in its own DB.
+
+## 15. Actor identity and task IDs
+
+**Decision:** Actor is the active `agent_sessions.id` when a command can infer
+one, otherwise `<os_user>@<host>`. Task IDs are user-supplied, stable, and match
+`^[A-Z]+-[0-9]+$` by default. Fairway v1 does not auto-generate task IDs. See
+[concepts.md](concepts.md).
+
+**Rationale:** Both choices unblock the first migration and transition tests.
+Session IDs make agent activity traceable; the OS fallback keeps manual use
+simple. User-supplied IDs preserve compatibility with imported Jira/Linear/Git
+issue keys without inventing another allocator.

@@ -45,7 +45,7 @@ transitions = [
 1. The initial transition for a new task must have `from_status = NULL`, and `to_status` must be in `allowed`.
 2. A task in a terminal state cannot be transitioned out unless `fairway set-status --reopen` is used (writes an explicit history row with `reason = "reopen"`).
 3. Every transition writes one `task_state_history` row in the same SQL transaction as the `task_state` update.
-4. The `actor` column on history is populated from the current OS user or active session — never NULL.
+4. The `actor` column on history is populated from the active session ID when known, otherwise `<os_user>@<host>` — never NULL.
 
 ## Hierarchy
 

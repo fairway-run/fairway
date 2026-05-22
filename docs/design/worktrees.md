@@ -2,6 +2,10 @@
 
 Fairway uses one git worktree per role, following the pattern established in GPUaaS but with paths and naming made configurable.
 
+See [concepts.md](concepts.md) for the canonical distinction between role and
+lane. In short: a role is the configured responsibility; a lane is an active
+execution slot or display label under a role.
+
 ## Layout
 
 ```

@@ -13,6 +13,8 @@ Everything that is not the dashboard frontend, CI / release, or pure docs:
 - `internal/store/` — SQLite schema, migrations, queries.
 - `internal/state/` — state machine validation.
 - `internal/session/` — PID / tmux / heartbeat tracking.
+- `internal/coordinator/` — preflight/status/tick composition.
+- `internal/packet/` — context, bugfix, and watcher packet rendering.
 - `internal/git/` — worktree shellouts.
 - `internal/report/` — report generators.
 - `internal/dashboard/` — *server* side (HTTP handlers, SSE source). UI templates and assets belong to `ui`.

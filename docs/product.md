@@ -32,10 +32,14 @@ A user can:
 
 ## Roadmap
 
+Scope for each cut is locked in [release-cuts.md](design/release-cuts.md). The
+roadmap below is directional; release cuts decide what code must be green before
+each version ships.
+
 ### v0.1 — week 1
 - Repo skeleton, schema, state machine, config, dashboard.
 - Read-only dashboard.
-- CLI verbs: `init`, `ready`, `claim`, `set-status`, `record evidence|handoff|review`, `task-detail`.
+- CLI verbs: `init`, `import`, `ready`, `claim`, `set-status`, `record evidence|handoff|review`, `task-detail`, `config validate`, `dashboard`, `version`.
 
 ### v0.2 — week 2–3
 - Session lifecycle (PID, tmux, heartbeats).
@@ -43,7 +47,6 @@ A user can:
 - Reports (status / health / timing / dispatch).
 - Review routing, merge readiness, and git consistency checks.
 - Coordinator tick, context packets, watcher packets, review checkout, task checkpoints, regression packs, and bug-fix packets.
-- Import (YAML / JSON).
 
 ### v0.3
 - Dashboard mutations (with CSRF, audit).

@@ -26,8 +26,9 @@ fairway preflight [--role <role>]                       # validate current workt
 fairway coordinator preflight | status | tick
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> --proof-command <cmd> --regression-coverage <text>
+fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
 fairway regression-pack list | show <pack-id> | validate [<catalog-path>]
-fairway watcher packet | start | finish | status
+fairway watcher start | finish | status
 fairway checkpoint record | status | stale
 fairway prune-stale                                     # remove state rows for deleted task definitions
 fairway db backup | export
@@ -57,6 +58,7 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 ## Conventions
 
 - Task IDs are positional; never flagged.
+- Default task IDs match `^[A-Z]+-[0-9]+$`; v1 does not auto-generate IDs.
 - `--payload @path/to/file` reads the file; otherwise the value is treated as inline text.
 - All commands respect `--db <path>` and `--config <path>` overrides.
 - Commands exit non-zero on validation failure. Pass `--json` for machine-readable error output.
@@ -73,6 +75,8 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   validate review context; they do not execute product test suites.
 - `db compat --backend postgres` is a planned adapter harness, not the default
   v1 runtime.
+- See [release-cuts.md](release-cuts.md) for the subset of this surface that
+  ships in each release.
 
 ## Output
 

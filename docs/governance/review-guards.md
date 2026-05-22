@@ -76,7 +76,7 @@ fairway record review <task-id> --reviewer <other-role> --verdict approve --reas
 | Verdict | Effect |
 |---|---|
 | `approve` | Task may transition to a terminal state (subject to `[gates]`). |
-| `changes` | Task transitions to `blocked` (or `changes_requested` if the extended state set is in use). Claimant must address feedback. |
+| `changes` | `task_state.review_status` becomes `changes_requested`; the task may transition to `blocked` only when the claimant cannot continue without external input. |
 | `reject` | Task transitions to `blocked`; requires discussion before re-claiming. |
 
 Verdicts are recorded immutably in `task_reviews`. Revising a verdict means a new row.

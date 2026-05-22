@@ -104,3 +104,7 @@ fairway record handoff T-002 --to backend --payload "Need an example payload for
 - The lanes strip updates within a second of each transition.
 - The activity feed shows the chain: claim → evidence → done; claim → handoff.
 - Health badges flag the unacknowledged handoff to backend after one hour.
+
+Long-running side work should use a context packet and checkpoints once the
+v0.2 commands exist; see [coordinator-loop.md](design/coordinator-loop.md) and
+[checkpoints.md](design/checkpoints.md).

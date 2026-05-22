@@ -66,7 +66,7 @@ Mutable per-task execution state. One row per task.
 | `completed_at` | DATETIME | |
 | `commit_sha` | TEXT | Commit that satisfied the task, when done. |
 | `review_required` | BOOLEAN NOT NULL DEFAULT 0 | Set by `fairway route review`. |
-| `review_status` | TEXT | `not_required` / `pending` / `approved` / `changes_requested` / `blocked`. |
+| `review_status` | TEXT | `not_required` / `pending` / `approved` / `changes_requested`. |
 | `reviewer` | TEXT | Latest routed or recorded reviewer. |
 | `reviewed_at` | DATETIME | Latest review timestamp, when any. |
 | `review_note` | TEXT | Latest review summary, when any. |
@@ -98,7 +98,7 @@ One row per state transition. Append-only.
 | `from_commit_sha` | TEXT | Previous commit SHA. |
 | `to_commit_sha` | TEXT | New commit SHA. |
 | `command_source` | TEXT | CLI command or integration that created the row. |
-| `actor` | TEXT NOT NULL | OS user or session ID. |
+| `actor` | TEXT NOT NULL | Active session ID when known, otherwise `<os_user>@<host>`. |
 | `reason` | TEXT | Optional human note. |
 | `at` | DATETIME NOT NULL | |
 
@@ -170,6 +170,15 @@ FK: `(project_id, task_id) → task_state(project_id, task_id)`.
 
 Constraint (enforced in code): `reviewer != task_state.claimant`.
 
+`task_reviews` is the audit log. The review columns on `task_state`
+(`review_required`, `review_status`, `reviewer`, `reviewed_at`,
+`review_note`) are denormalized/materialized dashboard fields. Every review
+insert updates `task_reviews` and the corresponding `task_state` review columns
+in the same transaction. Readers may use the denormalized columns for current
+state, but historical review questions must query `task_reviews`. Verdicts map
+to current review status as `approve` → `approved`; `changes` or `reject` →
+`changes_requested`.
+
 ### `agent_sessions`
 
 Lifecycle for a single agent process attached to a lane.
@@ -179,7 +188,7 @@ Lifecycle for a single agent process attached to a lane.
 | `project_id` | TEXT NOT NULL | |
 | `id` | TEXT NOT NULL | Session identifier (UUID or `role-pid-startts`). |
 | `role` | TEXT NOT NULL | |
-| `lane` | TEXT | Optional lane identifier when multiple lanes share a role. |
+| `lane` | TEXT | Optional lane identifier when multiple execution slots share a role; see [concepts.md](concepts.md). |
 | `worktree_path` | TEXT | Worktree path for status and attach affordances. |
 | `branch` | TEXT | Branch active when the session was recorded. |
 | `session_backend` | TEXT | `tmux`, `zellij`, `shell`, or another adapter label. |
@@ -209,7 +218,7 @@ work.
 | `id` | INTEGER PK | |
 | `project_id` | TEXT NOT NULL | |
 | `task_id` | TEXT NOT NULL | |
-| `state` | TEXT NOT NULL | `planned` / `active` / `blocked` / `review` / `done` / `parked` / `abandoned`. |
+| `state` | TEXT NOT NULL | `planned` / `active` / `awaiting_input` / `review` / `done` / `parked` / `abandoned`. |
 | `owner` | TEXT | Role or lane responsible for the checkpoint. |
 | `target_close_by` | DATE | Optional date for stale-track checks. |
 | `summary` | TEXT NOT NULL | Current operating summary. |
@@ -245,5 +254,39 @@ and transcripts stay out of the DB.
 **Why keep checkpoints after dropping `track_checkpoints`.** Fairway does not
 need a separate track identity table because epics/stories already represent
 bounded work. It still needs append-only operating decisions for active, parked,
-blocked, and watcher-style work; `task_checkpoints` provides that without
+awaiting-input, and watcher-style work; `task_checkpoints` provides that without
 creating a second task hierarchy.
+
+## Write Semantics
+
+### Claim Concurrency
+
+SQLite claim must be atomic and deterministic:
+
+1. Open `BEGIN IMMEDIATE` so the writer lock is acquired before reading
+   claimable state.
+2. Validate the task is claimable in the same transaction.
+3. Run a guarded update, for example:
+
+   ```sql
+   UPDATE task_state
+      SET status = 'in_progress',
+          owner = ?,
+          claimant = ?,
+          branch = ?,
+          claimed_at = ?,
+          updated_at = ?
+    WHERE project_id = ?
+      AND task_id = ?
+      AND status IN ('todo', 'blocked')
+      AND claimant IS NULL;
+   ```
+
+4. If zero rows were updated, rollback and return `ErrAlreadyClaimed` or the
+   more specific validation error.
+5. Insert the `task_state_history` row in the same transaction as the successful
+   update.
+6. Commit.
+
+Tests must prove two concurrent claim attempts produce exactly one winner and
+one loser.

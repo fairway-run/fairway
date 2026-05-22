@@ -11,7 +11,7 @@ append-only notes about operating state; they do not replace task status.
 ## Commands
 
 ```bash
-fairway checkpoint record <task-id> --state <planned|active|blocked|review|done|parked|abandoned> --summary <text> [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path-or-url>]
+fairway checkpoint record <task-id> --state <planned|active|awaiting_input|review|done|parked|abandoned> --summary <text> [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path-or-url>]
 fairway checkpoint status [--include-done]
 fairway checkpoint stale [--older-than <duration>]
 ```
@@ -25,7 +25,7 @@ Add `task_checkpoints`:
 | `project_id` | Project scope. |
 | `id` | Integer primary key. |
 | `task_id` | Task, story, or epic being checkpointed. |
-| `state` | `planned`, `active`, `blocked`, `review`, `done`, `parked`, `abandoned`. |
+| `state` | `planned`, `active`, `awaiting_input`, `review`, `done`, `parked`, `abandoned`. |
 | `owner` | Role or lane responsible for the current checkpoint. |
 | `target_close_by` | Optional date for stale-track detection. |
 | `summary` | Human-readable state. |
