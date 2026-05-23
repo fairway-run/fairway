@@ -52,6 +52,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdInit(ctx, opts)
 	case "import":
 		return cmdImport(ctx, opts, args[1:])
+	case "add":
+		return cmdAdd(ctx, opts, args[1:])
 	case "ready":
 		return cmdReady(ctx, opts, args[1:])
 	case "claim":
@@ -100,6 +102,56 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown command %q", args[0])
+}
+
+func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("add requires task id")
+	}
+	task := store.TaskDefinition{ID: args[0]}
+	fs := flag.NewFlagSet("add", flag.ContinueOnError)
+	title := fs.String("title", "", "task title")
+	kind := fs.String("kind", "task", "task kind")
+	parent := fs.String("parent", "", "parent task id")
+	priority := fs.Int("priority", -1, "priority rank")
+	sequence := fs.Int("sequence", -1, "sibling sequence")
+	role := fs.String("role", "", "owning role")
+	notes := fs.String("notes", "", "notes")
+	deps := fs.String("dependencies", "", "comma-separated dependency ids")
+	acceptance := fs.String("acceptance", "", "acceptance check")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected add arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	task.Title = *title
+	task.Kind = *kind
+	task.ParentID = *parent
+	task.Role = *role
+	task.Notes = *notes
+	if *priority >= 0 {
+		task.Priority = priority
+	}
+	if *sequence >= 0 {
+		task.Sequence = sequence
+	}
+	if *deps != "" {
+		task.Dependencies = splitCSV(*deps)
+	}
+	if *acceptance != "" {
+		task.AcceptanceChecks = []string{*acceptance}
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		if err := validateImportRoles([]store.TaskDefinition{task}, cfg); err != nil {
+			return err
+		}
+		if err := s.AddTask(ctx, task); err != nil {
+			return err
+		}
+		fmt.Println("added", task.ID)
+		return nil
+	})
 }
 
 type timingReport struct {
@@ -341,6 +393,18 @@ func parseGlobalFlags(args []string) (globalOptions, []string, error) {
 		}
 	}
 	return opts, args, nil
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func cmdInit(ctx context.Context, opts globalOptions) error {
@@ -817,5 +881,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|ready|claim|set-status|record|task-detail|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|ready|claim|set-status|record|task-detail|config validate|dashboard|version")
 }

@@ -180,7 +180,7 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 }
 
 func (s *Store) ImportTasks(ctx context.Context, tasks []TaskDefinition) error {
-	if err := validateTaskDefinitions(tasks); err != nil {
+	if err := validateTaskDefinitions(tasks, false); err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -237,7 +237,60 @@ VALUES (?, ?, 'todo', ?, 0, 'not_required', ?)`, s.projectID, task.ID, task.Role
 	return tx.Commit()
 }
 
-func validateTaskDefinitions(tasks []TaskDefinition) error {
+func (s *Store) AddTask(ctx context.Context, task TaskDefinition) error {
+	if task.Kind == "" {
+		task.Kind = "task"
+	}
+	if err := validateTaskDefinitions([]TaskDefinition{task}, true); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if task.ParentID != "" {
+		if err := ensureTaskExists(ctx, tx, s.projectID, task.ParentID); err != nil {
+			return fmt.Errorf("parent %s: %w", task.ParentID, err)
+		}
+	}
+	for _, dep := range task.Dependencies {
+		if err := ensureTaskExists(ctx, tx, s.projectID, dep); err != nil {
+			return fmt.Errorf("dependency %s: %w", dep, err)
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	actor := Actor()
+	acceptance, err := json.Marshal(task.AcceptanceChecks)
+	if err != nil {
+		return err
+	}
+	deps, err := json.Marshal(task.Dependencies)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+INSERT INTO task_definitions
+  (project_id, id, parent_id, kind, title, role, notes, acceptance_checks, dependencies, priority, sequence, created_at, created_by, updated_at)
+VALUES (?, ?, nullif(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.projectID, task.ID, task.ParentID, task.Kind, task.Title, task.Role, task.Notes, string(acceptance), string(deps), task.Priority, task.Sequence, now, actor, now)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+INSERT INTO task_state
+  (project_id, task_id, status, owner, review_required, review_status, updated_at)
+VALUES (?, ?, 'todo', ?, 0, 'not_required', ?)`, s.projectID, task.ID, task.Role, now)
+	if err != nil {
+		return err
+	}
+	if err := insertHistory(ctx, tx, s.projectID, task.ID, "", "todo", "", task.Role, "", actor, "add"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func validateTaskDefinitions(tasks []TaskDefinition, allowExternalRefs bool) error {
 	seen := map[string]bool{}
 	for _, task := range tasks {
 		if strings.TrimSpace(task.ID) == "" || strings.TrimSpace(task.Title) == "" {
@@ -255,11 +308,11 @@ func validateTaskDefinitions(tasks []TaskDefinition) error {
 		seen[task.ID] = true
 	}
 	for _, task := range tasks {
-		if task.ParentID != "" && !seen[task.ParentID] {
+		if !allowExternalRefs && task.ParentID != "" && !seen[task.ParentID] {
 			return fmt.Errorf("task %s references unknown parent %s", task.ID, task.ParentID)
 		}
 		for _, dep := range task.Dependencies {
-			if !seen[dep] {
+			if !allowExternalRefs && !seen[dep] {
 				return fmt.Errorf("task %s references unknown dependency %s", task.ID, dep)
 			}
 			if dep == task.ID {
@@ -268,6 +321,15 @@ func validateTaskDefinitions(tasks []TaskDefinition) error {
 		}
 	}
 	return nil
+}
+
+func ensureTaskExists(ctx context.Context, tx *sql.Tx, projectID, taskID string) error {
+	var exists int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM task_definitions WHERE project_id=? AND id=?`, projectID, taskID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
 }
 
 func (s *Store) Ready(ctx context.Context, role string, terminal []string) ([]Task, error) {
