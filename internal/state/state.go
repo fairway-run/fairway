@@ -28,6 +28,10 @@ func ValidateTransition(cfg Config, from, to string, reopen bool) error {
 	return fmt.Errorf("transition %q -> %q is not allowed", from, to)
 }
 
+func IsTerminal(cfg Config, status string) bool {
+	return contains(cfg.Terminal, status)
+}
+
 func contains(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {

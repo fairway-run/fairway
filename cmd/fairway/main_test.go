@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +38,29 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "--json", "task-detail", "T-001")
 }
 
+func TestCLI_RequiresEvidenceGate(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", "require_evidence_before_done = false", "require_evidence_before_done = true")
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: Gate
+  role: backend
+`)
+	runOK(t, "import", "tasks.yaml")
+	if err := run(context.Background(), []string{"set-status", "T-001", "done"}); err == nil {
+		t.Fatal("expected evidence gate error")
+	}
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout
@@ -61,6 +85,21 @@ func runOK(t *testing.T, args ...string) {
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Clean(path), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func replaceInFile(t *testing.T, path, old, new string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ReplaceAll(string(data), old, new)
+	if text == string(data) {
+		t.Fatalf("%q not found in %s", old, path)
+	}
+	if err := os.WriteFile(filepath.Clean(path), []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

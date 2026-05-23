@@ -203,6 +203,11 @@ func cmdSetStatus(ctx context.Context, opts globalOptions, args []string) error 
 		if err := state.ValidateTransition(stateCfg, current, args[1], *reopen); err != nil {
 			return err
 		}
+		if state.IsTerminal(stateCfg, args[1]) {
+			if err := validateTerminalGates(ctx, cfg, s, args[0]); err != nil {
+				return err
+			}
+		}
 		if err := s.SetStatus(ctx, args[0], args[1], *reason, cfg.Gates.RequireBlockedReason); err != nil {
 			return err
 		}
@@ -368,6 +373,28 @@ func roleNames(cfg config.Config) []string {
 		roles = append(roles, role.Name)
 	}
 	return roles
+}
+
+func validateTerminalGates(ctx context.Context, cfg config.Config, s *store.Store, taskID string) error {
+	if cfg.Gates.RequireEvidenceBeforeDone {
+		ok, err := s.HasEvidence(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("terminal transition requires evidence")
+		}
+	}
+	if cfg.Gates.RequireReviewBeforeDone {
+		ok, err := s.HasApprovedReview(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("terminal transition requires approved review")
+		}
+	}
+	return nil
 }
 
 func printTasks(tasks []store.Task) {
