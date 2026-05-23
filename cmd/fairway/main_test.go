@@ -113,6 +113,7 @@ func TestCLI_ReadyInFiltersDescendants(t *testing.T) {
 `)
 	runOK(t, "import", "tasks.yaml")
 	runOK(t, "ready", "--in", "E-001")
+	runOK(t, "claim", "--in", "E-001")
 }
 
 func runOK(t *testing.T, args ...string) {

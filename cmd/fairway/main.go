@@ -55,23 +55,7 @@ func run(ctx context.Context, args []string) error {
 	case "ready":
 		return cmdReady(ctx, opts, args[1:])
 	case "claim":
-		if len(args) < 2 {
-			return errors.New("claim requires task id")
-		}
-		if len(args) > 2 {
-			return fmt.Errorf("unexpected claim arguments: %s", strings.Join(args[2:], " "))
-		}
-		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
-			owner := resolveRole(opts)
-			if owner == "" {
-				owner = "manual"
-			}
-			if err := s.Claim(ctx, args[1], owner, fairwaygit.CurrentBranch(root)); err != nil {
-				return err
-			}
-			fmt.Println("claimed", args[1])
-			return nil
-		})
+		return cmdClaim(ctx, opts, args[1:])
 	case "set-status":
 		return cmdSetStatus(ctx, opts, args[1:])
 	case "record":
@@ -110,6 +94,65 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown command %q", args[0])
+}
+
+func cmdClaim(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("claim", flag.ContinueOnError)
+	within := fs.String("in", "", "claim first ready descendant of task")
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		taskID := args[0]
+		if len(args) > 1 {
+			return fmt.Errorf("unexpected claim arguments: %s", strings.Join(args[1:], " "))
+		}
+		return claimTask(ctx, opts, taskID)
+	}
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *within == "" {
+		return errors.New("claim requires task id or --in")
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected claim arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		role := resolveRole(opts)
+		tasks, err := s.Ready(ctx, role, cfg.States.Terminal)
+		if err != nil {
+			return err
+		}
+		all, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		tasks = filterByAncestor(tasks, all, *within)
+		if len(tasks) == 0 {
+			return fmt.Errorf("no ready tasks under %s", *within)
+		}
+		owner := role
+		if owner == "" {
+			owner = "manual"
+		}
+		if err := s.Claim(ctx, tasks[0].Definition.ID, owner, fairwaygit.CurrentBranch(root)); err != nil {
+			return err
+		}
+		fmt.Println("claimed", tasks[0].Definition.ID)
+		return nil
+	})
+}
+
+func claimTask(ctx context.Context, opts globalOptions, taskID string) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		owner := resolveRole(opts)
+		if owner == "" {
+			owner = "manual"
+		}
+		if err := s.Claim(ctx, taskID, owner, fairwaygit.CurrentBranch(root)); err != nil {
+			return err
+		}
+		fmt.Println("claimed", taskID)
+		return nil
+	})
 }
 
 func cmdReady(ctx context.Context, opts globalOptions, args []string) error {
