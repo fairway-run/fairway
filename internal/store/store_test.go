@@ -65,6 +65,18 @@ func TestRecordReview_MaterializesTaskState(t *testing.T) {
 	}
 }
 
+func TestRecordReview_RejectsSelfReview(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Review", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	err := s.RecordReview(ctx, "T-001", Review{Reviewer: "backend", Verdict: "approve", Reason: "self"})
+	if err == nil {
+		t.Fatal("expected self-review error")
+	}
+}
+
 func TestSetStatus_BlockedReleasesClaim(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

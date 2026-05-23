@@ -635,6 +635,17 @@ func (s *Store) RecordReview(ctx context.Context, taskID string, r Review) error
 		return err
 	}
 	defer tx.Rollback()
+	var owner, claimant string
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(owner, ''), COALESCE(claimant, '') FROM task_state WHERE project_id=? AND task_id=?`, s.projectID, taskID).Scan(&owner, &claimant)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if r.Reviewer == owner || (claimant != "" && r.Reviewer == claimant) {
+		return errors.New("reviewer cannot review their own task")
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	res, err := tx.ExecContext(ctx, `
 INSERT INTO task_reviews (project_id, task_id, reviewer, verdict, reviewed_commit_sha, route_reason, notes, created_at)
