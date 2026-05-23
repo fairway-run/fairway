@@ -74,6 +74,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdStatusReport(ctx, opts, args[1:])
 	case "health-report":
 		return cmdHealthReport(ctx, opts, args[1:])
+	case "timing-report":
+		return cmdTimingReport(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -98,6 +100,52 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown command %q", args[0])
+}
+
+type timingReport struct {
+	TotalSeconds int            `json:"total_seconds"`
+	ByRole       map[string]int `json:"by_role"`
+	ByTask       map[string]int `json:"by_task"`
+}
+
+func cmdTimingReport(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected timing-report arguments: %s", strings.Join(args, " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		report := timingReport{ByRole: map[string]int{}, ByTask: map[string]int{}}
+		for _, task := range tasks {
+			_, _, evidence, _, _, err := s.TaskDetail(ctx, task.Definition.ID)
+			if err != nil {
+				return err
+			}
+			for _, ev := range evidence {
+				if ev.DurationSeconds == nil {
+					continue
+				}
+				report.TotalSeconds += *ev.DurationSeconds
+				report.ByTask[task.Definition.ID] += *ev.DurationSeconds
+				report.ByRole[task.Definition.Role] += *ev.DurationSeconds
+			}
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("total_seconds: %d\n", report.TotalSeconds)
+		fmt.Println("by role:")
+		for role, seconds := range report.ByRole {
+			fmt.Printf("- %s: %d\n", role, seconds)
+		}
+		fmt.Println("by task:")
+		for taskID, seconds := range report.ByTask {
+			fmt.Printf("- %s: %d\n", taskID, seconds)
+		}
+		return nil
+	})
 }
 
 type statusReport struct {
