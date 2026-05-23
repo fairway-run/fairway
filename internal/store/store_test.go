@@ -82,6 +82,26 @@ func TestSetStatus_BlockedReleasesClaim(t *testing.T) {
 	}
 }
 
+func TestSetStatus_DoneReleasesClaimForReopen(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Done", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "T-001", "backend", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "todo", "reopen", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "T-001", "backend", ""); err != nil {
+		t.Fatalf("claim after reopen failed: %v", err)
+	}
+}
+
 func TestImportTasks_RejectsInvalidID(t *testing.T) {
 	s := newTestStore(t)
 	err := s.ImportTasks(context.Background(), []TaskDefinition{{ID: "task-1", Title: "bad", Role: "backend"}})

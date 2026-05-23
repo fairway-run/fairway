@@ -315,7 +315,7 @@ func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, re
 		completed = now
 	}
 	claimantSQL := "claimant"
-	if status == "blocked" {
+	if status != "in_progress" {
 		claimantSQL = "NULL"
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE task_state SET status=?, claimant=`+claimantSQL+`, completed_at=?, updated_at=? WHERE project_id=? AND task_id=?`, status, completed, now, s.projectID, taskID)
