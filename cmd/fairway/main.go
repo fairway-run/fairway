@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +22,7 @@ type globalOptions struct {
 	ConfigPath string
 	DBPath     string
 	Role       string
+	JSON       bool
 }
 
 func main() {
@@ -51,6 +53,9 @@ func run(ctx context.Context, args []string) error {
 			if err != nil {
 				return err
 			}
+			if opts.JSON {
+				return printJSON(tasks)
+			}
 			printTasks(tasks)
 			return nil
 		})
@@ -78,7 +83,7 @@ func run(ctx context.Context, args []string) error {
 			return errors.New("task-detail requires task id")
 		}
 		return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
-			return printDetail(ctx, s, args[1])
+			return printDetail(ctx, s, args[1], opts.JSON)
 		})
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
@@ -120,6 +125,9 @@ func parseGlobalFlags(args []string) (globalOptions, []string, error) {
 			}
 			opts.Role = args[1]
 			args = args[2:]
+		case "--json":
+			opts.JSON = true
+			args = args[1:]
 		default:
 			return opts, args, nil
 		}
@@ -360,10 +368,18 @@ func printTasks(tasks []store.Task) {
 	}
 }
 
-func printDetail(ctx context.Context, s *store.Store, taskID string) error {
+func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool) error {
 	task, evidence, handoffs, reviews, err := s.TaskDetail(ctx, taskID)
 	if err != nil {
 		return err
+	}
+	if asJSON {
+		return printJSON(struct {
+			Task     store.Task       `json:"task"`
+			Evidence []store.Evidence `json:"evidence"`
+			Handoffs []store.Handoff  `json:"handoffs"`
+			Reviews  []store.Review   `json:"reviews"`
+		}{task, evidence, handoffs, reviews})
 	}
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
 	fmt.Println("\nevidence:")
@@ -379,6 +395,12 @@ func printDetail(ctx context.Context, s *store.Store, taskID string) error {
 		fmt.Printf("- %s by %s: %s\n", r.Verdict, r.Reviewer, r.Reason)
 	}
 	return nil
+}
+
+func printJSON(value any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(value)
 }
 
 func exitCode(err error) int {
