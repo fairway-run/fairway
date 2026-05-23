@@ -55,3 +55,12 @@ func TestValidate_RejectsDefaultPriorityOutsideLevels(t *testing.T) {
 		t.Fatal("expected priority validation error")
 	}
 }
+
+func TestValidate_RejectsReviewRouteOutsideRoles(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.Roles = []Role{{Name: "backend"}}
+	cfg.ReviewRoutes = []ReviewRoute{{Match: "**", Reviewer: "arch"}}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected review route validation error")
+	}
+}

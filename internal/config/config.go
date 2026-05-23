@@ -19,6 +19,7 @@ type Config struct {
 	TaskKinds      TaskKindsConfig      `toml:"task_kinds"`
 	TaskPriorities TaskPrioritiesConfig `toml:"task_priorities"`
 	Roles          []Role               `toml:"roles"`
+	ReviewRoutes   []ReviewRoute        `toml:"review_routes"`
 }
 
 type FairwayConfig struct {
@@ -67,6 +68,11 @@ type PriorityLevel struct {
 	Rank        int    `toml:"rank"`
 	Label       string `toml:"label"`
 	Description string `toml:"description"`
+}
+
+type ReviewRoute struct {
+	Match    string `toml:"match"`
+	Reviewer string `toml:"reviewer"`
 }
 
 func Defaults(root string) Config {
@@ -198,6 +204,17 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("duplicate role %q", role.Name)
 		}
 		seen[role.Name] = true
+	}
+	for _, route := range cfg.ReviewRoutes {
+		if route.Match == "" {
+			return errors.New("[[review_routes]] match is required")
+		}
+		if route.Reviewer == "" {
+			return errors.New("[[review_routes]] reviewer is required")
+		}
+		if len(seen) > 0 && !seen[route.Reviewer] {
+			return fmt.Errorf("[[review_routes]] reviewer %q is not a configured role", route.Reviewer)
+		}
 	}
 	if cfg.TaskKinds.Default == "" {
 		return errors.New("[task_kinds] default is required")
