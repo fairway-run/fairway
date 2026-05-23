@@ -131,6 +131,21 @@ func TestImportTasks_RejectsUnknownDependency(t *testing.T) {
 	}
 }
 
+func TestUpdateTask_RejectsParentCycle(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{
+		{ID: "T-001", Title: "root", Role: "backend"},
+		{ID: "T-002", ParentID: "T-001", Title: "child", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := s.UpdateTask(ctx, TaskDefinition{ID: "T-001", ParentID: "T-002", Title: "root", Role: "backend"})
+	if err == nil {
+		t.Fatal("expected parent cycle error")
+	}
+}
+
 func TestHealth_CountsUnacknowledgedHandoff(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

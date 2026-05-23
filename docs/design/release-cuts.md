@@ -53,6 +53,10 @@ or CLI should require them.
 
 ### CLI
 
+- `fairway add <task-id> ...`
+- `fairway update <task-id> ...`
+- `fairway tree <task-id> [--depth <n>]`
+- `fairway spawn ...`
 - `fairway worktree setup | status | prune`
 - `fairway route review <task-id>`
 - `fairway merge-ready <task-id>`

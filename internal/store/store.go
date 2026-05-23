@@ -290,6 +290,95 @@ VALUES (?, ?, 'todo', ?, 0, 'not_required', ?)`, s.projectID, task.ID, task.Role
 	return tx.Commit()
 }
 
+func (s *Store) UpdateTask(ctx context.Context, task TaskDefinition) error {
+	if task.Kind == "" {
+		task.Kind = "task"
+	}
+	if task.ParentID == task.ID {
+		return fmt.Errorf("task %s cannot be its own parent", task.ID)
+	}
+	if err := validateTaskDefinitions([]TaskDefinition{task}, true); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := ensureTaskExists(ctx, tx, s.projectID, task.ID); err != nil {
+		return err
+	}
+	if task.ParentID != "" {
+		if err := ensureTaskExists(ctx, tx, s.projectID, task.ParentID); err != nil {
+			return fmt.Errorf("parent %s: %w", task.ParentID, err)
+		}
+		if err := s.ensureParentDoesNotCycle(ctx, tx, task.ID, task.ParentID); err != nil {
+			return err
+		}
+	}
+	for _, dep := range task.Dependencies {
+		if err := ensureTaskExists(ctx, tx, s.projectID, dep); err != nil {
+			return fmt.Errorf("dependency %s: %w", dep, err)
+		}
+	}
+	acceptance, err := json.Marshal(task.AcceptanceChecks)
+	if err != nil {
+		return err
+	}
+	deps, err := json.Marshal(task.Dependencies)
+	if err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `
+UPDATE task_definitions
+SET parent_id=nullif(?, ''),
+    kind=?,
+    title=?,
+    role=?,
+    notes=?,
+    acceptance_checks=?,
+    dependencies=?,
+    priority=?,
+    sequence=?,
+    updated_at=?
+WHERE project_id=? AND id=?`,
+		task.ParentID, task.Kind, task.Title, task.Role, task.Notes, string(acceptance), string(deps), task.Priority, task.Sequence, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, task.ID)
+	if err := checkWriteResult(res, err); err != nil {
+		return err
+	}
+	res, err = tx.ExecContext(ctx, `UPDATE task_state SET owner=?, updated_at=? WHERE project_id=? AND task_id=?`, task.Role, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, task.ID)
+	if err := checkWriteResult(res, err); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) ensureParentDoesNotCycle(ctx context.Context, tx *sql.Tx, taskID, parentID string) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id, COALESCE(parent_id, '') FROM task_definitions WHERE project_id=?`, s.projectID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	parents := map[string]string{}
+	for rows.Next() {
+		var id, parent string
+		if err := rows.Scan(&id, &parent); err != nil {
+			return err
+		}
+		parents[id] = parent
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	parents[taskID] = parentID
+	for cursor := parentID; cursor != ""; cursor = parents[cursor] {
+		if cursor == taskID {
+			return fmt.Errorf("task %s parent %s would create a cycle", taskID, parentID)
+		}
+	}
+	return nil
+}
+
 func validateTaskDefinitions(tasks []TaskDefinition, allowExternalRefs bool) error {
 	seen := map[string]bool{}
 	for _, task := range tasks {

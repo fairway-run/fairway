@@ -136,7 +136,10 @@ func TestCLI_AddTask(t *testing.T) {
 	runOK(t, "init")
 	runOK(t, "add", "T-001", "--title", "Root", "--role", "backend")
 	runOK(t, "add", "T-002", "--title", "Child", "--role", "backend", "--parent", "T-001", "--dependencies", "T-001", "--acceptance", "go test ./...")
+	runOK(t, "update", "T-002", "--title", "Updated child", "--notes", "kept in db", "--priority", "1")
 	runOK(t, "task-detail", "T-002")
+	runOK(t, "tree", "T-001")
+	runOK(t, "--json", "tree", "T-001")
 }
 
 func runOK(t *testing.T, args ...string) {

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -54,6 +55,10 @@ func run(ctx context.Context, args []string) error {
 		return cmdImport(ctx, opts, args[1:])
 	case "add":
 		return cmdAdd(ctx, opts, args[1:])
+	case "update":
+		return cmdUpdate(ctx, opts, args[1:])
+	case "tree":
+		return cmdTree(ctx, opts, args[1:])
 	case "ready":
 		return cmdReady(ctx, opts, args[1:])
 	case "claim":
@@ -150,6 +155,119 @@ func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
 			return err
 		}
 		fmt.Println("added", task.ID)
+		return nil
+	})
+}
+
+func cmdUpdate(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("update requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	title := fs.String("title", "", "task title")
+	kind := fs.String("kind", "", "task kind")
+	parent := fs.String("parent", "", "parent task id")
+	priority := fs.Int("priority", -1, "priority rank")
+	sequence := fs.Int("sequence", -1, "sibling sequence")
+	role := fs.String("role", "", "owning role")
+	notes := fs.String("notes", "", "notes")
+	deps := fs.String("dependencies", "", "comma-separated dependency ids")
+	acceptance := fs.String("acceptance", "", "acceptance check")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected update arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	changed := visitedFlags(fs)
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		current, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		task := current.Definition
+		if changed["title"] {
+			task.Title = *title
+		}
+		if changed["kind"] {
+			task.Kind = *kind
+		}
+		if changed["parent"] {
+			task.ParentID = *parent
+		}
+		if changed["priority"] {
+			if *priority >= 0 {
+				task.Priority = priority
+			} else {
+				task.Priority = nil
+			}
+		}
+		if changed["sequence"] {
+			if *sequence >= 0 {
+				task.Sequence = sequence
+			} else {
+				task.Sequence = nil
+			}
+		}
+		if changed["role"] {
+			task.Role = *role
+		}
+		if changed["notes"] {
+			task.Notes = *notes
+		}
+		if changed["dependencies"] {
+			task.Dependencies = splitCSV(*deps)
+		}
+		if changed["acceptance"] {
+			if *acceptance == "" {
+				task.AcceptanceChecks = nil
+			} else {
+				task.AcceptanceChecks = []string{*acceptance}
+			}
+		}
+		if err := validateImportRoles([]store.TaskDefinition{task}, cfg); err != nil {
+			return err
+		}
+		if err := s.UpdateTask(ctx, task); err != nil {
+			return err
+		}
+		fmt.Println("updated", task.ID)
+		return nil
+	})
+}
+
+type treeNode struct {
+	Task     store.Task `json:"task"`
+	Children []treeNode `json:"children,omitempty"`
+}
+
+func cmdTree(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("tree requires task id")
+	}
+	fs := flag.NewFlagSet("tree", flag.ContinueOnError)
+	depth := fs.Int("depth", -1, "maximum descendant depth")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tree arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	rootID := args[0]
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		node, ok := buildTree(rootID, tasks, *depth)
+		if !ok {
+			return store.ErrNotFound
+		}
+		if opts.JSON {
+			return printJSON(node)
+		}
+		printTree(node, 0)
 		return nil
 	})
 }
@@ -405,6 +523,14 @@ func splitCSV(value string) []string {
 		}
 	}
 	return out
+}
+
+func visitedFlags(fs *flag.FlagSet) map[string]bool {
+	visited := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) {
+		visited[f.Name] = true
+	})
+	return visited
 }
 
 func cmdInit(ctx context.Context, opts globalOptions) error {
@@ -818,6 +944,66 @@ func filterByAncestor(tasks, all []store.Task, ancestor string) []store.Task {
 	return filtered
 }
 
+func buildTree(rootID string, tasks []store.Task, maxDepth int) (treeNode, bool) {
+	byID := map[string]store.Task{}
+	children := map[string][]store.Task{}
+	for _, task := range tasks {
+		byID[task.Definition.ID] = task
+		children[task.Definition.ParentID] = append(children[task.Definition.ParentID], task)
+	}
+	for parentID := range children {
+		sort.SliceStable(children[parentID], func(i, j int) bool {
+			left := children[parentID][i].Definition
+			right := children[parentID][j].Definition
+			leftPriority, rightPriority := 9999, 9999
+			if left.Priority != nil {
+				leftPriority = *left.Priority
+			}
+			if right.Priority != nil {
+				rightPriority = *right.Priority
+			}
+			if leftPriority != rightPriority {
+				return leftPriority < rightPriority
+			}
+			leftSequence, rightSequence := 9999, 9999
+			if left.Sequence != nil {
+				leftSequence = *left.Sequence
+			}
+			if right.Sequence != nil {
+				rightSequence = *right.Sequence
+			}
+			if leftSequence != rightSequence {
+				return leftSequence < rightSequence
+			}
+			return left.ID < right.ID
+		})
+	}
+	root, ok := byID[rootID]
+	if !ok {
+		return treeNode{}, false
+	}
+	var walk func(store.Task, int) treeNode
+	walk = func(task store.Task, depth int) treeNode {
+		node := treeNode{Task: task}
+		if maxDepth >= 0 && depth >= maxDepth {
+			return node
+		}
+		for _, child := range children[task.Definition.ID] {
+			node.Children = append(node.Children, walk(child, depth+1))
+		}
+		return node
+	}
+	return walk(root, 0), true
+}
+
+func printTree(node treeNode, depth int) {
+	prefix := strings.Repeat("  ", depth)
+	fmt.Printf("%s%s [%s] %s\n", prefix, node.Task.Definition.ID, node.Task.Status, node.Task.Definition.Title)
+	for _, child := range node.Children {
+		printTree(child, depth+1)
+	}
+}
+
 func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool) error {
 	task, transitions, evidence, handoffs, reviews, err := s.TaskDetail(ctx, taskID)
 	if err != nil {
@@ -881,5 +1067,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|ready|claim|set-status|record|task-detail|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|config validate|dashboard|version")
 }
