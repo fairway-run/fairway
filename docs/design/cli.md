@@ -13,8 +13,8 @@ fairway set-status <task-id> <state> [--reason <text>] [--reopen]
 fairway record evidence <task-id> --command-text <text> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <text>]
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
 fairway record review <task-id> --reviewer <role-or-user> --verdict <approve|changes|reject> [--reason <text>] [--commit <sha>]
-fairway route review <task-id>                          # apply review routing rules from config
-fairway merge-ready <task-id> [--ref <ref>] [--base <ref>] # verify evidence/review/handoff/git gates
+fairway route review <task-id> [--reviewer <role>] [--path <path>]... [--reason <text>] # mark pending review
+fairway merge-ready <task-id> [--base <ref>]          # verify evidence/review/handoff/git gates
 fairway review checkout <task-id> [--source-role <role>] # create/reset named review branch
 fairway session upsert | end | status | reconcile
 fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] # adapter; optional
@@ -22,7 +22,7 @@ fairway worktree setup | status | prune
 fairway task-detail <task-id>
 fairway status-report | health-report | timing-report | dispatch-plan
 fairway git-check [--base <ref>]
-fairway preflight [--role <role>]                       # validate current worktree before ready/claim
+fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
 fairway coordinator preflight | status | tick
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> --proof-command <cmd> --regression-coverage <text>

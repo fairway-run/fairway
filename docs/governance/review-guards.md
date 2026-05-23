@@ -59,11 +59,15 @@ match = "**"
 reviewer = "arch"      # catch-all for the v0.1 cycle
 ```
 
-Apply with `fairway route review <task-id>`.
+Apply with `fairway route review <task-id>`. By default the command derives
+changed paths from `main_branch...HEAD` and applies the first matching route.
+Operators can pin a route explicitly with `--reviewer <role>` or test routing
+against known paths with repeated `--path <path>` flags.
 
 ## No self-review
 
-The role that claimed a task cannot review it. Enforced in code: `task_reviews.reviewer != task_state.claimant` (validated at insert time).
+The role that owns a task, or the active claimant identity when present, cannot
+review it. Enforced in code when routing and when inserting `task_reviews`.
 
 If the catch-all reviewer is the same as the claimant, route manually:
 
