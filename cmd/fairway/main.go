@@ -475,6 +475,14 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 		}{task, transitions, evidence, handoffs, reviews})
 	}
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
+	fmt.Println("\ndependencies:")
+	for _, dep := range task.Definition.Dependencies {
+		fmt.Printf("- %s\n", dep)
+	}
+	fmt.Println("\nacceptance:")
+	for _, check := range task.Definition.AcceptanceChecks {
+		fmt.Printf("- %s\n", check)
+	}
 	fmt.Println("\nhistory:")
 	for _, tr := range transitions {
 		from := tr.FromStatus
