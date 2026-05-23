@@ -145,6 +145,29 @@ func Validate(cfg Config) error {
 	if len(cfg.States.Allowed) == 0 {
 		return errors.New("[states] allowed must not be empty")
 	}
+	allowed := map[string]bool{}
+	for _, state := range cfg.States.Allowed {
+		if state == "" {
+			return errors.New("[states] allowed contains empty state")
+		}
+		if allowed[state] {
+			return fmt.Errorf("duplicate state %q", state)
+		}
+		allowed[state] = true
+	}
+	for _, terminal := range cfg.States.Terminal {
+		if !allowed[terminal] {
+			return fmt.Errorf("terminal state %q is not in allowed states", terminal)
+		}
+	}
+	for _, transition := range cfg.States.Transitions {
+		if transition[0] != "*" && !allowed[transition[0]] {
+			return fmt.Errorf("transition from state %q is not in allowed states", transition[0])
+		}
+		if !allowed[transition[1]] {
+			return fmt.Errorf("transition to state %q is not in allowed states", transition[1])
+		}
+	}
 	seen := map[string]bool{}
 	for _, role := range cfg.Roles {
 		if role.Name == "" {
