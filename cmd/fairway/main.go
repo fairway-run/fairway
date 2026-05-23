@@ -85,6 +85,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdTimingReport(ctx, opts, args[1:])
 	case "git-check":
 		return cmdGitCheck(opts, args[1:])
+	case "preflight":
+		return cmdPreflight(opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -404,6 +406,93 @@ func cmdGitCheck(opts globalOptions, args []string) error {
 		for _, path := range status.ChangedFiles {
 			fmt.Printf("- %s\n", path)
 		}
+	}
+	return nil
+}
+
+type preflightReport struct {
+	OK     bool               `json:"ok"`
+	Role   string             `json:"role"`
+	Git    fairwaygit.Status  `json:"git"`
+	Issues []string           `json:"issues"`
+	Config preflightConfigRef `json:"config"`
+}
+
+type preflightConfigRef struct {
+	Path string `json:"path"`
+	Root string `json:"root"`
+}
+
+func cmdPreflight(opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("preflight", flag.ContinueOnError)
+	roleFlag := fs.String("role", "", "role name")
+	base := fs.String("base", "", "base ref")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected preflight arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	cfg, root, path, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	role := *roleFlag
+	if role == "" {
+		role = resolveRole(opts)
+	}
+	if *base == "" {
+		*base = cfg.Fairway.MainBranch
+	}
+	gitStatus, err := fairwaygit.Check(root, *base)
+	if err != nil {
+		return err
+	}
+	report := preflightReport{
+		OK:     true,
+		Role:   role,
+		Git:    gitStatus,
+		Config: preflightConfigRef{Path: path, Root: root},
+	}
+	roleSet := config.RoleSet(cfg)
+	roleBranches := map[string]string{}
+	for _, configured := range cfg.Roles {
+		roleBranches[configured.Name] = configured.Branch
+	}
+	if len(roleSet) > 0 {
+		if role == "" {
+			report.Issues = append(report.Issues, "role is required when roles are configured")
+		} else if !roleSet[role] {
+			report.Issues = append(report.Issues, fmt.Sprintf("unknown role %q", role))
+		} else if expected := roleBranches[role]; expected != "" && gitStatus.Branch != expected {
+			report.Issues = append(report.Issues, fmt.Sprintf("branch %q does not match role %q branch %q", gitStatus.Branch, role, expected))
+		}
+	}
+	if gitStatus.Dirty {
+		report.Issues = append(report.Issues, "worktree has uncommitted changes")
+	}
+	if *base != "" && !gitStatus.BaseAncestor {
+		report.Issues = append(report.Issues, fmt.Sprintf("HEAD is not based on %q", *base))
+	}
+	if gitStatus.Behind > 0 {
+		report.Issues = append(report.Issues, fmt.Sprintf("branch is %d commit(s) behind %q", gitStatus.Behind, *base))
+	}
+	report.OK = len(report.Issues) == 0
+	if opts.JSON {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("preflight: %t\nrole: %s\nbranch: %s\nbase: %s\n", report.OK, report.Role, report.Git.Branch, report.Git.Base)
+		if len(report.Issues) > 0 {
+			fmt.Println("issues:")
+			for _, issue := range report.Issues {
+				fmt.Printf("- %s\n", issue)
+			}
+		}
+	}
+	if !report.OK {
+		return errors.New("preflight failed")
 	}
 	return nil
 }
@@ -1131,5 +1220,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|config validate|dashboard|version")
 }

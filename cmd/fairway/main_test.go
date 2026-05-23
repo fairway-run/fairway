@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -142,6 +143,27 @@ func TestCLI_AddTask(t *testing.T) {
 	runOK(t, "--json", "tree", "T-001")
 }
 
+func TestCLI_Preflight(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	runOK(t, "preflight", "--role", "backend")
+	runOK(t, "--json", "preflight", "--role", "backend")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout
@@ -161,6 +183,15 @@ func runOK(t *testing.T, args ...string) {
 	}
 	_ = w.Close()
 	_, _ = out.ReadFrom(r)
+}
+
+func git(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
 }
 
 func writeFile(t *testing.T, path, content string) {
