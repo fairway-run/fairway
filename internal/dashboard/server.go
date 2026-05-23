@@ -11,10 +11,17 @@ import (
 
 type Server struct {
 	store *store.Store
+	roles []string
 }
 
-func New(s *store.Store) *Server {
-	return &Server{store: s}
+func New(s *store.Store, roles []string) *Server {
+	return &Server{store: s, roles: roles}
+}
+
+type RoleGroup struct {
+	Role    string
+	Current *store.Task
+	Tasks   []store.Task
 }
 
 func (s *Server) ListenAndServe(addr string) error {
@@ -41,11 +48,40 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := struct {
-		Tasks    []store.Task
+		Groups   []RoleGroup
 		Activity []store.Activity
 		Health   store.Health
-	}{tasks, activity, health}
+	}{groupTasks(tasks, s.roles), activity, health}
 	_ = indexTemplate.Execute(w, data)
+}
+
+func groupTasks(tasks []store.Task, roles []string) []RoleGroup {
+	byRole := map[string]int{}
+	var groups []RoleGroup
+	addRole := func(role string) int {
+		if role == "" {
+			role = "unassigned"
+		}
+		if index, ok := byRole[role]; ok {
+			return index
+		}
+		groups = append(groups, RoleGroup{Role: role})
+		index := len(groups) - 1
+		byRole[role] = index
+		return index
+	}
+	for _, role := range roles {
+		addRole(role)
+	}
+	for _, task := range tasks {
+		index := addRole(task.Definition.Role)
+		groups[index].Tasks = append(groups[index].Tasks, task)
+		if task.Status == "in_progress" && groups[index].Current == nil {
+			copy := task
+			groups[index].Current = &copy
+		}
+	}
+	return groups
 }
 
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {
@@ -68,8 +104,8 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <html><head><title>fairway</title><style>
 body{font-family:system-ui,sans-serif;margin:32px;background:#f7f7f5;color:#1f2933}
-table{border-collapse:collapse;width:100%;background:white}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left}
-.status{font-family:monospace}.role{font-weight:600}.badges{display:flex;gap:8px;margin:16px 0}.badge{background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:6px}.layout{display:grid;grid-template-columns:1fr 360px;gap:24px}.feed{background:white;border:1px solid #ddd;padding:12px}.feed p{border-bottom:1px solid #eee;padding-bottom:8px}
+table{border-collapse:collapse;width:100%;background:white;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left}
+.status{font-family:monospace}.role{font-weight:600}.badges,.lanes{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}.badge,.lane{background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:6px}.lane b{display:block}.layout{display:grid;grid-template-columns:1fr 360px;gap:24px}.feed{background:white;border:1px solid #ddd;padding:12px}.feed p{border-bottom:1px solid #eee;padding-bottom:8px}
 </style></head><body>
 <h1>fairway</h1>
 <div class="badges">
@@ -78,11 +114,17 @@ table{border-collapse:collapse;width:100%;background:white}td,th{border-bottom:1
 <span class="badge">handoffs: {{.Health.UnacknowledgedHandoff}}</span>
 <span class="badge">reviews: {{.Health.UnroutedReviews}}</span>
 </div>
+<div class="lanes">
+{{range .Groups}}<div class="lane"><b>{{.Role}}</b>{{if .Current}}<a href="/tasks/{{.Current.Definition.ID}}">{{.Current.Definition.ID}}</a> {{.Current.Definition.Title}}{{else}}idle{{end}}</div>{{end}}
+</div>
 <div class="layout">
 <main>
+{{range .Groups}}
+<h2>{{.Role}}</h2>
 <table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Owner</th><th>Review</th></tr>
-{{range .Tasks}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td></tr>{{end}}
+{{range .Tasks}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td></tr>{{else}}<tr><td colspan="6">no tasks</td></tr>{{end}}
 </table>
+{{end}}
 </main>
 <aside class="feed"><h2>Activity</h2>{{range .Activity}}<p><b>{{.TaskID}}</b> <code>{{.Kind}}</code><br>{{.Summary}}<br><small>{{.CreatedAt}} {{.Actor}}</small></p>{{else}}<p>none</p>{{end}}</aside>
 </div>

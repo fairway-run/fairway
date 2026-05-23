@@ -318,7 +318,7 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 			addr = *listen
 		}
 		fmt.Println("dashboard", dashboard.URL(addr))
-		return dashboard.New(s).ListenAndServe(addr)
+		return dashboard.New(s, roleNames(cfg)).ListenAndServe(addr)
 	})
 }
 
@@ -360,6 +360,14 @@ func resolveRole(opts globalOptions) string {
 		return opts.Role
 	}
 	return os.Getenv("FAIRWAY_ROLE")
+}
+
+func roleNames(cfg config.Config) []string {
+	roles := make([]string, 0, len(cfg.Roles))
+	for _, role := range cfg.Roles {
+		roles = append(roles, role.Name)
+	}
+	return roles
 }
 
 func printTasks(tasks []store.Task) {
