@@ -260,6 +260,7 @@ func recordEvidence(ctx context.Context, opts globalOptions, args []string) erro
 	result := fs.String("result", "", "result")
 	artifact := fs.String("artifact", "", "artifact")
 	artifactType := fs.String("artifact-type", "", "artifact type")
+	duration := fs.Int("duration-seconds", 0, "duration in seconds")
 	notes := fs.String("notes", "", "notes")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -271,7 +272,11 @@ func recordEvidence(ctx context.Context, opts globalOptions, args []string) erro
 		return errors.New("--result is required")
 	}
 	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
-		return s.RecordEvidence(ctx, taskID, store.Evidence{CommandText: *commandText, Result: *result, ArtifactPath: *artifact, ArtifactType: *artifactType, Notes: *notes})
+		var durationPtr *int
+		if *duration > 0 {
+			durationPtr = duration
+		}
+		return s.RecordEvidence(ctx, taskID, store.Evidence{CommandText: *commandText, Result: *result, ArtifactPath: *artifact, ArtifactType: *artifactType, DurationSeconds: durationPtr, Notes: *notes})
 	})
 }
 

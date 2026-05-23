@@ -31,7 +31,7 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "--json", "ready")
 	t.Setenv("FAIRWAY_ROLE", "backend")
 	runOK(t, "claim", "T-001")
-	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass", "--duration-seconds", "1")
 	runOK(t, "record", "review", "T-001", "--reviewer", "ui", "--verdict", "approve", "--reason", "ok")
 	runOK(t, "set-status", "T-001", "done")
 	runOK(t, "task-detail", "T-001")
