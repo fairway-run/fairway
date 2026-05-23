@@ -87,6 +87,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdGitCheck(opts, args[1:])
 	case "preflight":
 		return cmdPreflight(opts, args[1:])
+	case "merge-ready":
+		return cmdMergeReady(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -495,6 +497,92 @@ func cmdPreflight(opts globalOptions, args []string) error {
 		return errors.New("preflight failed")
 	}
 	return nil
+}
+
+type mergeReadyReport struct {
+	OK     bool              `json:"ok"`
+	TaskID string            `json:"task_id"`
+	Git    fairwaygit.Status `json:"git"`
+	Issues []string          `json:"issues"`
+}
+
+func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("merge-ready requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("merge-ready", flag.ContinueOnError)
+	base := fs.String("base", "", "base ref")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected merge-ready arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		if _, _, _, _, _, err := s.TaskDetail(ctx, taskID); err != nil {
+			return err
+		}
+		if *base == "" {
+			*base = cfg.Fairway.MainBranch
+		}
+		gitStatus, err := fairwaygit.Check(root, *base)
+		if err != nil {
+			return err
+		}
+		report := mergeReadyReport{OK: true, TaskID: taskID, Git: gitStatus}
+		if gitStatus.Dirty {
+			report.Issues = append(report.Issues, "worktree has uncommitted changes")
+		}
+		if *base != "" && !gitStatus.BaseAncestor {
+			report.Issues = append(report.Issues, fmt.Sprintf("HEAD is not based on %q", *base))
+		}
+		if cfg.Gates.RequireEvidenceBeforeDone {
+			ok, err := s.HasEvidence(ctx, taskID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				report.Issues = append(report.Issues, "missing evidence")
+			}
+		}
+		if cfg.Gates.RequireReviewBeforeDone {
+			ok, err := s.HasApprovedReview(ctx, taskID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				report.Issues = append(report.Issues, "missing approved review")
+			}
+		}
+		if cfg.Gates.RequireHandoffBeforeMergeReady {
+			ok, err := s.HasHandoff(ctx, taskID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				report.Issues = append(report.Issues, "missing handoff")
+			}
+		}
+		report.OK = len(report.Issues) == 0
+		if opts.JSON {
+			if err := printJSON(report); err != nil {
+				return err
+			}
+		} else {
+			fmt.Printf("merge_ready: %t\ntask: %s\nbranch: %s\nbase: %s\n", report.OK, report.TaskID, report.Git.Branch, report.Git.Base)
+			if len(report.Issues) > 0 {
+				fmt.Println("issues:")
+				for _, issue := range report.Issues {
+					fmt.Printf("- %s\n", issue)
+				}
+			}
+		}
+		if !report.OK {
+			return errors.New("merge-ready failed")
+		}
+		return nil
+	})
 }
 
 func cmdHealthReport(ctx context.Context, opts globalOptions, args []string) error {
@@ -1220,5 +1308,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|config validate|dashboard|version")
 }

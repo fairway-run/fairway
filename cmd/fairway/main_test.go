@@ -162,6 +162,9 @@ func TestCLI_Preflight(t *testing.T) {
 	git(t, repo, "commit", "-m", "init")
 	runOK(t, "preflight", "--role", "backend")
 	runOK(t, "--json", "preflight", "--role", "backend")
+	runOK(t, "add", "T-001", "--title", "Merge", "--role", "backend")
+	runOK(t, "merge-ready", "T-001")
+	runOK(t, "--json", "merge-ready", "T-001")
 }
 
 func runOK(t *testing.T, args ...string) {

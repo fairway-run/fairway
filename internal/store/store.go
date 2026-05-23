@@ -547,6 +547,12 @@ func (s *Store) HasApprovedReview(ctx context.Context, taskID string) (bool, err
 	return count > 0, err
 }
 
+func (s *Store) HasHandoff(ctx context.Context, taskID string) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_handoffs WHERE project_id=? AND task_id=?`, s.projectID, taskID).Scan(&count)
+	return count > 0, err
+}
+
 func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, requireBlockedReason bool) error {
 	if status == "blocked" && requireBlockedReason && strings.TrimSpace(reason) == "" {
 		return errors.New("reason is required when blocking a task")

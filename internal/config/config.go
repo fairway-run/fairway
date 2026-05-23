@@ -299,7 +299,15 @@ allow_force_without_reason = false
 [task_kinds]
 default = "task"
 `, cfg.Fairway.ProjectName)
-	return os.WriteFile(path, []byte(text), 0o644)
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return err
+	}
+	ignorePath := filepath.Join(filepath.Dir(path), ".gitignore")
+	if _, err := os.Stat(ignorePath); errors.Is(err, os.ErrNotExist) {
+		ignore := "state.db\nstate.db-*\n"
+		return os.WriteFile(ignorePath, []byte(ignore), 0o644)
+	}
+	return nil
 }
 
 func DBPath(cfg Config, root string) string {
