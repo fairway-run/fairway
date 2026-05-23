@@ -110,6 +110,27 @@ func TestImportTasks_RejectsInvalidID(t *testing.T) {
 	}
 }
 
+func TestImportTasks_RejectsDuplicateID(t *testing.T) {
+	s := newTestStore(t)
+	err := s.ImportTasks(context.Background(), []TaskDefinition{
+		{ID: "T-001", Title: "one", Role: "backend"},
+		{ID: "T-001", Title: "two", Role: "backend"},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate task id error")
+	}
+}
+
+func TestImportTasks_RejectsUnknownDependency(t *testing.T) {
+	s := newTestStore(t)
+	err := s.ImportTasks(context.Background(), []TaskDefinition{
+		{ID: "T-001", Title: "one", Role: "backend", Dependencies: []string{"T-404"}},
+	})
+	if err == nil {
+		t.Fatal("expected unknown dependency error")
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), "test")

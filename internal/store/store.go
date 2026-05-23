@@ -133,6 +133,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 }
 
 func (s *Store) ImportTasks(ctx context.Context, tasks []TaskDefinition) error {
+	if err := validateTaskDefinitions(tasks); err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -141,12 +144,6 @@ func (s *Store) ImportTasks(ctx context.Context, tasks []TaskDefinition) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	actor := Actor()
 	for _, task := range tasks {
-		if strings.TrimSpace(task.ID) == "" || strings.TrimSpace(task.Title) == "" {
-			return errors.New("task id and title are required")
-		}
-		if !defaultTaskIDPattern.MatchString(task.ID) {
-			return fmt.Errorf("%w: %s", ErrInvalidTaskID, task.ID)
-		}
 		if task.Kind == "" {
 			task.Kind = "task"
 		}
@@ -191,6 +188,39 @@ VALUES (?, ?, 'todo', ?, 0, 'not_required', ?)`, s.projectID, task.ID, task.Role
 		}
 	}
 	return tx.Commit()
+}
+
+func validateTaskDefinitions(tasks []TaskDefinition) error {
+	seen := map[string]bool{}
+	for _, task := range tasks {
+		if strings.TrimSpace(task.ID) == "" || strings.TrimSpace(task.Title) == "" {
+			return errors.New("task id and title are required")
+		}
+		if !defaultTaskIDPattern.MatchString(task.ID) {
+			return fmt.Errorf("%w: %s", ErrInvalidTaskID, task.ID)
+		}
+		if strings.TrimSpace(task.Role) == "" {
+			return fmt.Errorf("task %s role is required", task.ID)
+		}
+		if seen[task.ID] {
+			return fmt.Errorf("duplicate task id %s", task.ID)
+		}
+		seen[task.ID] = true
+	}
+	for _, task := range tasks {
+		if task.ParentID != "" && !seen[task.ParentID] {
+			return fmt.Errorf("task %s references unknown parent %s", task.ID, task.ParentID)
+		}
+		for _, dep := range task.Dependencies {
+			if !seen[dep] {
+				return fmt.Errorf("task %s references unknown dependency %s", task.ID, dep)
+			}
+			if dep == task.ID {
+				return fmt.Errorf("task %s cannot depend on itself", task.ID)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) Ready(ctx context.Context, role string) ([]Task, error) {

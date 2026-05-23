@@ -175,13 +175,29 @@ func cmdImport(ctx context.Context, opts globalOptions, args []string) error {
 	if err != nil {
 		return err
 	}
-	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		if err := validateImportRoles(tasks, cfg); err != nil {
+			return err
+		}
 		if err := s.ImportTasks(ctx, tasks); err != nil {
 			return err
 		}
 		fmt.Printf("imported %d tasks\n", len(tasks))
 		return nil
 	})
+}
+
+func validateImportRoles(tasks []store.TaskDefinition, cfg config.Config) error {
+	roles := config.RoleSet(cfg)
+	if len(roles) == 0 {
+		return nil
+	}
+	for _, task := range tasks {
+		if !roles[task.Role] {
+			return fmt.Errorf("task %s uses unknown role %q", task.ID, task.Role)
+		}
+	}
+	return nil
 }
 
 func cmdSetStatus(ctx context.Context, opts globalOptions, args []string) error {

@@ -150,6 +150,14 @@ func Validate(cfg Config) error {
 	return nil
 }
 
+func RoleSet(cfg Config) map[string]bool {
+	roles := make(map[string]bool, len(cfg.Roles))
+	for _, role := range cfg.Roles {
+		roles[role.Name] = true
+	}
+	return roles
+}
+
 func WriteDefault(path, root string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
