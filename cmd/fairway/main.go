@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -89,6 +90,11 @@ func run(ctx context.Context, args []string) error {
 		return cmdPreflight(opts, args[1:])
 	case "merge-ready":
 		return cmdMergeReady(ctx, opts, args[1:])
+	case "route":
+		if len(args) >= 2 && args[1] == "review" {
+			return cmdRouteReview(ctx, opts, args[2:])
+		}
+		return errors.New("route requires subcommand: review")
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -585,6 +591,77 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 	})
 }
 
+func cmdRouteReview(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("route review requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("route review", flag.ContinueOnError)
+	reviewer := fs.String("reviewer", "", "reviewer role")
+	reason := fs.String("reason", "", "route reason")
+	paths := multiFlag{}
+	fs.Var(&paths, "path", "changed path")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected route review arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		selected := *reviewer
+		routeReason := *reason
+		if selected == "" {
+			selected, routeReason = matchReviewRoute(cfg.ReviewRoutes, []string(paths))
+		}
+		if selected == "" && len(paths) == 0 {
+			changed, err := fairwaygit.ChangedFiles(root, cfg.Fairway.MainBranch)
+			if err != nil {
+				return err
+			}
+			selected, routeReason = matchReviewRoute(cfg.ReviewRoutes, changed)
+		}
+		if selected == "" {
+			return errors.New("no review route matched; pass --reviewer or --path")
+		}
+		if selected == task.Owner || selected == task.Claimant {
+			return errors.New("reviewer cannot review their own task")
+		}
+		if err := validateReviewer(selected, cfg); err != nil {
+			return err
+		}
+		if routeReason == "" {
+			routeReason = "manual route"
+		}
+		if err := s.RouteReview(ctx, taskID, selected, routeReason); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(struct {
+				TaskID   string `json:"task_id"`
+				Reviewer string `json:"reviewer"`
+				Reason   string `json:"reason"`
+			}{taskID, selected, routeReason})
+		}
+		fmt.Printf("routed %s to %s: %s\n", taskID, selected, routeReason)
+		return nil
+	})
+}
+
+type multiFlag []string
+
+func (m *multiFlag) String() string {
+	return strings.Join(*m, ",")
+}
+
+func (m *multiFlag) Set(value string) error {
+	*m = append(*m, value)
+	return nil
+}
+
 func cmdHealthReport(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("unexpected health-report arguments: %s", strings.Join(args, " "))
@@ -837,6 +914,36 @@ func validateTaskMetadata(tasks []store.TaskDefinition, cfg config.Config) error
 		}
 	}
 	return nil
+}
+
+func validateReviewer(reviewer string, cfg config.Config) error {
+	roles := config.RoleSet(cfg)
+	if len(roles) > 0 && !roles[reviewer] {
+		return fmt.Errorf("unknown reviewer %q", reviewer)
+	}
+	return nil
+}
+
+func matchReviewRoute(routes []config.ReviewRoute, paths []string) (string, string) {
+	for _, changedPath := range paths {
+		for _, route := range routes {
+			if routeMatches(route.Match, changedPath) {
+				return route.Reviewer, fmt.Sprintf("%s matched %s", changedPath, route.Match)
+			}
+		}
+	}
+	return "", ""
+}
+
+func routeMatches(pattern, changedPath string) bool {
+	if pattern == "**" {
+		return true
+	}
+	if strings.HasSuffix(pattern, "/**") {
+		return strings.HasPrefix(changedPath, strings.TrimSuffix(pattern, "**"))
+	}
+	ok, err := path.Match(pattern, changedPath)
+	return err == nil && ok
 }
 
 func cmdSetStatus(ctx context.Context, opts globalOptions, args []string) error {

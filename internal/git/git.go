@@ -82,6 +82,23 @@ func Check(root, base string) (Status, error) {
 	return status, nil
 }
 
+func ChangedFiles(root, base string) ([]string, error) {
+	if base == "" {
+		return nil, nil
+	}
+	if err := run(root, "rev-parse", "--verify", base); err != nil {
+		return nil, fmt.Errorf("base %q not found: %w", base, err)
+	}
+	out, err := output(root, "diff", "--name-only", base+"...HEAD")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 func output(root string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = root

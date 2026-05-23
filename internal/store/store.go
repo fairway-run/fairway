@@ -553,6 +553,18 @@ func (s *Store) HasHandoff(ctx context.Context, taskID string) (bool, error) {
 	return count > 0, err
 }
 
+func (s *Store) RouteReview(ctx context.Context, taskID, reviewer, reason string) error {
+	if reviewer == "" {
+		return errors.New("reviewer is required")
+	}
+	res, err := s.db.ExecContext(ctx, `
+UPDATE task_state
+SET review_required=1, review_status='pending', reviewer=?, review_note=?, updated_at=?
+WHERE project_id=? AND task_id=?`,
+		reviewer, reason, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, taskID)
+	return checkWriteResult(res, err)
+}
+
 func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, requireBlockedReason bool) error {
 	if status == "blocked" && requireBlockedReason && strings.TrimSpace(reason) == "" {
 		return errors.New("reason is required when blocking a task")
