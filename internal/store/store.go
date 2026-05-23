@@ -270,7 +270,7 @@ func validateTaskDefinitions(tasks []TaskDefinition) error {
 	return nil
 }
 
-func (s *Store) Ready(ctx context.Context, role string) ([]Task, error) {
+func (s *Store) Ready(ctx context.Context, role string, terminal []string) ([]Task, error) {
 	args := []any{s.projectID}
 	roleSQL := ""
 	if role != "" {
@@ -296,11 +296,18 @@ ORDER BY COALESCE(d.priority, 9999), COALESCE(d.sequence, 9999), d.created_at`, 
 	if err != nil {
 		return nil, err
 	}
+	if len(terminal) == 0 {
+		terminal = []string{"done"}
+	}
+	terminalSet := map[string]bool{}
+	for _, status := range terminal {
+		terminalSet[status] = true
+	}
 	ready := candidates[:0]
 	for _, task := range candidates {
 		ok := true
 		for _, dep := range task.Definition.Dependencies {
-			if statuses[dep] != "done" {
+			if !terminalSet[statuses[dep]] {
 				ok = false
 				break
 			}

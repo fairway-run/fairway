@@ -149,6 +149,27 @@ func TestHealth_CountsUnacknowledgedHandoff(t *testing.T) {
 	}
 }
 
+func TestReady_UsesConfiguredTerminalStates(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{
+		{ID: "T-001", Title: "Dep", Role: "backend"},
+		{ID: "T-002", Title: "Ready", Role: "backend", Dependencies: []string{"T-001"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "failed", "", false); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := s.Ready(ctx, "backend", []string{"done", "failed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].Definition.ID != "T-002" {
+		t.Fatalf("ready=%+v, want T-002", tasks)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), "test")

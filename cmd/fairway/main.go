@@ -123,7 +123,7 @@ func cmdReady(ctx context.Context, opts globalOptions, args []string) error {
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		role := resolveRole(opts)
-		tasks, err := s.Ready(ctx, role)
+		tasks, err := s.Ready(ctx, role, cfg.States.Terminal)
 		if err != nil {
 			return err
 		}
