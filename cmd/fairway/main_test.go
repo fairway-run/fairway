@@ -88,6 +88,33 @@ func TestCLI_ReadyPriorityFilter(t *testing.T) {
 	runOK(t, "ready", "--priority", "1")
 }
 
+func TestCLI_ReadyInFiltersDescendants(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", `- id: E-001
+  title: Epic
+  role: backend
+- id: T-001
+  parent_id: E-001
+  title: Child
+  role: backend
+- id: T-002
+  title: Other
+  role: backend
+`)
+	runOK(t, "import", "tasks.yaml")
+	runOK(t, "ready", "--in", "E-001")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout

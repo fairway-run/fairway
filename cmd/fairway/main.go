@@ -115,6 +115,7 @@ func run(ctx context.Context, args []string) error {
 func cmdReady(ctx context.Context, opts globalOptions, args []string) error {
 	fs := flag.NewFlagSet("ready", flag.ContinueOnError)
 	priority := fs.Int("priority", -1, "maximum priority rank")
+	within := fs.String("in", "", "only show descendants of task")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -129,6 +130,13 @@ func cmdReady(ctx context.Context, opts globalOptions, args []string) error {
 		}
 		if *priority >= 0 {
 			tasks = filterByPriority(tasks, *priority)
+		}
+		if *within != "" {
+			all, err := s.AllTasks(ctx)
+			if err != nil {
+				return err
+			}
+			tasks = filterByAncestor(tasks, all, *within)
 		}
 		if opts.JSON {
 			return printJSON(tasks)
@@ -559,6 +567,23 @@ func filterByPriority(tasks []store.Task, maxPriority int) []store.Task {
 	for _, task := range tasks {
 		if task.Definition.Priority != nil && *task.Definition.Priority <= maxPriority {
 			filtered = append(filtered, task)
+		}
+	}
+	return filtered
+}
+
+func filterByAncestor(tasks, all []store.Task, ancestor string) []store.Task {
+	parent := map[string]string{}
+	for _, task := range all {
+		parent[task.Definition.ID] = task.Definition.ParentID
+	}
+	filtered := tasks[:0]
+	for _, task := range tasks {
+		for cursor := parent[task.Definition.ID]; cursor != ""; cursor = parent[cursor] {
+			if cursor == ancestor {
+				filtered = append(filtered, task)
+				break
+			}
 		}
 	}
 	return filtered
