@@ -91,7 +91,7 @@ func Load(path string) (Config, string, error) {
 		return Config{}, "", err
 	}
 	path = absPath
-	root := filepath.Dir(filepath.Dir(path))
+	root := RootForConfigPath(path)
 	cfg := Defaults(root)
 	if _, err := toml.DecodeFile(path, &cfg); err != nil {
 		return Config{}, "", fmt.Errorf("decode config: %w", err)
@@ -100,6 +100,14 @@ func Load(path string) (Config, string, error) {
 		return Config{}, "", err
 	}
 	return cfg, root, nil
+}
+
+func RootForConfigPath(path string) string {
+	dir := filepath.Dir(path)
+	if filepath.Base(dir) == ".fairway" {
+		return filepath.Dir(dir)
+	}
+	return dir
 }
 
 func FindConfig(start string) (string, error) {
