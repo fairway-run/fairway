@@ -538,6 +538,18 @@ func (s *Store) Health(ctx context.Context) (Health, error) {
 	return h, nil
 }
 
+func (s *Store) LatestHistoryID(ctx context.Context) (int64, error) {
+	var id sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(id) FROM task_state_history WHERE project_id=?`, s.projectID).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	if !id.Valid {
+		return 0, nil
+	}
+	return id.Int64, nil
+}
+
 func (s *Store) statusMap(ctx context.Context) (map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT task_id, status FROM task_state WHERE project_id=?`, s.projectID)
 	if err != nil {

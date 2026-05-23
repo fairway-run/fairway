@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"time"
 
 	"github.com/subashram/fairway/internal/store"
 )
@@ -28,6 +29,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
 	mux.HandleFunc("/tasks/", s.task)
+	mux.HandleFunc("/events", s.events)
 	return http.ListenAndServe(addr, mux)
 }
 
@@ -101,12 +103,52 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 	_ = detailTemplate.Execute(w, data)
 }
 
+func (s *Server) events(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	last, err := s.store.LatestHistoryID(r.Context())
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			current, err := s.store.LatestHistoryID(r.Context())
+			if err != nil {
+				fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+				flusher.Flush()
+				return
+			}
+			if current > last {
+				last = current
+				fmt.Fprintf(w, "event: refresh\ndata: %d\n\n", current)
+				flusher.Flush()
+			}
+		}
+	}
+}
+
 var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <html><head><title>fairway</title><style>
 body{font-family:system-ui,sans-serif;margin:32px;background:#f7f7f5;color:#1f2933}
 table{border-collapse:collapse;width:100%;background:white;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left}
 .status{font-family:monospace}.role{font-weight:600}.badges,.lanes{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}.badge,.lane{background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:6px}.lane b{display:block}.layout{display:grid;grid-template-columns:1fr 360px;gap:24px}.feed{background:white;border:1px solid #ddd;padding:12px}.feed p{border-bottom:1px solid #eee;padding-bottom:8px}
-</style></head><body>
+</style><script>
+const events = new EventSource("/events");
+events.addEventListener("refresh", () => window.location.reload());
+</script></head><body>
 <h1>fairway</h1>
 <div class="badges">
 <span class="badge">in progress: {{.Health.InProgress}}</span>
