@@ -6,7 +6,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/subashram/fairway/internal/config"
@@ -338,7 +341,14 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		if *listen != "" {
 			addr = *listen
 		}
-		fmt.Println("dashboard", dashboard.URL(addr))
+		url := dashboard.URL(addr)
+		if !isLoopbackAddr(addr) {
+			fmt.Fprintln(os.Stderr, "warning: dashboard is not bound to a loopback address; v0.1 has no authentication")
+		}
+		fmt.Println("dashboard", url)
+		if cfg.Dashboard.AutoOpen && !*noOpen {
+			_ = openBrowser(url)
+		}
 		return dashboard.New(s, roleNames(cfg)).ListenAndServe(addr)
 	})
 }
@@ -411,6 +421,31 @@ func validateTerminalGates(ctx context.Context, cfg config.Config, s *store.Stor
 		}
 	}
 	return nil
+}
+
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return host == "localhost"
+	}
+	return ip.IsLoopback()
+}
+
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Start()
 }
 
 func printTasks(tasks []store.Task) {
