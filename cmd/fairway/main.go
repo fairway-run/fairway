@@ -9,8 +9,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/dashboard"
@@ -100,6 +102,8 @@ func run(ctx context.Context, args []string) error {
 		}
 	case "dashboard":
 		return cmdDashboard(ctx, opts, args[1:])
+	case "db":
+		return cmdDB(ctx, opts, args[1:])
 	case "version":
 		fmt.Println(version)
 		return nil
@@ -357,6 +361,69 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		}
 		return dashboard.New(s, roleNames(cfg)).ListenAndServe(addr)
 	})
+}
+
+func cmdDB(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("db requires backup or export")
+	}
+	switch args[0] {
+	case "backup":
+		return cmdDBBackup(ctx, opts, args[1:])
+	case "export":
+		return cmdDBExport(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown db command %q", args[0])
+	}
+}
+
+func cmdDBBackup(ctx context.Context, opts globalOptions, args []string) error {
+	path := ""
+	if len(args) > 0 {
+		path = args[0]
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		if path == "" {
+			path = defaultBackupPath(root)
+		}
+		if err := s.Backup(ctx, path); err != nil {
+			return err
+		}
+		fmt.Println(path)
+		return nil
+	})
+}
+
+func cmdDBExport(ctx context.Context, opts globalOptions, args []string) error {
+	path := ""
+	if len(args) > 0 {
+		path = args[0]
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		snapshot, err := s.Snapshot(ctx)
+		if err != nil {
+			return err
+		}
+		data, err := json.MarshalIndent(snapshot, "", "  ")
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+		if path == "" || path == "-" {
+			_, err = os.Stdout.Write(data)
+			return err
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return err
+		}
+		fmt.Println(path)
+		return nil
+	})
+}
+
+func defaultBackupPath(root string) string {
+	name := "state-" + time.Now().UTC().Format("20060102T150405Z") + ".db"
+	return filepath.Join(root, ".fairway", name)
 }
 
 func withStore(ctx context.Context, opts globalOptions, fn func(context.Context, config.Config, string, *store.Store) error) error {

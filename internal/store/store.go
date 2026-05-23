@@ -100,6 +100,20 @@ type Health struct {
 	UnroutedReviews         int
 }
 
+type Snapshot struct {
+	ProjectID  string         `json:"project_id"`
+	ExportedAt string         `json:"exported_at"`
+	Tasks      []SnapshotTask `json:"tasks"`
+}
+
+type SnapshotTask struct {
+	Task        Task         `json:"task"`
+	Transitions []Transition `json:"transitions"`
+	Evidence    []Evidence   `json:"evidence"`
+	Handoffs    []Handoff    `json:"handoffs"`
+	Reviews     []Review     `json:"reviews"`
+}
+
 func Open(ctx context.Context, path, projectID string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -132,6 +146,37 @@ func (s *Store) Close() error {
 func (s *Store) Migrate(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, migration001)
 	return err
+}
+
+func (s *Store) Backup(ctx context.Context, path string) error {
+	_, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, path)
+	return err
+}
+
+func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snapshot := Snapshot{
+		ProjectID:  s.projectID,
+		ExportedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Tasks:      make([]SnapshotTask, 0, len(tasks)),
+	}
+	for _, task := range tasks {
+		_, transitions, evidence, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		snapshot.Tasks = append(snapshot.Tasks, SnapshotTask{
+			Task:        task,
+			Transitions: transitions,
+			Evidence:    evidence,
+			Handoffs:    handoffs,
+			Reviews:     reviews,
+		})
+	}
+	return snapshot, nil
 }
 
 func (s *Store) ImportTasks(ctx context.Context, tasks []TaskDefinition) error {

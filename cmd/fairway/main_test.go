@@ -36,6 +36,8 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "set-status", "T-001", "done")
 	runOK(t, "task-detail", "T-001")
 	runOK(t, "--json", "task-detail", "T-001")
+	runOK(t, "db", "export", "snapshot.json")
+	runOK(t, "db", "backup", "backup.db")
 }
 
 func TestCLI_RequiresEvidenceGate(t *testing.T) {
