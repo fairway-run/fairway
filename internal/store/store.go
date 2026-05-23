@@ -92,10 +92,12 @@ type Transition struct {
 }
 
 type Health struct {
-	InProgress            int
-	BlockedOver24h        int
-	UnacknowledgedHandoff int
-	UnroutedReviews       int
+	InProgress              int
+	StaleInProgress         int
+	BlockedOver24h          int
+	UnacknowledgedHandoff   int
+	UnacknowledgedOver1Hour int
+	UnroutedReviews         int
 }
 
 func Open(ctx context.Context, path, projectID string) (*Store, error) {
@@ -526,10 +528,16 @@ func (s *Store) Health(ctx context.Context) (Health, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_state WHERE project_id=? AND status='in_progress'`, s.projectID).Scan(&h.InProgress); err != nil {
 		return Health{}, err
 	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_state WHERE project_id=? AND status='in_progress' AND claimed_at < ?`, s.projectID, time.Now().UTC().Add(-2*time.Hour).Format(time.RFC3339Nano)).Scan(&h.StaleInProgress); err != nil {
+		return Health{}, err
+	}
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_state WHERE project_id=? AND status='blocked' AND updated_at < ?`, s.projectID, time.Now().UTC().Add(-24*time.Hour).Format(time.RFC3339Nano)).Scan(&h.BlockedOver24h); err != nil {
 		return Health{}, err
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_handoffs WHERE project_id=? AND acknowledged_at IS NULL`, s.projectID).Scan(&h.UnacknowledgedHandoff); err != nil {
+		return Health{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_handoffs WHERE project_id=? AND acknowledged_at IS NULL AND created_at < ?`, s.projectID, time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)).Scan(&h.UnacknowledgedOver1Hour); err != nil {
 		return Health{}, err
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_state WHERE project_id=? AND review_required=1 AND COALESCE(review_status, '') IN ('', 'pending')`, s.projectID).Scan(&h.UnroutedReviews); err != nil {

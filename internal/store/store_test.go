@@ -131,6 +131,24 @@ func TestImportTasks_RejectsUnknownDependency(t *testing.T) {
 	}
 }
 
+func TestHealth_CountsUnacknowledgedHandoff(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Handoff", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "T-001", Handoff{ToRole: "ui", Payload: "please check"}); err != nil {
+		t.Fatal(err)
+	}
+	health, err := s.Health(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if health.UnacknowledgedHandoff != 1 {
+		t.Fatalf("handoffs=%d, want 1", health.UnacknowledgedHandoff)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), "test")

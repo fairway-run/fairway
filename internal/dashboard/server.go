@@ -152,8 +152,9 @@ events.addEventListener("refresh", () => window.location.reload());
 <h1>fairway</h1>
 <div class="badges">
 <span class="badge">in progress: {{.Health.InProgress}}</span>
+<span class="badge">stale claims: {{.Health.StaleInProgress}}</span>
 <span class="badge">blocked &gt;24h: {{.Health.BlockedOver24h}}</span>
-<span class="badge">handoffs: {{.Health.UnacknowledgedHandoff}}</span>
+<span class="badge">handoffs &gt;1h: {{.Health.UnacknowledgedOver1Hour}}</span>
 <span class="badge">reviews: {{.Health.UnroutedReviews}}</span>
 </div>
 <div class="lanes">
