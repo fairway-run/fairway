@@ -14,6 +14,7 @@ import (
 
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/dashboard"
+	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
@@ -66,12 +67,12 @@ func run(ctx context.Context, args []string) error {
 		if len(args) < 2 {
 			return errors.New("claim requires task id")
 		}
-		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
 			owner := resolveRole(opts)
 			if owner == "" {
 				owner = "manual"
 			}
-			if err := s.Claim(ctx, args[1], owner, ""); err != nil {
+			if err := s.Claim(ctx, args[1], owner, fairwaygit.CurrentBranch(root)); err != nil {
 				return err
 			}
 			fmt.Println("claimed", args[1])
