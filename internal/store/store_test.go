@@ -32,7 +32,7 @@ func TestClaim_AllowsExactlyOneWinner(t *testing.T) {
 		switch {
 		case err == nil:
 			wins++
-		case errors.Is(err, ErrAlreadyClaimed), errors.Is(err, ErrInvalidTransition):
+		case errors.Is(err, ErrAlreadyClaimed):
 			claimed++
 		default:
 			t.Fatalf("unexpected error: %v", err)
@@ -62,6 +62,31 @@ func TestRecordReview_MaterializesTaskState(t *testing.T) {
 	}
 	if len(reviews) != 1 || reviews[0].Verdict != "changes" {
 		t.Fatalf("reviews=%+v, want one changes review", reviews)
+	}
+}
+
+func TestSetStatus_BlockedReleasesClaim(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Blocked", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "T-001", "backend", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "blocked", "waiting", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "T-001", "backend", ""); err != nil {
+		t.Fatalf("claim after blocked failed: %v", err)
+	}
+}
+
+func TestImportTasks_RejectsInvalidID(t *testing.T) {
+	s := newTestStore(t)
+	err := s.ImportTasks(context.Background(), []TaskDefinition{{ID: "task-1", Title: "bad", Role: "backend"}})
+	if !errors.Is(err, ErrInvalidTaskID) {
+		t.Fatalf("err=%v, want ErrInvalidTaskID", err)
 	}
 }
 

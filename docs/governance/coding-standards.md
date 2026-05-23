@@ -14,6 +14,7 @@ Allowed without justification:
 - `github.com/spf13/cobra`
 - `github.com/BurntSushi/toml`
 - `modernc.org/sqlite`
+- `gopkg.in/yaml.v3` (task import/export compatibility)
 - Standard library.
 
 Anything else requires a one-line justification in the PR description. Prefer the standard library when reasonable.

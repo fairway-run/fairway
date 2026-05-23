@@ -11,6 +11,7 @@ import (
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/dashboard"
 	"github.com/subashram/fairway/internal/importer"
+	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -135,10 +136,19 @@ func cmdSetStatus(ctx context.Context, args []string) error {
 	}
 	fs := flag.NewFlagSet("set-status", flag.ContinueOnError)
 	reason := fs.String("reason", "", "reason")
+	reopen := fs.Bool("reopen", false, "reopen terminal task")
 	if err := fs.Parse(args[2:]); err != nil {
 		return err
 	}
 	return withStore(ctx, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		current, err := s.CurrentStatus(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		stateCfg := state.Config{Allowed: cfg.States.Allowed, Terminal: cfg.States.Terminal, Transitions: cfg.States.Transitions}
+		if err := state.ValidateTransition(stateCfg, current, args[1], *reopen); err != nil {
+			return err
+		}
 		if err := s.SetStatus(ctx, args[0], args[1], *reason, cfg.Gates.RequireBlockedReason); err != nil {
 			return err
 		}
@@ -176,6 +186,12 @@ func recordEvidence(ctx context.Context, args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
+	if *commandText == "" {
+		return errors.New("--command-text is required")
+	}
+	if *result == "" {
+		return errors.New("--result is required")
+	}
 	return withStore(ctx, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 		return s.RecordEvidence(ctx, taskID, store.Evidence{CommandText: *commandText, Result: *result, ArtifactPath: *artifact, ArtifactType: *artifactType, Notes: *notes})
 	})
@@ -191,6 +207,12 @@ func recordHandoff(ctx context.Context, args []string) error {
 	payload := fs.String("payload", "", "payload")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
+	}
+	if *to == "" {
+		return errors.New("--to is required")
+	}
+	if *payload == "" {
+		return errors.New("--payload is required")
 	}
 	if strings.HasPrefix(*payload, "@") {
 		data, err := os.ReadFile(strings.TrimPrefix(*payload, "@"))
@@ -216,6 +238,12 @@ func recordReview(ctx context.Context, args []string) error {
 	commit := fs.String("commit", "", "commit")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
+	}
+	if *reviewer == "" {
+		return errors.New("--reviewer is required")
+	}
+	if *verdict == "" {
+		return errors.New("--verdict is required")
 	}
 	return withStore(ctx, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 		return s.RecordReview(ctx, taskID, store.Review{Reviewer: *reviewer, Verdict: *verdict, Reason: *reason, Commit: *commit})

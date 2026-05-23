@@ -30,7 +30,22 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_ = indexTemplate.Execute(w, tasks)
+	activity, err := s.store.Activity(r.Context(), 50)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	health, err := s.store.Health(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data := struct {
+		Tasks    []store.Task
+		Activity []store.Activity
+		Health   store.Health
+	}{tasks, activity, health}
+	_ = indexTemplate.Execute(w, data)
 }
 
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {
@@ -53,12 +68,23 @@ var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <html><head><title>fairway</title><style>
 body{font-family:system-ui,sans-serif;margin:32px;background:#f7f7f5;color:#1f2933}
 table{border-collapse:collapse;width:100%;background:white}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left}
-.status{font-family:monospace}.role{font-weight:600}
+.status{font-family:monospace}.role{font-weight:600}.badges{display:flex;gap:8px;margin:16px 0}.badge{background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:6px}.layout{display:grid;grid-template-columns:1fr 360px;gap:24px}.feed{background:white;border:1px solid #ddd;padding:12px}.feed p{border-bottom:1px solid #eee;padding-bottom:8px}
 </style></head><body>
 <h1>fairway</h1>
+<div class="badges">
+<span class="badge">in progress: {{.Health.InProgress}}</span>
+<span class="badge">blocked &gt;24h: {{.Health.BlockedOver24h}}</span>
+<span class="badge">handoffs: {{.Health.UnacknowledgedHandoff}}</span>
+<span class="badge">reviews: {{.Health.UnroutedReviews}}</span>
+</div>
+<div class="layout">
+<main>
 <table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Owner</th><th>Review</th></tr>
-{{range .}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td></tr>{{end}}
+{{range .Tasks}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td></tr>{{end}}
 </table>
+</main>
+<aside class="feed"><h2>Activity</h2>{{range .Activity}}<p><b>{{.TaskID}}</b> <code>{{.Kind}}</code><br>{{.Summary}}<br><small>{{.CreatedAt}} {{.Actor}}</small></p>{{else}}<p>none</p>{{end}}</aside>
+</div>
 </body></html>`))
 
 var detailTemplate = template.Must(template.New("detail").Parse(`<!doctype html>

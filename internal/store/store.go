@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,7 +21,10 @@ var (
 	ErrAlreadyClaimed    = errors.New("task already claimed")
 	ErrNotFound          = errors.New("task not found")
 	ErrInvalidTransition = errors.New("invalid transition")
+	ErrInvalidTaskID     = errors.New("invalid task id")
 )
+
+var defaultTaskIDPattern = regexp.MustCompile(`^[A-Z]+-[0-9]+$`)
 
 type Store struct {
 	db        *sql.DB
@@ -71,6 +75,21 @@ type Review struct {
 	Commit   string
 }
 
+type Activity struct {
+	Kind      string
+	TaskID    string
+	Summary   string
+	Actor     string
+	CreatedAt string
+}
+
+type Health struct {
+	InProgress            int
+	BlockedOver24h        int
+	UnacknowledgedHandoff int
+	UnroutedReviews       int
+}
+
 func Open(ctx context.Context, path, projectID string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -79,7 +98,12 @@ func Open(ctx context.Context, path, projectID string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(1)
 	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -111,6 +135,9 @@ func (s *Store) ImportTasks(ctx context.Context, tasks []TaskDefinition) error {
 	for _, task := range tasks {
 		if strings.TrimSpace(task.ID) == "" || strings.TrimSpace(task.Title) == "" {
 			return errors.New("task id and title are required")
+		}
+		if !defaultTaskIDPattern.MatchString(task.ID) {
+			return fmt.Errorf("%w: %s", ErrInvalidTaskID, task.ID)
 		}
 		if task.Kind == "" {
 			task.Kind = "task"
@@ -256,6 +283,15 @@ WHERE project_id=? AND task_id=? AND status IN ('todo','blocked') AND claimant I
 	return nil
 }
 
+func (s *Store) CurrentStatus(ctx context.Context, taskID string) (string, error) {
+	var status string
+	err := s.db.QueryRowContext(ctx, `SELECT status FROM task_state WHERE project_id=? AND task_id=?`, s.projectID, taskID).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return status, err
+}
+
 func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, requireBlockedReason bool) error {
 	if status == "blocked" && requireBlockedReason && strings.TrimSpace(reason) == "" {
 		return errors.New("reason is required when blocking a task")
@@ -278,7 +314,11 @@ func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, re
 	if status == "done" {
 		completed = now
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE task_state SET status=?, completed_at=?, updated_at=? WHERE project_id=? AND task_id=?`, status, completed, now, s.projectID, taskID)
+	claimantSQL := "claimant"
+	if status == "blocked" {
+		claimantSQL = "NULL"
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE task_state SET status=?, claimant=`+claimantSQL+`, completed_at=?, updated_at=? WHERE project_id=? AND task_id=?`, status, completed, now, s.projectID, taskID)
 	if err != nil {
 		return err
 	}
@@ -289,45 +329,67 @@ func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, re
 }
 
 func (s *Store) RecordEvidence(ctx context.Context, taskID string, ev Evidence) error {
-	_, err := s.db.ExecContext(ctx, `
+	if ev.CommandText == "" {
+		return errors.New("command text is required")
+	}
+	switch ev.Result {
+	case "pass", "fail", "partial", "skipped", "blocked":
+	default:
+		return fmt.Errorf("invalid evidence result %q", ev.Result)
+	}
+	res, err := s.db.ExecContext(ctx, `
 INSERT INTO task_evidence
   (project_id, task_id, command_text, result, artifact_path, artifact_type, duration_seconds, notes, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.projectID, taskID, ev.CommandText, ev.Result, ev.ArtifactPath, ev.ArtifactType, ev.DurationSeconds, ev.Notes, time.Now().UTC().Format(time.RFC3339Nano))
-	return err
+	return checkWriteResult(res, err)
 }
 
 func (s *Store) RecordHandoff(ctx context.Context, taskID string, h Handoff) error {
-	_, err := s.db.ExecContext(ctx, `
+	if h.ToRole == "" {
+		return errors.New("handoff target role is required")
+	}
+	if h.Payload == "" {
+		return errors.New("handoff payload is required")
+	}
+	res, err := s.db.ExecContext(ctx, `
 INSERT INTO task_handoffs (project_id, task_id, from_role, to_role, payload, created_at)
 SELECT project_id, task_id, COALESCE(owner, ''), ?, ?, ?
 FROM task_state WHERE project_id=? AND task_id=?`,
 		h.ToRole, h.Payload, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, taskID)
-	return err
+	return checkWriteResult(res, err)
 }
 
 func (s *Store) RecordReview(ctx context.Context, taskID string, r Review) error {
+	if r.Reviewer == "" {
+		return errors.New("reviewer is required")
+	}
+	switch r.Verdict {
+	case "approve", "changes", "reject":
+	default:
+		return fmt.Errorf("invalid review verdict %q", r.Verdict)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err = tx.ExecContext(ctx, `
+	res, err := tx.ExecContext(ctx, `
 INSERT INTO task_reviews (project_id, task_id, reviewer, verdict, reviewed_commit_sha, route_reason, notes, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, s.projectID, taskID, r.Reviewer, r.Verdict, r.Commit, r.Reason, r.Reason, now)
-	if err != nil {
+	if err := checkWriteResult(res, err); err != nil {
 		return err
 	}
 	status := "changes_requested"
 	if r.Verdict == "approve" {
 		status = "approved"
 	}
-	_, err = tx.ExecContext(ctx, `
+	res, err = tx.ExecContext(ctx, `
 UPDATE task_state
 SET review_required=1, review_status=?, reviewer=?, reviewed_at=?, review_note=?, updated_at=?
 WHERE project_id=? AND task_id=?`, status, r.Reviewer, now, r.Reason, now, s.projectID, taskID)
-	if err != nil {
+	if err := checkWriteResult(res, err); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -372,6 +434,56 @@ ORDER BY d.role, st.status, COALESCE(d.priority, 9999), d.created_at`, s.project
 	return scanTasks(rows)
 }
 
+func (s *Store) Activity(ctx context.Context, limit int) ([]Activity, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT kind, task_id, summary, actor, created_at
+FROM (
+  SELECT 'state' AS kind, task_id, COALESCE(from_status, 'new') || ' -> ' || to_status AS summary, actor, at AS created_at
+    FROM task_state_history WHERE project_id=?
+  UNION ALL
+  SELECT 'evidence', task_id, COALESCE(result, '') || ' ' || COALESCE(command_text, ''), '', created_at
+    FROM task_evidence WHERE project_id=?
+  UNION ALL
+  SELECT 'handoff', task_id, 'to ' || to_role || ': ' || COALESCE(payload, ''), from_role, created_at
+    FROM task_handoffs WHERE project_id=?
+  UNION ALL
+  SELECT 'review', task_id, verdict || ' by ' || reviewer, reviewer, created_at
+    FROM task_reviews WHERE project_id=?
+)
+ORDER BY created_at DESC
+LIMIT ?`, s.projectID, s.projectID, s.projectID, s.projectID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Activity
+	for rows.Next() {
+		var item Activity
+		if err := rows.Scan(&item.Kind, &item.TaskID, &item.Summary, &item.Actor, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Health(ctx context.Context) (Health, error) {
+	var h Health
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_state WHERE project_id=? AND status='in_progress'`, s.projectID).Scan(&h.InProgress); err != nil {
+		return Health{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_state WHERE project_id=? AND status='blocked' AND updated_at < ?`, s.projectID, time.Now().UTC().Add(-24*time.Hour).Format(time.RFC3339Nano)).Scan(&h.BlockedOver24h); err != nil {
+		return Health{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_handoffs WHERE project_id=? AND acknowledged_at IS NULL`, s.projectID).Scan(&h.UnacknowledgedHandoff); err != nil {
+		return Health{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_state WHERE project_id=? AND review_required=1 AND COALESCE(review_status, '') IN ('', 'pending')`, s.projectID).Scan(&h.UnroutedReviews); err != nil {
+		return Health{}, err
+	}
+	return h, nil
+}
+
 func (s *Store) statusMap(ctx context.Context) (map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT task_id, status FROM task_state WHERE project_id=?`, s.projectID)
 	if err != nil {
@@ -387,6 +499,20 @@ func (s *Store) statusMap(ctx context.Context) (map[string]string, error) {
 		out[id] = status
 	}
 	return out, rows.Err()
+}
+
+func checkWriteResult(res sql.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func insertHistory(ctx context.Context, tx *sql.Tx, projectID, taskID, fromStatus, toStatus, fromOwner, toOwner, branch, actor, reason string) error {
