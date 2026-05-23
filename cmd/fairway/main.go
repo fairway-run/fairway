@@ -83,6 +83,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdHealthReport(ctx, opts, args[1:])
 	case "timing-report":
 		return cmdTimingReport(ctx, opts, args[1:])
+	case "git-check":
+		return cmdGitCheck(opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -370,6 +372,40 @@ func cmdStatusReport(ctx context.Context, opts globalOptions, args []string) err
 		}
 		return nil
 	})
+}
+
+func cmdGitCheck(opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("git-check", flag.ContinueOnError)
+	base := fs.String("base", "", "base ref")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected git-check arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	if *base == "" {
+		*base = cfg.Fairway.MainBranch
+	}
+	status, err := fairwaygit.Check(root, *base)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(status)
+	}
+	fmt.Printf("root: %s\nbranch: %s\nbase: %s\ndirty: %t\nstaged: %t\nuntracked: %t\nahead: %d\nbehind: %d\nbase_ancestor: %t\n",
+		status.Root, status.Branch, status.Base, status.Dirty, status.Staged, status.Untracked, status.Ahead, status.Behind, status.BaseAncestor)
+	if len(status.ChangedFiles) > 0 {
+		fmt.Println("changed_files:")
+		for _, path := range status.ChangedFiles {
+			fmt.Printf("- %s\n", path)
+		}
+	}
+	return nil
 }
 
 func cmdHealthReport(ctx context.Context, opts globalOptions, args []string) error {
@@ -1095,5 +1131,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|config validate|dashboard|version")
 }
