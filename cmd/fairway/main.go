@@ -53,21 +53,13 @@ func run(ctx context.Context, args []string) error {
 	case "import":
 		return cmdImport(ctx, opts, args[1:])
 	case "ready":
-		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-			role := resolveRole(opts)
-			tasks, err := s.Ready(ctx, role)
-			if err != nil {
-				return err
-			}
-			if opts.JSON {
-				return printJSON(tasks)
-			}
-			printTasks(tasks)
-			return nil
-		})
+		return cmdReady(ctx, opts, args[1:])
 	case "claim":
 		if len(args) < 2 {
 			return errors.New("claim requires task id")
+		}
+		if len(args) > 2 {
+			return fmt.Errorf("unexpected claim arguments: %s", strings.Join(args[2:], " "))
 		}
 		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
 			owner := resolveRole(opts)
@@ -88,11 +80,17 @@ func run(ctx context.Context, args []string) error {
 		if len(args) < 2 {
 			return errors.New("task-detail requires task id")
 		}
+		if len(args) > 2 {
+			return fmt.Errorf("unexpected task-detail arguments: %s", strings.Join(args[2:], " "))
+		}
 		return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 			return printDetail(ctx, s, args[1], opts.JSON)
 		})
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
+			if len(args) > 2 {
+				return fmt.Errorf("unexpected config validate arguments: %s", strings.Join(args[2:], " "))
+			}
 			_, _, path, err := loadConfig(opts)
 			if err != nil {
 				return err
@@ -105,10 +103,39 @@ func run(ctx context.Context, args []string) error {
 	case "db":
 		return cmdDB(ctx, opts, args[1:])
 	case "version":
+		if len(args) > 1 {
+			return fmt.Errorf("unexpected version arguments: %s", strings.Join(args[1:], " "))
+		}
 		fmt.Println(version)
 		return nil
 	}
 	return fmt.Errorf("unknown command %q", args[0])
+}
+
+func cmdReady(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("ready", flag.ContinueOnError)
+	priority := fs.Int("priority", -1, "maximum priority rank")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected ready arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		role := resolveRole(opts)
+		tasks, err := s.Ready(ctx, role)
+		if err != nil {
+			return err
+		}
+		if *priority >= 0 {
+			tasks = filterByPriority(tasks, *priority)
+		}
+		if opts.JSON {
+			return printJSON(tasks)
+		}
+		printTasks(tasks)
+		return nil
+	})
 }
 
 func parseGlobalFlags(args []string) (globalOptions, []string, error) {
@@ -525,6 +552,16 @@ func printTasks(tasks []store.Task) {
 	for _, task := range tasks {
 		fmt.Printf("%s\t%s\t%s\t%s\n", task.Definition.ID, task.Definition.Role, task.Status, task.Definition.Title)
 	}
+}
+
+func filterByPriority(tasks []store.Task, maxPriority int) []store.Task {
+	filtered := tasks[:0]
+	for _, task := range tasks {
+		if task.Definition.Priority != nil && *task.Definition.Priority <= maxPriority {
+			filtered = append(filtered, task)
+		}
+	}
+	return filtered
 }
 
 func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool) error {

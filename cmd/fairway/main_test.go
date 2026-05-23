@@ -63,6 +63,31 @@ func TestCLI_RequiresEvidenceGate(t *testing.T) {
 	}
 }
 
+func TestCLI_ReadyPriorityFilter(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: High
+  role: backend
+  priority: 1
+- id: T-002
+  title: Low
+  role: backend
+  priority: 3
+`)
+	runOK(t, "import", "tasks.yaml")
+	runOK(t, "ready", "--priority", "1")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout
