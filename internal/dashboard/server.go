@@ -50,17 +50,18 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Path[len("/tasks/"):]
-	task, evidence, handoffs, reviews, err := s.store.TaskDetail(context.Background(), id)
+	task, transitions, evidence, handoffs, reviews, err := s.store.TaskDetail(context.Background(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	data := struct {
-		Task     store.Task
-		Evidence []store.Evidence
-		Handoffs []store.Handoff
-		Reviews  []store.Review
-	}{task, evidence, handoffs, reviews}
+		Task        store.Task
+		Transitions []store.Transition
+		Evidence    []store.Evidence
+		Handoffs    []store.Handoff
+		Reviews     []store.Review
+	}{task, transitions, evidence, handoffs, reviews}
 	_ = detailTemplate.Execute(w, data)
 }
 
@@ -95,6 +96,7 @@ body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#5
 <h1>{{.Task.Definition.ID}}: {{.Task.Definition.Title}}</h1>
 <p class="meta">role={{.Task.Definition.Role}} status={{.Task.Status}} owner={{.Task.Owner}} review={{.Task.ReviewStatus}}</p>
 <h2>Notes</h2><pre>{{.Task.Definition.Notes}}</pre>
+<h2>History</h2>{{range .Transitions}}<p><code>{{if .FromStatus}}{{.FromStatus}}{{else}}new{{end}} -> {{.ToStatus}}</code> by {{.Actor}} {{.Reason}}</p>{{else}}<p>none</p>{{end}}
 <h2>Evidence</h2>{{range .Evidence}}<p><code>{{.Result}}</code> {{.CommandText}} {{.ArtifactPath}}</p>{{else}}<p>none</p>{{end}}
 <h2>Handoffs</h2>{{range .Handoffs}}<p>to <b>{{.ToRole}}</b>: {{.Payload}}</p>{{else}}<p>none</p>{{end}}
 <h2>Reviews</h2>{{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}

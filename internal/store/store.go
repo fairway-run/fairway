@@ -83,6 +83,14 @@ type Activity struct {
 	CreatedAt string
 }
 
+type Transition struct {
+	FromStatus string
+	ToStatus   string
+	Actor      string
+	Reason     string
+	At         string
+}
+
 type Health struct {
 	InProgress            int
 	BlockedOver24h        int
@@ -395,7 +403,7 @@ WHERE project_id=? AND task_id=?`, status, r.Reviewer, now, r.Reason, now, s.pro
 	return tx.Commit()
 }
 
-func (s *Store) TaskDetail(ctx context.Context, taskID string) (Task, []Evidence, []Handoff, []Review, error) {
+func (s *Store) TaskDetail(ctx context.Context, taskID string) (Task, []Transition, []Evidence, []Handoff, []Review, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
        d.priority, d.sequence, st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
@@ -403,21 +411,25 @@ FROM task_definitions d JOIN task_state st ON st.project_id=d.project_id AND st.
 WHERE d.project_id=? AND d.id=?`, s.projectID, taskID)
 	task, err := scanTask(row)
 	if err != nil {
-		return Task{}, nil, nil, nil, err
+		return Task{}, nil, nil, nil, nil, err
+	}
+	transitions, err := s.transitions(ctx, taskID)
+	if err != nil {
+		return Task{}, nil, nil, nil, nil, err
 	}
 	evidence, err := s.evidence(ctx, taskID)
 	if err != nil {
-		return Task{}, nil, nil, nil, err
+		return Task{}, nil, nil, nil, nil, err
 	}
 	handoffs, err := s.handoffs(ctx, taskID)
 	if err != nil {
-		return Task{}, nil, nil, nil, err
+		return Task{}, nil, nil, nil, nil, err
 	}
 	reviews, err := s.reviews(ctx, taskID)
 	if err != nil {
-		return Task{}, nil, nil, nil, err
+		return Task{}, nil, nil, nil, nil, err
 	}
-	return task, evidence, handoffs, reviews, nil
+	return task, transitions, evidence, handoffs, reviews, nil
 }
 
 func (s *Store) AllTasks(ctx context.Context) ([]Task, error) {
@@ -596,6 +608,23 @@ func (s *Store) evidence(ctx context.Context, taskID string) ([]Evidence, error)
 			ev.DurationSeconds = &v
 		}
 		out = append(out, ev)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) transitions(ctx context.Context, taskID string) ([]Transition, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(from_status, ''), to_status, actor, COALESCE(reason, ''), at FROM task_state_history WHERE project_id=? AND task_id=? ORDER BY at`, s.projectID, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Transition
+	for rows.Next() {
+		var tr Transition
+		if err := rows.Scan(&tr.FromStatus, &tr.ToStatus, &tr.Actor, &tr.Reason, &tr.At); err != nil {
+			return nil, err
+		}
+		out = append(out, tr)
 	}
 	return out, rows.Err()
 }

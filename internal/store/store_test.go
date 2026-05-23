@@ -53,7 +53,7 @@ func TestRecordReview_MaterializesTaskState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	task, _, _, reviews, err := s.TaskDetail(ctx, "T-001")
+	task, _, _, _, reviews, err := s.TaskDetail(ctx, "T-001")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -369,19 +369,28 @@ func printTasks(tasks []store.Task) {
 }
 
 func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool) error {
-	task, evidence, handoffs, reviews, err := s.TaskDetail(ctx, taskID)
+	task, transitions, evidence, handoffs, reviews, err := s.TaskDetail(ctx, taskID)
 	if err != nil {
 		return err
 	}
 	if asJSON {
 		return printJSON(struct {
-			Task     store.Task       `json:"task"`
-			Evidence []store.Evidence `json:"evidence"`
-			Handoffs []store.Handoff  `json:"handoffs"`
-			Reviews  []store.Review   `json:"reviews"`
-		}{task, evidence, handoffs, reviews})
+			Task        store.Task         `json:"task"`
+			Transitions []store.Transition `json:"transitions"`
+			Evidence    []store.Evidence   `json:"evidence"`
+			Handoffs    []store.Handoff    `json:"handoffs"`
+			Reviews     []store.Review     `json:"reviews"`
+		}{task, transitions, evidence, handoffs, reviews})
 	}
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
+	fmt.Println("\nhistory:")
+	for _, tr := range transitions {
+		from := tr.FromStatus
+		if from == "" {
+			from = "new"
+		}
+		fmt.Printf("- %s -> %s by %s %s\n", from, tr.ToStatus, tr.Actor, tr.Reason)
+	}
 	fmt.Println("\nevidence:")
 	for _, ev := range evidence {
 		fmt.Printf("- %s %s %s\n", ev.Result, ev.CommandText, ev.ArtifactPath)
