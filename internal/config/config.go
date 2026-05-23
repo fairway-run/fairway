@@ -86,6 +86,11 @@ func Load(path string) (Config, string, error) {
 			return Config{}, "", err
 		}
 	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return Config{}, "", err
+	}
+	path = absPath
 	root := filepath.Dir(filepath.Dir(path))
 	cfg := Defaults(root)
 	if _, err := toml.DecodeFile(path, &cfg); err != nil {

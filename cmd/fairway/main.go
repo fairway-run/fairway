@@ -17,6 +17,12 @@ import (
 
 const version = "0.1.0-dev"
 
+type globalOptions struct {
+	ConfigPath string
+	DBPath     string
+	Role       string
+}
+
 func main() {
 	if err := run(context.Background(), os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -25,18 +31,22 @@ func main() {
 }
 
 func run(ctx context.Context, args []string) error {
+	opts, args, err := parseGlobalFlags(args)
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
 		usage()
 		return nil
 	}
 	switch args[0] {
 	case "init":
-		return cmdInit(ctx)
+		return cmdInit(ctx, opts)
 	case "import":
-		return cmdImport(ctx, args[1:])
+		return cmdImport(ctx, opts, args[1:])
 	case "ready":
-		return withStore(ctx, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-			role := os.Getenv("FAIRWAY_ROLE")
+		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+			role := resolveRole(opts)
 			tasks, err := s.Ready(ctx, role)
 			if err != nil {
 				return err
@@ -48,8 +58,8 @@ func run(ctx context.Context, args []string) error {
 		if len(args) < 2 {
 			return errors.New("claim requires task id")
 		}
-		return withStore(ctx, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-			owner := os.Getenv("FAIRWAY_ROLE")
+		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+			owner := resolveRole(opts)
 			if owner == "" {
 				owner = "manual"
 			}
@@ -60,19 +70,19 @@ func run(ctx context.Context, args []string) error {
 			return nil
 		})
 	case "set-status":
-		return cmdSetStatus(ctx, args[1:])
+		return cmdSetStatus(ctx, opts, args[1:])
 	case "record":
-		return cmdRecord(ctx, args[1:])
+		return cmdRecord(ctx, opts, args[1:])
 	case "task-detail":
 		if len(args) < 2 {
 			return errors.New("task-detail requires task id")
 		}
-		return withStore(ctx, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 			return printDetail(ctx, s, args[1])
 		})
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
-			_, path, err := loadConfig()
+			_, _, path, err := loadConfig(opts)
 			if err != nil {
 				return err
 			}
@@ -80,7 +90,7 @@ func run(ctx context.Context, args []string) error {
 			return nil
 		}
 	case "dashboard":
-		return cmdDashboard(ctx, args[1:])
+		return cmdDashboard(ctx, opts, args[1:])
 	case "version":
 		fmt.Println(version)
 		return nil
@@ -88,14 +98,46 @@ func run(ctx context.Context, args []string) error {
 	return fmt.Errorf("unknown command %q", args[0])
 }
 
-func cmdInit(ctx context.Context) error {
+func parseGlobalFlags(args []string) (globalOptions, []string, error) {
+	var opts globalOptions
+	for len(args) > 0 {
+		switch args[0] {
+		case "--config":
+			if len(args) < 2 {
+				return opts, nil, errors.New("--config requires path")
+			}
+			opts.ConfigPath = args[1]
+			args = args[2:]
+		case "--db":
+			if len(args) < 2 {
+				return opts, nil, errors.New("--db requires path")
+			}
+			opts.DBPath = args[1]
+			args = args[2:]
+		case "--as":
+			if len(args) < 2 {
+				return opts, nil, errors.New("--as requires role")
+			}
+			opts.Role = args[1]
+			args = args[2:]
+		default:
+			return opts, args, nil
+		}
+	}
+	return opts, args, nil
+}
+
+func cmdInit(ctx context.Context, opts globalOptions) error {
 	root, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 	path := config.DefaultConfigPath
+	if opts.ConfigPath != "" {
+		path = opts.ConfigPath
+	}
 	if _, err := os.Stat(path); err == nil {
-		return errors.New(".fairway/config.toml already exists")
+		return fmt.Errorf("%s already exists", path)
 	}
 	if err := config.WriteDefault(path, root); err != nil {
 		return err
@@ -104,7 +146,11 @@ func cmdInit(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s, err := store.Open(ctx, config.DBPath(cfg, root), cfg.Fairway.ProjectName)
+	dbPath := config.DBPath(cfg, root)
+	if opts.DBPath != "" {
+		dbPath = opts.DBPath
+	}
+	s, err := store.Open(ctx, dbPath, cfg.Fairway.ProjectName)
 	if err != nil {
 		return err
 	}
@@ -113,7 +159,7 @@ func cmdInit(ctx context.Context) error {
 	return nil
 }
 
-func cmdImport(ctx context.Context, args []string) error {
+func cmdImport(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 1 {
 		return errors.New("import requires yaml or json path")
 	}
@@ -121,7 +167,7 @@ func cmdImport(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return withStore(ctx, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 		if err := s.ImportTasks(ctx, tasks); err != nil {
 			return err
 		}
@@ -130,7 +176,7 @@ func cmdImport(ctx context.Context, args []string) error {
 	})
 }
 
-func cmdSetStatus(ctx context.Context, args []string) error {
+func cmdSetStatus(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		return errors.New("set-status requires task id and state")
 	}
@@ -140,7 +186,7 @@ func cmdSetStatus(ctx context.Context, args []string) error {
 	if err := fs.Parse(args[2:]); err != nil {
 		return err
 	}
-	return withStore(ctx, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		current, err := s.CurrentStatus(ctx, args[0])
 		if err != nil {
 			return err
@@ -157,22 +203,22 @@ func cmdSetStatus(ctx context.Context, args []string) error {
 	})
 }
 
-func cmdRecord(ctx context.Context, args []string) error {
+func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		return errors.New("record requires type and task id")
 	}
 	switch args[0] {
 	case "evidence":
-		return recordEvidence(ctx, args[1:])
+		return recordEvidence(ctx, opts, args[1:])
 	case "handoff":
-		return recordHandoff(ctx, args[1:])
+		return recordHandoff(ctx, opts, args[1:])
 	case "review":
-		return recordReview(ctx, args[1:])
+		return recordReview(ctx, opts, args[1:])
 	}
 	return fmt.Errorf("unknown record type %q", args[0])
 }
 
-func recordEvidence(ctx context.Context, args []string) error {
+func recordEvidence(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 1 {
 		return errors.New("record evidence requires task id")
 	}
@@ -192,12 +238,12 @@ func recordEvidence(ctx context.Context, args []string) error {
 	if *result == "" {
 		return errors.New("--result is required")
 	}
-	return withStore(ctx, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 		return s.RecordEvidence(ctx, taskID, store.Evidence{CommandText: *commandText, Result: *result, ArtifactPath: *artifact, ArtifactType: *artifactType, Notes: *notes})
 	})
 }
 
-func recordHandoff(ctx context.Context, args []string) error {
+func recordHandoff(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 1 {
 		return errors.New("record handoff requires task id")
 	}
@@ -221,12 +267,12 @@ func recordHandoff(ctx context.Context, args []string) error {
 		}
 		*payload = string(data)
 	}
-	return withStore(ctx, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 		return s.RecordHandoff(ctx, taskID, store.Handoff{ToRole: *to, Payload: *payload})
 	})
 }
 
-func recordReview(ctx context.Context, args []string) error {
+func recordReview(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 1 {
 		return errors.New("record review requires task id")
 	}
@@ -245,12 +291,12 @@ func recordReview(ctx context.Context, args []string) error {
 	if *verdict == "" {
 		return errors.New("--verdict is required")
 	}
-	return withStore(ctx, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 		return s.RecordReview(ctx, taskID, store.Review{Reviewer: *reviewer, Verdict: *verdict, Reason: *reason, Commit: *commit})
 	})
 }
 
-func cmdDashboard(ctx context.Context, args []string) error {
+func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error {
 	fs := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	listen := fs.String("listen", "", "listen address")
 	noOpen := fs.Bool("no-open", false, "do not open browser")
@@ -258,7 +304,7 @@ func cmdDashboard(ctx context.Context, args []string) error {
 		return err
 	}
 	_ = noOpen
-	return withStore(ctx, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		addr := cfg.Dashboard.Listen
 		if *listen != "" {
 			addr = *listen
@@ -268,12 +314,16 @@ func cmdDashboard(ctx context.Context, args []string) error {
 	})
 }
 
-func withStore(ctx context.Context, fn func(context.Context, config.Config, string, *store.Store) error) error {
-	cfg, root, err := loadConfig()
+func withStore(ctx context.Context, opts globalOptions, fn func(context.Context, config.Config, string, *store.Store) error) error {
+	cfg, root, _, err := loadConfig(opts)
 	if err != nil {
 		return err
 	}
-	s, err := store.Open(ctx, config.DBPath(cfg, root), cfg.Fairway.ProjectName)
+	dbPath := config.DBPath(cfg, root)
+	if opts.DBPath != "" {
+		dbPath = opts.DBPath
+	}
+	s, err := store.Open(ctx, dbPath, cfg.Fairway.ProjectName)
 	if err != nil {
 		return err
 	}
@@ -281,10 +331,27 @@ func withStore(ctx context.Context, fn func(context.Context, config.Config, stri
 	return fn(ctx, cfg, root, s)
 }
 
-func loadConfig() (config.Config, string, error) {
-	path := os.Getenv("FAIRWAY_CONFIG")
+func loadConfig(opts globalOptions) (config.Config, string, string, error) {
+	path := opts.ConfigPath
+	if path == "" {
+		path = os.Getenv("FAIRWAY_CONFIG")
+	}
+	if path == "" {
+		var err error
+		path, err = config.FindConfig("")
+		if err != nil {
+			return config.Config{}, "", "", err
+		}
+	}
 	cfg, root, err := config.Load(path)
-	return cfg, root, err
+	return cfg, root, path, err
+}
+
+func resolveRole(opts globalOptions) string {
+	if opts.Role != "" {
+		return opts.Role
+	}
+	return os.Getenv("FAIRWAY_ROLE")
 }
 
 func printTasks(tasks []store.Task) {
