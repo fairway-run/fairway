@@ -36,6 +36,10 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "set-status", "T-001", "done")
 	runOK(t, "task-detail", "T-001")
 	runOK(t, "--json", "task-detail", "T-001")
+	runOK(t, "status-report")
+	runOK(t, "--json", "status-report")
+	runOK(t, "health-report")
+	runOK(t, "--json", "health-report")
 	runOK(t, "db", "export", "snapshot.json")
 	runOK(t, "db", "backup", "backup.db")
 }

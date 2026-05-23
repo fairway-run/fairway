@@ -70,6 +70,10 @@ func run(ctx context.Context, args []string) error {
 		return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 			return printDetail(ctx, s, args[1], opts.JSON)
 		})
+	case "status-report":
+		return cmdStatusReport(ctx, opts, args[1:])
+	case "health-report":
+		return cmdHealthReport(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -94,6 +98,76 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown command %q", args[0])
+}
+
+type statusReport struct {
+	Total    int                       `json:"total"`
+	ByStatus map[string]int            `json:"by_status"`
+	ByRole   map[string]map[string]int `json:"by_role"`
+}
+
+func cmdStatusReport(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected status-report arguments: %s", strings.Join(args, " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		report := statusReport{ByStatus: map[string]int{}, ByRole: map[string]map[string]int{}}
+		for _, task := range tasks {
+			report.Total++
+			report.ByStatus[task.Status]++
+			role := task.Definition.Role
+			if role == "" {
+				role = "unassigned"
+			}
+			if report.ByRole[role] == nil {
+				report.ByRole[role] = map[string]int{}
+			}
+			report.ByRole[role][task.Status]++
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("total: %d\n", report.Total)
+		fmt.Println("by status:")
+		for status, count := range report.ByStatus {
+			fmt.Printf("- %s: %d\n", status, count)
+		}
+		fmt.Println("by role:")
+		for role, counts := range report.ByRole {
+			fmt.Printf("- %s", role)
+			for status, count := range counts {
+				fmt.Printf(" %s=%d", status, count)
+			}
+			fmt.Println()
+		}
+		return nil
+	})
+}
+
+func cmdHealthReport(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected health-report arguments: %s", strings.Join(args, " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		health, err := s.Health(ctx)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(health)
+		}
+		fmt.Printf("in_progress: %d\n", health.InProgress)
+		fmt.Printf("stale_in_progress: %d\n", health.StaleInProgress)
+		fmt.Printf("blocked_over_24h: %d\n", health.BlockedOver24h)
+		fmt.Printf("unacknowledged_handoffs: %d\n", health.UnacknowledgedHandoff)
+		fmt.Printf("unacknowledged_handoffs_over_1h: %d\n", health.UnacknowledgedOver1Hour)
+		fmt.Printf("unrouted_reviews: %d\n", health.UnroutedReviews)
+		return nil
+	})
 }
 
 func cmdClaim(ctx context.Context, opts globalOptions, args []string) error {
