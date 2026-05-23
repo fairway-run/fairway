@@ -116,7 +116,7 @@ func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
 	task := store.TaskDefinition{ID: args[0]}
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	title := fs.String("title", "", "task title")
-	kind := fs.String("kind", "task", "task kind")
+	kind := fs.String("kind", "", "task kind")
 	parent := fs.String("parent", "", "parent task id")
 	priority := fs.Int("priority", -1, "priority rank")
 	sequence := fs.Int("sequence", -1, "sibling sequence")
@@ -148,7 +148,13 @@ func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
 		task.AcceptanceChecks = []string{*acceptance}
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-		if err := validateImportRoles([]store.TaskDefinition{task}, cfg); err != nil {
+		if task.Kind == "" {
+			task.Kind = config.DefaultTaskKind(cfg)
+		}
+		if task.Priority == nil {
+			task.Priority = config.DefaultPriority(cfg)
+		}
+		if err := validateTaskMetadata([]store.TaskDefinition{task}, cfg); err != nil {
 			return err
 		}
 		if err := s.AddTask(ctx, task); err != nil {
@@ -226,7 +232,7 @@ func cmdUpdate(ctx context.Context, opts globalOptions, args []string) error {
 				task.AcceptanceChecks = []string{*acceptance}
 			}
 		}
-		if err := validateImportRoles([]store.TaskDefinition{task}, cfg); err != nil {
+		if err := validateTaskMetadata([]store.TaskDefinition{task}, cfg); err != nil {
 			return err
 		}
 		if err := s.UpdateTask(ctx, task); err != nil {
@@ -574,7 +580,10 @@ func cmdImport(ctx context.Context, opts globalOptions, args []string) error {
 		return err
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-		if err := validateImportRoles(tasks, cfg); err != nil {
+		if err := applyImportDefaults(tasks, cfg); err != nil {
+			return err
+		}
+		if err := validateTaskMetadata(tasks, cfg); err != nil {
 			return err
 		}
 		if err := s.ImportTasks(ctx, tasks); err != nil {
@@ -585,14 +594,33 @@ func cmdImport(ctx context.Context, opts globalOptions, args []string) error {
 	})
 }
 
-func validateImportRoles(tasks []store.TaskDefinition, cfg config.Config) error {
-	roles := config.RoleSet(cfg)
-	if len(roles) == 0 {
-		return nil
+func applyImportDefaults(tasks []store.TaskDefinition, cfg config.Config) error {
+	defaultKind := config.DefaultTaskKind(cfg)
+	defaultPriority := config.DefaultPriority(cfg)
+	for i := range tasks {
+		if tasks[i].Kind == "" {
+			tasks[i].Kind = defaultKind
+		}
+		if tasks[i].Priority == nil {
+			tasks[i].Priority = defaultPriority
+		}
 	}
+	return nil
+}
+
+func validateTaskMetadata(tasks []store.TaskDefinition, cfg config.Config) error {
+	roles := config.RoleSet(cfg)
+	kinds := config.TaskKindSet(cfg)
+	priorities := config.PrioritySet(cfg)
 	for _, task := range tasks {
-		if !roles[task.Role] {
+		if len(roles) > 0 && !roles[task.Role] {
 			return fmt.Errorf("task %s uses unknown role %q", task.ID, task.Role)
+		}
+		if len(kinds) > 0 && !kinds[task.Kind] {
+			return fmt.Errorf("task %s uses unknown kind %q", task.ID, task.Kind)
+		}
+		if task.Priority != nil && len(priorities) > 0 && !priorities[*task.Priority] {
+			return fmt.Errorf("task %s uses unknown priority %d", task.ID, *task.Priority)
 		}
 	}
 	return nil

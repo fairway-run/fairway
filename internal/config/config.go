@@ -12,11 +12,13 @@ import (
 const DefaultConfigPath = ".fairway/config.toml"
 
 type Config struct {
-	Fairway   FairwayConfig   `toml:"fairway"`
-	Dashboard DashboardConfig `toml:"dashboard"`
-	States    StatesConfig    `toml:"states"`
-	Gates     GatesConfig     `toml:"gates"`
-	Roles     []Role          `toml:"roles"`
+	Fairway        FairwayConfig        `toml:"fairway"`
+	Dashboard      DashboardConfig      `toml:"dashboard"`
+	States         StatesConfig         `toml:"states"`
+	Gates          GatesConfig          `toml:"gates"`
+	TaskKinds      TaskKindsConfig      `toml:"task_kinds"`
+	TaskPriorities TaskPrioritiesConfig `toml:"task_priorities"`
+	Roles          []Role               `toml:"roles"`
 }
 
 type FairwayConfig struct {
@@ -51,6 +53,22 @@ type Role struct {
 	Provider string `toml:"provider"`
 }
 
+type TaskKindsConfig struct {
+	Allowed []string `toml:"allowed"`
+	Default string   `toml:"default"`
+}
+
+type TaskPrioritiesConfig struct {
+	Default *int            `toml:"default"`
+	Levels  []PriorityLevel `toml:"levels"`
+}
+
+type PriorityLevel struct {
+	Rank        int    `toml:"rank"`
+	Label       string `toml:"label"`
+	Description string `toml:"description"`
+}
+
 func Defaults(root string) Config {
 	project := filepath.Base(root)
 	if project == "." || project == string(filepath.Separator) {
@@ -74,6 +92,9 @@ func Defaults(root string) Config {
 		Gates: GatesConfig{
 			RequireBlockedReason:    true,
 			AllowForceWithoutReason: false,
+		},
+		TaskKinds: TaskKindsConfig{
+			Default: "task",
 		},
 	}
 }
@@ -178,6 +199,35 @@ func Validate(cfg Config) error {
 		}
 		seen[role.Name] = true
 	}
+	if cfg.TaskKinds.Default == "" {
+		return errors.New("[task_kinds] default is required")
+	}
+	kindSet := map[string]bool{}
+	for _, kind := range cfg.TaskKinds.Allowed {
+		if kind == "" {
+			return errors.New("[task_kinds] allowed contains empty kind")
+		}
+		if kindSet[kind] {
+			return fmt.Errorf("duplicate task kind %q", kind)
+		}
+		kindSet[kind] = true
+	}
+	if len(kindSet) > 0 && !kindSet[cfg.TaskKinds.Default] {
+		return fmt.Errorf("[task_kinds] default %q is not in allowed kinds", cfg.TaskKinds.Default)
+	}
+	priorityRanks := map[int]bool{}
+	for _, level := range cfg.TaskPriorities.Levels {
+		if level.Label == "" {
+			return errors.New("[[task_priorities.levels]] label is required")
+		}
+		if priorityRanks[level.Rank] {
+			return fmt.Errorf("duplicate priority rank %d", level.Rank)
+		}
+		priorityRanks[level.Rank] = true
+	}
+	if cfg.TaskPriorities.Default != nil && len(priorityRanks) > 0 && !priorityRanks[*cfg.TaskPriorities.Default] {
+		return fmt.Errorf("[task_priorities] default %d is not in configured levels", *cfg.TaskPriorities.Default)
+	}
 	return nil
 }
 
@@ -187,6 +237,37 @@ func RoleSet(cfg Config) map[string]bool {
 		roles[role.Name] = true
 	}
 	return roles
+}
+
+func TaskKindSet(cfg Config) map[string]bool {
+	kinds := make(map[string]bool, len(cfg.TaskKinds.Allowed))
+	for _, kind := range cfg.TaskKinds.Allowed {
+		kinds[kind] = true
+	}
+	return kinds
+}
+
+func PrioritySet(cfg Config) map[int]bool {
+	priorities := make(map[int]bool, len(cfg.TaskPriorities.Levels))
+	for _, level := range cfg.TaskPriorities.Levels {
+		priorities[level.Rank] = true
+	}
+	return priorities
+}
+
+func DefaultTaskKind(cfg Config) string {
+	if cfg.TaskKinds.Default == "" {
+		return "task"
+	}
+	return cfg.TaskKinds.Default
+}
+
+func DefaultPriority(cfg Config) *int {
+	if cfg.TaskPriorities.Default == nil {
+		return nil
+	}
+	v := *cfg.TaskPriorities.Default
+	return &v
 }
 
 func WriteDefault(path, root string) error {
@@ -214,6 +295,9 @@ require_review_before_done = false
 require_handoff_before_merge_ready = false
 require_blocked_reason = true
 allow_force_without_reason = false
+
+[task_kinds]
+default = "task"
 `, cfg.Fairway.ProjectName)
 	return os.WriteFile(path, []byte(text), 0o644)
 }

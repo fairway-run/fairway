@@ -36,3 +36,22 @@ func TestValidate_RejectsTransitionOutsideAllowed(t *testing.T) {
 		t.Fatal("expected transition validation error")
 	}
 }
+
+func TestValidate_RejectsDefaultKindOutsideAllowed(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.TaskKinds.Allowed = []string{"epic", "story"}
+	cfg.TaskKinds.Default = "task"
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected task kind validation error")
+	}
+}
+
+func TestValidate_RejectsDefaultPriorityOutsideLevels(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	defaultPriority := 2
+	cfg.TaskPriorities.Default = &defaultPriority
+	cfg.TaskPriorities.Levels = []PriorityLevel{{Rank: 1, Label: "P1"}}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected priority validation error")
+	}
+}
