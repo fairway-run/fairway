@@ -1544,6 +1544,10 @@ func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 	switch args[0] {
 	case "context":
 		return cmdPacketContext(ctx, opts, args[1:])
+	case "bugfix":
+		return cmdPacketBugfix(ctx, opts, args[1:])
+	case "watcher":
+		return cmdPacketWatcher(opts, args[1:])
 	default:
 		return fmt.Errorf("unknown packet subcommand %q", args[0])
 	}
@@ -1614,6 +1618,87 @@ func cmdPacketContext(ctx context.Context, opts globalOptions, args []string) er
 		}
 		return nil
 	})
+}
+
+func cmdPacketBugfix(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("packet bugfix requires task id")
+	}
+	fs := flag.NewFlagSet("packet bugfix", flag.ContinueOnError)
+	summary := fs.String("bug-summary", "", "bug summary")
+	rootCause := fs.String("root-cause", "", "root cause")
+	proof := fs.String("proof-command", "", "proof command")
+	coverage := fs.String("regression-coverage", "", "regression coverage")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet bugfix arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		packet := struct {
+			Task               store.Task       `json:"task"`
+			BugSummary         string           `json:"bug_summary"`
+			RootCause          string           `json:"root_cause"`
+			ProofCommand       string           `json:"proof_command"`
+			RegressionCoverage string           `json:"regression_coverage"`
+			Evidence           []store.Evidence `json:"evidence"`
+			Reviews            []store.Review   `json:"reviews"`
+		}{task, *summary, *rootCause, *proof, *coverage, evidence, reviews}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		fmt.Printf("# Bugfix Packet: %s\n\n", task.Definition.ID)
+		fmt.Printf("title: %s\nstatus: %s\nrole: %s\n", task.Definition.Title, task.Status, task.Definition.Role)
+		fmt.Printf("\n## Bug Summary\n%s\n", *summary)
+		fmt.Printf("\n## Root Cause\n%s\n", *rootCause)
+		fmt.Printf("\n## Proof Command\n%s\n", *proof)
+		fmt.Printf("\n## Regression Coverage\n%s\n", *coverage)
+		fmt.Println("\n## Existing Evidence")
+		for _, ev := range evidence {
+			fmt.Printf("- %s: %s %s\n", ev.Result, ev.CommandText, ev.ArtifactPath)
+		}
+		return nil
+	})
+}
+
+func cmdPacketWatcher(opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("packet watcher requires watch id")
+	}
+	watchID := args[0]
+	fs := flag.NewFlagSet("packet watcher", flag.ContinueOnError)
+	owner := fs.String("owner", "", "owner role or lane")
+	process := fs.String("process", "", "process to watch")
+	command := fs.String("command", "", "watch command")
+	success := fs.String("success", "", "success condition")
+	failure := fs.String("failure", "", "failure condition")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet watcher arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	packet := struct {
+		WatchID string `json:"watch_id"`
+		Owner   string `json:"owner"`
+		Process string `json:"process"`
+		Command string `json:"command"`
+		Success string `json:"success"`
+		Failure string `json:"failure"`
+	}{watchID, *owner, *process, *command, *success, *failure}
+	if opts.JSON {
+		return printJSON(packet)
+	}
+	fmt.Printf("# Watcher Packet: %s\n\n", watchID)
+	fmt.Printf("owner: %s\nprocess: %s\ncommand: %s\n", *owner, *process, *command)
+	fmt.Printf("\n## Success\n%s\n", *success)
+	fmt.Printf("\n## Failure\n%s\n", *failure)
+	return nil
 }
 
 type multiFlag []string

@@ -329,6 +329,8 @@ func TestCLI_CheckpointAndPacket(t *testing.T) {
 	runOK(t, "--json", "checkpoint", "stale", "--before", "2026-02-01")
 	runOK(t, "packet", "context", "T-001", "--goal", "finish", "--owner", "backend", "--acceptance", "tests pass")
 	runOK(t, "--json", "packet", "context", "T-001", "--goal", "finish")
+	runOK(t, "packet", "bugfix", "T-001", "--bug-summary", "broken", "--root-cause", "missing guard", "--proof-command", "go test ./...", "--regression-coverage", "unit")
+	runOK(t, "--json", "packet", "watcher", "W-001", "--owner", "ops/watch", "--process", "ci", "--command", "gh run watch", "--success", "green", "--failure", "red")
 }
 
 func runOK(t *testing.T, args ...string) {
