@@ -2397,7 +2397,7 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		return err
 	}
 	_ = noOpen
-	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
 		addr := cfg.Dashboard.Listen
 		if *listen != "" {
 			addr = *listen
@@ -2410,8 +2410,28 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		if cfg.Dashboard.AutoOpen && !*noOpen {
 			_ = openBrowser(url)
 		}
-		return dashboard.New(s, roleNames(cfg)).ListenAndServe(addr)
+		worktrees, err := collectWorktreeStatus(cfg, root)
+		if err != nil {
+			return err
+		}
+		return dashboard.New(s, roleNames(cfg), dashboardWorktrees(worktrees)).ListenAndServe(addr)
 	})
+}
+
+func dashboardWorktrees(statuses []worktreeStatus) []dashboard.WorktreeStatus {
+	out := make([]dashboard.WorktreeStatus, 0, len(statuses))
+	for _, status := range statuses {
+		out = append(out, dashboard.WorktreeStatus{
+			Role:       status.Role,
+			Branch:     status.Branch,
+			Path:       status.Path,
+			Registered: status.Registered,
+			Exists:     status.Exists,
+			Dirty:      status.Dirty,
+			LastCommit: status.LastCommit,
+		})
+	}
+	return out
 }
 
 func cmdDB(ctx context.Context, opts globalOptions, args []string) error {

@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -11,12 +10,28 @@ import (
 )
 
 type Server struct {
-	store *store.Store
-	roles []string
+	store     *store.Store
+	roles     []string
+	worktrees []WorktreeStatus
 }
 
-func New(s *store.Store, roles []string) *Server {
-	return &Server{store: s, roles: roles}
+type WorktreeStatus struct {
+	Role       string
+	Branch     string
+	Path       string
+	Registered bool
+	Exists     bool
+	Dirty      bool
+	LastCommit string
+}
+
+type Rollup struct {
+	Done  int
+	Total int
+}
+
+func New(s *store.Store, roles []string, worktrees []WorktreeStatus) *Server {
+	return &Server{store: s, roles: roles, worktrees: worktrees}
 }
 
 type RoleGroup struct {
@@ -49,11 +64,38 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	sessions, err := s.store.Sessions(r.Context(), false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	checkpoints, err := s.store.Checkpoints(r.Context(), "", false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	staleCheckpoints, err := s.store.Checkpoints(r.Context(), time.Now().UTC().Format("2006-01-02"), false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	watchers, err := s.store.Watchers(r.Context(), false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	data := struct {
-		Groups   []RoleGroup
-		Activity []store.Activity
-		Health   store.Health
-	}{groupTasks(tasks, s.roles), activity, health}
+		Groups           []RoleGroup
+		Activity         []store.Activity
+		Health           store.Health
+		Sessions         []store.Session
+		Worktrees        []WorktreeStatus
+		Checkpoints      []store.Checkpoint
+		StaleCheckpoints []store.Checkpoint
+		Watchers         []store.Watcher
+		Rollups          map[string]Rollup
+	}{groupTasks(tasks, s.roles), activity, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
 	_ = indexTemplate.Execute(w, data)
 }
 
@@ -88,19 +130,47 @@ func groupTasks(tasks []store.Task, roles []string) []RoleGroup {
 
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Path[len("/tasks/"):]
-	task, transitions, evidence, handoffs, reviews, err := s.store.TaskDetail(context.Background(), id)
+	task, transitions, evidence, handoffs, reviews, err := s.store.TaskDetail(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	tasks, err := s.store.AllTasks(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	data := struct {
 		Task        store.Task
 		Transitions []store.Transition
 		Evidence    []store.Evidence
 		Handoffs    []store.Handoff
 		Reviews     []store.Review
-	}{task, transitions, evidence, handoffs, reviews}
+		Rollup      Rollup
+	}{task, transitions, evidence, handoffs, reviews, rollups[task.Definition.ID]}
 	_ = detailTemplate.Execute(w, data)
+}
+
+func taskRollups(tasks []store.Task, terminal map[string]bool) map[string]Rollup {
+	parent := map[string]string{}
+	status := map[string]string{}
+	for _, task := range tasks {
+		parent[task.Definition.ID] = task.Definition.ParentID
+		status[task.Definition.ID] = task.Status
+	}
+	rollups := map[string]Rollup{}
+	for _, task := range tasks {
+		for cursor := parent[task.Definition.ID]; cursor != ""; cursor = parent[cursor] {
+			rollup := rollups[cursor]
+			rollup.Total++
+			if terminal[status[task.Definition.ID]] {
+				rollup.Done++
+			}
+			rollups[cursor] = rollup
+		}
+	}
+	return rollups
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
@@ -143,8 +213,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <html><head><title>fairway</title><style>
 body{font-family:system-ui,sans-serif;margin:32px;background:#f7f7f5;color:#1f2933}
-table{border-collapse:collapse;width:100%;background:white;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left}
-.status{font-family:monospace}.role{font-weight:600}.badges,.lanes{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}.badge,.lane{background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:6px}.lane b{display:block}.layout{display:grid;grid-template-columns:1fr 360px;gap:24px}.feed{background:white;border:1px solid #ddd;padding:12px}.feed p{border-bottom:1px solid #eee;padding-bottom:8px}
+table{border-collapse:collapse;width:100%;background:white;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}
+.status{font-family:monospace}.role{font-weight:600}.badges,.lanes{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}.badge,.lane{background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:6px}.lane b{display:block}.layout{display:grid;grid-template-columns:1fr 380px;gap:24px}.panel{background:white;border:1px solid #ddd;padding:12px;margin-bottom:16px}.panel p{border-bottom:1px solid #eee;padding-bottom:8px}.muted{color:#667085}.bad{color:#b42318}.ok{color:#027a48}
 </style><script>
 const events = new EventSource("/events");
 events.addEventListener("refresh", () => window.location.reload());
@@ -156,20 +226,35 @@ events.addEventListener("refresh", () => window.location.reload());
 <span class="badge">blocked &gt;24h: {{.Health.BlockedOver24h}}</span>
 <span class="badge">handoffs &gt;1h: {{.Health.UnacknowledgedOver1Hour}}</span>
 <span class="badge">reviews: {{.Health.UnroutedReviews}}</span>
+<span class="badge">stale checkpoints: {{len .StaleCheckpoints}}</span>
+<span class="badge">active watchers: {{len .Watchers}}</span>
+<span class="badge">sessions: {{len .Sessions}}</span>
 </div>
 <div class="lanes">
 {{range .Groups}}<div class="lane"><b>{{.Role}}</b>{{if .Current}}<a href="/tasks/{{.Current.Definition.ID}}">{{.Current.Definition.ID}}</a> {{.Current.Definition.Title}}{{else}}idle{{end}}</div>{{end}}
 </div>
 <div class="layout">
 <main>
+<h2>Sessions</h2>
+<table><tr><th>ID</th><th>Role</th><th>Status</th><th>Branch</th><th>Task</th><th>Backend</th></tr>
+{{range .Sessions}}<tr><td>{{.ID}}</td><td class="role">{{.Role}}</td><td class="status">{{.Status}}</td><td>{{.Branch}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionBackend}} {{.Provider}}</td></tr>{{else}}<tr><td colspan="6">no live sessions</td></tr>{{end}}
+</table>
+<h2>Worktrees</h2>
+<table><tr><th>Role</th><th>Branch</th><th>State</th><th>Commit</th><th>Path</th></tr>
+{{range .Worktrees}}<tr><td class="role">{{.Role}}</td><td>{{.Branch}}</td><td>{{if .Dirty}}<span class="bad">dirty</span>{{else}}<span class="ok">clean</span>{{end}} {{if not .Exists}}missing{{else if not .Registered}}unregistered{{end}}</td><td>{{.LastCommit}}</td><td class="muted">{{.Path}}</td></tr>{{else}}<tr><td colspan="5">no configured worktrees</td></tr>{{end}}
+</table>
 {{range .Groups}}
 <h2>{{.Role}}</h2>
-<table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Owner</th><th>Review</th></tr>
-{{range .Tasks}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td></tr>{{else}}<tr><td colspan="6">no tasks</td></tr>{{end}}
+<table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Owner</th><th>Review</th><th>Rollup</th></tr>
+{{range .Tasks}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td><td>{{with index $.Rollups .Definition.ID}}{{.Done}}/{{.Total}}{{else}}-{{end}}</td></tr>{{else}}<tr><td colspan="7">no tasks</td></tr>{{end}}
 </table>
 {{end}}
 </main>
-<aside class="feed"><h2>Activity</h2>{{range .Activity}}<p><b>{{.TaskID}}</b> <code>{{.Kind}}</code><br>{{.Summary}}<br><small>{{.CreatedAt}} {{.Actor}}</small></p>{{else}}<p>none</p>{{end}}</aside>
+<aside>
+<section class="panel"><h2>Watchers</h2>{{range .Watchers}}<p><b>{{.ID}}</b> <a href="/tasks/{{.TaskID}}">{{.TaskID}}</a><br><code>{{.Status}}</code> {{.Owner}} {{.Process}}<br><small>{{.Command}}</small></p>{{else}}<p>none</p>{{end}}</section>
+<section class="panel"><h2>Checkpoints</h2>{{range .Checkpoints}}<p><b><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></b> <code>{{.State}}</code><br>{{.Summary}}<br><small>{{.Owner}} {{.TargetCloseBy}}</small></p>{{else}}<p>none</p>{{end}}</section>
+<section class="panel"><h2>Activity</h2>{{range .Activity}}<p><b>{{.TaskID}}</b> <code>{{.Kind}}</code><br>{{.Summary}}<br><small>{{.CreatedAt}} {{.Actor}}</small></p>{{else}}<p>none</p>{{end}}</section>
+</aside>
 </div>
 </body></html>`))
 
@@ -180,6 +265,7 @@ body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#5
 <p><a href="/">back</a></p>
 <h1>{{.Task.Definition.ID}}: {{.Task.Definition.Title}}</h1>
 <p class="meta">role={{.Task.Definition.Role}} status={{.Task.Status}} owner={{.Task.Owner}} review={{.Task.ReviewStatus}}</p>
+{{if .Rollup.Total}}<p class="meta">descendants done: {{.Rollup.Done}}/{{.Rollup.Total}}</p>{{end}}
 <h2>Notes</h2><pre>{{.Task.Definition.Notes}}</pre>
 <h2>Dependencies</h2><ul>{{range .Task.Definition.Dependencies}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
 <h2>Acceptance</h2><ul>{{range .Task.Definition.AcceptanceChecks}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
