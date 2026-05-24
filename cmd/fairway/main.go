@@ -87,6 +87,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdHealthReport(ctx, opts, args[1:])
 	case "timing-report":
 		return cmdTimingReport(ctx, opts, args[1:])
+	case "dispatch-plan":
+		return cmdDispatchPlan(ctx, opts, args[1:])
 	case "git-check":
 		return cmdGitCheck(opts, args[1:])
 	case "preflight":
@@ -1268,6 +1270,76 @@ type coordinatorReport struct {
 	Recommendations []string         `json:"recommendations"`
 }
 
+type dispatchPlan struct {
+	Ready           []store.Task     `json:"ready"`
+	LiveSessions    []store.Session  `json:"live_sessions"`
+	Issues          []string         `json:"issues"`
+	Recommendations []string         `json:"recommendations"`
+	Worktrees       []worktreeStatus `json:"worktrees"`
+	Health          store.Health     `json:"health"`
+}
+
+func cmdDispatchPlan(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("dispatch-plan", flag.ContinueOnError)
+	role := fs.String("role", "", "role filter")
+	limit := fs.Int("limit", 10, "maximum ready tasks")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected dispatch-plan arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		roleFilter := *role
+		if roleFilter == "" {
+			roleFilter = resolveRole(opts)
+		}
+		ready, err := s.Ready(ctx, roleFilter, cfg.States.Terminal)
+		if err != nil {
+			return err
+		}
+		if *limit >= 0 && len(ready) > *limit {
+			ready = ready[:*limit]
+		}
+		report, err := buildCoordinatorReport(ctx, cfg, root, s)
+		if err != nil {
+			return err
+		}
+		plan := dispatchPlan{
+			Ready:           ready,
+			LiveSessions:    report.LiveSessions,
+			Issues:          report.Issues,
+			Recommendations: append([]string{}, report.Recommendations...),
+			Worktrees:       report.Worktrees,
+			Health:          report.Health,
+		}
+		for _, task := range ready {
+			plan.Recommendations = append(plan.Recommendations, fmt.Sprintf("claim %s (%s)", task.Definition.ID, task.Definition.Title))
+		}
+		if opts.JSON {
+			return printJSON(plan)
+		}
+		fmt.Println("dispatch plan")
+		if len(plan.Issues) > 0 {
+			fmt.Println("issues:")
+			for _, issue := range plan.Issues {
+				fmt.Printf("- %s\n", issue)
+			}
+		}
+		fmt.Println("ready:")
+		for _, task := range plan.Ready {
+			fmt.Printf("- %s [%s] %s\n", task.Definition.ID, task.Definition.Role, task.Definition.Title)
+		}
+		if len(plan.Recommendations) > 0 {
+			fmt.Println("recommendations:")
+			for _, rec := range plan.Recommendations {
+				fmt.Printf("- %s\n", rec)
+			}
+		}
+		return nil
+	})
+}
+
 func cmdCoordinator(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("coordinator requires subcommand: preflight, status, tick")
@@ -2308,5 +2380,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|config validate|dashboard|version")
 }

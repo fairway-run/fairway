@@ -307,6 +307,8 @@ name = "backend"
 	runOK(t, "coordinator", "status")
 	runOK(t, "--json", "coordinator", "tick")
 	runOK(t, "coordinator", "preflight")
+	runOK(t, "dispatch-plan")
+	runOK(t, "--json", "dispatch-plan", "--role", "backend")
 }
 
 func TestCLI_CheckpointAndPacket(t *testing.T) {

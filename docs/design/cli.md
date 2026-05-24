@@ -23,7 +23,8 @@ fairway session reconcile [--dry-run]
 fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] # adapter; optional
 fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>
-fairway status-report | health-report | timing-report | dispatch-plan
+fairway status-report | health-report | timing-report
+fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
 fairway coordinator preflight | status | tick
