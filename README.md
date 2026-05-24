@@ -51,6 +51,7 @@ Design:
 - [Scope and non-goals](docs/design/scope.md)
 - [Concepts](docs/design/concepts.md)
 - [Release cuts](docs/design/release-cuts.md)
+- [Implementation roadmap](docs/design/implementation-roadmap.md)
 - [Schema](docs/design/schema.md)
 - [State machine](docs/design/state-machine.md)
 - [GPUaaS extraction](docs/design/gpuaas-extraction.md)
