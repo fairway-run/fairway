@@ -68,6 +68,23 @@ func RemoveWorktree(root, path string, force bool) error {
 	return run(root, args...)
 }
 
+func CheckoutReviewBranch(root, sourceBranch, reviewBranch string) error {
+	status, err := Check(root, "")
+	if err != nil {
+		return err
+	}
+	if status.Dirty {
+		return fmt.Errorf("worktree has uncommitted changes")
+	}
+	if err := run(root, "rev-parse", "--verify", sourceBranch); err != nil {
+		return fmt.Errorf("source branch %q not found: %w", sourceBranch, err)
+	}
+	if err := run(root, "branch", "-f", reviewBranch, sourceBranch); err != nil {
+		return err
+	}
+	return run(root, "checkout", reviewBranch)
+}
+
 func Worktrees(root string) ([]Worktree, error) {
 	out, err := output(root, "worktree", "list", "--porcelain")
 	if err != nil {

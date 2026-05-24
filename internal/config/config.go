@@ -312,6 +312,12 @@ func WorktreePath(cfg Config, root string, role Role) string {
 	return filepath.Join(WorktreeRoot(cfg, root), name)
 }
 
+func ReviewBranch(cfg Config, role Role) string {
+	name := cfg.Worktrees.ReviewBranchNaming
+	name = strings.ReplaceAll(name, "{role}", role.Name)
+	return name
+}
+
 func TaskKindSet(cfg Config) map[string]bool {
 	kinds := make(map[string]bool, len(cfg.TaskKinds.Allowed))
 	for _, kind := range cfg.TaskKinds.Allowed {

@@ -220,6 +220,35 @@ branch = "agent/ui"
 	runOK(t, "--json", "worktree", "status")
 }
 
+func TestCLI_ReviewCheckout(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+branch = "agent/backend"
+`)
+	runOK(t, "add", "T-001", "--title", "Review me", "--role", "backend")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	git(t, repo, "branch", "agent/backend")
+
+	runOK(t, "review", "checkout", "T-001")
+	runOK(t, "--json", "git-check", "--base", "main")
+}
+
 func TestCLI_SessionLifecycle(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

@@ -97,6 +97,11 @@ func run(ctx context.Context, args []string) error {
 			return cmdRouteReview(ctx, opts, args[2:])
 		}
 		return errors.New("route requires subcommand: review")
+	case "review":
+		if len(args) >= 2 && args[1] == "checkout" {
+			return cmdReviewCheckout(ctx, opts, args[2:])
+		}
+		return errors.New("review requires subcommand: checkout")
 	case "worktree":
 		return cmdWorktree(opts, args[1:])
 	case "session":
@@ -770,6 +775,50 @@ func cmdRouteReview(ctx context.Context, opts globalOptions, args []string) erro
 			}{taskID, selected, routeReason})
 		}
 		fmt.Printf("routed %s to %s: %s\n", taskID, selected, routeReason)
+		return nil
+	})
+}
+
+func cmdReviewCheckout(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("review checkout requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("review checkout", flag.ContinueOnError)
+	sourceRole := fs.String("source-role", "", "source role")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected review checkout arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		roleName := *sourceRole
+		if roleName == "" {
+			roleName = task.Definition.Role
+		}
+		role, ok := findRole(cfg, roleName)
+		if !ok {
+			return fmt.Errorf("unknown source role %q", roleName)
+		}
+		sourceBranch := config.RoleBranch(role)
+		reviewBranch := config.ReviewBranch(cfg, role)
+		if err := fairwaygit.CheckoutReviewBranch(root, sourceBranch, reviewBranch); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(struct {
+				TaskID       string `json:"task_id"`
+				SourceRole   string `json:"source_role"`
+				SourceBranch string `json:"source_branch"`
+				ReviewBranch string `json:"review_branch"`
+			}{taskID, roleName, sourceBranch, reviewBranch})
+		}
+		fmt.Printf("checked out %s from %s for %s\n", reviewBranch, sourceBranch, taskID)
 		return nil
 	})
 }
@@ -2192,5 +2241,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|session|coordinator|checkpoint|packet|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|config validate|dashboard|version")
 }
