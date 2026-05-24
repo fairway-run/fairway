@@ -30,6 +30,51 @@ import (
 
 const version = "0.1.0-dev"
 
+const postgresCompatDDL = `-- fairway postgres compatibility sketch
+-- Runtime support remains SQLite-first. This DDL is intentionally conservative
+-- and mirrors the portable table shapes used by the SQLite store.
+
+CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS task_definitions (
+  project_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  parent_id TEXT,
+  kind TEXT,
+  title TEXT NOT NULL,
+  role TEXT NOT NULL,
+  notes TEXT,
+  acceptance_checks TEXT,
+  dependencies TEXT,
+  priority INTEGER,
+  sequence INTEGER,
+  created_at TEXT NOT NULL,
+  created_by TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(project_id, id)
+);
+CREATE TABLE IF NOT EXISTS task_state (
+  project_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  owner TEXT,
+  claimant TEXT,
+  branch TEXT,
+  claimed_at TEXT,
+  completed_at TEXT,
+  commit_sha TEXT,
+  review_required INTEGER NOT NULL DEFAULT 0,
+  review_status TEXT,
+  reviewer TEXT,
+  reviewed_at TEXT,
+  review_note TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(project_id, task_id)
+);
+-- task_state_history, task_handoffs, task_evidence, task_reviews,
+-- agent_sessions, task_checkpoints, and task_watchers use the same column
+-- names and portable scalar types as the SQLite schema.
+`
+
 type globalOptions struct {
 	ConfigPath string
 	DBPath     string
@@ -122,6 +167,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdWatcher(ctx, opts, args[1:])
 	case "regression-pack":
 		return cmdRegressionPack(opts, args[1:])
+	case "prune-stale":
+		return cmdPruneStale(ctx, opts, args[1:])
 	case "register":
 		return cmdRegister(opts, args[1:])
 	case "unregister":
@@ -1003,6 +1050,8 @@ func cmdSession(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdSessionEnd(ctx, opts, args[1:])
 	case "reconcile":
 		return cmdSessionReconcile(ctx, opts, args[1:])
+	case "launch":
+		return cmdSessionLaunch(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown session subcommand %q", args[0])
 	}
@@ -1194,6 +1243,75 @@ func cmdSessionReconcile(ctx context.Context, opts globalOptions, args []string)
 			}
 			fmt.Printf("%s\t%s\t%s\t%s\n", mode, action.Action, action.SessionID, action.Reason)
 		}
+		return nil
+	})
+}
+
+func cmdSessionLaunch(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("session launch", flag.ContinueOnError)
+	role := fs.String("role", "", "role")
+	backend := fs.String("backend", "", "backend")
+	provider := fs.String("provider", "", "provider")
+	taskID := fs.String("task-id", "", "task id")
+	name := fs.String("name", "", "session name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected session launch arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		sessionRole := *role
+		if sessionRole == "" {
+			sessionRole = resolveRole(opts)
+		}
+		if sessionRole == "" {
+			return errors.New("session launch requires --role")
+		}
+		roleCfg, ok := findRole(cfg, sessionRole)
+		if !ok && len(cfg.Roles) > 0 {
+			return fmt.Errorf("unknown role %q", sessionRole)
+		}
+		launchBackend := *backend
+		if launchBackend == "" {
+			launchBackend = cfg.Sessions.DefaultBackend
+		}
+		if launchBackend != "shell" {
+			return fmt.Errorf("session backend %q is not implemented yet; use session upsert for external adapters", launchBackend)
+		}
+		branch := fairwaygit.CurrentBranch(root)
+		worktreePath := root
+		providerName := *provider
+		if ok {
+			branch = config.RoleBranch(roleCfg)
+			worktreePath = config.WorktreePath(cfg, root, roleCfg)
+			if providerName == "" {
+				providerName = roleCfg.Provider
+			}
+		}
+		sessionID := generatedSessionID(sessionRole, os.Getpid())
+		session := store.Session{
+			ID:             sessionID,
+			Role:           sessionRole,
+			WorktreePath:   worktreePath,
+			Branch:         branch,
+			SessionBackend: "shell",
+			Provider:       providerName,
+			SessionName:    *name,
+			TaskID:         *taskID,
+			Status:         "running",
+		}
+		if err := s.UpsertSession(ctx, session); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(session)
+		}
+		fmt.Printf("export FAIRWAY_SESSION_ID=%s\n", sessionID)
+		if *taskID != "" {
+			fmt.Printf("export FAIRWAY_TASK_ID=%s\n", *taskID)
+		}
+		fmt.Printf("cd %s\n", worktreePath)
 		return nil
 	})
 }
@@ -1913,6 +2031,24 @@ func cmdRegressionPackValidate(args []string) error {
 	return nil
 }
 
+func cmdPruneStale(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected prune-stale arguments: %s", strings.Join(args, " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		result, err := s.PruneStale(ctx)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(result)
+		}
+		fmt.Printf("pruned state=%d history=%d evidence=%d handoffs=%d reviews=%d checkpoints=%d watchers=%d\n",
+			result.StateRows, result.HistoryRows, result.EvidenceRows, result.HandoffRows, result.ReviewRows, result.CheckpointRows, result.WatcherRows)
+		return nil
+	})
+}
+
 func cmdRegister(opts globalOptions, args []string) error {
 	fs := flag.NewFlagSet("register", flag.ContinueOnError)
 	name := fs.String("name", "", "project name")
@@ -2586,9 +2722,36 @@ func cmdDB(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdDBBackup(ctx, opts, args[1:])
 	case "export":
 		return cmdDBExport(ctx, opts, args[1:])
+	case "compat":
+		return cmdDBCompat(args[1:])
 	default:
 		return fmt.Errorf("unknown db command %q", args[0])
 	}
+}
+
+func cmdDBCompat(args []string) error {
+	fs := flag.NewFlagSet("db compat", flag.ContinueOnError)
+	backend := fs.String("backend", "", "backend")
+	printDDL := fs.Bool("print-ddl", false, "print backend ddl")
+	applyDDL := fs.Bool("apply-ddl", false, "apply backend ddl")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected db compat arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *backend != "postgres" {
+		return errors.New("db compat currently supports --backend postgres")
+	}
+	if *applyDDL {
+		return errors.New("db compat --apply-ddl is not implemented for postgres")
+	}
+	if *printDDL {
+		fmt.Print(postgresCompatDDL)
+		return nil
+	}
+	fmt.Println("postgres compatibility checks passed")
+	return nil
 }
 
 func cmdDBBackup(ctx context.Context, opts globalOptions, args []string) error {

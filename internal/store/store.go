@@ -163,6 +163,16 @@ type SnapshotTask struct {
 	Reviews     []Review     `json:"reviews"`
 }
 
+type PruneResult struct {
+	StateRows      int64 `json:"state_rows"`
+	HistoryRows    int64 `json:"history_rows"`
+	EvidenceRows   int64 `json:"evidence_rows"`
+	HandoffRows    int64 `json:"handoff_rows"`
+	ReviewRows     int64 `json:"review_rows"`
+	CheckpointRows int64 `json:"checkpoint_rows"`
+	WatcherRows    int64 `json:"watcher_rows"`
+}
+
 func Open(ctx context.Context, path, projectID string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -200,6 +210,45 @@ func (s *Store) Migrate(ctx context.Context) error {
 func (s *Store) Backup(ctx context.Context, path string) error {
 	_, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, path)
 	return err
+}
+
+func (s *Store) PruneStale(ctx context.Context) (PruneResult, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return PruneResult{}, err
+	}
+	defer tx.Rollback()
+	var result PruneResult
+	deleted := func(query string) (int64, error) {
+		res, err := tx.ExecContext(ctx, query, s.projectID)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	}
+	orphan := `o.project_id=? AND NOT EXISTS (SELECT 1 FROM task_definitions d WHERE d.project_id = o.project_id AND d.id = o.task_id)`
+	if result.WatcherRows, err = deleted(`DELETE FROM task_watchers AS o WHERE ` + orphan); err != nil {
+		return PruneResult{}, err
+	}
+	if result.CheckpointRows, err = deleted(`DELETE FROM task_checkpoints AS o WHERE ` + orphan); err != nil {
+		return PruneResult{}, err
+	}
+	if result.EvidenceRows, err = deleted(`DELETE FROM task_evidence AS o WHERE ` + orphan); err != nil {
+		return PruneResult{}, err
+	}
+	if result.HandoffRows, err = deleted(`DELETE FROM task_handoffs AS o WHERE ` + orphan); err != nil {
+		return PruneResult{}, err
+	}
+	if result.ReviewRows, err = deleted(`DELETE FROM task_reviews AS o WHERE ` + orphan); err != nil {
+		return PruneResult{}, err
+	}
+	if result.HistoryRows, err = deleted(`DELETE FROM task_state_history AS o WHERE ` + orphan); err != nil {
+		return PruneResult{}, err
+	}
+	if result.StateRows, err = deleted(`DELETE FROM task_state AS o WHERE ` + orphan); err != nil {
+		return PruneResult{}, err
+	}
+	return result, tx.Commit()
 }
 
 func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {

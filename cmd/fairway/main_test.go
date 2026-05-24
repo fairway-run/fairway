@@ -275,6 +275,7 @@ provider = "codex"
 	runOK(t, "session", "upsert", "--id", "s-dead", "--role", "backend", "--pid", "999999")
 	runOK(t, "session", "reconcile", "--dry-run")
 	runOK(t, "session", "reconcile")
+	runOK(t, "session", "launch", "--role", "backend")
 }
 
 func TestCLI_CoordinatorStatus(t *testing.T) {
@@ -384,6 +385,24 @@ func TestCLI_ProjectRegistry(t *testing.T) {
 	runOK(t, "projects")
 	runOK(t, "--json", "projects")
 	runOK(t, "unregister")
+}
+
+func TestCLI_RemainingParity(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "prune-stale")
+	runOK(t, "--json", "prune-stale")
+	runOK(t, "db", "compat", "--backend", "postgres")
+	runOK(t, "db", "compat", "--backend", "postgres", "--print-ddl")
 }
 
 func runOK(t *testing.T, args ...string) {
