@@ -168,6 +168,37 @@ func TestCLI_Preflight(t *testing.T) {
 	runOK(t, "--json", "merge-ready", "T-001")
 }
 
+func TestCLI_WorktreeSetupStatus(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+
+[[roles]]
+name = "ui"
+branch = "agent/ui"
+`)
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+
+	runOK(t, "worktree", "setup")
+	runOK(t, "worktree", "status")
+	runOK(t, "--json", "worktree", "status")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout
@@ -201,6 +232,18 @@ func git(t *testing.T, dir string, args ...string) {
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Clean(path), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func appendFile(t *testing.T, path, content string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Clean(path), os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(content); err != nil {
 		t.Fatal(err)
 	}
 }

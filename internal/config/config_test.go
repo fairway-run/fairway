@@ -37,6 +37,23 @@ func TestValidate_RejectsTransitionOutsideAllowed(t *testing.T) {
 	}
 }
 
+func TestValidate_RejectsWorktreeNamingWithoutRole(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.Worktrees.Naming = "worker"
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected worktree naming validation error")
+	}
+}
+
+func TestWorktreePathUsesTemplate(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	got := WorktreePath(cfg, "/tmp/repo", Role{Name: "backend"})
+	want := filepath.Join("/tmp", "worktrees", "repo-backend")
+	if got != want {
+		t.Fatalf("path=%q, want %q", got, want)
+	}
+}
+
 func TestValidate_RejectsDefaultKindOutsideAllowed(t *testing.T) {
 	cfg := Defaults("/tmp/repo")
 	cfg.TaskKinds.Allowed = []string{"epic", "story"}

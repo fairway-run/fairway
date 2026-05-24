@@ -95,6 +95,8 @@ func run(ctx context.Context, args []string) error {
 			return cmdRouteReview(ctx, opts, args[2:])
 		}
 		return errors.New("route requires subcommand: review")
+	case "worktree":
+		return cmdWorktree(opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -649,6 +651,157 @@ func cmdRouteReview(ctx context.Context, opts globalOptions, args []string) erro
 		fmt.Printf("routed %s to %s: %s\n", taskID, selected, routeReason)
 		return nil
 	})
+}
+
+type worktreeStatus struct {
+	Role       string `json:"role"`
+	Branch     string `json:"branch"`
+	Path       string `json:"path"`
+	Registered bool   `json:"registered"`
+	Exists     bool   `json:"exists"`
+	Dirty      bool   `json:"dirty"`
+	LastCommit string `json:"last_commit"`
+}
+
+func cmdWorktree(opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("worktree requires subcommand: setup, status, prune")
+	}
+	switch args[0] {
+	case "setup":
+		if len(args) > 1 {
+			return fmt.Errorf("unexpected worktree setup arguments: %s", strings.Join(args[1:], " "))
+		}
+		return cmdWorktreeSetup(opts)
+	case "status":
+		if len(args) > 1 {
+			return fmt.Errorf("unexpected worktree status arguments: %s", strings.Join(args[1:], " "))
+		}
+		return cmdWorktreeStatus(opts)
+	case "prune":
+		fs := flag.NewFlagSet("worktree prune", flag.ContinueOnError)
+		force := fs.Bool("force", false, "remove stale worktrees")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if fs.NArg() > 0 {
+			return fmt.Errorf("unexpected worktree prune arguments: %s", strings.Join(fs.Args(), " "))
+		}
+		return cmdWorktreePrune(opts, *force)
+	default:
+		return fmt.Errorf("unknown worktree subcommand %q", args[0])
+	}
+}
+
+func cmdWorktreeSetup(opts globalOptions) error {
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	if len(cfg.Roles) == 0 {
+		return errors.New("no roles configured")
+	}
+	for _, role := range cfg.Roles {
+		branch := config.RoleBranch(role)
+		wtPath := config.WorktreePath(cfg, root, role)
+		if err := fairwaygit.EnsureWorktree(root, cfg.Fairway.MainBranch, branch, wtPath); err != nil {
+			return fmt.Errorf("setup %s: %w", role.Name, err)
+		}
+		fmt.Printf("%s\t%s\t%s\n", role.Name, branch, wtPath)
+	}
+	return nil
+}
+
+func cmdWorktreeStatus(opts globalOptions) error {
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	statuses, err := collectWorktreeStatus(cfg, root)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(statuses)
+	}
+	for _, status := range statuses {
+		fmt.Printf("%s\t%s\tregistered=%t\texists=%t\tdirty=%t\t%s\t%s\n",
+			status.Role, status.Branch, status.Registered, status.Exists, status.Dirty, status.LastCommit, status.Path)
+	}
+	return nil
+}
+
+func cmdWorktreePrune(opts globalOptions, force bool) error {
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	expected := map[string]bool{}
+	for _, role := range cfg.Roles {
+		expected[config.WorktreePath(cfg, root, role)] = true
+	}
+	wtRoot := config.WorktreeRoot(cfg, root)
+	worktrees, err := fairwaygit.Worktrees(root)
+	if err != nil {
+		return err
+	}
+	var stale []string
+	for _, wt := range worktrees {
+		if wt.Path == root || !strings.HasPrefix(wt.Path, wtRoot+string(filepath.Separator)) || expected[wt.Path] {
+			continue
+		}
+		stale = append(stale, wt.Path)
+	}
+	if len(stale) == 0 {
+		fmt.Println("no stale worktrees")
+		return nil
+	}
+	for _, path := range stale {
+		if !force {
+			fmt.Println("would prune", path)
+			continue
+		}
+		if err := fairwaygit.RemoveWorktree(root, path, true); err != nil {
+			return err
+		}
+		fmt.Println("pruned", path)
+	}
+	if !force {
+		return errors.New("pass --force to prune stale worktrees")
+	}
+	return nil
+}
+
+func collectWorktreeStatus(cfg config.Config, root string) ([]worktreeStatus, error) {
+	registered := map[string]bool{}
+	worktrees, err := fairwaygit.Worktrees(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, wt := range worktrees {
+		registered[wt.Path] = true
+	}
+	statuses := make([]worktreeStatus, 0, len(cfg.Roles))
+	for _, role := range cfg.Roles {
+		branch := config.RoleBranch(role)
+		wtPath := config.WorktreePath(cfg, root, role)
+		status := worktreeStatus{
+			Role:       role.Name,
+			Branch:     branch,
+			Path:       wtPath,
+			Registered: registered[wtPath],
+		}
+		if _, err := os.Stat(wtPath); err == nil {
+			status.Exists = true
+			status.LastCommit = fairwaygit.LastCommit(wtPath)
+			gitStatus, err := fairwaygit.Check(wtPath, "")
+			if err == nil {
+				status.Dirty = gitStatus.Dirty
+			}
+		}
+		statuses = append(statuses, status)
+	}
+	return statuses, nil
 }
 
 type multiFlag []string
@@ -1415,5 +1568,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|config validate|dashboard|version")
 }

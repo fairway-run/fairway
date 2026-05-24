@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -20,6 +21,12 @@ type Status struct {
 	ChangedFiles []string `json:"changed_files"`
 }
 
+type Worktree struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+	Head   string `json:"head"`
+}
+
 func CurrentBranch(root string) string {
 	cmd := exec.Command("git", "branch", "--show-current")
 	cmd.Dir = root
@@ -28,6 +35,80 @@ func CurrentBranch(root string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func EnsureWorktree(root, base, branch, path string) error {
+	if err := ensureBranch(root, base, branch); err != nil {
+		return err
+	}
+	worktrees, err := Worktrees(root)
+	if err != nil {
+		return err
+	}
+	for _, wt := range worktrees {
+		if wt.Path == path {
+			return nil
+		}
+	}
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("path already exists and is not a registered worktree: %s", path)
+	}
+	if err := os.MkdirAll(parent(path), 0o755); err != nil {
+		return err
+	}
+	return run(root, "worktree", "add", path, branch)
+}
+
+func RemoveWorktree(root, path string, force bool) error {
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, path)
+	return run(root, args...)
+}
+
+func Worktrees(root string) ([]Worktree, error) {
+	out, err := output(root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	var result []Worktree
+	var current Worktree
+	flush := func() {
+		if current.Path != "" {
+			result = append(result, current)
+			current = Worktree{}
+		}
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			flush()
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			current.Path = strings.TrimPrefix(line, "worktree ")
+		case strings.HasPrefix(line, "HEAD "):
+			current.Head = strings.TrimPrefix(line, "HEAD ")
+		case strings.HasPrefix(line, "branch "):
+			current.Branch = strings.TrimPrefix(line, "branch refs/heads/")
+		}
+	}
+	flush()
+	return result, nil
+}
+
+func LastCommit(root string) string {
+	out, err := output(root, "rev-parse", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return out
 }
 
 func Check(root, base string) (Status, error) {
@@ -97,6 +178,27 @@ func ChangedFiles(root, base string) ([]string, error) {
 		return nil, nil
 	}
 	return strings.Split(out, "\n"), nil
+}
+
+func ensureBranch(root, base, branch string) error {
+	if branch == "" {
+		return fmt.Errorf("branch is required")
+	}
+	if run(root, "rev-parse", "--verify", branch) == nil {
+		return nil
+	}
+	if base == "" {
+		return run(root, "branch", branch)
+	}
+	return run(root, "branch", branch, base)
+}
+
+func parent(path string) string {
+	idx := strings.LastIndex(path, "/")
+	if idx <= 0 {
+		return "."
+	}
+	return path[:idx]
 }
 
 func output(root string, args ...string) (string, error) {

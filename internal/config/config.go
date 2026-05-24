@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -14,6 +15,7 @@ const DefaultConfigPath = ".fairway/config.toml"
 type Config struct {
 	Fairway        FairwayConfig        `toml:"fairway"`
 	Dashboard      DashboardConfig      `toml:"dashboard"`
+	Worktrees      WorktreesConfig      `toml:"worktrees"`
 	States         StatesConfig         `toml:"states"`
 	Gates          GatesConfig          `toml:"gates"`
 	TaskKinds      TaskKindsConfig      `toml:"task_kinds"`
@@ -32,6 +34,12 @@ type FairwayConfig struct {
 type DashboardConfig struct {
 	Listen   string `toml:"listen"`
 	AutoOpen bool   `toml:"auto_open"`
+}
+
+type WorktreesConfig struct {
+	Root               string `toml:"root"`
+	Naming             string `toml:"naming"`
+	ReviewBranchNaming string `toml:"review_branch_naming"`
 }
 
 type StatesConfig struct {
@@ -90,6 +98,11 @@ func Defaults(root string) Config {
 		Dashboard: DashboardConfig{
 			Listen:   "127.0.0.1:7878",
 			AutoOpen: true,
+		},
+		Worktrees: WorktreesConfig{
+			Root:               "../worktrees",
+			Naming:             "{repo}-{role}",
+			ReviewBranchNaming: "review/{role}",
 		},
 		States: StatesConfig{
 			Allowed:  []string{"todo", "in_progress", "blocked", "done"},
@@ -168,6 +181,15 @@ func Validate(cfg Config) error {
 	}
 	if cfg.Fairway.DBPath == "" {
 		return errors.New("[fairway] db_path is required")
+	}
+	if cfg.Worktrees.Root == "" {
+		return errors.New("[worktrees] root is required")
+	}
+	if !strings.Contains(cfg.Worktrees.Naming, "{role}") {
+		return errors.New("[worktrees] naming must include {role}")
+	}
+	if !strings.Contains(cfg.Worktrees.ReviewBranchNaming, "{role}") {
+		return errors.New("[worktrees] review_branch_naming must include {role}")
 	}
 	if len(cfg.States.Allowed) == 0 {
 		return errors.New("[states] allowed must not be empty")
@@ -256,6 +278,27 @@ func RoleSet(cfg Config) map[string]bool {
 	return roles
 }
 
+func RoleBranch(role Role) string {
+	if role.Branch != "" {
+		return role.Branch
+	}
+	return "agent/" + role.Name
+}
+
+func WorktreeRoot(cfg Config, root string) string {
+	if filepath.IsAbs(cfg.Worktrees.Root) {
+		return cfg.Worktrees.Root
+	}
+	return filepath.Join(root, cfg.Worktrees.Root)
+}
+
+func WorktreePath(cfg Config, root string, role Role) string {
+	name := cfg.Worktrees.Naming
+	name = strings.ReplaceAll(name, "{repo}", filepath.Base(root))
+	name = strings.ReplaceAll(name, "{role}", role.Name)
+	return filepath.Join(WorktreeRoot(cfg, root), name)
+}
+
 func TaskKindSet(cfg Config) map[string]bool {
 	kinds := make(map[string]bool, len(cfg.TaskKinds.Allowed))
 	for _, kind := range cfg.TaskKinds.Allowed {
@@ -301,6 +344,11 @@ main_branch = "main"
 [dashboard]
 listen = "127.0.0.1:7878"
 auto_open = true
+
+[worktrees]
+root = "../worktrees"
+naming = "{repo}-{role}"
+review_branch_naming = "review/{role}"
 
 [states]
 allowed = ["todo", "in_progress", "blocked", "done"]
