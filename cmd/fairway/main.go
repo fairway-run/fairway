@@ -21,6 +21,7 @@ import (
 	"github.com/subashram/fairway/internal/dashboard"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
+	"github.com/subashram/fairway/internal/registry"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 	"gopkg.in/yaml.v3"
@@ -120,6 +121,12 @@ func run(ctx context.Context, args []string) error {
 		return cmdWatcher(ctx, opts, args[1:])
 	case "regression-pack":
 		return cmdRegressionPack(opts, args[1:])
+	case "register":
+		return cmdRegister(opts, args[1:])
+	case "unregister":
+		return cmdUnregister(opts, args[1:])
+	case "projects":
+		return cmdProjects(opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -1905,6 +1912,97 @@ func cmdRegressionPackValidate(args []string) error {
 	return nil
 }
 
+func cmdRegister(opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("register", flag.ContinueOnError)
+	name := fs.String("name", "", "project name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected register arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	projectName := *name
+	if projectName == "" {
+		projectName = cfg.Fairway.ProjectName
+	}
+	regPath, err := registry.DefaultPath()
+	if err != nil {
+		return err
+	}
+	reg, err := registry.Load(regPath)
+	if err != nil {
+		return err
+	}
+	reg, err = registry.Register(reg, registry.Project{Name: projectName, Path: root, DBPath: config.DBPath(cfg, root)})
+	if err != nil {
+		return err
+	}
+	if err := registry.Save(regPath, reg); err != nil {
+		return err
+	}
+	fmt.Println("registered", projectName)
+	return nil
+}
+
+func cmdUnregister(opts globalOptions, args []string) error {
+	name := ""
+	if len(args) > 1 {
+		return fmt.Errorf("unexpected unregister arguments: %s", strings.Join(args[1:], " "))
+	}
+	if len(args) == 1 {
+		name = args[0]
+	}
+	if name == "" {
+		cfg, _, _, err := loadConfig(opts)
+		if err != nil {
+			return err
+		}
+		name = cfg.Fairway.ProjectName
+	}
+	regPath, err := registry.DefaultPath()
+	if err != nil {
+		return err
+	}
+	reg, err := registry.Load(regPath)
+	if err != nil {
+		return err
+	}
+	reg, removed := registry.Unregister(reg, name)
+	if !removed {
+		return store.ErrNotFound
+	}
+	if err := registry.Save(regPath, reg); err != nil {
+		return err
+	}
+	fmt.Println("unregistered", name)
+	return nil
+}
+
+func cmdProjects(opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected projects arguments: %s", strings.Join(args, " "))
+	}
+	regPath, err := registry.DefaultPath()
+	if err != nil {
+		return err
+	}
+	reg, err := registry.Load(regPath)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(reg.Projects)
+	}
+	for _, project := range reg.Projects {
+		fmt.Printf("%s\t%s\t%s\n", project.Name, project.Path, project.DBPath)
+	}
+	return nil
+}
+
 func defaultRegressionCatalogPath() string {
 	return "regression-packs.yaml"
 }
@@ -2748,5 +2846,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|regression-pack|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|regression-pack|register|unregister|projects|config validate|dashboard|version")
 }

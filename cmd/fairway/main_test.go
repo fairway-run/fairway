@@ -367,6 +367,25 @@ func TestCLI_RegressionPacks(t *testing.T) {
 	runOK(t, "regression-pack", "show", "RP-001")
 }
 
+func TestCLI_ProjectRegistry(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	t.Setenv("FAIRWAY_REGISTRY", filepath.Join(t.TempDir(), "registry.toml"))
+
+	runOK(t, "init")
+	runOK(t, "register")
+	runOK(t, "projects")
+	runOK(t, "--json", "projects")
+	runOK(t, "unregister")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout
