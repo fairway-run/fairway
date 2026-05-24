@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -2491,10 +2492,14 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 	fs := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	listen := fs.String("listen", "", "listen address")
 	noOpen := fs.Bool("no-open", false, "do not open browser")
+	multi := fs.Bool("multi", false, "show registered projects")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	_ = noOpen
+	if *multi {
+		return cmdDashboardMulti(ctx, opts, *listen, *noOpen)
+	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
 		addr := cfg.Dashboard.Listen
 		if *listen != "" {
@@ -2514,6 +2519,46 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		}
 		return dashboard.New(s, roleNames(cfg), dashboardWorktrees(worktrees)).ListenAndServe(addr)
 	})
+}
+
+func cmdDashboardMulti(ctx context.Context, opts globalOptions, listen string, noOpen bool) error {
+	cfg, _, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	addr := cfg.Dashboard.Listen
+	if listen != "" {
+		addr = listen
+	}
+	regPath, err := registry.DefaultPath()
+	if err != nil {
+		return err
+	}
+	reg, err := registry.Load(regPath)
+	if err != nil {
+		return err
+	}
+	projects := make([]dashboard.ProjectStore, 0, len(reg.Projects))
+	for _, project := range reg.Projects {
+		dbPath := project.DBPath
+		if dbPath == "" {
+			dbPath = filepath.Join(project.Path, ".fairway", "state.db")
+		}
+		projectStore, err := store.Open(ctx, dbPath, project.Name)
+		if err != nil {
+			return fmt.Errorf("open project %s: %w", project.Name, err)
+		}
+		projects = append(projects, dashboard.ProjectStore{Name: project.Name, Path: project.Path, Store: projectStore})
+	}
+	url := dashboard.URL(addr)
+	if !isLoopbackAddr(addr) {
+		fmt.Fprintln(os.Stderr, "warning: dashboard is not bound to a loopback address; v0.1 has no authentication")
+	}
+	fmt.Println("dashboard", url)
+	if cfg.Dashboard.AutoOpen && !noOpen {
+		_ = openBrowser(url)
+	}
+	return http.ListenAndServe(addr, dashboard.NewMulti(projects))
 }
 
 func dashboardWorktrees(statuses []worktreeStatus) []dashboard.WorktreeStatus {

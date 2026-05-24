@@ -44,3 +44,25 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 		}
 	}
 }
+
+func TestMultiDashboardRendersProjects(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewMulti([]ProjectStore{{Name: "fairway", Path: "/tmp/fairway", Store: s}})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"fairway multi-project", "fairway", "T-001"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("multi dashboard body missing %q:\n%s", want, body)
+		}
+	}
+}

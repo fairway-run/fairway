@@ -30,8 +30,51 @@ type Rollup struct {
 	Total int
 }
 
+type ProjectStore struct {
+	Name  string
+	Path  string
+	Store *store.Store
+}
+
 func New(s *store.Store, roles []string, worktrees []WorktreeStatus) *Server {
 	return &Server{store: s, roles: roles, worktrees: worktrees}
+}
+
+func NewMulti(projects []ProjectStore) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		type projectView struct {
+			Name            string
+			Path            string
+			Tasks           []store.Task
+			TaskCount       int
+			SessionCount    int
+			CheckpointCount int
+			WatcherCount    int
+			Error           string
+		}
+		var views []projectView
+		for _, project := range projects {
+			view := projectView{Name: project.Name, Path: project.Path}
+			tasks, err := project.Store.AllTasks(r.Context())
+			if err != nil {
+				view.Error = err.Error()
+				views = append(views, view)
+				continue
+			}
+			sessions, _ := project.Store.Sessions(r.Context(), false)
+			checkpoints, _ := project.Store.Checkpoints(r.Context(), "", false)
+			watchers, _ := project.Store.Watchers(r.Context(), false)
+			view.Tasks = tasks
+			view.TaskCount = len(tasks)
+			view.SessionCount = len(sessions)
+			view.CheckpointCount = len(checkpoints)
+			view.WatcherCount = len(watchers)
+			views = append(views, view)
+		}
+		_ = multiTemplate.Execute(w, struct{ Projects []projectView }{views})
+	})
+	return mux
 }
 
 type RoleGroup struct {
@@ -278,3 +321,24 @@ body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#5
 func URL(addr string) string {
 	return fmt.Sprintf("http://%s", addr)
 }
+
+var multiTemplate = template.Must(template.New("multi").Parse(`<!doctype html>
+<html><head><title>fairway multi-project</title><style>
+body{font-family:system-ui,sans-serif;margin:32px;background:#f7f7f5;color:#1f2933}
+table{border-collapse:collapse;width:100%;background:white;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left}
+.project{background:white;border:1px solid #ddd;padding:16px;margin-bottom:24px}.badges{display:flex;gap:8px;flex-wrap:wrap}.badge{border:1px solid #ddd;border-radius:6px;padding:6px 8px}.muted{color:#667085}.status{font-family:monospace}
+</style></head><body>
+<h1>fairway multi-project</h1>
+{{range .Projects}}
+<section class="project">
+<h2>{{.Name}}</h2>
+<p class="muted">{{.Path}}</p>
+{{if .Error}}<p>{{.Error}}</p>{{else}}
+<div class="badges"><span class="badge">tasks: {{.TaskCount}}</span><span class="badge">sessions: {{.SessionCount}}</span><span class="badge">checkpoints: {{.CheckpointCount}}</span><span class="badge">watchers: {{.WatcherCount}}</span></div>
+<table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Review</th></tr>
+{{range .Tasks}}<tr><td>{{.Definition.ID}}</td><td>{{.Definition.Title}}</td><td>{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.ReviewStatus}}</td></tr>{{else}}<tr><td colspan="5">no tasks</td></tr>{{end}}
+</table>
+{{end}}
+</section>
+{{else}}<p>no registered projects</p>{{end}}
+</body></html>`))
