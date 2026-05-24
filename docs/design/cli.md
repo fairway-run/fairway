@@ -16,9 +16,11 @@ fairway record review <task-id> --reviewer <role-or-user> --verdict <approve|cha
 fairway route review <task-id> [--reviewer <role>] [--path <path>]... [--reason <text>] # mark pending review
 fairway merge-ready <task-id> [--base <ref>]          # verify evidence/review/handoff/git gates
 fairway review checkout <task-id> [--source-role <role>] # create/reset named review branch
-fairway session upsert | end | status | reconcile
+fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <name>] [--provider <name>] [--task-id <id>] [--pid <pid>]
+fairway session status [--all]
+fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]
 fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] # adapter; optional
-fairway worktree setup | status | prune
+fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>
 fairway status-report | health-report | timing-report | dispatch-plan
 fairway git-check [--base <ref>]
@@ -29,7 +31,9 @@ fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> --proof
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
 fairway regression-pack list | show <pack-id> | validate [<catalog-path>]
 fairway watcher start | finish | status
-fairway checkpoint record | status | stale
+fairway checkpoint record <task-id> --summary <text> [--state <state>] [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path>]
+fairway checkpoint status [--all]
+fairway checkpoint stale [--before <date>] [--all]
 fairway prune-stale                                     # remove state rows for deleted task definitions
 fairway db backup | export
 fairway db compat --backend postgres [--print-ddl | --apply-ddl]
