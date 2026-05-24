@@ -16,11 +16,17 @@ to a useful v1.
 - Coordinator reports: `coordinator preflight/status/tick`.
 - Checkpoints and context packets: `checkpoint record/status/stale`,
   `packet context`.
+- Contextual spawning, review checkout, session reconciliation, dispatch plans,
+  bugfix/watcher packets, watcher lifecycle, and regression-pack catalogs.
+- Project registry commands and first-pass multi-project dashboard mode.
+- Local tracker links for Jira/Linear and dry-run tracker reconcile.
 - SQLite backup/export and JSON output for core read commands.
 - Read-only dashboard with SSE refresh, role grouping, health badges, task
-  detail, and activity feed.
+  detail, activity feed, sessions, worktrees, checkpoints, watchers, and
+  rollups.
+- Release packaging config and tag-triggered GitHub release workflow.
 
-## Next Implementation Order
+## Completed v0.2 Track
 
 1. `fairway spawn`
    - Create discovered work without losing parent/epic context.
@@ -80,8 +86,13 @@ to a useful v1.
 - Homebrew tap publishing is intentionally left off until the v0.1 CLI is cut
   and the binary name/artifact layout has settled.
 
-## Current Priority
+## Remaining Work
 
-Finish v0.2 CLI parity before broadening dashboard or external tracker work.
-The CLI must stay complete enough that the dashboard remains observational
-rather than privileged.
+1. Replace the inline SQL migration blob with embedded migration files and a
+   forward-only migration runner.
+2. Add a real Postgres compatibility harness beyond the current DDL sketch.
+3. Add Homebrew tap publishing after the first tagged release settles.
+4. Add optional dashboard mutations with CSRF and per-action audit.
+5. Add TUI mode for SSH/headless workflows.
+6. Expand tracker integration from local links/dry-run reporting to provider
+   adapters when credentials and API mapping are explicit.
