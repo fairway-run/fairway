@@ -23,6 +23,7 @@ import (
 	"github.com/subashram/fairway/internal/importer"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
+	"gopkg.in/yaml.v3"
 )
 
 const version = "0.1.0-dev"
@@ -117,6 +118,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdPacket(ctx, opts, args[1:])
 	case "watcher":
 		return cmdWatcher(ctx, opts, args[1:])
+	case "regression-pack":
+		return cmdRegressionPack(opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -1798,6 +1801,169 @@ func cmdWatcherStatus(ctx context.Context, opts globalOptions, args []string) er
 	})
 }
 
+type regressionCatalog struct {
+	Packs []regressionPack `json:"packs" yaml:"packs"`
+}
+
+type regressionPack struct {
+	ID                   string   `json:"id" yaml:"id"`
+	Title                string   `json:"title" yaml:"title"`
+	Owner                string   `json:"owner" yaml:"owner"`
+	TargetEnvironments   []string `json:"target_environments" yaml:"target_environments"`
+	Blocking             bool     `json:"blocking" yaml:"blocking"`
+	RequiredSeedData     []string `json:"required_seed_data" yaml:"required_seed_data"`
+	LowestReliableLayer  string   `json:"lowest_reliable_layer" yaml:"lowest_reliable_layer"`
+	RequiredProof        []string `json:"required_proof" yaml:"required_proof"`
+	ArtifactRequirements []string `json:"artifact_requirements" yaml:"artifact_requirements"`
+	CurrentAutomation    []string `json:"current_automation" yaml:"current_automation"`
+	Gaps                 []string `json:"gaps" yaml:"gaps"`
+}
+
+func cmdRegressionPack(opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("regression-pack requires subcommand: list, show, validate")
+	}
+	switch args[0] {
+	case "list":
+		return cmdRegressionPackList(opts, args[1:])
+	case "show":
+		return cmdRegressionPackShow(opts, args[1:])
+	case "validate":
+		return cmdRegressionPackValidate(args[1:])
+	default:
+		return fmt.Errorf("unknown regression-pack subcommand %q", args[0])
+	}
+}
+
+func cmdRegressionPackList(opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("regression-pack list", flag.ContinueOnError)
+	catalogPath := fs.String("catalog", defaultRegressionCatalogPath(), "catalog path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected regression-pack list arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	catalog, err := loadRegressionCatalog(*catalogPath)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(catalog.Packs)
+	}
+	for _, pack := range catalog.Packs {
+		fmt.Printf("%s\t%s\t%s\tblocking=%t\n", pack.ID, pack.Owner, pack.Title, pack.Blocking)
+	}
+	return nil
+}
+
+func cmdRegressionPackShow(opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("regression-pack show requires pack id")
+	}
+	fs := flag.NewFlagSet("regression-pack show", flag.ContinueOnError)
+	catalogPath := fs.String("catalog", defaultRegressionCatalogPath(), "catalog path")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected regression-pack show arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	catalog, err := loadRegressionCatalog(*catalogPath)
+	if err != nil {
+		return err
+	}
+	for _, pack := range catalog.Packs {
+		if pack.ID != args[0] {
+			continue
+		}
+		if opts.JSON {
+			return printJSON(pack)
+		}
+		printRegressionPack(pack)
+		return nil
+	}
+	return store.ErrNotFound
+}
+
+func cmdRegressionPackValidate(args []string) error {
+	path := defaultRegressionCatalogPath()
+	if len(args) > 1 {
+		return fmt.Errorf("unexpected regression-pack validate arguments: %s", strings.Join(args[1:], " "))
+	}
+	if len(args) == 1 {
+		path = args[0]
+	}
+	catalog, err := loadRegressionCatalog(path)
+	if err != nil {
+		return err
+	}
+	if err := validateRegressionCatalog(catalog); err != nil {
+		return err
+	}
+	fmt.Printf("valid %s (%d packs)\n", path, len(catalog.Packs))
+	return nil
+}
+
+func defaultRegressionCatalogPath() string {
+	return "regression-packs.yaml"
+}
+
+func loadRegressionCatalog(path string) (regressionCatalog, error) {
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return regressionCatalog{}, err
+	}
+	var catalog regressionCatalog
+	if strings.HasSuffix(path, ".json") {
+		err = json.Unmarshal(data, &catalog)
+	} else {
+		err = yaml.Unmarshal(data, &catalog)
+	}
+	if err != nil {
+		return regressionCatalog{}, err
+	}
+	if err := validateRegressionCatalog(catalog); err != nil {
+		return regressionCatalog{}, err
+	}
+	return catalog, nil
+}
+
+func validateRegressionCatalog(catalog regressionCatalog) error {
+	seen := map[string]bool{}
+	for _, pack := range catalog.Packs {
+		if pack.ID == "" || pack.Title == "" || pack.Owner == "" {
+			return errors.New("regression packs require id, title, and owner")
+		}
+		if seen[pack.ID] {
+			return fmt.Errorf("duplicate regression pack id %s", pack.ID)
+		}
+		seen[pack.ID] = true
+		if len(pack.TargetEnvironments) == 0 || pack.LowestReliableLayer == "" || len(pack.RequiredProof) == 0 {
+			return fmt.Errorf("regression pack %s is missing required coverage fields", pack.ID)
+		}
+	}
+	return nil
+}
+
+func printRegressionPack(pack regressionPack) {
+	fmt.Printf("# Regression Pack: %s\n\n", pack.ID)
+	fmt.Printf("title: %s\nowner: %s\nblocking: %t\nlowest_reliable_layer: %s\n", pack.Title, pack.Owner, pack.Blocking, pack.LowestReliableLayer)
+	printStringList("target_environments", pack.TargetEnvironments)
+	printStringList("required_seed_data", pack.RequiredSeedData)
+	printStringList("required_proof", pack.RequiredProof)
+	printStringList("artifact_requirements", pack.ArtifactRequirements)
+	printStringList("current_automation", pack.CurrentAutomation)
+	printStringList("gaps", pack.Gaps)
+}
+
+func printStringList(title string, values []string) {
+	fmt.Printf("\n## %s\n", title)
+	for _, value := range values {
+		fmt.Printf("- %s\n", value)
+	}
+}
+
 type multiFlag []string
 
 func (m *multiFlag) String() string {
@@ -2562,5 +2728,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|regression-pack|config validate|dashboard|version")
 }

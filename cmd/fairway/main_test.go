@@ -337,6 +337,36 @@ func TestCLI_CheckpointAndPacket(t *testing.T) {
 	runOK(t, "--json", "watcher", "status", "--include-done")
 }
 
+func TestCLI_RegressionPacks(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	writeFile(t, "regression-packs.yaml", `packs:
+  - id: RP-001
+    title: Smoke flow
+    owner: backend
+    target_environments: [local, ci]
+    blocking: true
+    required_seed_data: [sample]
+    lowest_reliable_layer: integration
+    required_proof: ["go test ./..."]
+    artifact_requirements: [logs]
+    current_automation: [ci]
+    gaps: [browser]
+`)
+	runOK(t, "regression-pack", "validate")
+	runOK(t, "regression-pack", "list")
+	runOK(t, "--json", "regression-pack", "list")
+	runOK(t, "regression-pack", "show", "RP-001")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout

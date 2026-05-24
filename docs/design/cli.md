@@ -31,7 +31,9 @@ fairway coordinator preflight | status | tick
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> --proof-command <cmd> --regression-coverage <text>
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
-fairway regression-pack list | show <pack-id> | validate [<catalog-path>]
+fairway regression-pack list [--catalog <path>]
+fairway regression-pack show <pack-id> [--catalog <path>]
+fairway regression-pack validate [<catalog-path>]
 fairway watcher start <watch-id> --task <task-id> [--owner <role-or-lane>] [--process <text>] [--command <cmd>] [--success <text>] [--failure <text>]
 fairway watcher finish <watch-id> --result <pass|fail|blocked> [--artifact <path-or-url>] [--duration-seconds <n>] [--notes <text>]
 fairway watcher status [--include-done]
