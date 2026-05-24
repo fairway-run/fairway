@@ -46,6 +46,9 @@ fairway db compat --backend postgres [--print-ddl | --apply-ddl]
 fairway import <yaml-or-json-path> [--state-once]        # bootstrap-only; never overwrites mutable state after initial import
 fairway config validate
 fairway dashboard [--no-open] [--listen <addr>] [--multi]
+fairway tracker link <task-id> --provider <jira|linear> --external-id <id> [--url <url>]
+fairway tracker links
+fairway tracker reconcile [--dry-run]
 fairway register [--name <n>]                           # add current project to ~/.fairway/registry.toml
 fairway unregister [<name>]                             # remove from registry
 fairway projects                                        # list registered projects

@@ -175,6 +175,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdUnregister(opts, args[1:])
 	case "projects":
 		return cmdProjects(opts, args[1:])
+	case "tracker":
+		return cmdTracker(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -2140,6 +2142,93 @@ func cmdProjects(opts globalOptions, args []string) error {
 	return nil
 }
 
+func cmdTracker(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("tracker requires subcommand: link, links, reconcile")
+	}
+	switch args[0] {
+	case "link":
+		return cmdTrackerLink(ctx, opts, args[1:])
+	case "links":
+		return cmdTrackerLinks(ctx, opts, args[1:])
+	case "reconcile":
+		return cmdTrackerReconcile(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown tracker subcommand %q", args[0])
+	}
+}
+
+func cmdTrackerLink(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("tracker link requires task id")
+	}
+	fs := flag.NewFlagSet("tracker link", flag.ContinueOnError)
+	provider := fs.String("provider", "", "tracker provider")
+	externalID := fs.String("external-id", "", "external issue id")
+	url := fs.String("url", "", "external issue url")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker link arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		link := store.TrackerLink{TaskID: args[0], Provider: *provider, ExternalID: *externalID, URL: *url}
+		if err := s.UpsertTrackerLink(ctx, link); err != nil {
+			return err
+		}
+		fmt.Printf("linked %s to %s:%s\n", args[0], *provider, *externalID)
+		return nil
+	})
+}
+
+func cmdTrackerLinks(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected tracker links arguments: %s", strings.Join(args, " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		links, err := s.TrackerLinks(ctx)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(links)
+		}
+		for _, link := range links {
+			fmt.Printf("%s\t%s\t%s\t%s\n", link.TaskID, link.Provider, link.ExternalID, link.URL)
+		}
+		return nil
+	})
+}
+
+func cmdTrackerReconcile(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("tracker reconcile", flag.ContinueOnError)
+	dryRun := fs.Bool("dry-run", true, "show proposed actions without applying")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker reconcile arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		links, err := s.TrackerLinks(ctx)
+		if err != nil {
+			return err
+		}
+		report := struct {
+			DryRun bool                `json:"dry_run"`
+			Links  []store.TrackerLink `json:"links"`
+			Note   string              `json:"note"`
+		}{*dryRun, links, "external Jira/Linear API sync is intentionally not performed by the local-first prototype"}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("tracker reconcile dry_run=%t links=%d\n", report.DryRun, len(report.Links))
+		fmt.Println(report.Note)
+		return nil
+	})
+}
+
 func defaultRegressionCatalogPath() string {
 	return "regression-packs.yaml"
 }
@@ -3054,5 +3143,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|regression-pack|register|unregister|projects|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|regression-pack|tracker|register|unregister|projects|config validate|dashboard|version")
 }

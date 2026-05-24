@@ -124,6 +124,15 @@ type Watcher struct {
 	FinishedAt      string `json:"finished_at"`
 }
 
+type TrackerLink struct {
+	TaskID     string `json:"task_id"`
+	Provider   string `json:"provider"`
+	ExternalID string `json:"external_id"`
+	URL        string `json:"url"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
 type Activity struct {
 	Kind      string
 	TaskID    string
@@ -884,6 +893,48 @@ WHERE project_id=?`
 	return out, rows.Err()
 }
 
+func (s *Store) UpsertTrackerLink(ctx context.Context, link TrackerLink) error {
+	if link.TaskID == "" || link.Provider == "" || link.ExternalID == "" {
+		return errors.New("tracker links require task id, provider, and external id")
+	}
+	switch link.Provider {
+	case "jira", "linear":
+	default:
+		return fmt.Errorf("unsupported tracker provider %q", link.Provider)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO tracker_links (project_id, task_id, provider, external_id, url, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(project_id, task_id, provider) DO UPDATE SET
+  external_id=excluded.external_id,
+  url=excluded.url,
+  updated_at=excluded.updated_at`,
+		s.projectID, link.TaskID, link.Provider, link.ExternalID, link.URL, now, now)
+	return err
+}
+
+func (s *Store) TrackerLinks(ctx context.Context) ([]TrackerLink, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT task_id, provider, external_id, COALESCE(url, ''), created_at, updated_at
+FROM tracker_links
+WHERE project_id=?
+ORDER BY provider, external_id`, s.projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrackerLink
+	for rows.Next() {
+		var link TrackerLink
+		if err := rows.Scan(&link.TaskID, &link.Provider, &link.ExternalID, &link.URL, &link.CreatedAt, &link.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, link)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, requireBlockedReason bool) error {
 	if status == "blocked" && requireBlockedReason && strings.TrimSpace(reason) == "" {
 		return errors.New("reason is required when blocking a task")
@@ -1470,4 +1521,17 @@ CREATE TABLE IF NOT EXISTS task_watchers (
   FOREIGN KEY(project_id, task_id) REFERENCES task_definitions(project_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_task_watchers_status ON task_watchers(project_id, status, started_at);
+
+CREATE TABLE IF NOT EXISTS tracker_links (
+  project_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  url TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(project_id, task_id, provider),
+  FOREIGN KEY(project_id, task_id) REFERENCES task_definitions(project_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_tracker_links_external ON tracker_links(project_id, provider, external_id);
 `

@@ -405,6 +405,24 @@ func TestCLI_RemainingParity(t *testing.T) {
 	runOK(t, "db", "compat", "--backend", "postgres", "--print-ddl")
 }
 
+func TestCLI_TrackerLinks(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Tracked", "--role", "backend")
+	runOK(t, "tracker", "link", "T-001", "--provider", "linear", "--external-id", "LIN-1", "--url", "https://linear.app/example/issue/LIN-1")
+	runOK(t, "tracker", "links")
+	runOK(t, "--json", "tracker", "reconcile", "--dry-run")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout
