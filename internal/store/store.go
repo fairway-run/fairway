@@ -96,6 +96,17 @@ type Session struct {
 	EndReason       string `json:"end_reason"`
 }
 
+type Checkpoint struct {
+	ID            int64  `json:"id"`
+	TaskID        string `json:"task_id"`
+	State         string `json:"state"`
+	Owner         string `json:"owner"`
+	TargetCloseBy string `json:"target_close_by"`
+	Summary       string `json:"summary"`
+	ArtifactPath  string `json:"artifact_path"`
+	CreatedAt     string `json:"created_at"`
+}
+
 type Activity struct {
 	Kind      string
 	TaskID    string
@@ -687,6 +698,55 @@ WHERE project_id=?`
 	return out, rows.Err()
 }
 
+func (s *Store) RecordCheckpoint(ctx context.Context, cp Checkpoint) error {
+	if cp.TaskID == "" {
+		return errors.New("checkpoint task id is required")
+	}
+	if cp.Summary == "" {
+		return errors.New("checkpoint summary is required")
+	}
+	switch cp.State {
+	case "planned", "active", "awaiting_input", "review", "done", "parked", "abandoned":
+	default:
+		return fmt.Errorf("invalid checkpoint state %q", cp.State)
+	}
+	res, err := s.db.ExecContext(ctx, `
+INSERT INTO task_checkpoints (project_id, task_id, state, owner, target_close_by, summary, artifact_path, created_at)
+VALUES (?, ?, ?, ?, nullif(?, ''), ?, ?, ?)`,
+		s.projectID, cp.TaskID, cp.State, cp.Owner, cp.TargetCloseBy, cp.Summary, cp.ArtifactPath, time.Now().UTC().Format(time.RFC3339Nano))
+	return checkWriteResult(res, err)
+}
+
+func (s *Store) Checkpoints(ctx context.Context, staleBefore string, includeClosed bool) ([]Checkpoint, error) {
+	query := `
+SELECT id, task_id, state, COALESCE(owner, ''), COALESCE(target_close_by, ''), summary, COALESCE(artifact_path, ''), created_at
+FROM task_checkpoints
+WHERE project_id=?`
+	args := []any{s.projectID}
+	if staleBefore != "" {
+		query += ` AND target_close_by IS NOT NULL AND target_close_by < ?`
+		args = append(args, staleBefore)
+	}
+	if !includeClosed {
+		query += ` AND state NOT IN ('done', 'parked', 'abandoned')`
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Checkpoint
+	for rows.Next() {
+		var cp Checkpoint
+		if err := rows.Scan(&cp.ID, &cp.TaskID, &cp.State, &cp.Owner, &cp.TargetCloseBy, &cp.Summary, &cp.ArtifactPath, &cp.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, cp)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, requireBlockedReason bool) error {
 	if status == "blocked" && requireBlockedReason && strings.TrimSpace(reason) == "" {
 		return errors.New("reason is required when blocking a task")
@@ -1237,4 +1297,19 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
   FOREIGN KEY(project_id, task_id) REFERENCES task_definitions(project_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_agent_sessions_role_live ON agent_sessions(project_id, role, ended_at);
+
+CREATE TABLE IF NOT EXISTS task_checkpoints (
+  id INTEGER PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  state TEXT NOT NULL,
+  owner TEXT,
+  target_close_by TEXT,
+  summary TEXT NOT NULL,
+  artifact_path TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(project_id, task_id) REFERENCES task_definitions(project_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_checkpoints_task ON task_checkpoints(project_id, task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_task_checkpoints_state_target ON task_checkpoints(project_id, state, target_close_by);
 `

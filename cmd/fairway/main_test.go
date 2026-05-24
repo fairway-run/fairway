@@ -256,6 +256,26 @@ name = "backend"
 	runOK(t, "coordinator", "preflight")
 }
 
+func TestCLI_CheckpointAndPacket(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Packet", "--role", "backend", "--notes", "carry context")
+	runOK(t, "checkpoint", "record", "T-001", "--state", "active", "--owner", "backend", "--target-close-by", "2026-01-01", "--summary", "working")
+	runOK(t, "checkpoint", "status")
+	runOK(t, "--json", "checkpoint", "stale", "--before", "2026-02-01")
+	runOK(t, "packet", "context", "T-001", "--goal", "finish", "--owner", "backend", "--acceptance", "tests pass")
+	runOK(t, "--json", "packet", "context", "T-001", "--goal", "finish")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout

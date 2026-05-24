@@ -101,6 +101,10 @@ func run(ctx context.Context, args []string) error {
 		return cmdSession(ctx, opts, args[1:])
 	case "coordinator":
 		return cmdCoordinator(ctx, opts, args[1:])
+	case "checkpoint":
+		return cmdCheckpoint(ctx, opts, args[1:])
+	case "packet":
+		return cmdPacket(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -1111,6 +1115,156 @@ func printCoordinatorTick(report coordinatorReport) {
 	}
 }
 
+func cmdCheckpoint(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("checkpoint requires subcommand: record, status, stale")
+	}
+	switch args[0] {
+	case "record":
+		return cmdCheckpointRecord(ctx, opts, args[1:])
+	case "status":
+		return cmdCheckpointStatus(ctx, opts, args[1:], false)
+	case "stale":
+		return cmdCheckpointStatus(ctx, opts, args[1:], true)
+	default:
+		return fmt.Errorf("unknown checkpoint subcommand %q", args[0])
+	}
+}
+
+func cmdCheckpointRecord(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("checkpoint record requires task id")
+	}
+	fs := flag.NewFlagSet("checkpoint record", flag.ContinueOnError)
+	stateFlag := fs.String("state", "active", "checkpoint state")
+	owner := fs.String("owner", "", "owner role or lane")
+	target := fs.String("target-close-by", "", "target close date")
+	summary := fs.String("summary", "", "summary")
+	artifact := fs.String("artifact", "", "artifact path")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected checkpoint record arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		cp := store.Checkpoint{TaskID: args[0], State: *stateFlag, Owner: *owner, TargetCloseBy: *target, Summary: *summary, ArtifactPath: *artifact}
+		if err := s.RecordCheckpoint(ctx, cp); err != nil {
+			return err
+		}
+		fmt.Println("checkpoint recorded", args[0])
+		return nil
+	})
+}
+
+func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string, stale bool) error {
+	fs := flag.NewFlagSet("checkpoint status", flag.ContinueOnError)
+	all := fs.Bool("all", false, "include closed checkpoints")
+	before := fs.String("before", time.Now().UTC().Format("2006-01-02"), "stale before date")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected checkpoint arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		staleBefore := ""
+		if stale {
+			staleBefore = *before
+		}
+		checkpoints, err := s.Checkpoints(ctx, staleBefore, *all)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(checkpoints)
+		}
+		for _, cp := range checkpoints {
+			fmt.Printf("%d\t%s\t%s\t%s\t%s\t%s\n", cp.ID, cp.TaskID, cp.State, cp.Owner, cp.TargetCloseBy, cp.Summary)
+		}
+		return nil
+	})
+}
+
+func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("packet requires subcommand: context")
+	}
+	switch args[0] {
+	case "context":
+		return cmdPacketContext(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown packet subcommand %q", args[0])
+	}
+}
+
+func cmdPacketContext(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("packet context requires task id")
+	}
+	fs := flag.NewFlagSet("packet context", flag.ContinueOnError)
+	goal := fs.String("goal", "", "goal")
+	owner := fs.String("owner", "", "owner")
+	acceptance := fs.String("acceptance", "", "acceptance")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet context arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, transitions, evidence, handoffs, reviews, err := s.TaskDetail(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		packet := struct {
+			Task        store.Task         `json:"task"`
+			Goal        string             `json:"goal"`
+			Owner       string             `json:"owner"`
+			Acceptance  string             `json:"acceptance"`
+			Transitions []store.Transition `json:"transitions"`
+			Evidence    []store.Evidence   `json:"evidence"`
+			Handoffs    []store.Handoff    `json:"handoffs"`
+			Reviews     []store.Review     `json:"reviews"`
+		}{task, *goal, *owner, *acceptance, transitions, evidence, handoffs, reviews}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		fmt.Printf("# Context Packet: %s\n\n", task.Definition.ID)
+		fmt.Printf("title: %s\nstatus: %s\nrole: %s\nowner: %s\n", task.Definition.Title, task.Status, task.Definition.Role, *owner)
+		if *goal != "" {
+			fmt.Printf("\n## Goal\n%s\n", *goal)
+		}
+		if *acceptance != "" {
+			fmt.Printf("\n## Acceptance\n%s\n", *acceptance)
+		}
+		if task.Definition.Notes != "" {
+			fmt.Printf("\n## Notes\n%s\n", task.Definition.Notes)
+		}
+		fmt.Println("\n## Dependencies")
+		for _, dep := range task.Definition.Dependencies {
+			fmt.Printf("- %s\n", dep)
+		}
+		fmt.Println("\n## Recent History")
+		for _, tr := range transitions {
+			fmt.Printf("- %s -> %s by %s: %s\n", tr.FromStatus, tr.ToStatus, tr.Actor, tr.Reason)
+		}
+		fmt.Println("\n## Evidence")
+		for _, ev := range evidence {
+			fmt.Printf("- %s: %s %s\n", ev.Result, ev.CommandText, ev.ArtifactPath)
+		}
+		fmt.Println("\n## Handoffs")
+		for _, h := range handoffs {
+			fmt.Printf("- to %s: %s\n", h.ToRole, h.Payload)
+		}
+		fmt.Println("\n## Reviews")
+		for _, review := range reviews {
+			fmt.Printf("- %s by %s: %s\n", review.Verdict, review.Reviewer, review.Reason)
+		}
+		return nil
+	})
+}
+
 type multiFlag []string
 
 func (m *multiFlag) String() string {
@@ -1875,5 +2029,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|session|coordinator|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|session|coordinator|checkpoint|packet|config validate|dashboard|version")
 }

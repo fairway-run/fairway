@@ -202,6 +202,31 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 }
 
+func TestCheckpointLifecycle(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Checkpoint", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, Checkpoint{TaskID: "T-001", State: "active", Owner: "backend", TargetCloseBy: "2026-01-01", Summary: "working"}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoints, err := s.Checkpoints(ctx, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checkpoints) != 1 || checkpoints[0].TaskID != "T-001" {
+		t.Fatalf("checkpoints=%+v, want T-001", checkpoints)
+	}
+	stale, err := s.Checkpoints(ctx, "2026-02-01", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 1 {
+		t.Fatalf("stale=%+v, want one stale checkpoint", stale)
+	}
+}
+
 func TestReady_UsesConfiguredTerminalStates(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
