@@ -1,0 +1,51 @@
+version: 2
+
+project_name: fairway
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: fairway
+    main: ./cmd/fairway
+    binary: fairway
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: fairway
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+checksum:
+  name_template: "fairway_{{ .Version }}_checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: subashram
+    name: fairway
+  draft: true
+  replace_existing_draft: true

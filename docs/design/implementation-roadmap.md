@@ -71,6 +71,15 @@ to a useful v1.
     - `db compat --backend postgres`.
     - CI/release packaging, checksums, Homebrew path.
 
+## Release Hardening Notes
+
+- `.goreleaser.yaml` builds darwin/linux amd64/arm64 archives and emits a
+  checksums file.
+- `.github/workflows/release.yml` runs on `v*` tags and creates a draft GitHub
+  release.
+- Homebrew tap publishing is intentionally left off until the v0.1 CLI is cut
+  and the binary name/artifact layout has settled.
+
 ## Current Priority
 
 Finish v0.2 CLI parity before broadening dashboard or external tracker work.
