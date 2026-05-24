@@ -272,6 +272,9 @@ provider = "codex"
 	runOK(t, "--json", "session", "status")
 	runOK(t, "session", "end", "s-1", "--reason", "normal", "--exit-code", "0")
 	runOK(t, "session", "status", "--all")
+	runOK(t, "session", "upsert", "--id", "s-dead", "--role", "backend", "--pid", "999999")
+	runOK(t, "session", "reconcile", "--dry-run")
+	runOK(t, "session", "reconcile")
 }
 
 func TestCLI_CoordinatorStatus(t *testing.T) {

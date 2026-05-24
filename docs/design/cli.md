@@ -19,6 +19,7 @@ fairway review checkout <task-id> [--source-role <role>] # create/reset named re
 fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <name>] [--provider <name>] [--task-id <id>] [--pid <pid>]
 fairway session status [--all]
 fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]
+fairway session reconcile [--dry-run]
 fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] # adapter; optional
 fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>

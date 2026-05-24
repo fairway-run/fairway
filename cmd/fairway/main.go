@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/subashram/fairway/internal/config"
@@ -985,6 +986,8 @@ func cmdSession(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdSessionStatus(ctx, opts, args[1:])
 	case "end":
 		return cmdSessionEnd(ctx, opts, args[1:])
+	case "reconcile":
+		return cmdSessionReconcile(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown session subcommand %q", args[0])
 	}
@@ -1122,6 +1125,70 @@ func cmdSessionEnd(ctx context.Context, opts globalOptions, args []string) error
 		fmt.Println("ended", args[0])
 		return nil
 	})
+}
+
+type reconcileAction struct {
+	SessionID string `json:"session_id"`
+	Role      string `json:"role"`
+	PID       *int   `json:"pid,omitempty"`
+	Action    string `json:"action"`
+	Reason    string `json:"reason"`
+}
+
+func cmdSessionReconcile(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("session reconcile", flag.ContinueOnError)
+	dryRun := fs.Bool("dry-run", false, "show actions without applying")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected session reconcile arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		sessions, err := s.Sessions(ctx, false)
+		if err != nil {
+			return err
+		}
+		var actions []reconcileAction
+		for _, session := range sessions {
+			if session.PID == nil {
+				continue
+			}
+			if processAlive(*session.PID) {
+				continue
+			}
+			action := reconcileAction{SessionID: session.ID, Role: session.Role, PID: session.PID, Action: "mark_stale", Reason: "pid not running"}
+			actions = append(actions, action)
+			if !*dryRun {
+				if err := s.EndSession(ctx, session.ID, "stale", "reconciled", nil); err != nil {
+					return err
+				}
+			}
+		}
+		if opts.JSON {
+			return printJSON(actions)
+		}
+		if len(actions) == 0 {
+			fmt.Println("no session reconciliation actions")
+			return nil
+		}
+		for _, action := range actions {
+			mode := "applied"
+			if *dryRun {
+				mode = "would apply"
+			}
+			fmt.Printf("%s\t%s\t%s\t%s\n", mode, action.Action, action.SessionID, action.Reason)
+		}
+		return nil
+	})
+}
+
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 func findRole(cfg config.Config, name string) (config.Role, bool) {
