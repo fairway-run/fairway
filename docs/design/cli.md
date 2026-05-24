@@ -6,7 +6,7 @@ fairway ready [--in <epic-id>] [--priority <n>]         # list tasks ready for t
 fairway claim <task-id>                                 # transition todo → in_progress, assign owner
 fairway claim --in <epic-id>                            # claim next ready descendant within an epic
 fairway add <task-id> --title <t> [--kind <k>] [--parent <id>] [--priority <n>] [--sequence <n>] [--role <r>]
-fairway spawn --title <t> [--kind <k>] [--child | --sibling | --parent <id>] [--priority <n>] [--force]
+fairway spawn --id <task-id> --title <t> [--kind <k>] [--child | --sibling | --parent <id> | --root] [--from-task <id>] [--priority <n>] [--force]
 fairway update <task-id> [--title <t>] [--notes <text>] [--kind <k>] [--parent <id>] [--priority <n>] [--sequence <n>] [--dependencies <a,b,c>]
 fairway tree <task-id> [--depth <n>]                    # print descendant tree
 fairway set-status <task-id> <state> [--reason <text>] [--reopen]

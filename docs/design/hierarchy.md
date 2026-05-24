@@ -43,19 +43,22 @@ When `[task_kinds]` is absent, `kind` is free-text. When present, `kind` must be
 Solves the context-loss problem. While an agent is claimed on a task, work discovered during that task can be created with full epic context:
 
 ```bash
-fairway spawn --title "race in worker.go" --kind bug
+fairway spawn --id B-031 --title "race in worker.go" --kind bug
 # Default: sibling of the current task (same parent).
 
-fairway spawn --title "extract helper" --child
+fairway spawn --id T-099 --title "extract helper" --child
 # Child of the current task.
 
-fairway spawn --title "follow-up audit" --kind story --parent E-014
+fairway spawn --id S-014 --title "follow-up audit" --kind story --parent E-014
 # Explicit parent override.
 ```
 
 `spawn` inherits the current task's `priority` by default — so a P0 epic discovers P0 work. Override with `--priority <n>`.
 
-The current task is resolved from the active session (`agent_sessions.id`). If no active session can be inferred, `spawn` requires `--parent` or `--root`.
+Task IDs are supplied by the caller; fairway does not auto-generate IDs in v1.
+The current task is resolved from `--from-task`, `FAIRWAY_TASK_ID`, the active
+session (`FAIRWAY_SESSION_ID`), or the live session for the caller role. If no
+active session can be inferred, `spawn` requires `--parent` or `--root`.
 
 ## Returning to the epic
 

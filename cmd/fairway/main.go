@@ -56,6 +56,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdImport(ctx, opts, args[1:])
 	case "add":
 		return cmdAdd(ctx, opts, args[1:])
+	case "spawn":
+		return cmdSpawn(ctx, opts, args[1:])
 	case "update":
 		return cmdUpdate(ctx, opts, args[1:])
 	case "tree":
@@ -183,6 +185,117 @@ func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
 			return err
 		}
 		fmt.Println("added", task.ID)
+		return nil
+	})
+}
+
+func cmdSpawn(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("spawn", flag.ContinueOnError)
+	id := fs.String("id", "", "task id")
+	title := fs.String("title", "", "task title")
+	kind := fs.String("kind", "", "task kind")
+	parent := fs.String("parent", "", "parent task id")
+	child := fs.Bool("child", false, "spawn as child of current task")
+	sibling := fs.Bool("sibling", false, "spawn as sibling of current task")
+	rootTask := fs.Bool("root", false, "spawn as root task")
+	fromTask := fs.String("from-task", "", "current task id")
+	priority := fs.Int("priority", -1, "priority rank")
+	sequence := fs.Int("sequence", -1, "sibling sequence")
+	role := fs.String("role", "", "owning role")
+	notes := fs.String("notes", "", "notes")
+	deps := fs.String("dependencies", "", "comma-separated dependency ids")
+	acceptance := fs.String("acceptance", "", "acceptance check")
+	force := fs.Bool("force", false, "suppress granularity warnings")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected spawn arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *id == "" {
+		return errors.New("spawn requires --id")
+	}
+	if *title == "" {
+		return errors.New("spawn requires --title")
+	}
+	if boolCount(*child, *sibling, *rootTask, *parent != "") > 1 {
+		return errors.New("choose only one of --child, --sibling, --root, or --parent")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		currentID := *fromTask
+		if currentID == "" {
+			var err error
+			currentID, err = inferCurrentTaskID(ctx, opts, s)
+			if err != nil {
+				return err
+			}
+		}
+		var current *store.Task
+		if currentID != "" {
+			task, _, _, _, _, err := s.TaskDetail(ctx, currentID)
+			if err != nil {
+				return err
+			}
+			current = &task
+		}
+		task := store.TaskDefinition{
+			ID:       *id,
+			Title:    *title,
+			Kind:     *kind,
+			ParentID: *parent,
+			Role:     *role,
+			Notes:    *notes,
+		}
+		if *rootTask {
+			task.ParentID = ""
+		} else if *child {
+			if current == nil {
+				return errors.New("--child requires a current task or --from-task")
+			}
+			task.ParentID = current.Definition.ID
+			if isLeafKind(current.Definition.Kind) && !*force {
+				fmt.Fprintf(os.Stderr, "warning: %s is a leaf task (kind=%s); use --force to suppress this warning\n", current.Definition.ID, current.Definition.Kind)
+			}
+		} else if task.ParentID == "" {
+			if current == nil {
+				return errors.New("spawn requires --parent, --root, or an inferred current task")
+			}
+			task.ParentID = current.Definition.ParentID
+		}
+		if task.Kind == "" {
+			task.Kind = config.DefaultTaskKind(cfg)
+		}
+		if task.Role == "" {
+			if current != nil {
+				task.Role = current.Definition.Role
+			} else {
+				task.Role = resolveRole(opts)
+			}
+		}
+		if *priority >= 0 {
+			task.Priority = priority
+		} else if current != nil && current.Definition.Priority != nil {
+			v := *current.Definition.Priority
+			task.Priority = &v
+		} else {
+			task.Priority = config.DefaultPriority(cfg)
+		}
+		if *sequence >= 0 {
+			task.Sequence = sequence
+		}
+		if *deps != "" {
+			task.Dependencies = splitCSV(*deps)
+		}
+		if *acceptance != "" {
+			task.AcceptanceChecks = []string{*acceptance}
+		}
+		if err := validateTaskMetadata([]store.TaskDefinition{task}, cfg); err != nil {
+			return err
+		}
+		if err := s.AddTask(ctx, task); err != nil {
+			return err
+		}
+		fmt.Println("spawned", task.ID)
 		return nil
 	})
 }
@@ -976,6 +1089,56 @@ func generatedSessionID(role string, pid int) string {
 		return fmt.Sprintf("%s-%d-%d", role, pid, time.Now().UTC().Unix())
 	}
 	return fmt.Sprintf("%s-%d", role, time.Now().UTC().UnixNano())
+}
+
+func inferCurrentTaskID(ctx context.Context, opts globalOptions, s *store.Store) (string, error) {
+	if taskID := os.Getenv("FAIRWAY_TASK_ID"); taskID != "" {
+		return taskID, nil
+	}
+	sessionID := os.Getenv("FAIRWAY_SESSION_ID")
+	role := resolveRole(opts)
+	sessions, err := s.Sessions(ctx, false)
+	if err != nil {
+		return "", err
+	}
+	for _, session := range sessions {
+		if sessionID != "" && session.ID == sessionID {
+			return session.TaskID, nil
+		}
+	}
+	if role == "" {
+		return "", nil
+	}
+	var found string
+	for _, session := range sessions {
+		if session.Role != role || session.TaskID == "" {
+			continue
+		}
+		if found != "" {
+			return "", fmt.Errorf("multiple live sessions for role %s; pass --from-task", role)
+		}
+		found = session.TaskID
+	}
+	return found, nil
+}
+
+func boolCount(values ...bool) int {
+	count := 0
+	for _, value := range values {
+		if value {
+			count++
+		}
+	}
+	return count
+}
+
+func isLeafKind(kind string) bool {
+	switch kind {
+	case "task", "bug", "spike":
+		return true
+	default:
+		return false
+	}
 }
 
 type coordinatorReport struct {
@@ -2029,5 +2192,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|session|coordinator|checkpoint|packet|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|session|coordinator|checkpoint|packet|config validate|dashboard|version")
 }

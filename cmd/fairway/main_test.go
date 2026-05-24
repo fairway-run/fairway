@@ -144,6 +144,27 @@ func TestCLI_AddTask(t *testing.T) {
 	runOK(t, "--json", "tree", "T-001")
 }
 
+func TestCLI_SpawnTask(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "E-001", "--title", "Epic", "--kind", "epic", "--role", "backend", "--priority", "1")
+	runOK(t, "add", "T-001", "--title", "Current", "--role", "backend", "--parent", "E-001", "--priority", "1")
+	runOK(t, "session", "upsert", "--id", "s-1", "--role", "backend", "--task-id", "T-001")
+	t.Setenv("FAIRWAY_ROLE", "backend")
+	runOK(t, "spawn", "--id", "T-002", "--title", "Sibling follow-up")
+	runOK(t, "spawn", "--id", "B-001", "--title", "Child bug", "--kind", "bug", "--child", "--force")
+	runOK(t, "tree", "E-001")
+}
+
 func TestCLI_Preflight(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
