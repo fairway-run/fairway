@@ -32,7 +32,9 @@ fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> --proof-command <cmd> --regression-coverage <text>
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
 fairway regression-pack list | show <pack-id> | validate [<catalog-path>]
-fairway watcher start | finish | status
+fairway watcher start <watch-id> --task <task-id> [--owner <role-or-lane>] [--process <text>] [--command <cmd>] [--success <text>] [--failure <text>]
+fairway watcher finish <watch-id> --result <pass|fail|blocked> [--artifact <path-or-url>] [--duration-seconds <n>] [--notes <text>]
+fairway watcher status [--include-done]
 fairway checkpoint record <task-id> --summary <text> [--state <state>] [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path>]
 fairway checkpoint status [--all]
 fairway checkpoint stale [--before <date>] [--all]

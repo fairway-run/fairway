@@ -115,6 +115,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdCheckpoint(ctx, opts, args[1:])
 	case "packet":
 		return cmdPacket(ctx, opts, args[1:])
+	case "watcher":
+		return cmdWatcher(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -1701,6 +1703,101 @@ func cmdPacketWatcher(opts globalOptions, args []string) error {
 	return nil
 }
 
+func cmdWatcher(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("watcher requires subcommand: start, finish, status")
+	}
+	switch args[0] {
+	case "start":
+		return cmdWatcherStart(ctx, opts, args[1:])
+	case "finish":
+		return cmdWatcherFinish(ctx, opts, args[1:])
+	case "status":
+		return cmdWatcherStatus(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown watcher subcommand %q", args[0])
+	}
+}
+
+func cmdWatcherStart(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("watcher start requires watch id")
+	}
+	fs := flag.NewFlagSet("watcher start", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	owner := fs.String("owner", "", "owner")
+	process := fs.String("process", "", "process")
+	command := fs.String("command", "", "command")
+	success := fs.String("success", "", "success")
+	failure := fs.String("failure", "", "failure")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected watcher start arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		watcher := store.Watcher{ID: args[0], TaskID: *taskID, Owner: *owner, Process: *process, Command: *command, Success: *success, Failure: *failure}
+		if err := s.StartWatcher(ctx, watcher); err != nil {
+			return err
+		}
+		fmt.Println("watcher started", args[0])
+		return nil
+	})
+}
+
+func cmdWatcherFinish(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("watcher finish requires watch id")
+	}
+	fs := flag.NewFlagSet("watcher finish", flag.ContinueOnError)
+	result := fs.String("result", "", "result")
+	artifact := fs.String("artifact", "", "artifact path")
+	duration := fs.Int("duration-seconds", -1, "duration seconds")
+	notes := fs.String("notes", "", "notes")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected watcher finish arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		var dur *int
+		if *duration >= 0 {
+			dur = duration
+		}
+		if err := s.FinishWatcher(ctx, args[0], *result, *artifact, dur, *notes); err != nil {
+			return err
+		}
+		fmt.Println("watcher finished", args[0])
+		return nil
+	})
+}
+
+func cmdWatcherStatus(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("watcher status", flag.ContinueOnError)
+	includeDone := fs.Bool("include-done", false, "include completed watchers")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected watcher status arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		watchers, err := s.Watchers(ctx, *includeDone)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(watchers)
+		}
+		for _, watcher := range watchers {
+			fmt.Printf("%s\t%s\t%s\t%s\t%s\n", watcher.ID, watcher.TaskID, watcher.Status, watcher.Owner, watcher.Process)
+		}
+		return nil
+	})
+}
+
 type multiFlag []string
 
 func (m *multiFlag) String() string {
@@ -2465,5 +2562,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|config validate|dashboard|version")
 }

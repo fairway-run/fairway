@@ -107,6 +107,23 @@ type Checkpoint struct {
 	CreatedAt     string `json:"created_at"`
 }
 
+type Watcher struct {
+	ID              string `json:"id"`
+	TaskID          string `json:"task_id"`
+	Owner           string `json:"owner"`
+	Process         string `json:"process"`
+	Command         string `json:"command"`
+	Success         string `json:"success"`
+	Failure         string `json:"failure"`
+	Status          string `json:"status"`
+	Result          string `json:"result"`
+	ArtifactPath    string `json:"artifact_path"`
+	DurationSeconds *int   `json:"duration_seconds,omitempty"`
+	Notes           string `json:"notes"`
+	StartedAt       string `json:"started_at"`
+	FinishedAt      string `json:"finished_at"`
+}
+
 type Activity struct {
 	Kind      string
 	TaskID    string
@@ -747,6 +764,77 @@ WHERE project_id=?`
 	return out, rows.Err()
 }
 
+func (s *Store) StartWatcher(ctx context.Context, watcher Watcher) error {
+	if watcher.ID == "" {
+		return errors.New("watcher id is required")
+	}
+	if watcher.TaskID == "" {
+		return errors.New("watcher task id is required")
+	}
+	if watcher.Status == "" {
+		watcher.Status = "active"
+	}
+	if watcher.Status != "active" {
+		return fmt.Errorf("invalid watcher start status %q", watcher.Status)
+	}
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO task_watchers
+  (project_id, id, task_id, owner, process, command, success, failure, status, started_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.projectID, watcher.ID, watcher.TaskID, watcher.Owner, watcher.Process, watcher.Command, watcher.Success, watcher.Failure, watcher.Status, time.Now().UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *Store) FinishWatcher(ctx context.Context, id, result, artifact string, duration *int, notes string) error {
+	switch result {
+	case "pass", "fail", "blocked":
+	default:
+		return fmt.Errorf("invalid watcher result %q", result)
+	}
+	status := "done"
+	if result == "blocked" {
+		status = "blocked"
+	}
+	res, err := s.db.ExecContext(ctx, `
+UPDATE task_watchers
+SET status=?, result=?, artifact_path=?, duration_seconds=?, notes=?, finished_at=?
+WHERE project_id=? AND id=?`,
+		status, result, artifact, duration, notes, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, id)
+	return checkWriteResult(res, err)
+}
+
+func (s *Store) Watchers(ctx context.Context, includeDone bool) ([]Watcher, error) {
+	query := `
+SELECT id, task_id, COALESCE(owner, ''), COALESCE(process, ''), COALESCE(command, ''),
+       COALESCE(success, ''), COALESCE(failure, ''), status, COALESCE(result, ''),
+       COALESCE(artifact_path, ''), duration_seconds, COALESCE(notes, ''), started_at, COALESCE(finished_at, '')
+FROM task_watchers
+WHERE project_id=?`
+	if !includeDone {
+		query += ` AND status NOT IN ('done', 'blocked')`
+	}
+	query += ` ORDER BY started_at DESC`
+	rows, err := s.db.QueryContext(ctx, query, s.projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Watcher
+	for rows.Next() {
+		var watcher Watcher
+		var duration sql.NullInt64
+		if err := rows.Scan(&watcher.ID, &watcher.TaskID, &watcher.Owner, &watcher.Process, &watcher.Command, &watcher.Success, &watcher.Failure, &watcher.Status, &watcher.Result, &watcher.ArtifactPath, &duration, &watcher.Notes, &watcher.StartedAt, &watcher.FinishedAt); err != nil {
+			return nil, err
+		}
+		if duration.Valid {
+			v := int(duration.Int64)
+			watcher.DurationSeconds = &v
+		}
+		out = append(out, watcher)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, requireBlockedReason bool) error {
 	if status == "blocked" && requireBlockedReason && strings.TrimSpace(reason) == "" {
 		return errors.New("reason is required when blocking a task")
@@ -1312,4 +1400,25 @@ CREATE TABLE IF NOT EXISTS task_checkpoints (
 );
 CREATE INDEX IF NOT EXISTS idx_task_checkpoints_task ON task_checkpoints(project_id, task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_task_checkpoints_state_target ON task_checkpoints(project_id, state, target_close_by);
+
+CREATE TABLE IF NOT EXISTS task_watchers (
+  project_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  owner TEXT,
+  process TEXT,
+  command TEXT,
+  success TEXT,
+  failure TEXT,
+  status TEXT NOT NULL,
+  result TEXT,
+  artifact_path TEXT,
+  duration_seconds INTEGER,
+  notes TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  PRIMARY KEY(project_id, id),
+  FOREIGN KEY(project_id, task_id) REFERENCES task_definitions(project_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_watchers_status ON task_watchers(project_id, status, started_at);
 `
