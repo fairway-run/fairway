@@ -199,6 +199,31 @@ branch = "agent/ui"
 	runOK(t, "--json", "worktree", "status")
 }
 
+func TestCLI_SessionLifecycle(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+branch = "agent/backend"
+provider = "codex"
+`)
+	runOK(t, "session", "upsert", "--id", "s-1", "--role", "backend", "--pid", "123")
+	runOK(t, "session", "status")
+	runOK(t, "--json", "session", "status")
+	runOK(t, "session", "end", "s-1", "--reason", "normal", "--exit-code", "0")
+	runOK(t, "session", "status", "--all")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout

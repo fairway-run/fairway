@@ -75,6 +75,27 @@ type Review struct {
 	Commit   string
 }
 
+type Session struct {
+	ID              string `json:"id"`
+	Role            string `json:"role"`
+	Lane            string `json:"lane"`
+	WorktreePath    string `json:"worktree_path"`
+	Branch          string `json:"branch"`
+	SessionBackend  string `json:"session_backend"`
+	Provider        string `json:"provider"`
+	SessionName     string `json:"session_name"`
+	TaskID          string `json:"task_id"`
+	PID             *int   `json:"pid,omitempty"`
+	TmuxPane        string `json:"tmux_pane"`
+	TranscriptPath  string `json:"transcript_path"`
+	Status          string `json:"status"`
+	StartedAt       string `json:"started_at"`
+	LastHeartbeatAt string `json:"last_heartbeat_at"`
+	EndedAt         string `json:"ended_at"`
+	ExitCode        *int   `json:"exit_code,omitempty"`
+	EndReason       string `json:"end_reason"`
+}
+
 type Activity struct {
 	Kind      string
 	TaskID    string
@@ -563,6 +584,107 @@ SET review_required=1, review_status='pending', reviewer=?, review_note=?, updat
 WHERE project_id=? AND task_id=?`,
 		reviewer, reason, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, taskID)
 	return checkWriteResult(res, err)
+}
+
+func (s *Store) UpsertSession(ctx context.Context, session Session) error {
+	if strings.TrimSpace(session.ID) == "" {
+		return errors.New("session id is required")
+	}
+	if strings.TrimSpace(session.Role) == "" {
+		return errors.New("session role is required")
+	}
+	if session.Status == "" {
+		session.Status = "running"
+	}
+	switch session.Status {
+	case "starting", "running", "ended", "failed", "stale":
+	default:
+		return fmt.Errorf("invalid session status %q", session.Status)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if session.StartedAt == "" {
+		session.StartedAt = now
+	}
+	if session.LastHeartbeatAt == "" && session.Status != "ended" && session.Status != "failed" {
+		session.LastHeartbeatAt = now
+	}
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO agent_sessions
+  (project_id, id, role, lane, worktree_path, branch, session_backend, provider, session_name, task_id, pid, tmux_pane, transcript_path, status, started_at, last_heartbeat_at, ended_at, exit_code, end_reason)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, nullif(?, ''), ?, ?, ?, ?, ?, nullif(?, ''), nullif(?, ''), ?, nullif(?, ''))
+ON CONFLICT(project_id, id) DO UPDATE SET
+  role=excluded.role,
+  lane=excluded.lane,
+  worktree_path=excluded.worktree_path,
+  branch=excluded.branch,
+  session_backend=excluded.session_backend,
+  provider=excluded.provider,
+  session_name=excluded.session_name,
+  task_id=excluded.task_id,
+  pid=excluded.pid,
+  tmux_pane=excluded.tmux_pane,
+  transcript_path=excluded.transcript_path,
+  status=excluded.status,
+  last_heartbeat_at=excluded.last_heartbeat_at,
+  ended_at=excluded.ended_at,
+  exit_code=excluded.exit_code,
+  end_reason=excluded.end_reason`,
+		s.projectID, session.ID, session.Role, session.Lane, session.WorktreePath, session.Branch, session.SessionBackend, session.Provider, session.SessionName, session.TaskID, session.PID, session.TmuxPane, session.TranscriptPath, session.Status, session.StartedAt, session.LastHeartbeatAt, session.EndedAt, session.ExitCode, session.EndReason)
+	return err
+}
+
+func (s *Store) EndSession(ctx context.Context, id, status, reason string, exitCode *int) error {
+	if status == "" {
+		status = "ended"
+	}
+	switch status {
+	case "ended", "failed", "stale":
+	default:
+		return fmt.Errorf("invalid terminal session status %q", status)
+	}
+	res, err := s.db.ExecContext(ctx, `
+UPDATE agent_sessions
+SET status=?, ended_at=?, exit_code=?, end_reason=?
+WHERE project_id=? AND id=?`,
+		status, time.Now().UTC().Format(time.RFC3339Nano), exitCode, reason, s.projectID, id)
+	return checkWriteResult(res, err)
+}
+
+func (s *Store) Sessions(ctx context.Context, includeEnded bool) ([]Session, error) {
+	query := `
+SELECT id, role, COALESCE(lane, ''), COALESCE(worktree_path, ''), COALESCE(branch, ''),
+       COALESCE(session_backend, ''), COALESCE(provider, ''), COALESCE(session_name, ''),
+       COALESCE(task_id, ''), pid, COALESCE(tmux_pane, ''), COALESCE(transcript_path, ''),
+       status, started_at, COALESCE(last_heartbeat_at, ''), COALESCE(ended_at, ''), exit_code, COALESCE(end_reason, '')
+FROM agent_sessions
+WHERE project_id=?`
+	if !includeEnded {
+		query += ` AND ended_at IS NULL`
+	}
+	query += ` ORDER BY role, started_at DESC`
+	rows, err := s.db.QueryContext(ctx, query, s.projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		var session Session
+		var pid, exitCode sql.NullInt64
+		if err := rows.Scan(&session.ID, &session.Role, &session.Lane, &session.WorktreePath, &session.Branch, &session.SessionBackend, &session.Provider, &session.SessionName, &session.TaskID, &pid, &session.TmuxPane, &session.TranscriptPath, &session.Status, &session.StartedAt, &session.LastHeartbeatAt, &session.EndedAt, &exitCode, &session.EndReason); err != nil {
+			return nil, err
+		}
+		if pid.Valid {
+			v := int(pid.Int64)
+			session.PID = &v
+		}
+		if exitCode.Valid {
+			v := int(exitCode.Int64)
+			session.ExitCode = &v
+		}
+		out = append(out, session)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, requireBlockedReason bool) error {
@@ -1090,4 +1212,29 @@ CREATE TABLE IF NOT EXISTS task_reviews (
   created_at TEXT NOT NULL,
   FOREIGN KEY(project_id, task_id) REFERENCES task_state(project_id, task_id)
 );
+
+CREATE TABLE IF NOT EXISTS agent_sessions (
+  project_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  lane TEXT,
+  worktree_path TEXT,
+  branch TEXT,
+  session_backend TEXT,
+  provider TEXT,
+  session_name TEXT,
+  task_id TEXT,
+  pid INTEGER,
+  tmux_pane TEXT,
+  transcript_path TEXT,
+  status TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  last_heartbeat_at TEXT,
+  ended_at TEXT,
+  exit_code INTEGER,
+  end_reason TEXT,
+  PRIMARY KEY(project_id, id),
+  FOREIGN KEY(project_id, task_id) REFERENCES task_definitions(project_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_role_live ON agent_sessions(project_id, role, ended_at);
 `

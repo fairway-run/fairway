@@ -176,6 +176,32 @@ func TestHealth_CountsUnacknowledgedHandoff(t *testing.T) {
 	}
 }
 
+func TestSessionLifecycle(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	pid := 123
+	if err := s.UpsertSession(ctx, Session{ID: "backend-123", Role: "backend", Branch: "agent/backend", Status: "running", PID: &pid}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := s.Sessions(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != "backend-123" || sessions[0].PID == nil || *sessions[0].PID != pid {
+		t.Fatalf("sessions=%+v, want live backend session", sessions)
+	}
+	if err := s.EndSession(ctx, "backend-123", "ended", "normal", nil); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err = s.Sessions(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("live sessions=%+v, want none", sessions)
+	}
+}
+
 func TestReady_UsesConfiguredTerminalStates(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

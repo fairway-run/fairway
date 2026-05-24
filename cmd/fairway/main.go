@@ -97,6 +97,8 @@ func run(ctx context.Context, args []string) error {
 		return errors.New("route requires subcommand: review")
 	case "worktree":
 		return cmdWorktree(opts, args[1:])
+	case "session":
+		return cmdSession(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -802,6 +804,172 @@ func collectWorktreeStatus(cfg config.Config, root string) ([]worktreeStatus, er
 		statuses = append(statuses, status)
 	}
 	return statuses, nil
+}
+
+func cmdSession(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("session requires subcommand: upsert, status, end")
+	}
+	switch args[0] {
+	case "upsert":
+		return cmdSessionUpsert(ctx, opts, args[1:])
+	case "status":
+		return cmdSessionStatus(ctx, opts, args[1:])
+	case "end":
+		return cmdSessionEnd(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown session subcommand %q", args[0])
+	}
+}
+
+func cmdSessionUpsert(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("session upsert", flag.ContinueOnError)
+	id := fs.String("id", "", "session id")
+	role := fs.String("role", "", "role")
+	lane := fs.String("lane", "", "lane")
+	backend := fs.String("backend", "", "session backend")
+	provider := fs.String("provider", "", "provider")
+	name := fs.String("name", "", "session name")
+	taskID := fs.String("task-id", "", "task id")
+	pid := fs.Int("pid", -1, "process id")
+	worktreePath := fs.String("worktree", "", "worktree path")
+	branch := fs.String("branch", "", "branch")
+	tmuxPane := fs.String("tmux-pane", "", "tmux pane")
+	transcript := fs.String("transcript", "", "transcript path")
+	status := fs.String("status", "running", "session status")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected session upsert arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		sessionRole := *role
+		if sessionRole == "" {
+			sessionRole = resolveRole(opts)
+		}
+		if sessionRole == "" {
+			return errors.New("session role is required")
+		}
+		roleCfg, ok := findRole(cfg, sessionRole)
+		if ok {
+			if *provider == "" {
+				*provider = roleCfg.Provider
+			}
+			if *branch == "" {
+				*branch = config.RoleBranch(roleCfg)
+			}
+			if *worktreePath == "" {
+				*worktreePath = config.WorktreePath(cfg, root, roleCfg)
+			}
+		}
+		if *backend == "" {
+			*backend = cfg.Sessions.DefaultBackend
+		}
+		if *branch == "" {
+			*branch = fairwaygit.CurrentBranch(root)
+		}
+		if *worktreePath == "" {
+			*worktreePath = root
+		}
+		sessionID := *id
+		if sessionID == "" {
+			sessionID = generatedSessionID(sessionRole, *pid)
+		}
+		session := store.Session{
+			ID:             sessionID,
+			Role:           sessionRole,
+			Lane:           *lane,
+			WorktreePath:   *worktreePath,
+			Branch:         *branch,
+			SessionBackend: *backend,
+			Provider:       *provider,
+			SessionName:    *name,
+			TaskID:         *taskID,
+			TmuxPane:       *tmuxPane,
+			TranscriptPath: *transcript,
+			Status:         *status,
+		}
+		if *pid >= 0 {
+			session.PID = pid
+		}
+		if err := s.UpsertSession(ctx, session); err != nil {
+			return err
+		}
+		if opts.JSON {
+			session.ID = sessionID
+			return printJSON(session)
+		}
+		fmt.Println("session", sessionID)
+		return nil
+	})
+}
+
+func cmdSessionStatus(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("session status", flag.ContinueOnError)
+	all := fs.Bool("all", false, "include ended sessions")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected session status arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		sessions, err := s.Sessions(ctx, *all)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(sessions)
+		}
+		for _, session := range sessions {
+			fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n", session.ID, session.Role, session.Status, session.Branch, session.TaskID, session.WorktreePath)
+		}
+		return nil
+	})
+}
+
+func cmdSessionEnd(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("session end requires session id")
+	}
+	fs := flag.NewFlagSet("session end", flag.ContinueOnError)
+	status := fs.String("status", "ended", "terminal status")
+	reason := fs.String("reason", "normal", "end reason")
+	exitCode := fs.Int("exit-code", -1, "exit code")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected session end arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		var code *int
+		if *exitCode >= 0 {
+			code = exitCode
+		}
+		if err := s.EndSession(ctx, args[0], *status, *reason, code); err != nil {
+			return err
+		}
+		fmt.Println("ended", args[0])
+		return nil
+	})
+}
+
+func findRole(cfg config.Config, name string) (config.Role, bool) {
+	for _, role := range cfg.Roles {
+		if role.Name == name {
+			return role, true
+		}
+	}
+	return config.Role{}, false
+}
+
+func generatedSessionID(role string, pid int) string {
+	if pid >= 0 {
+		return fmt.Sprintf("%s-%d-%d", role, pid, time.Now().UTC().Unix())
+	}
+	return fmt.Sprintf("%s-%d", role, time.Now().UTC().UnixNano())
 }
 
 type multiFlag []string
@@ -1568,5 +1736,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|session|config validate|dashboard|version")
 }

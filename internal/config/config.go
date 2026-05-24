@@ -16,6 +16,7 @@ type Config struct {
 	Fairway        FairwayConfig        `toml:"fairway"`
 	Dashboard      DashboardConfig      `toml:"dashboard"`
 	Worktrees      WorktreesConfig      `toml:"worktrees"`
+	Sessions       SessionsConfig       `toml:"sessions"`
 	States         StatesConfig         `toml:"states"`
 	Gates          GatesConfig          `toml:"gates"`
 	TaskKinds      TaskKindsConfig      `toml:"task_kinds"`
@@ -40,6 +41,11 @@ type WorktreesConfig struct {
 	Root               string `toml:"root"`
 	Naming             string `toml:"naming"`
 	ReviewBranchNaming string `toml:"review_branch_naming"`
+}
+
+type SessionsConfig struct {
+	DefaultBackend string `toml:"default_backend"`
+	StaleAfter     string `toml:"stale_after"`
 }
 
 type StatesConfig struct {
@@ -103,6 +109,10 @@ func Defaults(root string) Config {
 			Root:               "../worktrees",
 			Naming:             "{repo}-{role}",
 			ReviewBranchNaming: "review/{role}",
+		},
+		Sessions: SessionsConfig{
+			DefaultBackend: "shell",
+			StaleAfter:     "12h",
 		},
 		States: StatesConfig{
 			Allowed:  []string{"todo", "in_progress", "blocked", "done"},
@@ -190,6 +200,9 @@ func Validate(cfg Config) error {
 	}
 	if !strings.Contains(cfg.Worktrees.ReviewBranchNaming, "{role}") {
 		return errors.New("[worktrees] review_branch_naming must include {role}")
+	}
+	if cfg.Sessions.DefaultBackend == "" {
+		return errors.New("[sessions] default_backend is required")
 	}
 	if len(cfg.States.Allowed) == 0 {
 		return errors.New("[states] allowed must not be empty")
@@ -349,6 +362,10 @@ auto_open = true
 root = "../worktrees"
 naming = "{repo}-{role}"
 review_branch_naming = "review/{role}"
+
+[sessions]
+default_backend = "shell"
+stale_after = "12h"
 
 [states]
 allowed = ["todo", "in_progress", "blocked", "done"]
