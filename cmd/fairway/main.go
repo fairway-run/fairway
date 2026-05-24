@@ -99,6 +99,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdWorktree(opts, args[1:])
 	case "session":
 		return cmdSession(ctx, opts, args[1:])
+	case "coordinator":
+		return cmdCoordinator(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -972,6 +974,143 @@ func generatedSessionID(role string, pid int) string {
 	return fmt.Sprintf("%s-%d", role, time.Now().UTC().UnixNano())
 }
 
+type coordinatorReport struct {
+	OK              bool             `json:"ok"`
+	Health          store.Health     `json:"health"`
+	ReadyCount      int              `json:"ready_count"`
+	ReadyByRole     map[string]int   `json:"ready_by_role"`
+	LiveSessions    []store.Session  `json:"live_sessions"`
+	Worktrees       []worktreeStatus `json:"worktrees"`
+	Issues          []string         `json:"issues"`
+	Recommendations []string         `json:"recommendations"`
+}
+
+func cmdCoordinator(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("coordinator requires subcommand: preflight, status, tick")
+	}
+	switch args[0] {
+	case "preflight":
+		return cmdCoordinatorReport(ctx, opts, args[1:], true, false)
+	case "status":
+		return cmdCoordinatorReport(ctx, opts, args[1:], false, false)
+	case "tick":
+		return cmdCoordinatorReport(ctx, opts, args[1:], false, true)
+	default:
+		return fmt.Errorf("unknown coordinator subcommand %q", args[0])
+	}
+}
+
+func cmdCoordinatorReport(ctx context.Context, opts globalOptions, args []string, failOnIssue, tick bool) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected coordinator arguments: %s", strings.Join(args, " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		report, err := buildCoordinatorReport(ctx, cfg, root, s)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			if err := printJSON(report); err != nil {
+				return err
+			}
+		} else if tick {
+			printCoordinatorTick(report)
+		} else {
+			printCoordinatorStatus(report)
+		}
+		if failOnIssue && !report.OK {
+			return errors.New("coordinator preflight failed")
+		}
+		return nil
+	})
+}
+
+func buildCoordinatorReport(ctx context.Context, cfg config.Config, root string, s *store.Store) (coordinatorReport, error) {
+	health, err := s.Health(ctx)
+	if err != nil {
+		return coordinatorReport{}, err
+	}
+	ready, err := s.Ready(ctx, "", cfg.States.Terminal)
+	if err != nil {
+		return coordinatorReport{}, err
+	}
+	sessions, err := s.Sessions(ctx, false)
+	if err != nil {
+		return coordinatorReport{}, err
+	}
+	worktrees, err := collectWorktreeStatus(cfg, root)
+	if err != nil {
+		return coordinatorReport{}, err
+	}
+	report := coordinatorReport{
+		OK:           true,
+		Health:       health,
+		ReadyCount:   len(ready),
+		ReadyByRole:  map[string]int{},
+		LiveSessions: sessions,
+		Worktrees:    worktrees,
+	}
+	for _, task := range ready {
+		report.ReadyByRole[task.Definition.Role]++
+	}
+	if len(cfg.Roles) == 0 {
+		report.Issues = append(report.Issues, "no roles configured")
+	}
+	for _, wt := range worktrees {
+		if !wt.Exists || !wt.Registered {
+			report.Issues = append(report.Issues, fmt.Sprintf("worktree for role %s is not set up", wt.Role))
+		}
+		if wt.Dirty {
+			report.Issues = append(report.Issues, fmt.Sprintf("worktree for role %s has uncommitted changes", wt.Role))
+		}
+	}
+	if health.StaleInProgress > 0 {
+		report.Issues = append(report.Issues, fmt.Sprintf("%d stale in-progress task(s)", health.StaleInProgress))
+	}
+	if health.UnacknowledgedOver1Hour > 0 {
+		report.Issues = append(report.Issues, fmt.Sprintf("%d handoff(s) unacknowledged over 1h", health.UnacknowledgedOver1Hour))
+	}
+	if report.ReadyCount > 0 {
+		report.Recommendations = append(report.Recommendations, fmt.Sprintf("claim from %d ready task(s)", report.ReadyCount))
+	}
+	if health.UnroutedReviews > 0 {
+		report.Recommendations = append(report.Recommendations, fmt.Sprintf("route %d pending review(s)", health.UnroutedReviews))
+	}
+	if health.UnacknowledgedHandoff > 0 {
+		report.Recommendations = append(report.Recommendations, fmt.Sprintf("acknowledge or act on %d handoff(s)", health.UnacknowledgedHandoff))
+	}
+	report.OK = len(report.Issues) == 0
+	return report, nil
+}
+
+func printCoordinatorStatus(report coordinatorReport) {
+	fmt.Printf("ok: %t\nready: %d\nlive_sessions: %d\n", report.OK, report.ReadyCount, len(report.LiveSessions))
+	fmt.Printf("health: in_progress=%d stale=%d handoffs=%d reviews=%d\n", report.Health.InProgress, report.Health.StaleInProgress, report.Health.UnacknowledgedHandoff, report.Health.UnroutedReviews)
+	if len(report.ReadyByRole) > 0 {
+		fmt.Println("ready_by_role:")
+		for role, count := range report.ReadyByRole {
+			fmt.Printf("- %s: %d\n", role, count)
+		}
+	}
+	if len(report.Issues) > 0 {
+		fmt.Println("issues:")
+		for _, issue := range report.Issues {
+			fmt.Printf("- %s\n", issue)
+		}
+	}
+}
+
+func printCoordinatorTick(report coordinatorReport) {
+	printCoordinatorStatus(report)
+	if len(report.Recommendations) > 0 {
+		fmt.Println("recommendations:")
+		for _, rec := range report.Recommendations {
+			fmt.Printf("- %s\n", rec)
+		}
+	}
+}
+
 type multiFlag []string
 
 func (m *multiFlag) String() string {
@@ -1736,5 +1875,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|session|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|git-check|preflight|merge-ready|route review|worktree|session|coordinator|config validate|dashboard|version")
 }

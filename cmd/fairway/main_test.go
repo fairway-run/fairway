@@ -224,6 +224,38 @@ provider = "codex"
 	runOK(t, "session", "status", "--all")
 }
 
+func TestCLI_CoordinatorStatus(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+`)
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: Coord
+  role: backend
+`)
+	runOK(t, "import", "tasks.yaml")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	runOK(t, "worktree", "setup")
+	runOK(t, "coordinator", "status")
+	runOK(t, "--json", "coordinator", "tick")
+	runOK(t, "coordinator", "preflight")
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	stdout := os.Stdout
