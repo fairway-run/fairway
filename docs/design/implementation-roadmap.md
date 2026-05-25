@@ -24,6 +24,9 @@ to a useful v1.
 - Read-only dashboard with SSE refresh, role grouping, health badges, task
   detail, activity feed, sessions, worktrees, checkpoints, watchers, and
   rollups.
+- Embedded forward-only migrations and migration compatibility checks.
+- Basic TUI mode for headless ready/claim/status/detail workflows.
+- First audited dashboard mutation path with CSRF-protected claim.
 - Release packaging config and tag-triggered GitHub release workflow.
 
 ## Completed v0.2 Track
@@ -88,11 +91,9 @@ to a useful v1.
 
 ## Remaining Work
 
-1. Replace the inline SQL migration blob with embedded migration files and a
-   forward-only migration runner.
-2. Add a real Postgres compatibility harness beyond the current DDL sketch.
-3. Add Homebrew tap publishing after the first tagged release settles.
-4. Add optional dashboard mutations with CSRF and per-action audit.
-5. Add TUI mode for SSH/headless workflows.
-6. Expand tracker integration from local links/dry-run reporting to provider
+1. Add Homebrew tap publishing after the first tagged release settles.
+2. Expand dashboard mutations beyond claim while keeping CSRF and per-action
+   audit on every write.
+3. Expand TUI ergonomics beyond the basic command loop.
+4. Expand tracker integration from local links/dry-run reporting to provider
    adapters when credentials and API mapping are explicit.
