@@ -403,6 +403,7 @@ func TestCLI_RemainingParity(t *testing.T) {
 	runOK(t, "--json", "prune-stale")
 	runOK(t, "db", "compat", "--backend", "postgres")
 	runOK(t, "db", "compat", "--backend", "postgres", "--print-ddl")
+	runOK(t, "tui", "--once")
 }
 
 func TestCLI_TrackerLinks(t *testing.T) {

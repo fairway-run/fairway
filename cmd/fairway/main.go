@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -132,6 +133,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdProjects(opts, args[1:])
 	case "tracker":
 		return cmdTracker(ctx, opts, args[1:])
+	case "tui":
+		return cmdTUI(ctx, opts, args[1:])
 	case "config":
 		if len(args) >= 2 && args[1] == "validate" {
 			if len(args) > 2 {
@@ -2184,6 +2187,104 @@ func cmdTrackerReconcile(ctx context.Context, opts globalOptions, args []string)
 	})
 }
 
+func cmdTUI(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("tui", flag.ContinueOnError)
+	once := fs.Bool("once", false, "render once and exit")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tui arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		if err := printTUIScreen(ctx, cfg, opts, s); err != nil {
+			return err
+		}
+		if *once {
+			return nil
+		}
+		scanner := bufio.NewScanner(os.Stdin)
+		for {
+			fmt.Print("fairway> ")
+			if !scanner.Scan() {
+				return scanner.Err()
+			}
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			parts := strings.Fields(line)
+			switch parts[0] {
+			case "q", "quit", "exit":
+				return nil
+			case "ready", "r":
+				if err := printTUIReady(ctx, cfg, opts, s); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+				}
+			case "status", "s":
+				if err := printTUIStatus(ctx, s); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+				}
+			case "detail", "d":
+				if len(parts) < 2 {
+					fmt.Fprintln(os.Stderr, "detail requires task id")
+					continue
+				}
+				if err := printDetail(ctx, s, parts[1], false); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+				}
+			case "claim", "c":
+				if len(parts) < 2 {
+					fmt.Fprintln(os.Stderr, "claim requires task id")
+					continue
+				}
+				branch := fairwaygit.CurrentBranch(".")
+				if err := s.Claim(ctx, parts[1], resolveRole(opts), branch); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					continue
+				}
+				fmt.Println("claimed", parts[1])
+			case "help", "h":
+				printTUIHelp()
+			default:
+				fmt.Fprintln(os.Stderr, "unknown command; type help")
+			}
+		}
+	})
+}
+
+func printTUIScreen(ctx context.Context, cfg config.Config, opts globalOptions, s *store.Store) error {
+	fmt.Println("fairway tui")
+	printTUIHelp()
+	if err := printTUIStatus(ctx, s); err != nil {
+		return err
+	}
+	return printTUIReady(ctx, cfg, opts, s)
+}
+
+func printTUIHelp() {
+	fmt.Println("commands: ready|r, claim|c <id>, status|s, detail|d <id>, help|h, quit|q")
+}
+
+func printTUIStatus(ctx context.Context, s *store.Store) error {
+	health, err := s.Health(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("health: in_progress=%d stale=%d handoffs=%d reviews=%d\n", health.InProgress, health.StaleInProgress, health.UnacknowledgedHandoff, health.UnroutedReviews)
+	return nil
+}
+
+func printTUIReady(ctx context.Context, cfg config.Config, opts globalOptions, s *store.Store) error {
+	tasks, err := s.Ready(ctx, resolveRole(opts), cfg.States.Terminal)
+	if err != nil {
+		return err
+	}
+	fmt.Println("ready:")
+	printTasks(tasks)
+	return nil
+}
+
 func defaultRegressionCatalogPath() string {
 	return "regression-packs.yaml"
 }
@@ -3112,5 +3213,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|regression-pack|tracker|register|unregister|projects|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
 }
