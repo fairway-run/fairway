@@ -30,51 +30,6 @@ import (
 
 const version = "0.1.0-dev"
 
-const postgresCompatDDL = `-- fairway postgres compatibility sketch
--- Runtime support remains SQLite-first. This DDL is intentionally conservative
--- and mirrors the portable table shapes used by the SQLite store.
-
-CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS task_definitions (
-  project_id TEXT NOT NULL,
-  id TEXT NOT NULL,
-  parent_id TEXT,
-  kind TEXT,
-  title TEXT NOT NULL,
-  role TEXT NOT NULL,
-  notes TEXT,
-  acceptance_checks TEXT,
-  dependencies TEXT,
-  priority INTEGER,
-  sequence INTEGER,
-  created_at TEXT NOT NULL,
-  created_by TEXT,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY(project_id, id)
-);
-CREATE TABLE IF NOT EXISTS task_state (
-  project_id TEXT NOT NULL,
-  task_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  owner TEXT,
-  claimant TEXT,
-  branch TEXT,
-  claimed_at TEXT,
-  completed_at TEXT,
-  commit_sha TEXT,
-  review_required INTEGER NOT NULL DEFAULT 0,
-  review_status TEXT,
-  reviewer TEXT,
-  reviewed_at TEXT,
-  review_note TEXT,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY(project_id, task_id)
-);
--- task_state_history, task_handoffs, task_evidence, task_reviews,
--- agent_sessions, task_checkpoints, and task_watchers use the same column
--- names and portable scalar types as the SQLite schema.
-`
-
 type globalOptions struct {
 	ConfigPath string
 	DBPath     string
@@ -2836,10 +2791,24 @@ func cmdDBCompat(args []string) error {
 		return errors.New("db compat --apply-ddl is not implemented for postgres")
 	}
 	if *printDDL {
-		fmt.Print(postgresCompatDDL)
+		ddl, err := store.PostgresCompatDDL()
+		if err != nil {
+			return err
+		}
+		fmt.Print(ddl)
 		return nil
 	}
-	fmt.Println("postgres compatibility checks passed")
+	report, err := store.PostgresCompatReport()
+	if err != nil {
+		return err
+	}
+	if !report.OK {
+		for _, finding := range report.Findings {
+			fmt.Fprintf(os.Stderr, "%s: %s: %s\n", finding.Migration, finding.Token, finding.Message)
+		}
+		return errors.New("postgres compatibility checks failed")
+	}
+	fmt.Printf("postgres compatibility checks passed (%d migrations)\n", len(report.Files))
 	return nil
 }
 

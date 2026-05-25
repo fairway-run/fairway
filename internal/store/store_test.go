@@ -54,6 +54,19 @@ func TestMigrate_RecordsAppliedMigration(t *testing.T) {
 	}
 }
 
+func TestPostgresCompatReport(t *testing.T) {
+	report, err := PostgresCompatReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK {
+		t.Fatalf("findings=%+v, want ok", report.Findings)
+	}
+	if len(report.Files) == 0 {
+		t.Fatal("expected at least one migration file")
+	}
+}
+
 func TestRecordReview_MaterializesTaskState(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
