@@ -45,6 +45,40 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 	}
 }
 
+func TestDashboardClaimRequiresCSRFAndAudits(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, []string{"backend"}, nil)
+	badReq := httptest.NewRequest(http.MethodPost, "/actions/claim", strings.NewReader("task_id=T-001&csrf=bad"))
+	badReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	badRec := httptest.NewRecorder()
+	server.claim(badRec, badReq)
+	if badRec.Code != http.StatusForbidden {
+		t.Fatalf("bad csrf status=%d, want 403", badRec.Code)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/actions/claim", strings.NewReader("task_id=T-001&csrf="+server.csrfToken))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	server.claim(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("claim status=%d, want 303", rec.Code)
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != "in_progress" {
+		t.Fatalf("status=%q, want in_progress", task.Status)
+	}
+}
+
 func TestMultiDashboardRendersProjects(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

@@ -139,6 +139,13 @@ type TrackerLink struct {
 	UpdatedAt  string `json:"updated_at"`
 }
 
+type AuditEvent struct {
+	Actor  string
+	Action string
+	TaskID string
+	Detail string
+}
+
 type Activity struct {
 	Kind      string
 	TaskID    string
@@ -968,6 +975,20 @@ ON CONFLICT(project_id, task_id, provider) DO UPDATE SET
   url=excluded.url,
   updated_at=excluded.updated_at`,
 		s.projectID, link.TaskID, link.Provider, link.ExternalID, link.URL, now, now)
+	return err
+}
+
+func (s *Store) RecordAudit(ctx context.Context, event AuditEvent) error {
+	if event.Actor == "" {
+		event.Actor = Actor()
+	}
+	if event.Action == "" {
+		return errors.New("audit action is required")
+	}
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO audit_events (project_id, actor, action, task_id, detail, created_at)
+VALUES (?, ?, ?, nullif(?, ''), ?, ?)`,
+		s.projectID, event.Actor, event.Action, event.TaskID, event.Detail, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
 

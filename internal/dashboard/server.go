@@ -1,6 +1,8 @@
 package dashboard
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -13,6 +15,7 @@ type Server struct {
 	store     *store.Store
 	roles     []string
 	worktrees []WorktreeStatus
+	csrfToken string
 }
 
 type WorktreeStatus struct {
@@ -37,7 +40,7 @@ type ProjectStore struct {
 }
 
 func New(s *store.Store, roles []string, worktrees []WorktreeStatus) *Server {
-	return &Server{store: s, roles: roles, worktrees: worktrees}
+	return &Server{store: s, roles: roles, worktrees: worktrees, csrfToken: newCSRFToken()}
 }
 
 func NewMulti(projects []ProjectStore) http.Handler {
@@ -87,6 +90,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
 	mux.HandleFunc("/tasks/", s.task)
+	mux.HandleFunc("/actions/claim", s.claim)
 	mux.HandleFunc("/events", s.events)
 	return http.ListenAndServe(addr, mux)
 }
@@ -191,8 +195,32 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Handoffs    []store.Handoff
 		Reviews     []store.Review
 		Rollup      Rollup
-	}{task, transitions, evidence, handoffs, reviews, rollups[task.Definition.ID]}
+		CSRFToken   string
+	}{task, transitions, evidence, handoffs, reviews, rollups[task.Definition.ID], s.csrfToken}
 	_ = detailTemplate.Execute(w, data)
+}
+
+func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.FormValue("csrf") != s.csrfToken {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	taskID := r.FormValue("task_id")
+	task, _, _, _, _, err := s.store.TaskDetail(r.Context(), taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if err := s.store.Claim(r.Context(), taskID, task.Definition.Role, ""); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.claim", TaskID: taskID, Detail: "claimed from dashboard"})
+	http.Redirect(w, r, "/tasks/"+taskID, http.StatusSeeOther)
 }
 
 func taskRollups(tasks []store.Task, terminal map[string]bool) map[string]Rollup {
@@ -214,6 +242,14 @@ func taskRollups(tasks []store.Task, terminal map[string]bool) map[string]Rollup
 		}
 	}
 	return rollups
+}
+
+func newCSRFToken() string {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(bytes[:])
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
@@ -309,6 +345,7 @@ body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#5
 <h1>{{.Task.Definition.ID}}: {{.Task.Definition.Title}}</h1>
 <p class="meta">role={{.Task.Definition.Role}} status={{.Task.Status}} owner={{.Task.Owner}} review={{.Task.ReviewStatus}}</p>
 {{if .Rollup.Total}}<p class="meta">descendants done: {{.Rollup.Done}}/{{.Rollup.Total}}</p>{{end}}
+<form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button type="submit">Claim</button></form>
 <h2>Notes</h2><pre>{{.Task.Definition.Notes}}</pre>
 <h2>Dependencies</h2><ul>{{range .Task.Definition.Dependencies}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
 <h2>Acceptance</h2><ul>{{range .Task.Definition.AcceptanceChecks}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
