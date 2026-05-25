@@ -43,6 +43,17 @@ func TestClaim_AllowsExactlyOneWinner(t *testing.T) {
 	}
 }
 
+func TestMigrate_RecordsAppliedMigration(t *testing.T) {
+	s := newTestStore(t)
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=1`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("migration count=%d, want 1", count)
+	}
+}
+
 func TestRecordReview_MaterializesTaskState(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
