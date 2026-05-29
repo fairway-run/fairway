@@ -57,6 +57,7 @@ See [docs/quickstart.md](docs/quickstart.md) for the full walkthrough.
 Start here:
 
 - [AGENTS.md](AGENTS.md) — orientation for any agent (Claude, Codex, Gemini, human) working in this repo
+- [Agent guide](docs/agent-guide.md) — practical command flow for agents using fairway
 - [Architecture](docs/architecture.md) — components, data flow, package layout
 - [Product](docs/product.md) — vision, principles, roadmap, anti-goals
 

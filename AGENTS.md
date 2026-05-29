@@ -24,12 +24,13 @@ Tasks flow through the configured state machine (see [docs/design/state-machine.
 
 Every agent must read:
 
-1. [docs/design/release-cuts.md](docs/design/release-cuts.md)
-2. [docs/governance/coding-standards.md](docs/governance/coding-standards.md)
-3. [docs/governance/testing.md](docs/governance/testing.md)
-4. [docs/governance/review-guards.md](docs/governance/review-guards.md)
-5. [docs/governance/commits.md](docs/governance/commits.md)
-6. Your role file (linked above).
+1. [docs/agent-guide.md](docs/agent-guide.md)
+2. [docs/design/release-cuts.md](docs/design/release-cuts.md)
+3. [docs/governance/coding-standards.md](docs/governance/coding-standards.md)
+4. [docs/governance/testing.md](docs/governance/testing.md)
+5. [docs/governance/review-guards.md](docs/governance/review-guards.md)
+6. [docs/governance/commits.md](docs/governance/commits.md)
+7. Your role file (linked above).
 
 ## Operating principles
 
