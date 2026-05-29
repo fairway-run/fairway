@@ -14,6 +14,12 @@ Fairway task.
 - `doc/governance/Workflow_Regression_Packs.yaml` or
   `examples/gpuaas-regression-packs.yaml` for catalog validation.
 
+The exact config mirrors the current sibling worktree layout under
+`/Users/subash/dev/gpuas-A-backend`, `/Users/subash/dev/gpuas-B-ui`, and so on:
+`root = ".."` and `naming = "gpuas-{role}"`. For a fully isolated disposable
+parity run, change `root` to something like `../worktrees` before running
+`fairway worktree setup`.
+
 ## Setup
 
 ```bash
@@ -34,8 +40,8 @@ mapping is written down.
 
 | Behavior | GPUaaS Reference | Fairway Command | Pass Criteria |
 |---|---|---|---|
-| Queue validation | `make queue-ready` / `agent_queue_validate.sh` | `fairway import ... --state-once` and `fairway ready --json` | Invalid roles, dependencies, task IDs, and metadata are rejected or rendered with equivalent operator clarity. |
-| Ready ordering | `queue-ready` | `fairway ready --json` | Same ready tasks per role, ordered by dependency completion, priority, and sequence. |
+| Queue validation | `make queue-ready` / `agent_queue_validate.sh` | `fairway import ... --state-once` and `fairway --json ready` | Invalid roles, dependencies, task IDs, and metadata are rejected or rendered with equivalent operator clarity. |
+| Ready ordering | `queue-ready` | `fairway --json ready` | Same ready tasks per role, ordered by dependency completion, priority, and sequence. |
 | Queue/git consistency | `make queue-git-check` | `fairway git-check` / `fairway preflight` | Same role branch/worktree risks are visible before dispatch. |
 | Claim and transitions | `queue-claim`, `queue-set-status` | `fairway claim`, `fairway set-status` | Double-claim loses atomically; blocked requires a reason; terminal gates behave as configured. |
 | Evidence and merge readiness | queue store gates | `fairway record evidence`, `fairway merge-ready` | Evidence-before-done and review/hand-off gates match GPUaaS policy. |
@@ -52,9 +58,9 @@ checkout:
 
 ```bash
 mkdir -p .fairway/parity
-fairway ready --json > .fairway/parity/fairway-ready.json
-fairway git-check --json > .fairway/parity/fairway-git-check.json
-fairway coordinator tick --json > .fairway/parity/fairway-tick.json
+fairway --json ready > .fairway/parity/fairway-ready.json
+fairway --json git-check > .fairway/parity/fairway-git-check.json
+fairway --json coordinator tick > .fairway/parity/fairway-tick.json
 fairway regression-pack validate doc/governance/Workflow_Regression_Packs.yaml \
   > .fairway/parity/fairway-regression-packs.txt
 ```

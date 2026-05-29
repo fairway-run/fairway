@@ -14,7 +14,7 @@ listen = "127.0.0.1:7878"
 auto_open = true
 
 [worktrees]
-root = "../worktrees"
+root = ".."
 naming = "gpuas-{role}"
 review_branch_naming = "review/{role}"
 
@@ -59,23 +59,19 @@ reviewer = "C-ops"
 
 [[review_routes]]
 match = "scripts/ci/**"
-reviewer = "C-ops"
-
-[[review_routes]]
-match = "scripts/ops/**"
-reviewer = "C-ops"
-
-[[review_routes]]
-match = "doc/governance/**"
 reviewer = "E-governance"
 
 [[review_routes]]
-match = "docs/governance/**"
-reviewer = "E-governance"
+match = "doc/api/**"
+reviewer = "D-arch"
 
 [[review_routes]]
 match = "doc/architecture/**"
 reviewer = "D-arch"
+
+[[review_routes]]
+match = "doc/governance/**"
+reviewer = "E-governance"
 
 [[review_routes]]
 match = "docs/architecture/**"
@@ -90,40 +86,104 @@ match = "docs/design/**"
 reviewer = "D-arch"
 
 [[review_routes]]
+match = "docs/governance/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "cmd/api/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "cmd/terminal-gateway/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "cmd/node-agent/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "cmd/billing-worker/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "cmd/provisioning-worker/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/services/auth/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/services/billing/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/services/payments/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/services/provisioning/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/services/terminal/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/services/appruntime/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/shared/authz/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "cmd/*security*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "cmd/*release*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "cmd/*runtime*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/*security*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/*release*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "packages/*runtime*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "scripts/*security*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "scripts/*release*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "scripts/*runtime*"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "scripts/ops/**"
+reviewer = "C-ops"
+
+[[review_routes]]
 match = "packages/web/**"
 reviewer = "B-ui"
 
 [[review_routes]]
 match = "app/**"
 reviewer = "B-ui"
-
-[[review_routes]]
-match = "services/api/**"
-reviewer = "D-arch"
-
-[[review_routes]]
-match = "api/**"
-reviewer = "D-arch"
-
-[[review_routes]]
-match = "auth/**"
-reviewer = "D-arch"
-
-[[review_routes]]
-match = "billing/**"
-reviewer = "D-arch"
-
-[[review_routes]]
-match = "provisioning/**"
-reviewer = "D-arch"
-
-[[review_routes]]
-match = "terminal/**"
-reviewer = "D-arch"
-
-[[review_routes]]
-match = "node-agent/**"
-reviewer = "D-arch"
 
 [states]
 allowed = ["todo", "in_progress", "blocked", "done"]

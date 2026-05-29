@@ -381,17 +381,24 @@ func TestCLI_GPUaaSParityFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string]string{
-		".github/workflows/ci.yml":      "C-ops",
-		"scripts/ops/agent_queue.sh":    "C-ops",
-		"doc/governance/Agent_Queue.md": "E-governance",
-		"docs/design/state-machine.md":  "D-arch",
-		"packages/web/src/App.tsx":      "B-ui",
-		"services/api/workloads.go":     "D-arch",
-		"auth/session.go":               "D-arch",
-		"billing/invoices.go":           "D-arch",
-		"provisioning/runtime.go":       "D-arch",
-		"terminal/session.go":           "D-arch",
-		"node-agent/worker.go":          "D-arch",
+		".github/workflows/ci.yml":                         "C-ops",
+		"scripts/ci/contracts_validate.sh":                 "E-governance",
+		"scripts/ops/agent_queue.sh":                       "C-ops",
+		"doc/api/openapi.draft.yaml":                       "D-arch",
+		"doc/architecture/Runtime.md":                      "D-arch",
+		"doc/governance/Agent_Queue.md":                    "E-governance",
+		"docs/design/state-machine.md":                     "D-arch",
+		"packages/web/src/App.tsx":                         "B-ui",
+		"cmd/api/routes.go":                                "E-governance",
+		"cmd/terminal-gateway/main.go":                     "E-governance",
+		"cmd/node-agent/main.go":                           "E-governance",
+		"cmd/billing-worker/main.go":                       "E-governance",
+		"cmd/provisioning-worker/main.go":                  "E-governance",
+		"packages/services/auth/service.go":                "E-governance",
+		"packages/services/billing/service.go":             "E-governance",
+		"packages/services/payments/service.go":            "E-governance",
+		"packages/services/provisioning/worker/service.go": "E-governance",
+		"packages/services/terminal/proxy.go":              "E-governance",
 	}
 	for changedPath, want := range cases {
 		got, reason := matchReviewRoute(cfg.ReviewRoutes, []string{changedPath})
