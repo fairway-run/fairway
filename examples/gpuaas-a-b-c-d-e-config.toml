@@ -1,0 +1,144 @@
+# Exact GPUaaS lane mapping used for parity dry runs.
+# Copy to .fairway/config.toml in a disposable GPUaaS checkout, then run
+# `fairway config validate` before importing copied queue data.
+
+[fairway]
+project_name = "gpuaas"
+db_path = ".fairway/state.db"
+queue_source = "yaml:doc/governance/Agent_Work_Queue.yaml"
+main_branch = "master"
+task_id_pattern = "^[A-Z][A-Z0-9-]*$"
+
+[dashboard]
+listen = "127.0.0.1:7878"
+auto_open = true
+
+[worktrees]
+root = "../worktrees"
+naming = "gpuas-{role}"
+review_branch_naming = "review/{role}"
+
+[sessions]
+default_backend = "shell"
+stale_after = "12h"
+
+[coordinator]
+max_primary_tracks = 1
+max_sidecar_tracks = 1
+max_review_tracks = 1
+checkpoint_stale_after = "24h"
+
+[[roles]]
+name = "A-backend"
+branch = "agent/A-backend"
+provider = "codex"
+
+[[roles]]
+name = "B-ui"
+branch = "agent/B-ui"
+provider = "claude"
+
+[[roles]]
+name = "C-ops"
+branch = "agent/C-ops"
+provider = "codex"
+
+[[roles]]
+name = "D-arch"
+branch = "agent/D-arch"
+provider = "gemini"
+
+[[roles]]
+name = "E-governance"
+branch = "agent/E-governance"
+provider = "gemini"
+
+[[review_routes]]
+match = ".github/**"
+reviewer = "C-ops"
+
+[[review_routes]]
+match = "scripts/ci/**"
+reviewer = "C-ops"
+
+[[review_routes]]
+match = "scripts/ops/**"
+reviewer = "C-ops"
+
+[[review_routes]]
+match = "doc/governance/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "docs/governance/**"
+reviewer = "E-governance"
+
+[[review_routes]]
+match = "doc/architecture/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "docs/architecture/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "doc/design/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "docs/design/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "packages/web/**"
+reviewer = "B-ui"
+
+[[review_routes]]
+match = "app/**"
+reviewer = "B-ui"
+
+[[review_routes]]
+match = "services/api/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "api/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "auth/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "billing/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "provisioning/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "terminal/**"
+reviewer = "D-arch"
+
+[[review_routes]]
+match = "node-agent/**"
+reviewer = "D-arch"
+
+[states]
+allowed = ["todo", "in_progress", "blocked", "done"]
+terminal = ["done"]
+
+[gates]
+require_evidence_before_done = true
+require_review_before_done = false
+require_handoff_before_merge_ready = false
+require_blocked_reason = true
+allow_force_without_reason = false
+
+[task_kinds]
+allowed = ["epic", "story", "task", "bug", "spike", "watch"]
+default = "task"
+
+[task_priorities]
+default = 1000

@@ -10,6 +10,7 @@ project_name = "myrepo"                # default: basename of repo root; must be
 db_path = ".fairway/state.db"          # relative to repo root
 queue_source = "inline"                # "inline" | "yaml:<path>" | "json:<path>"
 main_branch = "main"                   # base branch worktrees branch off of
+task_id_pattern = "^[A-Z]+-[0-9]+$"    # regex enforced by add/import/update
 
 [dashboard]
 listen = "127.0.0.1:7878"
@@ -84,6 +85,7 @@ levels = [
 | `db_path` | string | `.fairway/state.db` | SQLite DB path. Relative to repo root unless absolute. |
 | `queue_source` | string | `inline` | `inline` (DB is authoritative), `yaml:<path>` or `json:<path>` (DB is still authoritative; the file is for bootstrap import only). |
 | `main_branch` | string | `main` | Base branch new worktree branches are created from. |
+| `task_id_pattern` | string | `^[A-Z]+-[0-9]+$` | Regex enforced for task IDs. GPUaaS parity configs use a wider pattern for legacy IDs such as `A-DEMO-UAT-001` and `A-PROV-REMOVE-SSH`. |
 
 ### `[dashboard]`
 
@@ -179,6 +181,7 @@ Lower `rank` is more urgent. Priority is cross-cutting — it overrides epic bou
 The initial config has permissive completion gates but requires a reason when a
 task enters `blocked`:
 
+- `task_id_pattern = "^[A-Z]+-[0-9]+$"`
 - `require_evidence_before_done = false`
 - `require_review_before_done = false`
 - `require_handoff_before_merge_ready = false`

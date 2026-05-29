@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/subashram/fairway/internal/config"
 )
 
 func TestCLI_Smoke(t *testing.T) {
@@ -368,6 +370,88 @@ func TestCLI_RegressionPacks(t *testing.T) {
 	runOK(t, "regression-pack", "show", "RP-001")
 }
 
+func TestCLI_GPUaaSParityFixtures(t *testing.T) {
+	sourceRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gpuaasConfigPath := filepath.Join(sourceRoot, "examples", "gpuaas-a-b-c-d-e-config.toml")
+	cfg, _, err := config.Load(gpuaasConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{
+		".github/workflows/ci.yml":      "C-ops",
+		"scripts/ops/agent_queue.sh":    "C-ops",
+		"doc/governance/Agent_Queue.md": "E-governance",
+		"docs/design/state-machine.md":  "D-arch",
+		"packages/web/src/App.tsx":      "B-ui",
+		"services/api/workloads.go":     "D-arch",
+		"auth/session.go":               "D-arch",
+		"billing/invoices.go":           "D-arch",
+		"provisioning/runtime.go":       "D-arch",
+		"terminal/session.go":           "D-arch",
+		"node-agent/worker.go":          "D-arch",
+	}
+	for changedPath, want := range cases {
+		got, reason := matchReviewRoute(cfg.ReviewRoutes, []string{changedPath})
+		if got != want {
+			t.Fatalf("route for %s = %q (%s), want %q", changedPath, got, reason, want)
+		}
+	}
+
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `task_id_pattern = "^[A-Z]+-[0-9]+$"`, `task_id_pattern = "^[A-Z][A-Z0-9-]*$"`)
+	writeFile(t, "gpuaas-queue.yaml", `version: 1
+tasks:
+  - id: A-DEMO-UAT-001
+    title: Done dependency
+    role: A-backend
+    status: done
+    owner: Codex
+    branch: agent/A-backend
+    commit: abc123
+  - id: B-DEMO-UAT-002
+    title: Ready after dependency
+    role: B-ui
+    depends_on: [A-DEMO-UAT-001]
+`)
+	runOK(t, "import", "gpuaas-queue.yaml", "--state-once")
+	ready := runCapture(t, "ready")
+	assertContains(t, ready, "B-DEMO-UAT-002")
+
+	runOK(t, "add", "T-001", "--title", "GPUaaS parity", "--role", "backend", "--notes", "carry context")
+	contextPacket := runCapture(t, "packet", "context", "T-001", "--goal", "prove parity", "--owner", "backend", "--acceptance", "no missing fields")
+	assertContains(t, contextPacket, "# Context Packet: T-001")
+	assertContains(t, contextPacket, "## Goal")
+	assertContains(t, contextPacket, "## Acceptance")
+	assertContains(t, contextPacket, "## Recent History")
+
+	bugfixPacket := runCapture(t, "packet", "bugfix", "T-001", "--bug-summary", "broken parity", "--root-cause", "missing fixture", "--owning-layer", "queue", "--proof-command", "go test ./...", "--regression-coverage", "fixture", "--residual-risk", "none")
+	assertContains(t, bugfixPacket, "## Root Cause")
+	assertContains(t, bugfixPacket, "## Owning Layer")
+	assertContains(t, bugfixPacket, "## Proof Command")
+	assertContains(t, bugfixPacket, "## Regression Coverage")
+	assertContains(t, bugfixPacket, "## Residual Risk")
+
+	watcherPacket := runCapture(t, "packet", "watcher", "W-001", "--owner", "C-ops/watch", "--process", "ci", "--command", "gh run watch", "--success", "green", "--failure", "red")
+	assertContains(t, watcherPacket, "# Watcher Packet: W-001")
+	assertContains(t, watcherPacket, "## Success")
+	assertContains(t, watcherPacket, "## Failure")
+
+	runOK(t, "regression-pack", "validate", filepath.Join(sourceRoot, "examples", "gpuaas-regression-packs.yaml"))
+}
+
 func TestCLI_ProjectRegistry(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -401,6 +485,8 @@ func TestCLI_RemainingParity(t *testing.T) {
 	runOK(t, "init")
 	runOK(t, "prune-stale")
 	runOK(t, "--json", "prune-stale")
+	runOK(t, "db", "migrate", "--dry-run")
+	runOK(t, "db", "migrate")
 	runOK(t, "db", "compat", "--backend", "postgres")
 	runOK(t, "db", "compat", "--backend", "postgres", "--print-ddl")
 	runOK(t, "tui", "--once")
@@ -426,6 +512,11 @@ func TestCLI_TrackerLinks(t *testing.T) {
 
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
+	_ = runCapture(t, args...)
+}
+
+func runCapture(t *testing.T, args ...string) string {
+	t.Helper()
 	stdout := os.Stdout
 	stderr := os.Stderr
 	defer func() {
@@ -443,6 +534,14 @@ func runOK(t *testing.T, args ...string) {
 	}
 	_ = w.Close()
 	_, _ = out.ReadFrom(r)
+	return out.String()
+}
+
+func assertContains(t *testing.T, got, want string) {
+	t.Helper()
+	if !strings.Contains(got, want) {
+		t.Fatalf("expected output to contain %q; got:\n%s", want, got)
+	}
 }
 
 func git(t *testing.T, dir string, args ...string) {

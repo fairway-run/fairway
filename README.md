@@ -8,7 +8,18 @@ The name comes from maritime traffic control — fairways are navigable channels
 
 ## Status
 
-Pre-alpha. The design is settled (see [docs/design/](docs/design/)); implementation begins in week 1. Not yet usable.
+Usable local prototype. Core CLI, SQLite store, migrations, worktrees, sessions,
+packets, checkpoints, regression-pack helpers, tracker links, dashboard, and
+release packaging are implemented and covered by smoke tests.
+
+Current focus: prove parity against the existing GPUaaS queue/scripts before
+GPUaaS switches over. See the
+[GPUaaS parity assessment](docs/assessment/gpuaas-parity-and-gap-assessment-2026-05-29.md)
+and [parity runbook](docs/assessment/gpuaas-parity-runbook.md).
+
+Still maturing: provider-specific session launchers, richer dashboard
+mutations, real Jira/Linear API adapters, Homebrew tap publishing after the
+first release tag, and a future Postgres runtime adapter.
 
 ## What it is
 
@@ -24,15 +35,18 @@ Pre-alpha. The design is settled (see [docs/design/](docs/design/)); implementat
 - Not a CI runner.
 - Not an LLM provider abstraction — fairway dispatches to whatever agent you run inside a worktree; it does not spawn agents itself.
 
-## Quickstart (sketched — not yet runnable)
+## Quickstart
 
 ```bash
 fairway init                  # scaffold .fairway/config.toml and the SQLite DB
 $EDITOR .fairway/config.toml  # define roles, branches, worktree root, review routes
+fairway config validate
 fairway worktree setup        # create per-role branches and worktrees
 fairway dashboard             # open http://127.0.0.1:7878 in your browser
+fairway import tasks.yaml     # or fairway add T-001 --title ... --role ...
 fairway ready                 # list tasks ready for your role to claim
 fairway claim T-001
+fairway record evidence T-001 --command-text "go test ./..." --result pass
 fairway set-status T-001 done
 ```
 
@@ -87,6 +101,9 @@ Reference:
 Examples:
 
 - [GPUaaS-style 5-lane config](examples/gpuaas-config.toml)
+- [GPUaaS exact A/B/C/D/E config](examples/gpuaas-a-b-c-d-e-config.toml)
+- [GPUaaS regression-pack fixture](examples/gpuaas-regression-packs.yaml)
+- [Session adapter examples](examples/session-adapters/)
 
 ## License
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -26,10 +27,11 @@ type Config struct {
 }
 
 type FairwayConfig struct {
-	ProjectName string `toml:"project_name"`
-	DBPath      string `toml:"db_path"`
-	QueueSource string `toml:"queue_source"`
-	MainBranch  string `toml:"main_branch"`
+	ProjectName   string `toml:"project_name"`
+	DBPath        string `toml:"db_path"`
+	QueueSource   string `toml:"queue_source"`
+	MainBranch    string `toml:"main_branch"`
+	TaskIDPattern string `toml:"task_id_pattern"`
 }
 
 type DashboardConfig struct {
@@ -96,10 +98,11 @@ func Defaults(root string) Config {
 	}
 	return Config{
 		Fairway: FairwayConfig{
-			ProjectName: project,
-			DBPath:      ".fairway/state.db",
-			QueueSource: "inline",
-			MainBranch:  "main",
+			ProjectName:   project,
+			DBPath:        ".fairway/state.db",
+			QueueSource:   "inline",
+			MainBranch:    "main",
+			TaskIDPattern: `^[A-Z]+-[0-9]+$`,
 		},
 		Dashboard: DashboardConfig{
 			Listen:   "127.0.0.1:7878",
@@ -191,6 +194,12 @@ func Validate(cfg Config) error {
 	}
 	if cfg.Fairway.DBPath == "" {
 		return errors.New("[fairway] db_path is required")
+	}
+	if cfg.Fairway.TaskIDPattern == "" {
+		return errors.New("[fairway] task_id_pattern is required")
+	}
+	if _, err := regexp.Compile(cfg.Fairway.TaskIDPattern); err != nil {
+		return fmt.Errorf("[fairway] task_id_pattern is invalid: %w", err)
 	}
 	if cfg.Worktrees.Root == "" {
 		return errors.New("[worktrees] root is required")
@@ -359,6 +368,7 @@ project_name = %q
 db_path = ".fairway/state.db"
 queue_source = "inline"
 main_branch = "main"
+task_id_pattern = "^[A-Z]+-[0-9]+$"
 
 [dashboard]
 listen = "127.0.0.1:7878"

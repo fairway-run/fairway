@@ -1,0 +1,51 @@
+version: 1
+updated_at: "2026-05-29"
+packs:
+  - id: auth-session
+    title: Auth and session lifecycle
+    owner: C-ops
+    target_environments: [demo, staging, prod]
+    blocking:
+      demo: true
+      staging: true
+      prod: true
+    required_seed_data:
+      - seeded user or service-approved disposable browser user
+      - deployed app/API/auth URLs
+      - Keycloak client callback registration
+    lowest_reliable_layer: remote_validation
+    required_proof:
+      - OIDC authorize endpoint accepts the configured app callback.
+      - Auth hostname serves the login page through the configured edge.
+      - Browser login returns a seeded user to the product shell.
+    artifact_requirements:
+      - remote validation log
+      - browser trace or screenshot for full login
+    current_automation:
+      - scripts/ci/platform_control_smoke.sh checks OIDC authorize callback.
+    gaps:
+      - full deployed browser login smoke is not yet blocking.
+
+  - id: terminal
+    title: Browser terminal route
+    owner: A-backend
+    target_environments: [kind, demo, staging]
+    blocking:
+      demo: true
+      staging: true
+      prod: true
+    required_seed_data:
+      - active terminal-capable workload
+      - authenticated user with project access
+    lowest_reliable_layer: playwright
+    required_proof:
+      - Terminal session opens from the product shell.
+      - Input reaches the backing runtime.
+      - Connection loss and close states render visibly.
+    artifact_requirements:
+      - Playwright trace or screenshot
+      - backend session/correlation log
+    current_automation:
+      - packages/web/e2e terminal coverage.
+    gaps:
+      - deployed terminal smoke still needs a reliable fixture runtime.

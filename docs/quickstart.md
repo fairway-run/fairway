@@ -1,18 +1,21 @@
 # Quickstart
 
-> This tracks the v0.1 implementation path. Some commands are already wired;
-> packaging and the richer dashboard remain in progress.
+This is a runnable local flow for the current Fairway prototype.
 
 ## Install
 
-Once binaries ship:
+Once release binaries ship:
 
 ```bash
 brew install subashram/tap/fairway     # macOS
 # or download from the releases page
 ```
 
-For now: `go install github.com/subashram/fairway/cmd/fairway@latest` (once the repo has code).
+For now:
+
+```bash
+go install github.com/subashram/fairway/cmd/fairway@latest
+```
 
 ## Bootstrap a repo
 
@@ -47,7 +50,7 @@ Creates the configured branches (off `main_branch`) and checks them out into the
 
 ## Define tasks
 
-For v0.1, create tasks via YAML import:
+Create tasks via YAML import:
 
 ```bash
 fairway import tasks.yaml
@@ -90,6 +93,8 @@ fairway claim T-001
 # ... do the work, commit ...
 fairway record evidence T-001 --command-text "go test ./..." --result pass --artifact internal/orders/orders_test.go --artifact-type test
 fairway set-status T-001 done
+fairway route review T-001 --path internal/orders/orders.go
+fairway merge-ready T-001
 ```
 
 In the UI worktree:
@@ -106,6 +111,24 @@ fairway record handoff T-002 --to backend --payload "Need an example payload for
 - The activity feed shows the chain: claim → evidence → done; claim → handoff.
 - Health badges flag the unacknowledged handoff to backend after one hour.
 
-Long-running side work should use a context packet and checkpoints once the
-v0.2 commands exist; see [coordinator-loop.md](design/coordinator-loop.md) and
+Long-running side work should use packets and checkpoints:
+
+```bash
+fairway packet context T-001 --goal "finish API contract" --owner backend --acceptance "tests pass"
+fairway checkpoint record T-001 --state active --owner backend --summary "waiting on API fixture"
+fairway checkpoint status
+```
+
+See [coordinator-loop.md](design/coordinator-loop.md),
+[context-packets.md](design/context-packets.md), and
 [checkpoints.md](design/checkpoints.md).
+
+## GPUaaS Parity
+
+GPUaaS migration work should start from
+[gpuaas-parity-runbook.md](assessment/gpuaas-parity-runbook.md), not from a live
+queue cut-over. Use
+[`examples/gpuaas-a-b-c-d-e-config.toml`](../examples/gpuaas-a-b-c-d-e-config.toml)
+for the exact A/B/C/D/E lane mapping and
+[`examples/gpuaas-regression-packs.yaml`](../examples/gpuaas-regression-packs.yaml)
+to verify Fairway accepts GPUaaS-style per-environment regression blocking.

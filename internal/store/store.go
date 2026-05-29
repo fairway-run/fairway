@@ -33,8 +33,9 @@ var defaultTaskIDPattern = regexp.MustCompile(`^[A-Z]+-[0-9]+$`)
 var migrationFS embed.FS
 
 type Store struct {
-	db        *sql.DB
-	projectID string
+	db            *sql.DB
+	projectID     string
+	taskIDPattern *regexp.Regexp
 }
 
 type TaskDefinition struct {
@@ -48,6 +49,15 @@ type TaskDefinition struct {
 	Dependencies     []string `json:"dependencies" yaml:"dependencies"`
 	Priority         *int     `json:"priority" yaml:"priority"`
 	Sequence         *int     `json:"sequence" yaml:"sequence"`
+}
+
+type ImportedTaskState struct {
+	TaskID      string `json:"task_id" yaml:"task_id"`
+	Status      string `json:"status" yaml:"status"`
+	Owner       string `json:"owner" yaml:"owner"`
+	Branch      string `json:"branch" yaml:"branch"`
+	CompletedAt string `json:"completed_at" yaml:"completed_at"`
+	CommitSHA   string `json:"commit_sha" yaml:"commit_sha"`
 }
 
 type Task struct {
@@ -195,6 +205,11 @@ type PruneResult struct {
 	WatcherRows    int64 `json:"watcher_rows"`
 }
 
+type PendingMigration struct {
+	Version int    `json:"version"`
+	Name    string `json:"name"`
+}
+
 func Open(ctx context.Context, path, projectID string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -212,12 +227,21 @@ func Open(ctx context.Context, path, projectID string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	s := &Store{db: db, projectID: projectID}
+	s := &Store{db: db, projectID: projectID, taskIDPattern: defaultTaskIDPattern}
 	if err := s.Migrate(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
+}
+
+func (s *Store) SetTaskIDPattern(pattern string) error {
+	compiled, err := regexp.Compile(pattern)
+	if err != nil {
+		return err
+	}
+	s.taskIDPattern = compiled
+	return nil
 }
 
 func (s *Store) Close() error {
@@ -269,6 +293,82 @@ func (s *Store) Migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func PendingMigrations(ctx context.Context, path string) ([]PendingMigration, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return embeddedMigrations()
+	} else if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	entries, err := migrationFS.ReadDir("migrations")
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	var tableName string
+	err = db.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'`).Scan(&tableName)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	applied := map[int]bool{}
+	if tableName != "" {
+		rows, err := db.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var version int
+			if err := rows.Scan(&version); err != nil {
+				return nil, err
+			}
+			applied[version] = true
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	var pending []PendingMigration
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		version, err := migrationVersion(entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		if !applied[version] {
+			pending = append(pending, PendingMigration{Version: version, Name: entry.Name()})
+		}
+	}
+	return pending, nil
+}
+
+func embeddedMigrations() ([]PendingMigration, error) {
+	entries, err := migrationFS.ReadDir("migrations")
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	var migrations []PendingMigration
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		version, err := migrationVersion(entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		migrations = append(migrations, PendingMigration{Version: version, Name: entry.Name()})
+	}
+	return migrations, nil
 }
 
 func migrationVersion(name string) (int, error) {
@@ -351,7 +451,7 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 }
 
 func (s *Store) ImportTasks(ctx context.Context, tasks []TaskDefinition) error {
-	if err := validateTaskDefinitions(tasks, false); err != nil {
+	if err := s.validateTaskDefinitions(tasks, false); err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -408,11 +508,76 @@ VALUES (?, ?, 'todo', ?, 0, 'not_required', ?)`, s.projectID, task.ID, task.Role
 	return tx.Commit()
 }
 
+func (s *Store) ImportTaskStatesOnce(ctx context.Context, states []ImportedTaskState) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	actor := Actor()
+	updated := 0
+	for _, state := range states {
+		if state.TaskID == "" {
+			continue
+		}
+		status := strings.TrimSpace(state.Status)
+		if status == "" {
+			status = "todo"
+		}
+		var currentStatus, currentOwner, currentBranch, currentCommit string
+		if err := tx.QueryRowContext(ctx, `
+SELECT status, coalesce(owner, ''), coalesce(branch, ''), coalesce(commit_sha, '')
+FROM task_state
+WHERE project_id=? AND task_id=?`, s.projectID, state.TaskID).Scan(&currentStatus, &currentOwner, &currentBranch, &currentCommit); err != nil {
+			return updated, err
+		}
+		var historyCount int
+		if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM task_state_history
+WHERE project_id=? AND task_id=?`, s.projectID, state.TaskID).Scan(&historyCount); err != nil {
+			return updated, err
+		}
+		if historyCount > 1 {
+			continue
+		}
+		owner := state.Owner
+		if owner == "" {
+			owner = currentOwner
+		}
+		branch := state.Branch
+		if branch == "" {
+			branch = currentBranch
+		}
+		commit := state.CommitSHA
+		if commit == "" {
+			commit = currentCommit
+		}
+		completedAt := state.CompletedAt
+		if completedAt == "" && status == "done" {
+			completedAt = now
+		}
+		_, err := tx.ExecContext(ctx, `
+UPDATE task_state
+SET status=?, owner=?, branch=nullif(?, ''), completed_at=nullif(?, ''), commit_sha=nullif(?, ''), updated_at=?
+WHERE project_id=? AND task_id=?`,
+			status, owner, branch, completedAt, commit, now, s.projectID, state.TaskID)
+		if err != nil {
+			return updated, err
+		}
+		if err := insertHistory(ctx, tx, s.projectID, state.TaskID, currentStatus, status, currentOwner, owner, branch, actor, "import state-once"); err != nil {
+			return updated, err
+		}
+		updated++
+	}
+	return updated, tx.Commit()
+}
+
 func (s *Store) AddTask(ctx context.Context, task TaskDefinition) error {
 	if task.Kind == "" {
 		task.Kind = "task"
 	}
-	if err := validateTaskDefinitions([]TaskDefinition{task}, true); err != nil {
+	if err := s.validateTaskDefinitions([]TaskDefinition{task}, true); err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -468,7 +633,7 @@ func (s *Store) UpdateTask(ctx context.Context, task TaskDefinition) error {
 	if task.ParentID == task.ID {
 		return fmt.Errorf("task %s cannot be its own parent", task.ID)
 	}
-	if err := validateTaskDefinitions([]TaskDefinition{task}, true); err != nil {
+	if err := s.validateTaskDefinitions([]TaskDefinition{task}, true); err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -550,13 +715,17 @@ func (s *Store) ensureParentDoesNotCycle(ctx context.Context, tx *sql.Tx, taskID
 	return nil
 }
 
-func validateTaskDefinitions(tasks []TaskDefinition, allowExternalRefs bool) error {
+func (s *Store) validateTaskDefinitions(tasks []TaskDefinition, allowExternalRefs bool) error {
+	pattern := s.taskIDPattern
+	if pattern == nil {
+		pattern = defaultTaskIDPattern
+	}
 	seen := map[string]bool{}
 	for _, task := range tasks {
 		if strings.TrimSpace(task.ID) == "" || strings.TrimSpace(task.Title) == "" {
 			return errors.New("task id and title are required")
 		}
-		if !defaultTaskIDPattern.MatchString(task.ID) {
+		if !pattern.MatchString(task.ID) {
 			return fmt.Errorf("%w: %s", ErrInvalidTaskID, task.ID)
 		}
 		if strings.TrimSpace(task.Role) == "" {

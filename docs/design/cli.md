@@ -29,7 +29,7 @@ fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
 fairway coordinator preflight | status | tick
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
-fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> --proof-command <cmd> --regression-coverage <text>
+fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> [--owning-layer <text>] --proof-command <cmd> --regression-coverage <text> [--residual-risk <text>]
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
 fairway regression-pack list [--catalog <path>]
 fairway regression-pack show <pack-id> [--catalog <path>]
@@ -42,8 +42,9 @@ fairway checkpoint status [--all]
 fairway checkpoint stale [--before <date>] [--all]
 fairway prune-stale                                     # remove state rows for deleted task definitions
 fairway db backup | export
+fairway db migrate [--dry-run]
 fairway db compat --backend postgres [--print-ddl | --apply-ddl]
-fairway import <yaml-or-json-path> [--state-once]        # bootstrap-only; never overwrites mutable state after initial import
+fairway import <yaml-or-json-path> [--state-once]        # accepts a task list or {tasks: [...]} envelope; state-once seeds legacy status once
 fairway config validate
 fairway dashboard [--no-open] [--listen <addr>] [--multi]
 fairway tui [--once]

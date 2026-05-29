@@ -1718,8 +1718,10 @@ func cmdPacketBugfix(ctx context.Context, opts globalOptions, args []string) err
 	fs := flag.NewFlagSet("packet bugfix", flag.ContinueOnError)
 	summary := fs.String("bug-summary", "", "bug summary")
 	rootCause := fs.String("root-cause", "", "root cause")
+	owningLayer := fs.String("owning-layer", "", "owning layer")
 	proof := fs.String("proof-command", "", "proof command")
 	coverage := fs.String("regression-coverage", "", "regression coverage")
+	residualRisk := fs.String("residual-risk", "", "residual risk")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -1735,11 +1737,13 @@ func cmdPacketBugfix(ctx context.Context, opts globalOptions, args []string) err
 			Task               store.Task       `json:"task"`
 			BugSummary         string           `json:"bug_summary"`
 			RootCause          string           `json:"root_cause"`
+			OwningLayer        string           `json:"owning_layer"`
 			ProofCommand       string           `json:"proof_command"`
 			RegressionCoverage string           `json:"regression_coverage"`
+			ResidualRisk       string           `json:"residual_risk"`
 			Evidence           []store.Evidence `json:"evidence"`
 			Reviews            []store.Review   `json:"reviews"`
-		}{task, *summary, *rootCause, *proof, *coverage, evidence, reviews}
+		}{task, *summary, *rootCause, *owningLayer, *proof, *coverage, *residualRisk, evidence, reviews}
 		if opts.JSON {
 			return printJSON(packet)
 		}
@@ -1747,8 +1751,10 @@ func cmdPacketBugfix(ctx context.Context, opts globalOptions, args []string) err
 		fmt.Printf("title: %s\nstatus: %s\nrole: %s\n", task.Definition.Title, task.Status, task.Definition.Role)
 		fmt.Printf("\n## Bug Summary\n%s\n", *summary)
 		fmt.Printf("\n## Root Cause\n%s\n", *rootCause)
+		fmt.Printf("\n## Owning Layer\n%s\n", *owningLayer)
 		fmt.Printf("\n## Proof Command\n%s\n", *proof)
 		fmt.Printf("\n## Regression Coverage\n%s\n", *coverage)
+		fmt.Printf("\n## Residual Risk\n%s\n", *residualRisk)
 		fmt.Println("\n## Existing Evidence")
 		for _, ev := range evidence {
 			fmt.Printf("- %s: %s %s\n", ev.Result, ev.CommandText, ev.ArtifactPath)
@@ -1891,18 +1897,90 @@ type regressionCatalog struct {
 	Packs []regressionPack `json:"packs" yaml:"packs"`
 }
 
+type regressionBlocking struct {
+	Default        bool            `json:"default" yaml:"default"`
+	PerEnvironment map[string]bool `json:"per_environment,omitempty" yaml:"per_environment,omitempty"`
+}
+
+func (b *regressionBlocking) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var flag bool
+		if err := value.Decode(&flag); err != nil {
+			return err
+		}
+		b.Default = flag
+		b.PerEnvironment = nil
+		return nil
+	case yaml.MappingNode:
+		var perEnvironment map[string]bool
+		if err := value.Decode(&perEnvironment); err != nil {
+			return err
+		}
+		b.Default = false
+		for _, enabled := range perEnvironment {
+			if enabled {
+				b.Default = true
+				break
+			}
+		}
+		b.PerEnvironment = perEnvironment
+		return nil
+	default:
+		return fmt.Errorf("blocking must be a boolean or environment map")
+	}
+}
+
+func (b *regressionBlocking) UnmarshalJSON(data []byte) error {
+	var flag bool
+	if err := json.Unmarshal(data, &flag); err == nil {
+		b.Default = flag
+		b.PerEnvironment = nil
+		return nil
+	}
+	var perEnvironment map[string]bool
+	if err := json.Unmarshal(data, &perEnvironment); err != nil {
+		return err
+	}
+	b.Default = false
+	for _, enabled := range perEnvironment {
+		if enabled {
+			b.Default = true
+			break
+		}
+	}
+	b.PerEnvironment = perEnvironment
+	return nil
+}
+
+func (b regressionBlocking) String() string {
+	if len(b.PerEnvironment) == 0 {
+		return fmt.Sprintf("%t", b.Default)
+	}
+	keys := make([]string, 0, len(b.PerEnvironment))
+	for key := range b.PerEnvironment {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%t", key, b.PerEnvironment[key]))
+	}
+	return strings.Join(parts, ",")
+}
+
 type regressionPack struct {
-	ID                   string   `json:"id" yaml:"id"`
-	Title                string   `json:"title" yaml:"title"`
-	Owner                string   `json:"owner" yaml:"owner"`
-	TargetEnvironments   []string `json:"target_environments" yaml:"target_environments"`
-	Blocking             bool     `json:"blocking" yaml:"blocking"`
-	RequiredSeedData     []string `json:"required_seed_data" yaml:"required_seed_data"`
-	LowestReliableLayer  string   `json:"lowest_reliable_layer" yaml:"lowest_reliable_layer"`
-	RequiredProof        []string `json:"required_proof" yaml:"required_proof"`
-	ArtifactRequirements []string `json:"artifact_requirements" yaml:"artifact_requirements"`
-	CurrentAutomation    []string `json:"current_automation" yaml:"current_automation"`
-	Gaps                 []string `json:"gaps" yaml:"gaps"`
+	ID                   string             `json:"id" yaml:"id"`
+	Title                string             `json:"title" yaml:"title"`
+	Owner                string             `json:"owner" yaml:"owner"`
+	TargetEnvironments   []string           `json:"target_environments" yaml:"target_environments"`
+	Blocking             regressionBlocking `json:"blocking" yaml:"blocking"`
+	RequiredSeedData     []string           `json:"required_seed_data" yaml:"required_seed_data"`
+	LowestReliableLayer  string             `json:"lowest_reliable_layer" yaml:"lowest_reliable_layer"`
+	RequiredProof        []string           `json:"required_proof" yaml:"required_proof"`
+	ArtifactRequirements []string           `json:"artifact_requirements" yaml:"artifact_requirements"`
+	CurrentAutomation    []string           `json:"current_automation" yaml:"current_automation"`
+	Gaps                 []string           `json:"gaps" yaml:"gaps"`
 }
 
 func cmdRegressionPack(opts globalOptions, args []string) error {
@@ -1938,7 +2016,7 @@ func cmdRegressionPackList(opts globalOptions, args []string) error {
 		return printJSON(catalog.Packs)
 	}
 	for _, pack := range catalog.Packs {
-		fmt.Printf("%s\t%s\t%s\tblocking=%t\n", pack.ID, pack.Owner, pack.Title, pack.Blocking)
+		fmt.Printf("%s\t%s\t%s\tblocking=%s\n", pack.ID, pack.Owner, pack.Title, pack.Blocking.String())
 	}
 	return nil
 }
@@ -2328,7 +2406,7 @@ func validateRegressionCatalog(catalog regressionCatalog) error {
 
 func printRegressionPack(pack regressionPack) {
 	fmt.Printf("# Regression Pack: %s\n\n", pack.ID)
-	fmt.Printf("title: %s\nowner: %s\nblocking: %t\nlowest_reliable_layer: %s\n", pack.Title, pack.Owner, pack.Blocking, pack.LowestReliableLayer)
+	fmt.Printf("title: %s\nowner: %s\nblocking: %s\nlowest_reliable_layer: %s\n", pack.Title, pack.Owner, pack.Blocking.String(), pack.LowestReliableLayer)
 	printStringList("target_environments", pack.TargetEnvironments)
 	printStringList("required_seed_data", pack.RequiredSeedData)
 	printStringList("required_proof", pack.RequiredProof)
@@ -2549,6 +2627,10 @@ func cmdInit(ctx context.Context, opts globalOptions) error {
 	if err != nil {
 		return err
 	}
+	if err := s.SetTaskIDPattern(cfg.Fairway.TaskIDPattern); err != nil {
+		_ = s.Close()
+		return err
+	}
 	defer s.Close()
 	fmt.Println("initialized fairway")
 	return nil
@@ -2558,21 +2640,46 @@ func cmdImport(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 1 {
 		return errors.New("import requires yaml or json path")
 	}
-	tasks, err := importer.Tasks(args[0])
+	fs := flag.NewFlagSet("import", flag.ContinueOnError)
+	stateOnce := fs.Bool("state-once", false, "seed legacy mutable state once")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected import arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	result, err := importer.File(args[0])
 	if err != nil {
 		return err
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-		if err := applyImportDefaults(tasks, cfg); err != nil {
+		if err := applyImportDefaults(result.Tasks, cfg); err != nil {
 			return err
 		}
-		if err := validateTaskMetadata(tasks, cfg); err != nil {
+		if err := validateTaskMetadata(result.Tasks, cfg); err != nil {
 			return err
 		}
-		if err := s.ImportTasks(ctx, tasks); err != nil {
+		if *stateOnce {
+			if err := validateImportedStates(result.States, cfg); err != nil {
+				return err
+			}
+		}
+		if err := s.ImportTasks(ctx, result.Tasks); err != nil {
 			return err
 		}
-		fmt.Printf("imported %d tasks\n", len(tasks))
+		appliedStates := 0
+		if *stateOnce {
+			var err error
+			appliedStates, err = s.ImportTaskStatesOnce(ctx, result.States)
+			if err != nil {
+				return err
+			}
+		}
+		if *stateOnce {
+			fmt.Printf("imported %d tasks, seeded %d states\n", len(result.Tasks), appliedStates)
+			return nil
+		}
+		fmt.Printf("imported %d tasks\n", len(result.Tasks))
 		return nil
 	})
 }
@@ -2604,6 +2711,22 @@ func validateTaskMetadata(tasks []store.TaskDefinition, cfg config.Config) error
 		}
 		if task.Priority != nil && len(priorities) > 0 && !priorities[*task.Priority] {
 			return fmt.Errorf("task %s uses unknown priority %d", task.ID, *task.Priority)
+		}
+	}
+	return nil
+}
+
+func validateImportedStates(states []store.ImportedTaskState, cfg config.Config) error {
+	allowed := map[string]bool{}
+	for _, state := range cfg.States.Allowed {
+		allowed[state] = true
+	}
+	for _, state := range states {
+		if state.Status == "" {
+			continue
+		}
+		if !allowed[state.Status] {
+			return fmt.Errorf("task %s imports unknown status %q", state.TaskID, state.Status)
 		}
 	}
 	return nil
@@ -2860,18 +2983,64 @@ func dashboardWorktrees(statuses []worktreeStatus) []dashboard.WorktreeStatus {
 
 func cmdDB(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("db requires backup or export")
+		return errors.New("db requires backup, export, migrate, or compat")
 	}
 	switch args[0] {
 	case "backup":
 		return cmdDBBackup(ctx, opts, args[1:])
 	case "export":
 		return cmdDBExport(ctx, opts, args[1:])
+	case "migrate":
+		return cmdDBMigrate(ctx, opts, args[1:])
 	case "compat":
 		return cmdDBCompat(args[1:])
 	default:
 		return fmt.Errorf("unknown db command %q", args[0])
 	}
+}
+
+func cmdDBMigrate(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("db migrate", flag.ContinueOnError)
+	dryRun := fs.Bool("dry-run", false, "show pending migrations without applying")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected db migrate arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	dbPath := resolveDBPath(root, cfg, opts)
+	if *dryRun {
+		pending, err := store.PendingMigrations(ctx, dbPath)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(pending)
+		}
+		if len(pending) == 0 {
+			fmt.Println("no pending migrations")
+			return nil
+		}
+		for _, migration := range pending {
+			fmt.Printf("%03d\t%s\n", migration.Version, migration.Name)
+		}
+		return nil
+	}
+	s, err := store.Open(ctx, dbPath, cfg.Fairway.ProjectName)
+	if err != nil {
+		return err
+	}
+	if err := s.SetTaskIDPattern(cfg.Fairway.TaskIDPattern); err != nil {
+		_ = s.Close()
+		return err
+	}
+	defer s.Close()
+	fmt.Println("migrations applied")
+	return nil
 }
 
 func cmdDBCompat(args []string) error {
@@ -2967,16 +3136,24 @@ func withStore(ctx context.Context, opts globalOptions, fn func(context.Context,
 	if err != nil {
 		return err
 	}
-	dbPath := config.DBPath(cfg, root)
-	if opts.DBPath != "" {
-		dbPath = opts.DBPath
-	}
+	dbPath := resolveDBPath(root, cfg, opts)
 	s, err := store.Open(ctx, dbPath, cfg.Fairway.ProjectName)
 	if err != nil {
 		return err
 	}
+	if err := s.SetTaskIDPattern(cfg.Fairway.TaskIDPattern); err != nil {
+		_ = s.Close()
+		return err
+	}
 	defer s.Close()
 	return fn(ctx, cfg, root, s)
+}
+
+func resolveDBPath(root string, cfg config.Config, opts globalOptions) string {
+	if opts.DBPath != "" {
+		return opts.DBPath
+	}
+	return config.DBPath(cfg, root)
 }
 
 func loadConfig(opts globalOptions) (config.Config, string, string, error) {
