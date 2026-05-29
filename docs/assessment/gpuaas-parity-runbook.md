@@ -30,6 +30,8 @@ fairway config validate
 fairway db migrate --dry-run
 fairway db migrate
 fairway import doc/governance/Agent_Work_Queue.yaml --state-once
+fairway parity artifact --catalog doc/governance/Workflow_Regression_Packs.yaml \
+  > .fairway/parity/fairway-parity-artifact.md
 ```
 
 If the imported GPUaaS YAML uses fields Fairway does not yet understand, stop
@@ -42,6 +44,7 @@ mapping is written down.
 |---|---|---|---|
 | Queue validation | `make queue-ready` / `agent_queue_validate.sh` | `fairway import ... --state-once` and `fairway --json ready` | Invalid roles, dependencies, task IDs, and metadata are rejected or rendered with equivalent operator clarity. |
 | Ready ordering | `queue-ready` | `fairway --json ready` | Same ready tasks per role, ordered by dependency completion, priority, and sequence. |
+| Parity artifact | manual comparison notes | `fairway parity artifact` | Shareable summary includes ready set, route samples, regression packs, health, sessions/worktrees, and evidence gaps. |
 | Queue/git consistency | `make queue-git-check` | `fairway git-check` / `fairway preflight` | Same role branch/worktree risks are visible before dispatch. |
 | Claim and transitions | `queue-claim`, `queue-set-status` | `fairway claim`, `fairway set-status` | Double-claim loses atomically; blocked requires a reason; terminal gates behave as configured. |
 | Evidence and merge readiness | queue store gates | `fairway record evidence`, `fairway merge-ready` | Evidence-before-done and review/hand-off gates match GPUaaS policy. |
@@ -61,6 +64,8 @@ mkdir -p .fairway/parity
 fairway --json ready > .fairway/parity/fairway-ready.json
 fairway --json git-check > .fairway/parity/fairway-git-check.json
 fairway --json coordinator tick > .fairway/parity/fairway-tick.json
+fairway --json parity artifact --catalog doc/governance/Workflow_Regression_Packs.yaml \
+  > .fairway/parity/fairway-parity-artifact.json
 fairway regression-pack validate doc/governance/Workflow_Regression_Packs.yaml \
   > .fairway/parity/fairway-regression-packs.txt
 ```

@@ -28,6 +28,8 @@ to a useful v1.
 - Basic TUI mode for headless ready/claim/status/detail workflows.
 - First audited dashboard mutation path with CSRF-protected claim.
 - Release packaging config and tag-triggered GitHub release workflow.
+- GPUaaS parity import path, exact GPUaaS config, parity runbook, and agent
+  usage guide.
 
 ## Completed v0.2 Track
 
@@ -91,9 +93,11 @@ to a useful v1.
 
 ## Remaining Work
 
-1. Add Homebrew tap publishing after the first tagged release settles.
-2. Expand dashboard mutations beyond claim while keeping CSRF and per-action
+1. Add the [GPUaaS / ARC adoption track](gpuaas-arc-adoption.md), starting with
+   `fairway parity artifact`.
+2. Add Homebrew tap publishing after the first tagged release settles.
+3. Expand dashboard mutations beyond claim while keeping CSRF and per-action
    audit on every write.
-3. Expand TUI ergonomics beyond the basic command loop.
-4. Expand tracker integration from local links/dry-run reporting to provider
+4. Expand TUI ergonomics beyond the basic command loop.
+5. Expand tracker integration from local links/dry-run reporting to provider
    adapters when credentials and API mapping are explicit.

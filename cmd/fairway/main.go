@@ -115,6 +115,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdSession(ctx, opts, args[1:])
 	case "coordinator":
 		return cmdCoordinator(ctx, opts, args[1:])
+	case "parity":
+		return cmdParity(ctx, opts, args[1:])
 	case "checkpoint":
 		return cmdCheckpoint(ctx, opts, args[1:])
 	case "packet":
@@ -1553,6 +1555,275 @@ func printCoordinatorTick(report coordinatorReport) {
 		fmt.Println("recommendations:")
 		for _, rec := range report.Recommendations {
 			fmt.Printf("- %s\n", rec)
+		}
+	}
+}
+
+type parityArtifact struct {
+	GeneratedAt      string                 `json:"generated_at"`
+	Project          string                 `json:"project"`
+	TaskCount        int                    `json:"task_count"`
+	ReadyCount       int                    `json:"ready_count"`
+	ReadyByRole      map[string]int         `json:"ready_by_role"`
+	ReadySample      []parityTaskSample     `json:"ready_sample"`
+	RouteSamples     []parityRouteSample    `json:"route_samples"`
+	RegressionPacks  parityRegressionResult `json:"regression_packs"`
+	EvidenceGapCount int                    `json:"evidence_gap_count"`
+	EvidenceGaps     []string               `json:"evidence_gaps"`
+	Health           store.Health           `json:"health"`
+	Coordinator      coordinatorReport      `json:"coordinator"`
+}
+
+type parityTaskSample struct {
+	ID       string `json:"id"`
+	Role     string `json:"role"`
+	Status   string `json:"status"`
+	Title    string `json:"title"`
+	Priority *int   `json:"priority,omitempty"`
+}
+
+type parityRouteSample struct {
+	Path     string `json:"path"`
+	Reviewer string `json:"reviewer"`
+	Reason   string `json:"reason"`
+	OK       bool   `json:"ok"`
+}
+
+type parityRegressionResult struct {
+	CatalogPath string   `json:"catalog_path,omitempty"`
+	OK          bool     `json:"ok"`
+	PackCount   int      `json:"pack_count"`
+	Issues      []string `json:"issues,omitempty"`
+}
+
+func cmdParity(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("parity requires subcommand: artifact")
+	}
+	switch args[0] {
+	case "artifact":
+		return cmdParityArtifact(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown parity subcommand %q", args[0])
+	}
+}
+
+func cmdParityArtifact(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("parity artifact", flag.ContinueOnError)
+	catalogPath := fs.String("catalog", "", "regression pack catalog path")
+	limit := fs.Int("limit", 20, "maximum ready tasks to include")
+	gapLimit := fs.Int("gap-limit", 50, "maximum evidence gaps to include")
+	var routePaths multiFlag
+	fs.Var(&routePaths, "route", "path to sample through review routing; may repeat")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected parity artifact arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		artifact, err := buildParityArtifact(ctx, cfg, root, s, *catalogPath, routePaths, *limit, *gapLimit)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(artifact)
+		}
+		printParityArtifact(artifact)
+		return nil
+	})
+}
+
+func buildParityArtifact(ctx context.Context, cfg config.Config, root string, s *store.Store, catalogPath string, routePaths []string, limit, gapLimit int) (parityArtifact, error) {
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return parityArtifact{}, err
+	}
+	ready, err := s.Ready(ctx, "", cfg.States.Terminal)
+	if err != nil {
+		return parityArtifact{}, err
+	}
+	health, err := s.Health(ctx)
+	if err != nil {
+		return parityArtifact{}, err
+	}
+	coordinator, err := buildCoordinatorReport(ctx, cfg, root, s)
+	if err != nil {
+		coordinator = coordinatorReport{
+			OK:          false,
+			Health:      health,
+			ReadyCount:  len(ready),
+			ReadyByRole: map[string]int{},
+			Issues:      []string{fmt.Sprintf("coordinator report unavailable: %v", err)},
+		}
+		for _, task := range ready {
+			coordinator.ReadyByRole[task.Definition.Role]++
+		}
+	}
+	if len(routePaths) == 0 {
+		routePaths = defaultParityRouteSamples(cfg)
+	}
+	artifact := parityArtifact{
+		GeneratedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+		Project:         cfg.Fairway.ProjectName,
+		TaskCount:       len(tasks),
+		ReadyCount:      len(ready),
+		ReadyByRole:     map[string]int{},
+		RouteSamples:    make([]parityRouteSample, 0, len(routePaths)),
+		RegressionPacks: validateParityRegressionCatalog(catalogPath),
+		Health:          health,
+		Coordinator:     coordinator,
+	}
+	for _, task := range ready {
+		artifact.ReadyByRole[task.Definition.Role]++
+	}
+	if limit < 0 || limit > len(ready) {
+		limit = len(ready)
+	}
+	for _, task := range ready[:limit] {
+		artifact.ReadySample = append(artifact.ReadySample, parityTaskSample{
+			ID:       task.Definition.ID,
+			Role:     task.Definition.Role,
+			Status:   task.Status,
+			Title:    task.Definition.Title,
+			Priority: task.Definition.Priority,
+		})
+	}
+	for _, routePath := range routePaths {
+		reviewer, reason := matchReviewRoute(cfg.ReviewRoutes, []string{routePath})
+		artifact.RouteSamples = append(artifact.RouteSamples, parityRouteSample{
+			Path:     routePath,
+			Reviewer: reviewer,
+			Reason:   reason,
+			OK:       reviewer != "",
+		})
+	}
+	var evidenceGaps []string
+	for _, task := range tasks {
+		if !isTerminal(task.Status, cfg.States.Terminal) {
+			continue
+		}
+		ok, err := s.HasEvidence(ctx, task.Definition.ID)
+		if err != nil {
+			return parityArtifact{}, err
+		}
+		if !ok {
+			evidenceGaps = append(evidenceGaps, fmt.Sprintf("%s done without evidence", task.Definition.ID))
+		}
+	}
+	sort.Strings(evidenceGaps)
+	artifact.EvidenceGapCount = len(evidenceGaps)
+	if gapLimit < 0 || gapLimit > len(evidenceGaps) {
+		gapLimit = len(evidenceGaps)
+	}
+	artifact.EvidenceGaps = evidenceGaps[:gapLimit]
+	return artifact, nil
+}
+
+func defaultParityRouteSamples(cfg config.Config) []string {
+	if strings.EqualFold(cfg.Fairway.ProjectName, "gpuaas") || config.RoleSet(cfg)["A-backend"] {
+		return []string{
+			"doc/api/openapi.draft.yaml",
+			"cmd/api/routes.go",
+			"packages/services/billing/service.go",
+			"cmd/node-agent/main.go",
+			"scripts/ci/contracts_validate.sh",
+		}
+	}
+	return nil
+}
+
+func validateParityRegressionCatalog(path string) parityRegressionResult {
+	if path == "" {
+		path = defaultRegressionCatalogPath()
+	}
+	result := parityRegressionResult{CatalogPath: path}
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			result.Issues = append(result.Issues, "catalog not found")
+			return result
+		}
+		result.Issues = append(result.Issues, err.Error())
+		return result
+	}
+	catalog, err := loadRegressionCatalog(path)
+	if err != nil {
+		result.Issues = append(result.Issues, err.Error())
+		return result
+	}
+	result.OK = true
+	result.PackCount = len(catalog.Packs)
+	return result
+}
+
+func isTerminal(status string, terminal []string) bool {
+	for _, value := range terminal {
+		if status == value {
+			return true
+		}
+	}
+	return false
+}
+
+func printParityArtifact(artifact parityArtifact) {
+	fmt.Printf("# Fairway Parity Artifact\n\nproject: %s\ngenerated_at: %s\n", artifact.Project, artifact.GeneratedAt)
+	fmt.Printf("tasks: %d\nready: %d\n", artifact.TaskCount, artifact.ReadyCount)
+	if len(artifact.ReadyByRole) > 0 {
+		fmt.Println("\n## Ready By Role")
+		roles := make([]string, 0, len(artifact.ReadyByRole))
+		for role := range artifact.ReadyByRole {
+			roles = append(roles, role)
+		}
+		sort.Strings(roles)
+		for _, role := range roles {
+			fmt.Printf("- %s: %d\n", role, artifact.ReadyByRole[role])
+		}
+	}
+	if len(artifact.ReadySample) > 0 {
+		fmt.Println("\n## Ready Sample")
+		for _, task := range artifact.ReadySample {
+			fmt.Printf("- %s [%s] %s\n", task.ID, task.Role, task.Title)
+		}
+	}
+	if len(artifact.RouteSamples) > 0 {
+		fmt.Println("\n## Review Route Samples")
+		for _, sample := range artifact.RouteSamples {
+			if sample.OK {
+				fmt.Printf("- %s -> %s (%s)\n", sample.Path, sample.Reviewer, sample.Reason)
+			} else {
+				fmt.Printf("- %s -> no match\n", sample.Path)
+			}
+		}
+	}
+	fmt.Println("\n## Regression Packs")
+	if artifact.RegressionPacks.OK {
+		fmt.Printf("- valid %s (%d packs)\n", artifact.RegressionPacks.CatalogPath, artifact.RegressionPacks.PackCount)
+	} else {
+		fmt.Printf("- not valid %s\n", artifact.RegressionPacks.CatalogPath)
+		for _, issue := range artifact.RegressionPacks.Issues {
+			fmt.Printf("  - %s\n", issue)
+		}
+	}
+	fmt.Println("\n## Health")
+	fmt.Printf("- in_progress: %d\n- stale_in_progress: %d\n- blocked_over_24h: %d\n- unacknowledged_handoffs: %d\n- unrouted_reviews: %d\n",
+		artifact.Health.InProgress, artifact.Health.StaleInProgress, artifact.Health.BlockedOver24h, artifact.Health.UnacknowledgedHandoff, artifact.Health.UnroutedReviews)
+	if len(artifact.EvidenceGaps) > 0 {
+		fmt.Println("\n## Evidence Gaps")
+		fmt.Printf("showing %d of %d\n", len(artifact.EvidenceGaps), artifact.EvidenceGapCount)
+		for _, gap := range artifact.EvidenceGaps {
+			fmt.Printf("- %s\n", gap)
+		}
+	}
+	if len(artifact.Coordinator.Issues) > 0 {
+		fmt.Println("\n## Coordinator Issues")
+		for _, issue := range artifact.Coordinator.Issues {
+			fmt.Printf("- %s\n", issue)
+		}
+	}
+	if len(artifact.Coordinator.Recommendations) > 0 {
+		fmt.Println("\n## Recommendations")
+		for _, recommendation := range artifact.Coordinator.Recommendations {
+			fmt.Printf("- %s\n", recommendation)
 		}
 	}
 }
@@ -3390,5 +3661,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|checkpoint|packet|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|parity|checkpoint|packet|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
 }
