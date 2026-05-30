@@ -171,3 +171,10 @@ fairway record guard-report T-011 \
   --graduation-criteria "zero critical findings for two releases" \
   --artifact dist/import-boundary.json
 ```
+
+Use readiness reports when a workstream or release needs a gate summary:
+
+```bash
+fairway readiness report --profile release-readiness
+fairway --json readiness report --profile platform-foundation
+```

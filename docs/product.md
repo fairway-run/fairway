@@ -63,8 +63,9 @@ each version ships.
   metadata, and structured guard evidence. Profile gates and task metadata have
   started landing, the dashboard now has an initial profile/kind grouping, and
   dashboard filters over profile metadata; configured packet templates can
-  render packets, and guard reports can be recorded as typed evidence. GPUaaS /
-  ARC remains the adoption example, not the core product shape.
+  render packets, guard reports can be recorded as typed evidence, and
+  readiness reports summarize profile gates. GPUaaS / ARC remains the adoption
+  example, not the core product shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

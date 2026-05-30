@@ -29,6 +29,7 @@ fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
 fairway coordinator preflight | status | tick
+fairway readiness report [--profile <name>] [--gap-limit <n>]
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
@@ -102,6 +103,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - `merge-ready` evaluates profile gates for the target task. Missing
   `blocking` gates fail readiness; missing `advisory` and `report_only` gates
   are reported as warnings.
+- `readiness report` evaluates configured profile gates across a workstream or
+  all profiles. Missing blocking gates make the report fail in human mode;
+  `--json` returns the full report for automation.
 - `packet bugfix`, platform-foundation packets, `packet template`, and
   `regression-pack` are quality surfaces. They render and validate review
   context; they do not execute product test suites.

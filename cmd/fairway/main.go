@@ -119,6 +119,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdAdoption(ctx, opts, args[1:])
 	case "parity":
 		return cmdParity(ctx, opts, args[1:])
+	case "readiness":
+		return cmdReadiness(ctx, opts, args[1:])
 	case "checkpoint":
 		return cmdCheckpoint(ctx, opts, args[1:])
 	case "packet":
@@ -1701,6 +1703,100 @@ func cmdAdoption(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdAdoptionArtifact(ctx, opts, "adoption", args[1:])
 	default:
 		return fmt.Errorf("unknown adoption subcommand %q", args[0])
+	}
+}
+
+type readinessReport struct {
+	OK              bool                     `json:"ok"`
+	Profile         string                   `json:"profile,omitempty"`
+	TaskCount       int                      `json:"task_count"`
+	BlockingMissing int                      `json:"blocking_missing"`
+	AdvisoryMissing int                      `json:"advisory_missing"`
+	GateEvaluations []adoptionGateEvaluation `json:"gate_evaluations"`
+}
+
+func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("readiness requires subcommand: report")
+	}
+	if args[0] != "report" {
+		return fmt.Errorf("unknown readiness subcommand %q", args[0])
+	}
+	fs := flag.NewFlagSet("readiness report", flag.ContinueOnError)
+	profileName := fs.String("profile", "", "workstream profile")
+	gapLimit := fs.Int("gap-limit", 5, "maximum missing task examples per gate")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected readiness report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		if *profileName != "" {
+			profile, ok := findWorkstreamProfile(cfg, *profileName)
+			if !ok {
+				return fmt.Errorf("unknown workstream profile %q", *profileName)
+			}
+			cfg.WorkstreamProfiles = []config.WorkstreamProfile{profile}
+		}
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		evaluations, err := evaluateProfileGates(ctx, cfg, s, tasks, *gapLimit)
+		if err != nil {
+			return err
+		}
+		report := readinessReport{
+			OK:              true,
+			Profile:         *profileName,
+			TaskCount:       len(tasks),
+			GateEvaluations: evaluations,
+		}
+		for _, evaluation := range evaluations {
+			if evaluation.Status != "missing" {
+				continue
+			}
+			if evaluation.Mode == "blocking" {
+				report.BlockingMissing += evaluation.MissingCount
+				report.OK = false
+			} else {
+				report.AdvisoryMissing += evaluation.MissingCount
+			}
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		printReadinessReport(report)
+		if !report.OK {
+			return errors.New("readiness report has missing blocking gates")
+		}
+		return nil
+	})
+}
+
+func findWorkstreamProfile(cfg config.Config, name string) (config.WorkstreamProfile, bool) {
+	for _, profile := range cfg.WorkstreamProfiles {
+		if profile.Name == name {
+			return profile, true
+		}
+	}
+	return config.WorkstreamProfile{}, false
+}
+
+func printReadinessReport(report readinessReport) {
+	fmt.Println("# Fairway Readiness Report")
+	if report.Profile != "" {
+		fmt.Printf("\nprofile: %s\n", report.Profile)
+	}
+	fmt.Printf("ready: %t\ntasks: %d\nblocking_missing: %d\nadvisory_missing: %d\n", report.OK, report.TaskCount, report.BlockingMissing, report.AdvisoryMissing)
+	fmt.Println("\n## Gates")
+	for _, evaluation := range report.GateEvaluations {
+		label := evaluation.Profile + "/" + evaluation.Gate
+		fmt.Printf("- %s: %s (%d/%d satisfied)\n", label, evaluation.Status, evaluation.SatisfiedCount, evaluation.TaskCount)
+		for _, miss := range evaluation.Missing {
+			fmt.Printf("  - %s [%s] %s: %s\n", miss.TaskID, miss.Kind, miss.Title, strings.Join(miss.Reasons, "; "))
+		}
 	}
 }
 
@@ -4567,5 +4663,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
 }

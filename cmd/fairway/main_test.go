@@ -288,6 +288,43 @@ artifact_required = true
 	assertContains(t, jsonReport, `"status": "satisfied"`)
 }
 
+func TestCLI_ReadinessReportEvaluatesProfileGates(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[workstream_profiles]]
+name = "release-readiness"
+task_kinds = ["release-risk"]
+
+[[workstream_profiles.gates]]
+name = "release-owner-approval"
+mode = "blocking"
+evidence_type = "approval"
+required_evidence_count = 1
+accepted_results = ["pass"]
+`)
+	runOK(t, "add", "T-001", "--title", "Approve release", "--role", "backend", "--kind", "release-risk")
+	failed := runCaptureAllowError(t, "readiness", "report", "--profile", "release-readiness")
+	assertContains(t, failed, "ready: false")
+	assertContains(t, failed, "release-readiness/release-owner-approval")
+	jsonFailed := runCapture(t, "--json", "readiness", "report", "--profile", "release-readiness")
+	assertContains(t, jsonFailed, `"ok": false`)
+
+	runOK(t, "record", "evidence", "T-001", "--command-text", "release owner approval", "--result", "pass", "--artifact-type", "approval")
+	report := runCapture(t, "readiness", "report", "--profile", "release-readiness")
+	assertContains(t, report, "ready: true")
+	assertContains(t, report, "satisfied")
+}
+
 func TestCLI_WorktreeSetupStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
