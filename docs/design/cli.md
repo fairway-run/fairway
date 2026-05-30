@@ -28,6 +28,7 @@ fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
 fairway coordinator preflight | status | tick
+fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> [--owning-layer <text>] --proof-command <cmd> --regression-coverage <text> [--residual-risk <text>]

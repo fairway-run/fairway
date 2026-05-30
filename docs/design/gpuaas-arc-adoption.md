@@ -1,7 +1,9 @@
 # GPUaaS / ARC Adoption Track
 
-This track captures GPUaaS and ARC adoption needs without turning Fairway into a
-CI/CD system, scanner, deployment tool, docs portal, or agent runner.
+This track captures GPUaaS and ARC adoption needs as concrete instances of
+Fairway's generic [workstream profiles](workstream-profiles.md), without turning
+Fairway into a CI/CD system, scanner, deployment tool, docs portal, or agent
+runner.
 
 Fairway's job is the coordination control plane around those tools:
 
@@ -42,32 +44,39 @@ this track are implemented and validated.
 
 ## Priority Order
 
-1. Parity artifact command.
-2. Platform-foundation orchestration profile.
-3. Release readiness/risk data model.
-4. Security, release, and UAT packets.
-5. GitLab evidence bridge.
-6. Environment and ring awareness.
-7. Risk register reporting.
-8. SDK/developer readiness gates.
-9. Documentation export for portal systems such as Docusaurus.
+1. Configurable workstream profiles.
+2. Adoption artifact command.
+3. Configurable packet templates.
+4. Structured guard evidence.
+5. Task ownership metadata.
+6. Multi-reviewer merge readiness.
+7. Release readiness/risk profile.
+8. GitLab evidence bridge.
+9. Environment and ring awareness.
+10. Risk register reporting.
+11. SDK/developer readiness gates.
+12. Documentation export for portal systems such as Docusaurus.
 
-## 1. Parity Artifact Command
+## 1. Adoption Artifact Command
 
-`fairway parity artifact` produces an adoption-readiness report after importing
-a copied GPUaaS queue. It should include:
+`fairway adoption artifact` produces a generic adoption-readiness report after
+importing a queue. It should include:
 
 - task import summary from the current DB,
 - ready set and ready-by-role counts,
 - review-route samples,
 - regression-pack catalog validation,
 - merge/evidence gap counts and a bounded sample,
+- which gates are advisory vs. blocking,
 - worktree health,
 - session health,
 - coordinator issues and recommendations.
 
 This is the proof artifact for adoption readiness. It is not a replacement for
 the GPUaaS scripts until discrepancies are reviewed and closed.
+
+`fairway parity artifact` remains as a compatibility spelling for GPUaaS-style
+script-to-Fairway comparisons.
 
 ## 2. Platform-Foundation Orchestration Profile
 
@@ -113,7 +122,8 @@ contracts, and evidence before asking agents to move files.
 
 ### Needed Fairway Enhancements
 
-These features make Fairway much more useful for the platform-foundation track:
+These implemented commands make Fairway useful for the first
+platform-foundation track:
 
 - `packet architecture-map` (implemented)
   - scope, current owner, target owner, migration risk, source docs, acceptance;
@@ -121,19 +131,11 @@ These features make Fairway much more useful for the platform-foundation track:
   - guard intent, report-only findings, false positives, graduation criteria;
 - `packet vertical-slice` (implemented)
   - target seam, old path, new path, adapter, proof commands, rollback plan;
-- ownership-map metadata on tasks:
-  - package owner,
-  - route owner,
-  - schema owner,
-  - frontend owner,
-  - worker owner;
 - route/review examples for `doc/architecture/platform-foundation/**`;
-- dashboard grouping for architecture-map, guard, facade, frontend-contract, and
-  release-evidence task kinds.
 
-Until those enhancements exist, GPUaaS can still use normal Fairway tasks,
-context packets, evidence records, and review routing for the first ownership
-map and guard work.
+The generic follow-up should be configurable profiles, declarative packet
+templates, ownership metadata, structured guard evidence, and dashboard grouping
+by task kind. See [workstream-profiles.md](workstream-profiles.md).
 
 ## 3. Release Readiness Gates
 

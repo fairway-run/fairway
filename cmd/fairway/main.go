@@ -115,6 +115,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdSession(ctx, opts, args[1:])
 	case "coordinator":
 		return cmdCoordinator(ctx, opts, args[1:])
+	case "adoption":
+		return cmdAdoption(ctx, opts, args[1:])
 	case "parity":
 		return cmdParity(ctx, opts, args[1:])
 	case "checkpoint":
@@ -1560,8 +1562,10 @@ func printCoordinatorTick(report coordinatorReport) {
 }
 
 type parityArtifact struct {
+	ArtifactType     string                 `json:"artifact_type"`
 	GeneratedAt      string                 `json:"generated_at"`
 	Project          string                 `json:"project"`
+	Gates            adoptionGateSummary    `json:"gates"`
 	TaskCount        int                    `json:"task_count"`
 	ReadyCount       int                    `json:"ready_count"`
 	ReadyByRole      map[string]int         `json:"ready_by_role"`
@@ -1572,6 +1576,13 @@ type parityArtifact struct {
 	EvidenceGaps     []string               `json:"evidence_gaps"`
 	Health           store.Health           `json:"health"`
 	Coordinator      coordinatorReport      `json:"coordinator"`
+}
+
+type adoptionGateSummary struct {
+	EvidenceBeforeDone      string `json:"evidence_before_done"`
+	ReviewBeforeDone        string `json:"review_before_done"`
+	HandoffBeforeMergeReady string `json:"handoff_before_merge_ready"`
+	BlockedReason           string `json:"blocked_reason"`
 }
 
 type parityTaskSample struct {
@@ -1602,14 +1613,26 @@ func cmdParity(ctx context.Context, opts globalOptions, args []string) error {
 	}
 	switch args[0] {
 	case "artifact":
-		return cmdParityArtifact(ctx, opts, args[1:])
+		return cmdAdoptionArtifact(ctx, opts, "parity", args[1:])
 	default:
 		return fmt.Errorf("unknown parity subcommand %q", args[0])
 	}
 }
 
-func cmdParityArtifact(ctx context.Context, opts globalOptions, args []string) error {
-	fs := flag.NewFlagSet("parity artifact", flag.ContinueOnError)
+func cmdAdoption(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("adoption requires subcommand: artifact")
+	}
+	switch args[0] {
+	case "artifact":
+		return cmdAdoptionArtifact(ctx, opts, "adoption", args[1:])
+	default:
+		return fmt.Errorf("unknown adoption subcommand %q", args[0])
+	}
+}
+
+func cmdAdoptionArtifact(ctx context.Context, opts globalOptions, artifactType string, args []string) error {
+	fs := flag.NewFlagSet(artifactType+" artifact", flag.ContinueOnError)
 	catalogPath := fs.String("catalog", "", "regression pack catalog path")
 	limit := fs.Int("limit", 20, "maximum ready tasks to include")
 	gapLimit := fs.Int("gap-limit", 50, "maximum evidence gaps to include")
@@ -1619,22 +1642,22 @@ func cmdParityArtifact(ctx context.Context, opts globalOptions, args []string) e
 		return err
 	}
 	if fs.NArg() > 0 {
-		return fmt.Errorf("unexpected parity artifact arguments: %s", strings.Join(fs.Args(), " "))
+		return fmt.Errorf("unexpected %s artifact arguments: %s", artifactType, strings.Join(fs.Args(), " "))
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
-		artifact, err := buildParityArtifact(ctx, cfg, root, s, *catalogPath, routePaths, *limit, *gapLimit)
+		artifact, err := buildAdoptionArtifact(ctx, cfg, root, s, artifactType, *catalogPath, routePaths, *limit, *gapLimit)
 		if err != nil {
 			return err
 		}
 		if opts.JSON {
 			return printJSON(artifact)
 		}
-		printParityArtifact(artifact)
+		printAdoptionArtifact(artifact)
 		return nil
 	})
 }
 
-func buildParityArtifact(ctx context.Context, cfg config.Config, root string, s *store.Store, catalogPath string, routePaths []string, limit, gapLimit int) (parityArtifact, error) {
+func buildAdoptionArtifact(ctx context.Context, cfg config.Config, root string, s *store.Store, artifactType, catalogPath string, routePaths []string, limit, gapLimit int) (parityArtifact, error) {
 	tasks, err := s.AllTasks(ctx)
 	if err != nil {
 		return parityArtifact{}, err
@@ -1664,8 +1687,10 @@ func buildParityArtifact(ctx context.Context, cfg config.Config, root string, s 
 		routePaths = defaultParityRouteSamples(cfg)
 	}
 	artifact := parityArtifact{
+		ArtifactType:    artifactType,
 		GeneratedAt:     time.Now().UTC().Format(time.RFC3339Nano),
 		Project:         cfg.Fairway.ProjectName,
+		Gates:           adoptionGates(cfg),
 		TaskCount:       len(tasks),
 		ReadyCount:      len(ready),
 		ReadyByRole:     map[string]int{},
@@ -1720,6 +1745,22 @@ func buildParityArtifact(ctx context.Context, cfg config.Config, root string, s 
 	return artifact, nil
 }
 
+func adoptionGates(cfg config.Config) adoptionGateSummary {
+	return adoptionGateSummary{
+		EvidenceBeforeDone:      gateMode(cfg.Gates.RequireEvidenceBeforeDone),
+		ReviewBeforeDone:        gateMode(cfg.Gates.RequireReviewBeforeDone),
+		HandoffBeforeMergeReady: gateMode(cfg.Gates.RequireHandoffBeforeMergeReady),
+		BlockedReason:           gateMode(cfg.Gates.RequireBlockedReason),
+	}
+}
+
+func gateMode(blocking bool) string {
+	if blocking {
+		return "blocking"
+	}
+	return "advisory"
+}
+
 func defaultParityRouteSamples(cfg config.Config) []string {
 	if strings.EqualFold(cfg.Fairway.ProjectName, "gpuaas") || config.RoleSet(cfg)["A-backend"] {
 		return []string{
@@ -1765,9 +1806,18 @@ func isTerminal(status string, terminal []string) bool {
 	return false
 }
 
-func printParityArtifact(artifact parityArtifact) {
-	fmt.Printf("# Fairway Parity Artifact\n\nproject: %s\ngenerated_at: %s\n", artifact.Project, artifact.GeneratedAt)
+func printAdoptionArtifact(artifact parityArtifact) {
+	title := "Adoption"
+	if artifact.ArtifactType == "parity" {
+		title = "Parity"
+	}
+	fmt.Printf("# Fairway %s Artifact\n\nproject: %s\ngenerated_at: %s\n", title, artifact.Project, artifact.GeneratedAt)
 	fmt.Printf("tasks: %d\nready: %d\n", artifact.TaskCount, artifact.ReadyCount)
+	fmt.Println("\n## Gates")
+	fmt.Printf("- evidence_before_done: %s\n", artifact.Gates.EvidenceBeforeDone)
+	fmt.Printf("- review_before_done: %s\n", artifact.Gates.ReviewBeforeDone)
+	fmt.Printf("- handoff_before_merge_ready: %s\n", artifact.Gates.HandoffBeforeMergeReady)
+	fmt.Printf("- blocked_reason: %s\n", artifact.Gates.BlockedReason)
 	if len(artifact.ReadyByRole) > 0 {
 		fmt.Println("\n## Ready By Role")
 		roles := make([]string, 0, len(artifact.ReadyByRole))
@@ -3828,5 +3878,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|parity|checkpoint|packet|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|adoption|parity|checkpoint|packet|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
 }

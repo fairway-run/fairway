@@ -4,6 +4,10 @@
 
 Fairway is the smallest tool that makes running 2–6 coding agents in parallel feel coordinated rather than chaotic.
 
+Fairway is a local-first coordination control plane for multi-agent engineering
+work: tasks, ownership, evidence, reviews, handoffs, sessions, readiness, and
+risk.
+
 The benchmark: a solo developer with three Claude lanes and one Codex lane open should never lose track of which agent is doing what, why a task is stuck, or who is blocking whom.
 
 ## Principles
@@ -15,6 +19,9 @@ The benchmark: a solo developer with three Claude lanes and one Codex lane open 
 5. **Boringly portable.** Pure Go, no CGO, single binary, works the same on macOS / Linux / Windows.
 6. **Hospitable defaults.** A new user gets value from `fairway init` + `fairway dashboard` before they touch a config file.
 7. **Context over hardcoded agents.** Borrowed from Poiesis: durable docs, task notes, contracts, acceptance checks, and evidence make agents specialized; fairway does not need provider-specific agent classes.
+8. **Profiles over project-specific workflow.** Workstream profiles can define
+   task kinds, packet templates, review domains, evidence expectations, and
+   dashboard grouping without baking one product's process into core.
 
 ## What "done" looks like for v1.0
 

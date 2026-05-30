@@ -97,9 +97,14 @@ to a useful v1.
    [GPUaaS / ARC adoption track](gpuaas-arc-adoption.md): architecture-map
    packets, boundary-guard packets, vertical-slice packets, and task metadata
    for package/route/schema/event/frontend ownership.
-2. Add Homebrew tap publishing after the first tagged release settles.
-3. Expand dashboard mutations beyond claim while keeping CSRF and per-action
+2. Add configurable [workstream profiles](workstream-profiles.md), starting
+   with declarative packet templates, structured guard evidence, task ownership
+   metadata, and dashboard grouping by task kind.
+3. Add multi-reviewer merge readiness for review domains such as architecture,
+   security, frontend, ops, and governance.
+4. Add Homebrew tap publishing after the first tagged release settles.
+5. Expand dashboard mutations beyond claim while keeping CSRF and per-action
    audit on every write.
-4. Expand TUI ergonomics beyond the basic command loop.
-5. Expand tracker integration from local links/dry-run reporting to provider
+6. Expand TUI ergonomics beyond the basic command loop.
+7. Expand tracker integration from local links/dry-run reporting to provider
    adapters when credentials and API mapping are explicit.

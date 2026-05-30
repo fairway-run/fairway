@@ -68,6 +68,7 @@ Design:
 - [Release cuts](docs/design/release-cuts.md)
 - [Implementation roadmap](docs/design/implementation-roadmap.md)
 - [GPUaaS / ARC adoption](docs/design/gpuaas-arc-adoption.md)
+- [Workstream profiles](docs/design/workstream-profiles.md)
 - [Schema](docs/design/schema.md)
 - [State machine](docs/design/state-machine.md)
 - [GPUaaS extraction](docs/design/gpuaas-extraction.md)
