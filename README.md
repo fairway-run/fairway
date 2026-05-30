@@ -50,7 +50,7 @@ fairway ready                 # list tasks ready for your role to claim
 fairway claim T-001
 fairway record evidence T-001 --command-text "go test ./..." --result pass
 fairway set-status T-001 done
-fairway adoption artifact     # summarize routes, gates, health, and evidence gaps
+fairway adoption artifact     # summarize routes, gate evaluation, health, and evidence gaps
 ```
 
 See [docs/quickstart.md](docs/quickstart.md) for the full walkthrough.

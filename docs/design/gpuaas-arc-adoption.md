@@ -69,6 +69,7 @@ importing a queue. It should include:
 - regression-pack catalog validation,
 - merge/evidence gap counts and a bounded sample,
 - which gates are advisory vs. blocking,
+- evidence-backed profile gate evaluation for matching task kinds,
 - worktree health,
 - session health,
 - coordinator issues and recommendations.

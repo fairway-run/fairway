@@ -38,9 +38,10 @@ fairway config validate
 fairway adoption artifact --limit 5 --gap-limit 5
 ```
 
-The adoption artifact shows configured gate modes, named profile gates, and
-route samples. Treat advisory gates as evidence expectations, not as optional
-background noise.
+The adoption artifact shows configured gate modes, named profile gates, route
+samples, and evidence-backed gate evaluation. Treat advisory gates as evidence
+expectations, not as optional background noise; if your task appears under a
+missing gate, record the required evidence before calling the work ready.
 
 ## Claim Work
 

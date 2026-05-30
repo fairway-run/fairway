@@ -19,8 +19,9 @@ Everything that is not the dashboard frontend, CI / release, or pure docs:
 - `internal/report/` — report generators.
 - `internal/dashboard/` — *server* side (HTTP handlers, SSE source). UI templates and assets belong to `ui`.
 - Adoption/profile plumbing: `fairway adoption artifact`, configured
-  workstream profile validation, named profile gates, route samples, and future
-  packet-template rendering hooks after `arch` signs off the schema.
+  workstream profile validation, named profile gates, evidence-backed gate
+  evaluation, route samples, and future packet-template rendering hooks after
+  `arch` signs off the schema.
 
 ## Out of scope — hand off to:
 

@@ -15,7 +15,8 @@
 - Release smoke tests for top-level CLI commands and generated packet outputs.
 - Release smoke coverage for profile-aware commands such as
   `fairway config validate` on example profile configs and
-  `fairway adoption artifact` with configured route samples.
+  `fairway adoption artifact` with configured route samples and gate
+  evaluation.
 
 ## Out of scope — hand off to:
 
