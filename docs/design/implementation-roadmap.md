@@ -109,14 +109,11 @@ to a useful v1.
    gates, packet templates, template profile scoping, and structured evidence
    requirements. Adoption artifacts now evaluate named gates against task
    evidence rows, and `merge-ready` enforces missing `blocking` gates for the
-   target task; dashboard grouping by task kind/profile has started. Next
-   next slices are tracker provider adapters, dashboard mutations, TUI
-   ergonomics, and release packaging polish.
-3. Add multi-reviewer merge readiness for review domains such as architecture,
-   security, frontend, ops, and governance.
-4. Add Homebrew tap publishing after the first tagged release settles.
-5. Expand dashboard mutations beyond claim while keeping CSRF and per-action
+   target task; dashboard grouping by task kind/profile has started, and
+   task-level `review_domains` are enforced by `merge-ready`.
+3. Add Homebrew tap publishing after the first tagged release settles.
+4. Expand dashboard mutations beyond claim while keeping CSRF and per-action
    audit on every write.
-6. Expand TUI ergonomics beyond the basic command loop.
-7. Expand tracker integration from local links/dry-run reporting to provider
+5. Expand TUI ergonomics beyond the basic command loop.
+6. Expand tracker integration from local links/dry-run reporting to provider
    adapters when credentials and API mapping are explicit.
