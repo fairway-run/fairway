@@ -105,6 +105,34 @@ fairway watcher start W-001 --task T-001 --owner C-ops/watch --process ci
 fairway watcher finish W-001 --result pass --artifact dist/ci.log
 ```
 
+Platform-foundation work should use the narrower packet type that matches the
+task:
+
+```bash
+fairway packet architecture-map T-010 \
+  --scope "route ownership" \
+  --current-owner mixed \
+  --target-owner D-arch \
+  --migration-risk "route moves can hide auth regressions" \
+  --source-doc doc/architecture/platform-foundation/ownership.md \
+  --acceptance "owners and review routes are explicit"
+
+fairway packet boundary-guard T-011 \
+  --guard-intent "report imports across package boundaries" \
+  --finding "cmd/api imports billing internals" \
+  --false-positive "generated client code" \
+  --graduation-criteria "zero critical findings for two releases" \
+  --proof-command "go test ./..."
+
+fairway packet vertical-slice T-012 \
+  --target-seam "platform evidence facade" \
+  --old-path cmd/api/evidence.go \
+  --new-path packages/services/platform/evidence.go \
+  --adapter "thin route adapter" \
+  --proof-command "go test ./cmd/api ./packages/services/platform" \
+  --rollback-plan "revert adapter wiring"
+```
+
 ## Handoffs
 
 When work crosses a role boundary, hand it off instead of reaching across:

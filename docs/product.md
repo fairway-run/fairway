@@ -52,7 +52,8 @@ each version ships.
 - Dashboard mutations (with CSRF, audit).
 - TUI mode (`fairway tui`) for SSH / headless use.
 - GPUaaS / ARC adoption track: parity artifact, release-readiness design,
-  security/UAT packet design, and evidence bridge boundaries.
+  platform-foundation orchestration profile, security/UAT packet design, and
+  evidence bridge boundaries.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

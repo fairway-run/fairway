@@ -32,6 +32,9 @@ fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> [--owning-layer <text>] --proof-command <cmd> --regression-coverage <text> [--residual-risk <text>]
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
+fairway packet architecture-map <task-id> --scope <text> --current-owner <role> --target-owner <role> --migration-risk <text> [--source-doc <path>]... --acceptance <text>
+fairway packet boundary-guard <task-id> --guard-intent <text> [--finding <text>]... [--false-positive <text>]... --graduation-criteria <text> [--proof-command <cmd>]...
+fairway packet vertical-slice <task-id> --target-seam <text> --old-path <path> --new-path <path> --adapter <text> [--proof-command <cmd>]... --rollback-plan <text>
 fairway regression-pack list [--catalog <path>]
 fairway regression-pack show <pack-id> [--catalog <path>]
 fairway regression-pack validate [<catalog-path>]
@@ -87,8 +90,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   when agents are launched manually.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
-- `packet bugfix` and `regression-pack` are quality surfaces. They render and
-  validate review context; they do not execute product test suites.
+- `packet bugfix`, platform-foundation packets, and `regression-pack` are
+  quality surfaces. They render and validate review context; they do not
+  execute product test suites.
 - `db compat --backend postgres` is a planned adapter harness, not the default
   v1 runtime.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that

@@ -66,6 +66,10 @@ match = "doc/api/**"
 reviewer = "D-arch"
 
 [[review_routes]]
+match = "doc/architecture/platform-foundation/**"
+reviewer = "D-arch"
+
+[[review_routes]]
 match = "doc/architecture/**"
 reviewer = "D-arch"
 
@@ -197,7 +201,7 @@ require_blocked_reason = true
 allow_force_without_reason = false
 
 [task_kinds]
-allowed = ["epic", "story", "task", "bug", "spike", "watch"]
+allowed = ["epic", "story", "task", "bug", "spike", "watch", "architecture-map", "guard", "facade", "frontend-contract", "release-evidence"]
 default = "task"
 
 [task_priorities]

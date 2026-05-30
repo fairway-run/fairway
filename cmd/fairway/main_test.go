@@ -334,6 +334,9 @@ func TestCLI_CheckpointAndPacket(t *testing.T) {
 	runOK(t, "--json", "packet", "context", "T-001", "--goal", "finish")
 	runOK(t, "packet", "bugfix", "T-001", "--bug-summary", "broken", "--root-cause", "missing guard", "--proof-command", "go test ./...", "--regression-coverage", "unit")
 	runOK(t, "--json", "packet", "watcher", "W-001", "--owner", "ops/watch", "--process", "ci", "--command", "gh run watch", "--success", "green", "--failure", "red")
+	runOK(t, "packet", "architecture-map", "T-001", "--scope", "package ownership", "--current-owner", "mixed", "--target-owner", "backend", "--migration-risk", "move-only churn", "--source-doc", "doc/architecture/platform-foundation/ownership.md", "--acceptance", "map reviewed")
+	runOK(t, "--json", "packet", "boundary-guard", "T-001", "--guard-intent", "report imports across package boundaries", "--finding", "cmd/api imports internal billing", "--false-positive", "generated code", "--graduation-criteria", "zero critical findings", "--proof-command", "go test ./...")
+	runOK(t, "packet", "vertical-slice", "T-001", "--target-seam", "platform evidence facade", "--old-path", "cmd/api/evidence.go", "--new-path", "packages/services/platform/evidence.go", "--adapter", "thin route adapter", "--proof-command", "go test ./cmd/api ./packages/services/platform", "--rollback-plan", "revert adapter wiring")
 	runOK(t, "watcher", "start", "W-001", "--task", "T-001", "--owner", "ops/watch", "--process", "ci", "--command", "gh run watch", "--success", "green", "--failure", "red")
 	runOK(t, "watcher", "status")
 	runOK(t, "watcher", "finish", "W-001", "--result", "pass", "--artifact", "ci.txt", "--duration-seconds", "5")
@@ -381,24 +384,25 @@ func TestCLI_GPUaaSParityFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string]string{
-		".github/workflows/ci.yml":                         "C-ops",
-		"scripts/ci/contracts_validate.sh":                 "E-governance",
-		"scripts/ops/agent_queue.sh":                       "C-ops",
-		"doc/api/openapi.draft.yaml":                       "D-arch",
-		"doc/architecture/Runtime.md":                      "D-arch",
-		"doc/governance/Agent_Queue.md":                    "E-governance",
-		"docs/design/state-machine.md":                     "D-arch",
-		"packages/web/src/App.tsx":                         "B-ui",
-		"cmd/api/routes.go":                                "E-governance",
-		"cmd/terminal-gateway/main.go":                     "E-governance",
-		"cmd/node-agent/main.go":                           "E-governance",
-		"cmd/billing-worker/main.go":                       "E-governance",
-		"cmd/provisioning-worker/main.go":                  "E-governance",
-		"packages/services/auth/service.go":                "E-governance",
-		"packages/services/billing/service.go":             "E-governance",
-		"packages/services/payments/service.go":            "E-governance",
-		"packages/services/provisioning/worker/service.go": "E-governance",
-		"packages/services/terminal/proxy.go":              "E-governance",
+		".github/workflows/ci.yml":                          "C-ops",
+		"scripts/ci/contracts_validate.sh":                  "E-governance",
+		"scripts/ops/agent_queue.sh":                        "C-ops",
+		"doc/api/openapi.draft.yaml":                        "D-arch",
+		"doc/architecture/platform-foundation/ownership.md": "D-arch",
+		"doc/architecture/Runtime.md":                       "D-arch",
+		"doc/governance/Agent_Queue.md":                     "E-governance",
+		"docs/design/state-machine.md":                      "D-arch",
+		"packages/web/src/App.tsx":                          "B-ui",
+		"cmd/api/routes.go":                                 "E-governance",
+		"cmd/terminal-gateway/main.go":                      "E-governance",
+		"cmd/node-agent/main.go":                            "E-governance",
+		"cmd/billing-worker/main.go":                        "E-governance",
+		"cmd/provisioning-worker/main.go":                   "E-governance",
+		"packages/services/auth/service.go":                 "E-governance",
+		"packages/services/billing/service.go":              "E-governance",
+		"packages/services/payments/service.go":             "E-governance",
+		"packages/services/provisioning/worker/service.go":  "E-governance",
+		"packages/services/terminal/proxy.go":               "E-governance",
 	}
 	for changedPath, want := range cases {
 		got, reason := matchReviewRoute(cfg.ReviewRoutes, []string{changedPath})

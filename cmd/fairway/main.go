@@ -1901,7 +1901,7 @@ func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string,
 
 func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("packet requires subcommand: context")
+		return errors.New("packet requires subcommand: context, bugfix, watcher, architecture-map, boundary-guard, vertical-slice")
 	}
 	switch args[0] {
 	case "context":
@@ -1910,6 +1910,12 @@ func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdPacketBugfix(ctx, opts, args[1:])
 	case "watcher":
 		return cmdPacketWatcher(opts, args[1:])
+	case "architecture-map":
+		return cmdPacketArchitectureMap(ctx, opts, args[1:])
+	case "boundary-guard":
+		return cmdPacketBoundaryGuard(ctx, opts, args[1:])
+	case "vertical-slice":
+		return cmdPacketVerticalSlice(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown packet subcommand %q", args[0])
 	}
@@ -2067,6 +2073,167 @@ func cmdPacketWatcher(opts globalOptions, args []string) error {
 	fmt.Printf("\n## Success\n%s\n", *success)
 	fmt.Printf("\n## Failure\n%s\n", *failure)
 	return nil
+}
+
+func cmdPacketArchitectureMap(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("packet architecture-map requires task id")
+	}
+	fs := flag.NewFlagSet("packet architecture-map", flag.ContinueOnError)
+	scope := fs.String("scope", "", "map scope")
+	currentOwner := fs.String("current-owner", "", "current owner")
+	targetOwner := fs.String("target-owner", "", "target owner")
+	migrationRisk := fs.String("migration-risk", "", "migration risk")
+	acceptance := fs.String("acceptance", "", "acceptance")
+	var sourceDocs multiFlag
+	fs.Var(&sourceDocs, "source-doc", "source doc path or URL; may repeat")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet architecture-map arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		packet := struct {
+			Task          store.Task       `json:"task"`
+			Scope         string           `json:"scope"`
+			CurrentOwner  string           `json:"current_owner"`
+			TargetOwner   string           `json:"target_owner"`
+			MigrationRisk string           `json:"migration_risk"`
+			SourceDocs    []string         `json:"source_docs"`
+			Acceptance    string           `json:"acceptance"`
+			Evidence      []store.Evidence `json:"evidence"`
+			Reviews       []store.Review   `json:"reviews"`
+		}{task, *scope, *currentOwner, *targetOwner, *migrationRisk, sourceDocs, *acceptance, evidence, reviews}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		fmt.Printf("# Architecture Map Packet: %s\n\n", task.Definition.ID)
+		fmt.Printf("title: %s\nstatus: %s\nrole: %s\n", task.Definition.Title, task.Status, task.Definition.Role)
+		fmt.Printf("\n## Scope\n%s\n", *scope)
+		fmt.Printf("\n## Ownership\ncurrent: %s\ntarget: %s\n", *currentOwner, *targetOwner)
+		fmt.Printf("\n## Migration Risk\n%s\n", *migrationRisk)
+		printPacketList("Source Docs", sourceDocs)
+		fmt.Printf("\n## Acceptance\n%s\n", *acceptance)
+		printEvidenceSummary(evidence)
+		return nil
+	})
+}
+
+func cmdPacketBoundaryGuard(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("packet boundary-guard requires task id")
+	}
+	fs := flag.NewFlagSet("packet boundary-guard", flag.ContinueOnError)
+	intent := fs.String("guard-intent", "", "guard intent")
+	graduation := fs.String("graduation-criteria", "", "graduation criteria")
+	var findings multiFlag
+	var falsePositives multiFlag
+	var proofCommands multiFlag
+	fs.Var(&findings, "finding", "report-only finding; may repeat")
+	fs.Var(&falsePositives, "false-positive", "known false positive; may repeat")
+	fs.Var(&proofCommands, "proof-command", "proof command; may repeat")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet boundary-guard arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		packet := struct {
+			Task               store.Task       `json:"task"`
+			GuardIntent        string           `json:"guard_intent"`
+			Findings           []string         `json:"findings"`
+			FalsePositives     []string         `json:"false_positives"`
+			GraduationCriteria string           `json:"graduation_criteria"`
+			ProofCommands      []string         `json:"proof_commands"`
+			Evidence           []store.Evidence `json:"evidence"`
+			Reviews            []store.Review   `json:"reviews"`
+		}{task, *intent, findings, falsePositives, *graduation, proofCommands, evidence, reviews}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		fmt.Printf("# Boundary Guard Packet: %s\n\n", task.Definition.ID)
+		fmt.Printf("title: %s\nstatus: %s\nrole: %s\n", task.Definition.Title, task.Status, task.Definition.Role)
+		fmt.Printf("\n## Guard Intent\n%s\n", *intent)
+		printPacketList("Report-Only Findings", findings)
+		printPacketList("False Positives", falsePositives)
+		fmt.Printf("\n## Graduation Criteria\n%s\n", *graduation)
+		printPacketList("Proof Commands", proofCommands)
+		printEvidenceSummary(evidence)
+		return nil
+	})
+}
+
+func cmdPacketVerticalSlice(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("packet vertical-slice requires task id")
+	}
+	fs := flag.NewFlagSet("packet vertical-slice", flag.ContinueOnError)
+	targetSeam := fs.String("target-seam", "", "target seam")
+	oldPath := fs.String("old-path", "", "old path")
+	newPath := fs.String("new-path", "", "new path")
+	adapter := fs.String("adapter", "", "adapter or compatibility boundary")
+	rollbackPlan := fs.String("rollback-plan", "", "rollback plan")
+	var proofCommands multiFlag
+	fs.Var(&proofCommands, "proof-command", "proof command; may repeat")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet vertical-slice arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		packet := struct {
+			Task          store.Task       `json:"task"`
+			TargetSeam    string           `json:"target_seam"`
+			OldPath       string           `json:"old_path"`
+			NewPath       string           `json:"new_path"`
+			Adapter       string           `json:"adapter"`
+			ProofCommands []string         `json:"proof_commands"`
+			RollbackPlan  string           `json:"rollback_plan"`
+			Evidence      []store.Evidence `json:"evidence"`
+			Reviews       []store.Review   `json:"reviews"`
+		}{task, *targetSeam, *oldPath, *newPath, *adapter, proofCommands, *rollbackPlan, evidence, reviews}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		fmt.Printf("# Vertical Slice Packet: %s\n\n", task.Definition.ID)
+		fmt.Printf("title: %s\nstatus: %s\nrole: %s\n", task.Definition.Title, task.Status, task.Definition.Role)
+		fmt.Printf("\n## Target Seam\n%s\n", *targetSeam)
+		fmt.Printf("\n## Path Movement\nold: %s\nnew: %s\n", *oldPath, *newPath)
+		fmt.Printf("\n## Adapter\n%s\n", *adapter)
+		printPacketList("Proof Commands", proofCommands)
+		fmt.Printf("\n## Rollback Plan\n%s\n", *rollbackPlan)
+		printEvidenceSummary(evidence)
+		return nil
+	})
+}
+
+func printPacketList(title string, values []string) {
+	fmt.Printf("\n## %s\n", title)
+	for _, value := range values {
+		fmt.Printf("- %s\n", value)
+	}
+}
+
+func printEvidenceSummary(evidence []store.Evidence) {
+	fmt.Println("\n## Existing Evidence")
+	for _, ev := range evidence {
+		fmt.Printf("- %s: %s %s\n", ev.Result, ev.CommandText, ev.ArtifactPath)
+	}
 }
 
 func cmdWatcher(ctx context.Context, opts globalOptions, args []string) error {
