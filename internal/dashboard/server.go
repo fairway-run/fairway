@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/subashram/fairway/internal/store"
@@ -91,6 +93,22 @@ type WorkstreamGroup struct {
 	Tasks []store.Task
 }
 
+type TaskFilters struct {
+	Profile      string
+	Kind         string
+	OwningDomain string
+	RiskLevel    string
+	ReviewDomain string
+}
+
+type FilterOptions struct {
+	Profiles      []string
+	Kinds         []string
+	OwningDomains []string
+	RiskLevels    []string
+	ReviewDomains []string
+}
+
 func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
@@ -136,10 +154,14 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	filters := taskFiltersFromRequest(r)
+	displayTasks := filterTasks(tasks, filters)
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	data := struct {
 		Groups           []RoleGroup
 		Workstreams      []WorkstreamGroup
+		Filters          TaskFilters
+		FilterOptions    FilterOptions
 		Activity         []store.Activity
 		Health           store.Health
 		Sessions         []store.Session
@@ -148,7 +170,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		StaleCheckpoints []store.Checkpoint
 		Watchers         []store.Watcher
 		Rollups          map[string]Rollup
-	}{groupTasks(tasks, s.roles), groupWorkstreams(tasks), activity, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
+	}{groupTasks(displayTasks, s.roles), groupWorkstreams(displayTasks), filters, filterOptions(tasks), activity, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
 	_ = indexTemplate.Execute(w, data)
 }
 
@@ -179,6 +201,89 @@ func groupTasks(tasks []store.Task, roles []string) []RoleGroup {
 		}
 	}
 	return groups
+}
+
+func taskFiltersFromRequest(r *http.Request) TaskFilters {
+	query := r.URL.Query()
+	return TaskFilters{
+		Profile:      strings.TrimSpace(query.Get("profile")),
+		Kind:         strings.TrimSpace(query.Get("kind")),
+		OwningDomain: strings.TrimSpace(query.Get("owning_domain")),
+		RiskLevel:    strings.TrimSpace(query.Get("risk_level")),
+		ReviewDomain: strings.TrimSpace(query.Get("review_domain")),
+	}
+}
+
+func filterTasks(tasks []store.Task, filters TaskFilters) []store.Task {
+	var out []store.Task
+	for _, task := range tasks {
+		if filters.Profile != "" && task.Definition.Profile != filters.Profile {
+			continue
+		}
+		if filters.Kind != "" && task.Definition.Kind != filters.Kind {
+			continue
+		}
+		if filters.OwningDomain != "" && task.Definition.OwningDomain != filters.OwningDomain {
+			continue
+		}
+		if filters.RiskLevel != "" && task.Definition.RiskLevel != filters.RiskLevel {
+			continue
+		}
+		if filters.ReviewDomain != "" && !containsString(task.Definition.ReviewDomains, filters.ReviewDomain) {
+			continue
+		}
+		out = append(out, task)
+	}
+	return out
+}
+
+func filterOptions(tasks []store.Task) FilterOptions {
+	var options FilterOptions
+	profiles := map[string]bool{}
+	kinds := map[string]bool{}
+	domains := map[string]bool{}
+	risks := map[string]bool{}
+	reviewDomains := map[string]bool{}
+	for _, task := range tasks {
+		addFilterValue(profiles, task.Definition.Profile)
+		addFilterValue(kinds, task.Definition.Kind)
+		addFilterValue(domains, task.Definition.OwningDomain)
+		addFilterValue(risks, task.Definition.RiskLevel)
+		for _, domain := range task.Definition.ReviewDomains {
+			addFilterValue(reviewDomains, domain)
+		}
+	}
+	options.Profiles = sortedFilterValues(profiles)
+	options.Kinds = sortedFilterValues(kinds)
+	options.OwningDomains = sortedFilterValues(domains)
+	options.RiskLevels = sortedFilterValues(risks)
+	options.ReviewDomains = sortedFilterValues(reviewDomains)
+	return options
+}
+
+func addFilterValue(values map[string]bool, value string) {
+	value = strings.TrimSpace(value)
+	if value != "" {
+		values[value] = true
+	}
+}
+
+func sortedFilterValues(values map[string]bool) []string {
+	out := make([]string, 0, len(values))
+	for value := range values {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func groupWorkstreams(tasks []store.Task) []WorkstreamGroup {
@@ -333,7 +438,7 @@ var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <html><head><title>fairway</title><style>
 body{font-family:system-ui,sans-serif;margin:32px;background:#f7f7f5;color:#1f2933}
 table{border-collapse:collapse;width:100%;background:white;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}
-.status{font-family:monospace}.role{font-weight:600}.badges,.lanes{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}.badge,.lane{background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:6px}.lane b{display:block}.layout{display:grid;grid-template-columns:1fr 380px;gap:24px}.panel{background:white;border:1px solid #ddd;padding:12px;margin-bottom:16px}.panel p{border-bottom:1px solid #eee;padding-bottom:8px}.muted{color:#667085}.bad{color:#b42318}.ok{color:#027a48}
+.status{font-family:monospace}.role{font-weight:600}.badges,.lanes,.filters{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}.badge,.lane{background:#fff;border:1px solid #ddd;padding:6px 8px;border-radius:6px}.lane b{display:block}.filters{background:white;border:1px solid #ddd;padding:8px}.filters label{display:grid;gap:4px;font-size:12px;color:#667085}.filters select{min-width:140px}.layout{display:grid;grid-template-columns:1fr 380px;gap:24px}.panel{background:white;border:1px solid #ddd;padding:12px;margin-bottom:16px}.panel p{border-bottom:1px solid #eee;padding-bottom:8px}.muted{color:#667085}.bad{color:#b42318}.ok{color:#027a48}
 </style><script>
 const events = new EventSource("/events");
 events.addEventListener("refresh", () => window.location.reload());
@@ -349,6 +454,14 @@ events.addEventListener("refresh", () => window.location.reload());
 <span class="badge">active watchers: {{len .Watchers}}</span>
 <span class="badge">sessions: {{len .Sessions}}</span>
 </div>
+<form class="filters" method="get">
+<label>Profile<select name="profile"><option value="">all</option>{{range .FilterOptions.Profiles}}<option value="{{.}}" {{if eq $.Filters.Profile .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Kind<select name="kind"><option value="">all</option>{{range .FilterOptions.Kinds}}<option value="{{.}}" {{if eq $.Filters.Kind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Domain<select name="owning_domain"><option value="">all</option>{{range .FilterOptions.OwningDomains}}<option value="{{.}}" {{if eq $.Filters.OwningDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Risk<select name="risk_level"><option value="">all</option>{{range .FilterOptions.RiskLevels}}<option value="{{.}}" {{if eq $.Filters.RiskLevel .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Review<select name="review_domain"><option value="">all</option>{{range .FilterOptions.ReviewDomains}}<option value="{{.}}" {{if eq $.Filters.ReviewDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<button type="submit">Apply</button><a href="/">Clear</a>
+</form>
 <div class="lanes">
 {{range .Groups}}<div class="lane"><b>{{.Role}}</b>{{if .Current}}<a href="/tasks/{{.Current.Definition.ID}}">{{.Current.Definition.ID}}</a> {{.Current.Definition.Title}}{{else}}idle{{end}}</div>{{end}}
 </div>

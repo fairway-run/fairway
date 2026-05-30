@@ -61,6 +61,7 @@ Filter chips above:
 - State (one or more).
 - Kind (when `[task_kinds]` is configured).
 - Profile and workstream kind when task metadata is present.
+- Owning domain, risk level, and review domain when task metadata is present.
 - Priority (min rank, e.g. "P1 and above").
 - In epic (search by epic ID or title).
 - "Has unrouted review" — tasks where a review verdict needs route resolution.

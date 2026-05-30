@@ -9,10 +9,12 @@ Profiles are operational in readiness checks and dashboard visibility. Fairway
 validates the config, uses `route_samples` in `fairway adoption artifact`,
 evaluates named profile gates against recorded evidence rows, applies blocking
 profile gates in `fairway merge-ready`, and groups dashboard tasks by
-profile/kind when metadata is present. Tasks can also carry profile-aware
-metadata such as owning domain/layer, source/target paths, review domains, risk
-level, and migration type. Template-rendered packets are available through
-`fairway packet template`; structured guard evidence is planned follow-on work.
+profile/kind when metadata is present. The dashboard can also filter by
+profile, kind, owning domain, risk, and review domain. Tasks can carry
+profile-aware metadata such as owning domain/layer, source/target paths, review
+domains, risk level, and migration type. Template-rendered packets are
+available through `fairway packet template`; structured guard evidence is
+planned follow-on work.
 
 ## When To Add One
 

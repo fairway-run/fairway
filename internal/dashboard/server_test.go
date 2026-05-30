@@ -31,6 +31,7 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 			RiskLevel:     "high",
 			ReviewDomains: []string{"architecture", "security"},
 		},
+		{ID: "T-002", Title: "Other Task", Kind: "bug", Role: "backend", RiskLevel: "low"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +53,43 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestIndexFiltersByProfileMetadata(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{
+			ID:            "T-001",
+			Title:         "Platform facade",
+			Kind:          "facade",
+			Role:          "backend",
+			Profile:       "platform-foundation",
+			OwningDomain:  "platform",
+			RiskLevel:     "high",
+			ReviewDomains: []string{"architecture"},
+		},
+		{ID: "T-002", Title: "Billing bug", Kind: "bug", Role: "backend", OwningDomain: "billing", RiskLevel: "low", ReviewDomains: []string{"backend"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, []string{"backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/?profile=platform-foundation&review_domain=architecture", nil)
+	rec := httptest.NewRecorder()
+	server.index(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Platform facade", "selected", "architecture"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("filtered dashboard body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Billing bug") {
+		t.Fatalf("filtered dashboard body included unmatching task:\n%s", body)
 	}
 }
 
