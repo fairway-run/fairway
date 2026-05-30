@@ -73,8 +73,10 @@ The first implementation use is intentionally small: `fairway config validate`
 checks this shape, validates profile task kinds against configured task kinds,
 validates packet-template profile references, and `fairway adoption artifact`
 uses `route_samples` and evaluates named profile gates against matching task
-evidence rows. Dashboard grouping, packet rendering, and named gate enforcement
-should build on this same config rather than adding project-specific flags.
+evidence rows. `fairway merge-ready` evaluates the same gates for the target
+task and fails when a `blocking` gate is missing. Dashboard grouping and packet
+rendering should build on this same config rather than adding project-specific
+flags.
 
 ## Packet Templates
 

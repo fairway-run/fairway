@@ -39,9 +39,10 @@ fairway adoption artifact --limit 5 --gap-limit 5
 ```
 
 The adoption artifact shows configured gate modes, named profile gates, route
-samples, and evidence-backed gate evaluation. Treat advisory gates as evidence
-expectations, not as optional background noise; if your task appears under a
-missing gate, record the required evidence before calling the work ready.
+samples, and evidence-backed gate evaluation. `fairway merge-ready` also checks
+the profile gates for the target task: missing `blocking` gates fail readiness,
+while missing `advisory` and `report_only` gates appear as warnings. Treat
+advisory gates as evidence expectations, not as optional background noise.
 
 ## Claim Work
 

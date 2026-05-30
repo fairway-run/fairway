@@ -131,6 +131,10 @@ fairway route review T-001 --path internal/orders/orders.go
 fairway merge-ready T-001
 ```
 
+If the task's kind belongs to a configured workstream profile, `merge-ready`
+also evaluates that profile's gates. Missing `blocking` profile gates fail the
+check; missing advisory/report-only gates are printed as warnings.
+
 In the UI worktree:
 
 ```bash

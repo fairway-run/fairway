@@ -182,7 +182,7 @@ Named readiness gates under the preceding profile.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `name` | string | — | Gate name, for example `security-review`, `uat-evidence`, `release-risk`, or `sdk-readiness`. Must be unique within the profile. |
-| `mode` | string | — | `advisory`, `blocking`, or `report_only`. |
+| `mode` | string | — | `advisory`, `blocking`, or `report_only`. Missing `blocking` gates fail `merge-ready`; missing `advisory` and `report_only` gates are warnings. |
 | `evidence_type` | string | — | Optional evidence type this gate expects. |
 | `required_evidence_count` | int | `0` | Minimum count expected for this evidence type in adoption gate evaluation. If omitted but other evidence requirements are present, evaluation treats the gate as needing at least one matching row. |
 | `accepted_results` | []string | — | Accepted `task_evidence.result` values: `pass`, `fail`, `partial`, `skipped`, or `blocked`. Rows with other results do not count. |

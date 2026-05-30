@@ -661,10 +661,12 @@ func cmdPreflight(opts globalOptions, args []string) error {
 }
 
 type mergeReadyReport struct {
-	OK     bool              `json:"ok"`
-	TaskID string            `json:"task_id"`
-	Git    fairwaygit.Status `json:"git"`
-	Issues []string          `json:"issues"`
+	OK              bool                     `json:"ok"`
+	TaskID          string                   `json:"task_id"`
+	Git             fairwaygit.Status        `json:"git"`
+	Issues          []string                 `json:"issues"`
+	Warnings        []string                 `json:"warnings,omitempty"`
+	GateEvaluations []adoptionGateEvaluation `json:"gate_evaluations,omitempty"`
 }
 
 func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error {
@@ -681,7 +683,8 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 		return fmt.Errorf("unexpected merge-ready arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
-		if _, _, _, _, _, err := s.TaskDetail(ctx, taskID); err != nil {
+		task, _, evidence, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
 			return err
 		}
 		if *base == "" {
@@ -725,6 +728,18 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 				report.Issues = append(report.Issues, "missing handoff")
 			}
 		}
+		report.GateEvaluations = evaluateTaskProfileGates(cfg, task, evidence, time.Now().UTC())
+		for _, evaluation := range report.GateEvaluations {
+			if evaluation.Status != "missing" {
+				continue
+			}
+			message := mergeReadyGateMessage(evaluation)
+			if evaluation.Mode == "blocking" {
+				report.Issues = append(report.Issues, message)
+			} else {
+				report.Warnings = append(report.Warnings, message)
+			}
+		}
 		report.OK = len(report.Issues) == 0
 		if opts.JSON {
 			if err := printJSON(report); err != nil {
@@ -736,6 +751,18 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 				fmt.Println("issues:")
 				for _, issue := range report.Issues {
 					fmt.Printf("- %s\n", issue)
+				}
+			}
+			if len(report.Warnings) > 0 {
+				fmt.Println("warnings:")
+				for _, warning := range report.Warnings {
+					fmt.Printf("- %s\n", warning)
+				}
+			}
+			if len(report.GateEvaluations) > 0 {
+				fmt.Println("profile_gates:")
+				for _, evaluation := range report.GateEvaluations {
+					fmt.Printf("- %s/%s: %s (%d/%d satisfied)\n", evaluation.Profile, evaluation.Gate, evaluation.Status, evaluation.SatisfiedCount, evaluation.TaskCount)
 				}
 			}
 		}
@@ -1869,21 +1896,73 @@ func evaluateProfileGates(ctx context.Context, cfg config.Config, s *store.Store
 	return evaluations, nil
 }
 
+func evaluateTaskProfileGates(cfg config.Config, task store.Task, evidence []store.Evidence, now time.Time) []adoptionGateEvaluation {
+	var evaluations []adoptionGateEvaluation
+	for _, profile := range cfg.WorkstreamProfiles {
+		if len(profile.Gates) == 0 || !profileAppliesToTask(profile, task) {
+			continue
+		}
+		for _, gate := range profile.Gates {
+			ok, matching, reasons := evaluateGateForTask(gate, evidence, now)
+			evaluation := adoptionGateEvaluation{
+				Profile:        profile.Name,
+				Gate:           gate.Name,
+				Mode:           gate.Mode,
+				EvidenceType:   gate.EvidenceType,
+				TaskCount:      1,
+				SatisfiedCount: 1,
+				Status:         "satisfied",
+			}
+			if !ok {
+				evaluation.SatisfiedCount = 0
+				evaluation.MissingCount = 1
+				evaluation.Status = "missing"
+				evaluation.Missing = []adoptionGateTaskMiss{{
+					TaskID:   task.Definition.ID,
+					Title:    task.Definition.Title,
+					Kind:     task.Definition.Kind,
+					Status:   task.Status,
+					Reasons:  reasons,
+					Matching: matching,
+				}}
+			}
+			evaluations = append(evaluations, evaluation)
+		}
+	}
+	return evaluations
+}
+
+func mergeReadyGateMessage(evaluation adoptionGateEvaluation) string {
+	label := evaluation.Profile + "/" + evaluation.Gate
+	if len(evaluation.Missing) == 0 {
+		return "profile gate " + label + " missing"
+	}
+	return fmt.Sprintf("profile gate %s missing for %s: %s", label, evaluation.Missing[0].TaskID, strings.Join(evaluation.Missing[0].Reasons, "; "))
+}
+
 func tasksForProfile(profile config.WorkstreamProfile, tasks []store.Task) []store.Task {
 	if len(profile.TaskKinds) == 0 {
 		return tasks
 	}
-	kinds := map[string]bool{}
-	for _, kind := range profile.TaskKinds {
-		kinds[kind] = true
-	}
 	var out []store.Task
 	for _, task := range tasks {
-		if kinds[task.Definition.Kind] {
+		if profileAppliesToTask(profile, task) {
 			out = append(out, task)
 		}
 	}
 	return out
+}
+
+func profileAppliesToTask(profile config.WorkstreamProfile, task store.Task) bool {
+	if len(profile.TaskKinds) == 0 {
+		return true
+	}
+	for _, kind := range profile.TaskKinds {
+		if task.Definition.Kind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func evaluateGateForTask(gate config.WorkstreamProfileGate, evidence []store.Evidence, now time.Time) (bool, int, []string) {

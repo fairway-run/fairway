@@ -5,11 +5,11 @@ Fairway project-specific. Use them when a repo has recurring coordination needs
 such as release readiness, platform foundation work, frontend migration,
 service extraction, SDK readiness, or security hardening.
 
-Profiles are advisory in the current release. Fairway validates the config,
-uses `route_samples` in `fairway adoption artifact`, and evaluates named
-profile gates against recorded evidence rows. Dashboard grouping, structured
-guard evidence, task ownership metadata, and template-rendered packets are
-planned follow-on work.
+Profiles are operational in readiness checks. Fairway validates the config,
+uses `route_samples` in `fairway adoption artifact`, evaluates named profile
+gates against recorded evidence rows, and applies blocking profile gates in
+`fairway merge-ready`. Dashboard grouping, structured guard evidence, task
+ownership metadata, and template-rendered packets are planned follow-on work.
 
 ## When To Add One
 
@@ -61,13 +61,10 @@ optional_fields = ["expiry", "accepted_by"]
 
 ## Gate Modes
 
-Use `advisory` for expectations that should appear in reports but do not block
-state transitions yet. Use `blocking` for gates the team intends to enforce.
-Use `report_only` for early guard rails where findings are still being
-measured.
-
-Current Fairway reports these modes; it does not yet enforce named profile
-gates.
+Use `advisory` for expectations that should appear in reports and
+`merge-ready` warnings but should not block readiness yet. Use `blocking` for
+gates that must pass before `merge-ready` succeeds. Use `report_only` for early
+guard rails where findings are still being measured.
 
 ## Evidence Requirements
 
@@ -82,8 +79,8 @@ Profile gates can describe the evidence a workstream expects:
 - `owner_signoff_required` says a named owner approval is expected.
 - `expires_after` records how long the evidence remains fresh.
 
-These fields are validated and evaluated in adoption artifacts today. They are
-not yet enforced by `merge-ready`.
+These fields are validated, evaluated in adoption artifacts, and enforced by
+`merge-ready` when the gate mode is `blocking`.
 
 Gate evaluation matches profile gates to tasks by `task_kinds`, then counts
 evidence rows that satisfy every configured requirement:

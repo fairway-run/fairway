@@ -194,6 +194,51 @@ func TestCLI_Preflight(t *testing.T) {
 	runOK(t, "--json", "merge-ready", "T-001")
 }
 
+func TestCLI_MergeReadyEvaluatesBlockingProfileGates(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[workstream_profiles]]
+name = "release-readiness"
+task_kinds = ["release-risk"]
+
+[[workstream_profiles.gates]]
+name = "security-review"
+mode = "blocking"
+evidence_type = "security-review"
+required_evidence_count = 1
+accepted_results = ["pass"]
+artifact_required = true
+`)
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+
+	runOK(t, "add", "T-001", "--title", "Risk", "--role", "backend", "--kind", "release-risk")
+	if err := run(context.Background(), []string{"merge-ready", "T-001"}); err == nil {
+		t.Fatal("expected merge-ready profile gate error")
+	}
+	failed := runCaptureAllowError(t, "merge-ready", "T-001")
+	assertContains(t, failed, "profile gate release-readiness/security-review missing")
+
+	runOK(t, "record", "evidence", "T-001", "--command-text", "security review", "--result", "pass", "--artifact", "dist/security.txt", "--artifact-type", "security-review")
+	runOK(t, "merge-ready", "T-001")
+	jsonReport := runCapture(t, "--json", "merge-ready", "T-001")
+	assertContains(t, jsonReport, `"gate_evaluations"`)
+	assertContains(t, jsonReport, `"status": "satisfied"`)
+}
+
 func TestCLI_WorktreeSetupStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -624,6 +669,23 @@ func runOK(t *testing.T, args ...string) {
 
 func runCapture(t *testing.T, args ...string) string {
 	t.Helper()
+	out, err := captureRun(args...)
+	if err != nil {
+		t.Fatalf("fairway %v: %v", args, err)
+	}
+	return out
+}
+
+func runCaptureAllowError(t *testing.T, args ...string) string {
+	t.Helper()
+	out, err := captureRun(args...)
+	if err == nil {
+		t.Fatalf("fairway %v succeeded, expected error", args)
+	}
+	return out
+}
+
+func captureRun(args ...string) (string, error) {
 	stdout := os.Stdout
 	stderr := os.Stderr
 	defer func() {
@@ -633,15 +695,13 @@ func runCapture(t *testing.T, args ...string) string {
 	var out bytes.Buffer
 	r, w, err := os.Pipe()
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	os.Stdout = w
-	if err := run(context.Background(), args); err != nil {
-		t.Fatalf("fairway %v: %v", args, err)
-	}
+	runErr := run(context.Background(), args)
 	_ = w.Close()
 	_, _ = out.ReadFrom(r)
-	return out.String()
+	return out.String(), runErr
 }
 
 func assertContains(t *testing.T, got, want string) {

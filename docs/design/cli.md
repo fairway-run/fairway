@@ -14,7 +14,7 @@ fairway record evidence <task-id> --command-text <text> --result <pass|fail|part
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
 fairway record review <task-id> --reviewer <role-or-user> --verdict <approve|changes|reject> [--reason <text>] [--commit <sha>]
 fairway route review <task-id> [--reviewer <role>] [--path <path>]... [--reason <text>] # mark pending review
-fairway merge-ready <task-id> [--base <ref>]          # verify evidence/review/handoff/git gates
+fairway merge-ready <task-id> [--base <ref>]          # verify evidence/review/handoff/git/profile gates
 fairway review checkout <task-id> [--source-role <role>] # create/reset named review branch
 fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <name>] [--provider <name>] [--task-id <id>] [--pid <pid>]
 fairway session status [--all]
@@ -95,6 +95,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   workstream profile `route_samples` when no `--route` flags are provided and
   reports named profile gates plus evidence-backed gate evaluation. `parity
   artifact` remains a compatibility alias for GPUaaS-style comparisons.
+- `merge-ready` evaluates profile gates for the target task. Missing
+  `blocking` gates fail readiness; missing `advisory` and `report_only` gates
+  are reported as warnings.
 - `packet bugfix`, platform-foundation packets, and `regression-pack` are
   quality surfaces. They render and validate review context; they do not
   execute product test suites.

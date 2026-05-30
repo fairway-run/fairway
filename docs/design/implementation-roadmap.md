@@ -101,9 +101,10 @@ to a useful v1.
    initial config shape now exists for profile metadata, route samples, named
    gates, packet templates, template profile scoping, and structured evidence
    requirements. Adoption artifacts now evaluate named gates against task
-   evidence rows; next slices are task ownership metadata, dashboard grouping by
-   task kind, template-driven packet rendering, and stronger named gate
-   evaluation in merge/release readiness reports.
+   evidence rows, and `merge-ready` enforces missing `blocking` gates for the
+   target task; next slices are task ownership metadata, dashboard grouping by
+   task kind, template-driven packet rendering, and release-level readiness
+   reports.
 3. Add multi-reviewer merge readiness for review domains such as architecture,
    security, frontend, ops, and governance.
 4. Add Homebrew tap publishing after the first tagged release settles.
