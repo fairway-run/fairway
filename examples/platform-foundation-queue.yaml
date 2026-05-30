@@ -1,0 +1,116 @@
+tasks:
+  - id: PF-001
+    title: Establish platform-foundation ownership map
+    kind: architecture-map
+    role: arch
+    profile: platform-foundation
+    owning_domain: platform
+    owning_layer: architecture
+    source_paths:
+      - doc/architecture/platform-foundation/ownership.md
+      - cmd/api
+      - packages/services
+    target_paths:
+      - doc/architecture/platform-foundation/ownership.md
+    review_domains:
+      - architecture
+      - governance
+    risk_level: medium
+    migration_type: ownership-map
+    acceptance_checks:
+      - ownership map names current and target owners for API, services, workers, events, and frontend surfaces
+
+  - id: PF-002
+    title: Add report-only platform boundary guard
+    kind: boundary-guard
+    role: backend
+    profile: platform-foundation
+    owning_domain: platform
+    owning_layer: guard
+    source_paths:
+      - cmd/api
+      - packages/services
+    target_paths:
+      - scripts/ci/platform-boundary-report.sh
+    review_domains:
+      - architecture
+      - ops
+    risk_level: medium
+    migration_type: boundary-guard
+    depends_on:
+      - PF-001
+    acceptance_checks:
+      - guard report runs in report-only mode and records findings as evidence
+
+  - id: PF-003
+    title: Introduce platform evidence facade
+    kind: facade
+    role: backend
+    profile: platform-foundation
+    owning_domain: platform
+    owning_layer: service
+    source_paths:
+      - cmd/api/evidence.go
+      - packages/services
+    target_paths:
+      - packages/services/platform/evidence
+    review_domains:
+      - architecture
+      - security
+    risk_level: high
+    migration_type: facade
+    depends_on:
+      - PF-001
+      - PF-002
+    acceptance_checks:
+      - API route uses facade without moving unrelated service code
+      - evidence-backed profile gates pass in merge-ready
+
+  - id: PF-004
+    title: Define frontend platform contract
+    kind: frontend-contract
+    role: ui
+    profile: platform-foundation
+    owning_domain: platform
+    owning_layer: frontend
+    source_paths:
+      - app
+      - packages/web
+    target_paths:
+      - doc/architecture/platform-foundation/frontend-contract.md
+    review_domains:
+      - frontend
+      - architecture
+    risk_level: medium
+    migration_type: page-contract
+    depends_on:
+      - PF-001
+    acceptance_checks:
+      - V3 page contract names API ownership and evidence requirements
+
+  - id: PF-005
+    title: Record platform release evidence
+    kind: release-evidence
+    role: governance
+    profile: platform-foundation
+    owning_domain: platform
+    owning_layer: release
+    source_paths:
+      - doc/release
+      - scripts/ci
+    target_paths:
+      - .fairway/adoption.json
+      - doc/release/platform-foundation-evidence.md
+    review_domains:
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: release-readiness
+    depends_on:
+      - PF-002
+      - PF-003
+      - PF-004
+    acceptance_checks:
+      - adoption artifact shows profile gate evaluation
+      - residual risk and deferred guard findings are recorded

@@ -44,6 +44,27 @@ the profile gates for the target task: missing `blocking` gates fail readiness,
 while missing `advisory` and `report_only` gates appear as warnings. Treat
 advisory gates as evidence expectations, not as optional background noise.
 
+Profile-shaped work should carry task metadata when the coordinator or dashboard
+needs architecture context:
+
+```bash
+fairway add T-010 \
+  --title "Map platform evidence ownership" \
+  --role arch \
+  --kind architecture-map \
+  --profile platform-foundation \
+  --owning-domain platform \
+  --owning-layer service \
+  --source-paths cmd/api,packages/services \
+  --review-domains architecture,backend \
+  --risk-level medium \
+  --migration-type ownership-map
+```
+
+When you spawn follow-up work, Fairway inherits the parent task metadata unless
+you override a metadata flag explicitly. Keep those fields accurate; they drive
+review routing, readiness reports, and future dashboard grouping.
+
 ## Claim Work
 
 ```bash

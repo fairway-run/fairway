@@ -54,6 +54,24 @@ func TestMigrate_RecordsAppliedMigration(t *testing.T) {
 	}
 }
 
+func TestTaskDetail_AllowsNullMetadataAfterMigration(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Old row", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE task_definitions SET source_paths=NULL, target_paths=NULL, review_domains=NULL WHERE id='T-001'`); err != nil {
+		t.Fatal(err)
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(task.Definition.SourcePaths) != 0 || len(task.Definition.TargetPaths) != 0 || len(task.Definition.ReviewDomains) != 0 {
+		t.Fatalf("metadata arrays=%v/%v/%v, want empty", task.Definition.SourcePaths, task.Definition.TargetPaths, task.Definition.ReviewDomains)
+	}
+}
+
 func TestPostgresCompatReport(t *testing.T) {
 	report, err := PostgresCompatReport()
 	if err != nil {

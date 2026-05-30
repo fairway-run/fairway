@@ -60,8 +60,9 @@ each version ships.
 - TUI mode (`fairway tui`) for SSH / headless use.
 - Generic workstream profile track: profile config, declarative packet
   templates, named readiness gates, dashboard grouping, task ownership
-  metadata, and structured guard evidence. GPUaaS / ARC remains the adoption
-  example, not the core product shape.
+  metadata, and structured guard evidence. Profile gates and task metadata have
+  started landing; GPUaaS / ARC remains the adoption example, not the core
+  product shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

@@ -111,6 +111,7 @@ Examples:
 - [GPUaaS-style 5-lane config](examples/gpuaas-config.toml)
 - [GPUaaS exact A/B/C/D/E config](examples/gpuaas-a-b-c-d-e-config.toml)
 - [GPUaaS regression-pack fixture](examples/gpuaas-regression-packs.yaml)
+- [Generic platform-foundation queue](examples/platform-foundation-queue.yaml)
 - [Session adapter examples](examples/session-adapters/)
 
 ## License

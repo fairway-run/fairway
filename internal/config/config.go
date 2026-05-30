@@ -508,6 +508,14 @@ func PrioritySet(cfg Config) map[int]bool {
 	return priorities
 }
 
+func WorkstreamProfileSet(cfg Config) map[string]bool {
+	profiles := make(map[string]bool, len(cfg.WorkstreamProfiles))
+	for _, profile := range cfg.WorkstreamProfiles {
+		profiles[profile.Name] = true
+	}
+	return profiles
+}
+
 func DefaultTaskKind(cfg Config) string {
 	if cfg.TaskKinds.Default == "" {
 		return "task"

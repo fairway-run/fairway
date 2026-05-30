@@ -240,6 +240,25 @@ See [docs/design/hierarchy.md](design/hierarchy.md) for the hierarchy model and 
 
 Lower `rank` is more urgent. Priority is cross-cutting — it overrides epic boundaries in `fairway ready` and dashboard backlog sort.
 
+## Task metadata
+
+Tasks may carry profile-aware metadata in YAML/JSON imports and through
+`fairway add`, `fairway spawn`, and `fairway update` flags:
+
+| Field / flag | Type | Description |
+|---|---|---|
+| `profile` / `--profile` | string | Workstream profile name. Validated when `[[workstream_profiles]]` exists. |
+| `owning_domain` / `--owning-domain` | string | Architecture or product domain that owns the task. |
+| `owning_layer` / `--owning-layer` | string | Layer such as `api`, `service`, `frontend`, `guard`, or `release`. |
+| `source_paths` / `--source-paths` | []string / CSV | Current paths, inputs, or surfaces affected by the task. |
+| `target_paths` / `--target-paths` | []string / CSV | Target paths, outputs, or artifacts expected from the task. |
+| `review_domains` / `--review-domains` | []string / CSV | Review domains expected for the task. |
+| `risk_level` / `--risk-level` | string | Lightweight risk label. Fairway does not hardcode allowed values. |
+| `migration_type` / `--migration-type` | string | Shape of the work, such as `facade`, `boundary-guard`, or `ownership-map`. |
+
+This metadata is intentionally generic. It powers architecture-aware
+coordination without making Fairway specific to GPUaaS, ARC, or any one repo.
+
 ## Validation
 
 `fairway init` writes a default config. `fairway config validate` checks an existing one. Errors are reported with file path and line number.

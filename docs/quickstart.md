@@ -96,6 +96,14 @@ fairway import tasks.yaml
 - id: T-001
   title: Wire up /v1/orders endpoint
   role: backend
+  profile: service-extraction
+  owning_domain: orders
+  owning_layer: api
+  source_paths: ["internal/orders"]
+  target_paths: ["cmd/api/routes/orders.go"]
+  review_domains: ["architecture", "backend"]
+  risk_level: medium
+  migration_type: endpoint
   notes: |
     Returns the user's recent orders.
     Acceptance:
@@ -160,6 +168,10 @@ fairway checkpoint status
 See [coordinator-loop.md](design/coordinator-loop.md),
 [context-packets.md](design/context-packets.md), and
 [checkpoints.md](design/checkpoints.md).
+
+For architecture-heavy workstreams, start from the generic
+[`examples/platform-foundation-queue.yaml`](../examples/platform-foundation-queue.yaml)
+fixture to see profile-aware task metadata in context.
 
 ## Adoption Readiness
 

@@ -170,6 +170,54 @@ func TestCLI_SpawnTask(t *testing.T) {
 	runOK(t, "tree", "E-001")
 }
 
+func TestCLI_TaskMetadata(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[workstream_profiles]]
+name = "platform-foundation"
+task_kinds = ["architecture-map"]
+`)
+	runOK(t, "add", "T-001",
+		"--title", "Map route ownership",
+		"--role", "backend",
+		"--kind", "architecture-map",
+		"--profile", "platform-foundation",
+		"--owning-domain", "platform",
+		"--owning-layer", "api",
+		"--source-paths", "cmd/api,doc/api",
+		"--target-paths", "packages/services/platform",
+		"--review-domains", "architecture,security",
+		"--risk-level", "medium",
+		"--migration-type", "facade")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "metadata:")
+	assertContains(t, detail, "profile: platform-foundation")
+	assertContains(t, detail, "source_paths: cmd/api, doc/api")
+
+	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, jsonDetail, `"owning_domain": "platform"`)
+	assertContains(t, jsonDetail, `"review_domains": [`)
+
+	runOK(t, "update", "T-001", "--risk-level", "high", "--source-paths", "cmd/api/routes.go")
+	updated := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, updated, `"risk_level": "high"`)
+	assertContains(t, updated, `"cmd/api/routes.go"`)
+
+	if err := run(context.Background(), []string{"add", "T-002", "--title", "Bad profile", "--role", "backend", "--profile", "missing"}); err == nil {
+		t.Fatal("expected unknown profile validation error")
+	}
+}
+
 func TestCLI_Preflight(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

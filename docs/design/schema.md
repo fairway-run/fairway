@@ -31,6 +31,14 @@ Slowly-changing task metadata. One row per task. Most fields are mutable via `fa
 | `dependencies` | TEXT | JSON array of task IDs that must reach a terminal state before this task is `ready`. Mutable. |
 | `priority` | INTEGER | Urgency. Lower = more urgent. NULL = unprioritized. Validated against `[task_priorities]` when configured. Cross-cutting (overrides epic boundaries in sort). |
 | `sequence` | INTEGER | Suggested order among siblings (same `parent_id`). Lower = earlier. NULL = unsequenced. Soft signal, not a gate. |
+| `profile` | TEXT | Optional workstream profile name. Validated against `[[workstream_profiles]]` when configured. |
+| `owning_domain` | TEXT | Optional architecture/domain owner label, e.g. `platform`, `billing`, `identity`. |
+| `owning_layer` | TEXT | Optional layer label, e.g. `api`, `service`, `frontend`, `guard`, `release`. |
+| `source_paths` | TEXT | JSON array of source paths relevant to the task. |
+| `target_paths` | TEXT | JSON array of intended target paths or artifacts. |
+| `review_domains` | TEXT | JSON array of review domains expected for this task. |
+| `risk_level` | TEXT | Optional risk label, e.g. `low`, `medium`, `high`. |
+| `migration_type` | TEXT | Optional migration/refactor type, e.g. `facade`, `boundary-guard`, `ownership-map`. |
 | `created_at` | DATETIME NOT NULL | Immutable. |
 | `created_by` | TEXT | OS user or agent identifier. Immutable. |
 | `updated_at` | DATETIME NOT NULL | Touched on any mutable-field change. |

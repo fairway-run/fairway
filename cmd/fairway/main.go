@@ -180,6 +180,7 @@ func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
 	notes := fs.String("notes", "", "notes")
 	deps := fs.String("dependencies", "", "comma-separated dependency ids")
 	acceptance := fs.String("acceptance", "", "acceptance check")
+	metadata := addTaskMetadataFlags(fs)
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -203,6 +204,7 @@ func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
 	if *acceptance != "" {
 		task.AcceptanceChecks = []string{*acceptance}
 	}
+	applyTaskMetadataFlags(&task, metadata, nil)
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		if task.Kind == "" {
 			task.Kind = config.DefaultTaskKind(cfg)
@@ -237,6 +239,7 @@ func cmdSpawn(ctx context.Context, opts globalOptions, args []string) error {
 	notes := fs.String("notes", "", "notes")
 	deps := fs.String("dependencies", "", "comma-separated dependency ids")
 	acceptance := fs.String("acceptance", "", "acceptance check")
+	metadata := addTaskMetadataFlags(fs)
 	force := fs.Bool("force", false, "suppress granularity warnings")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -244,6 +247,7 @@ func cmdSpawn(ctx context.Context, opts globalOptions, args []string) error {
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected spawn arguments: %s", strings.Join(fs.Args(), " "))
 	}
+	changed := visitedFlags(fs)
 	if *id == "" {
 		return errors.New("spawn requires --id")
 	}
@@ -277,6 +281,9 @@ func cmdSpawn(ctx context.Context, opts globalOptions, args []string) error {
 			ParentID: *parent,
 			Role:     *role,
 			Notes:    *notes,
+		}
+		if current != nil {
+			copyTaskMetadata(&task, current.Definition)
 		}
 		if *rootTask {
 			task.ParentID = ""
@@ -321,6 +328,7 @@ func cmdSpawn(ctx context.Context, opts globalOptions, args []string) error {
 		if *acceptance != "" {
 			task.AcceptanceChecks = []string{*acceptance}
 		}
+		applyTaskMetadataFlags(&task, metadata, changed)
 		if err := validateTaskMetadata([]store.TaskDefinition{task}, cfg); err != nil {
 			return err
 		}
@@ -347,6 +355,7 @@ func cmdUpdate(ctx context.Context, opts globalOptions, args []string) error {
 	notes := fs.String("notes", "", "notes")
 	deps := fs.String("dependencies", "", "comma-separated dependency ids")
 	acceptance := fs.String("acceptance", "", "acceptance check")
+	metadata := addTaskMetadataFlags(fs)
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -399,6 +408,7 @@ func cmdUpdate(ctx context.Context, opts globalOptions, args []string) error {
 				task.AcceptanceChecks = []string{*acceptance}
 			}
 		}
+		applyTaskMetadataFlags(&task, metadata, changed)
 		if err := validateTaskMetadata([]store.TaskDefinition{task}, cfg); err != nil {
 			return err
 		}
@@ -3262,6 +3272,68 @@ func (m *multiFlag) Set(value string) error {
 	return nil
 }
 
+type taskMetadataFlags struct {
+	Profile       *string
+	OwningDomain  *string
+	OwningLayer   *string
+	SourcePaths   *string
+	TargetPaths   *string
+	ReviewDomains *string
+	RiskLevel     *string
+	MigrationType *string
+}
+
+func addTaskMetadataFlags(fs *flag.FlagSet) taskMetadataFlags {
+	return taskMetadataFlags{
+		Profile:       fs.String("profile", "", "workstream profile name"),
+		OwningDomain:  fs.String("owning-domain", "", "owning domain metadata"),
+		OwningLayer:   fs.String("owning-layer", "", "owning layer metadata"),
+		SourcePaths:   fs.String("source-paths", "", "comma-separated source paths"),
+		TargetPaths:   fs.String("target-paths", "", "comma-separated target paths"),
+		ReviewDomains: fs.String("review-domains", "", "comma-separated review domains"),
+		RiskLevel:     fs.String("risk-level", "", "risk level metadata"),
+		MigrationType: fs.String("migration-type", "", "migration type metadata"),
+	}
+}
+
+func applyTaskMetadataFlags(task *store.TaskDefinition, metadata taskMetadataFlags, changed map[string]bool) {
+	if changed == nil || changed["profile"] {
+		task.Profile = *metadata.Profile
+	}
+	if changed == nil || changed["owning-domain"] {
+		task.OwningDomain = *metadata.OwningDomain
+	}
+	if changed == nil || changed["owning-layer"] {
+		task.OwningLayer = *metadata.OwningLayer
+	}
+	if changed == nil || changed["source-paths"] {
+		task.SourcePaths = splitCSV(*metadata.SourcePaths)
+	}
+	if changed == nil || changed["target-paths"] {
+		task.TargetPaths = splitCSV(*metadata.TargetPaths)
+	}
+	if changed == nil || changed["review-domains"] {
+		task.ReviewDomains = splitCSV(*metadata.ReviewDomains)
+	}
+	if changed == nil || changed["risk-level"] {
+		task.RiskLevel = *metadata.RiskLevel
+	}
+	if changed == nil || changed["migration-type"] {
+		task.MigrationType = *metadata.MigrationType
+	}
+}
+
+func copyTaskMetadata(task *store.TaskDefinition, source store.TaskDefinition) {
+	task.Profile = source.Profile
+	task.OwningDomain = source.OwningDomain
+	task.OwningLayer = source.OwningLayer
+	task.SourcePaths = append([]string(nil), source.SourcePaths...)
+	task.TargetPaths = append([]string(nil), source.TargetPaths...)
+	task.ReviewDomains = append([]string(nil), source.ReviewDomains...)
+	task.RiskLevel = source.RiskLevel
+	task.MigrationType = source.MigrationType
+}
+
 func cmdHealthReport(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("unexpected health-report arguments: %s", strings.Join(args, " "))
@@ -3531,6 +3603,7 @@ func validateTaskMetadata(tasks []store.TaskDefinition, cfg config.Config) error
 	roles := config.RoleSet(cfg)
 	kinds := config.TaskKindSet(cfg)
 	priorities := config.PrioritySet(cfg)
+	profiles := config.WorkstreamProfileSet(cfg)
 	for _, task := range tasks {
 		if len(roles) > 0 && !roles[task.Role] {
 			return fmt.Errorf("task %s uses unknown role %q", task.ID, task.Role)
@@ -3540,6 +3613,9 @@ func validateTaskMetadata(tasks []store.TaskDefinition, cfg config.Config) error
 		}
 		if task.Priority != nil && len(priorities) > 0 && !priorities[*task.Priority] {
 			return fmt.Errorf("task %s uses unknown priority %d", task.ID, *task.Priority)
+		}
+		if task.Profile != "" && len(profiles) > 0 && !profiles[task.Profile] {
+			return fmt.Errorf("task %s uses unknown profile %q", task.ID, task.Profile)
 		}
 	}
 	return nil
@@ -4171,6 +4247,7 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 		}{task, transitions, evidence, handoffs, reviews})
 	}
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
+	printTaskMetadata(task.Definition)
 	fmt.Println("\ndependencies:")
 	for _, dep := range task.Definition.Dependencies {
 		fmt.Printf("- %s\n", dep)
@@ -4200,6 +4277,37 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 		fmt.Printf("- %s by %s: %s\n", r.Verdict, r.Reviewer, r.Reason)
 	}
 	return nil
+}
+
+func printTaskMetadata(task store.TaskDefinition) {
+	if task.Profile == "" && task.OwningDomain == "" && task.OwningLayer == "" && len(task.SourcePaths) == 0 && len(task.TargetPaths) == 0 && len(task.ReviewDomains) == 0 && task.RiskLevel == "" && task.MigrationType == "" {
+		return
+	}
+	fmt.Println("\nmetadata:")
+	if task.Profile != "" {
+		fmt.Printf("- profile: %s\n", task.Profile)
+	}
+	if task.OwningDomain != "" {
+		fmt.Printf("- owning_domain: %s\n", task.OwningDomain)
+	}
+	if task.OwningLayer != "" {
+		fmt.Printf("- owning_layer: %s\n", task.OwningLayer)
+	}
+	if len(task.SourcePaths) > 0 {
+		fmt.Printf("- source_paths: %s\n", strings.Join(task.SourcePaths, ", "))
+	}
+	if len(task.TargetPaths) > 0 {
+		fmt.Printf("- target_paths: %s\n", strings.Join(task.TargetPaths, ", "))
+	}
+	if len(task.ReviewDomains) > 0 {
+		fmt.Printf("- review_domains: %s\n", strings.Join(task.ReviewDomains, ", "))
+	}
+	if task.RiskLevel != "" {
+		fmt.Printf("- risk_level: %s\n", task.RiskLevel)
+	}
+	if task.MigrationType != "" {
+		fmt.Printf("- migration_type: %s\n", task.MigrationType)
+	}
 }
 
 func printJSON(value any) error {

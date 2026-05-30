@@ -93,18 +93,19 @@ to a useful v1.
 
 ## Remaining Work
 
-1. Add platform-foundation orchestration support from the
-   [GPUaaS / ARC adoption track](gpuaas-arc-adoption.md): architecture-map
-   packets, boundary-guard packets, vertical-slice packets, and task metadata
-   for package/route/schema/event/frontend ownership.
+1. Expand platform-foundation orchestration support from the
+   [GPUaaS / ARC adoption track](gpuaas-arc-adoption.md). Architecture-map,
+   boundary-guard, and vertical-slice packets exist, and task metadata now
+   covers profile, owning domain/layer, source/target paths, review domains,
+   risk, and migration type. Next slices are template-rendered packets and
+   dashboard grouping over this metadata.
 2. Expand configurable [workstream profiles](workstream-profiles.md). The
    initial config shape now exists for profile metadata, route samples, named
    gates, packet templates, template profile scoping, and structured evidence
    requirements. Adoption artifacts now evaluate named gates against task
    evidence rows, and `merge-ready` enforces missing `blocking` gates for the
-   target task; next slices are task ownership metadata, dashboard grouping by
-   task kind, template-driven packet rendering, and release-level readiness
-   reports.
+   target task; next slices are dashboard grouping by task kind/profile,
+   template-driven packet rendering, and release-level readiness reports.
 3. Add multi-reviewer merge readiness for review domains such as architecture,
    security, frontend, ops, and governance.
 4. Add Homebrew tap publishing after the first tagged release settles.

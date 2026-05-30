@@ -74,7 +74,10 @@ checks this shape, validates profile task kinds against configured task kinds,
 validates packet-template profile references, and `fairway adoption artifact`
 uses `route_samples` and evaluates named profile gates against matching task
 evidence rows. `fairway merge-ready` evaluates the same gates for the target
-task and fails when a `blocking` gate is missing. Dashboard grouping and packet
+task and fails when a `blocking` gate is missing. Tasks can also carry
+profile-aware metadata (`profile`, `owning_domain`, `owning_layer`,
+`source_paths`, `target_paths`, `review_domains`, `risk_level`,
+`migration_type`) through imports and CLI flags. Dashboard grouping and packet
 rendering should build on this same config rather than adding project-specific
 flags.
 
@@ -115,9 +118,9 @@ Architecture-aware work needs metadata that is useful across profiles:
 - `risk_level`,
 - `migration_type`.
 
-This should attach to task definitions or a task metadata table. It should stay
-generic enough for platform foundations, frontend migrations, service
-extractions, security hardening, and SDK readiness.
+This metadata attaches to task definitions and stays generic enough for
+platform foundations, frontend migrations, service extractions, security
+hardening, and SDK readiness.
 
 ## Guard Reports As Evidence
 

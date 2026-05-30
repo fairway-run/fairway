@@ -49,6 +49,14 @@ type TaskDefinition struct {
 	Dependencies     []string `json:"dependencies" yaml:"dependencies"`
 	Priority         *int     `json:"priority" yaml:"priority"`
 	Sequence         *int     `json:"sequence" yaml:"sequence"`
+	Profile          string   `json:"profile" yaml:"profile"`
+	OwningDomain     string   `json:"owning_domain" yaml:"owning_domain"`
+	OwningLayer      string   `json:"owning_layer" yaml:"owning_layer"`
+	SourcePaths      []string `json:"source_paths" yaml:"source_paths"`
+	TargetPaths      []string `json:"target_paths" yaml:"target_paths"`
+	ReviewDomains    []string `json:"review_domains" yaml:"review_domains"`
+	RiskLevel        string   `json:"risk_level" yaml:"risk_level"`
+	MigrationType    string   `json:"migration_type" yaml:"migration_type"`
 }
 
 type ImportedTaskState struct {
@@ -474,10 +482,14 @@ func (s *Store) ImportTasks(ctx context.Context, tasks []TaskDefinition) error {
 		if err != nil {
 			return err
 		}
+		sourcePaths, targetPaths, reviewDomains, err := taskMetadataJSON(task)
+		if err != nil {
+			return err
+		}
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO task_definitions
-  (project_id, id, parent_id, kind, title, role, notes, acceptance_checks, dependencies, priority, sequence, created_at, created_by, updated_at)
-VALUES (?, ?, nullif(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  (project_id, id, parent_id, kind, title, role, notes, acceptance_checks, dependencies, priority, sequence, profile, owning_domain, owning_layer, source_paths, target_paths, review_domains, risk_level, migration_type, created_at, created_by, updated_at)
+VALUES (?, ?, nullif(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, nullif(?, ''), nullif(?, ''), nullif(?, ''), ?, ?, ?, nullif(?, ''), nullif(?, ''), ?, ?, ?)
 ON CONFLICT(project_id, id) DO UPDATE SET
   parent_id=excluded.parent_id,
   kind=excluded.kind,
@@ -488,8 +500,16 @@ ON CONFLICT(project_id, id) DO UPDATE SET
   dependencies=excluded.dependencies,
   priority=excluded.priority,
   sequence=excluded.sequence,
+  profile=excluded.profile,
+  owning_domain=excluded.owning_domain,
+  owning_layer=excluded.owning_layer,
+  source_paths=excluded.source_paths,
+  target_paths=excluded.target_paths,
+  review_domains=excluded.review_domains,
+  risk_level=excluded.risk_level,
+  migration_type=excluded.migration_type,
   updated_at=excluded.updated_at`,
-			s.projectID, task.ID, task.ParentID, task.Kind, task.Title, task.Role, task.Notes, string(acceptance), string(deps), task.Priority, task.Sequence, now, actor, now)
+			s.projectID, task.ID, task.ParentID, task.Kind, task.Title, task.Role, task.Notes, string(acceptance), string(deps), task.Priority, task.Sequence, task.Profile, task.OwningDomain, task.OwningLayer, sourcePaths, targetPaths, reviewDomains, task.RiskLevel, task.MigrationType, now, actor, now)
 		if err != nil {
 			return fmt.Errorf("upsert task %s: %w", task.ID, err)
 		}
@@ -606,11 +626,15 @@ func (s *Store) AddTask(ctx context.Context, task TaskDefinition) error {
 	if err != nil {
 		return err
 	}
+	sourcePaths, targetPaths, reviewDomains, err := taskMetadataJSON(task)
+	if err != nil {
+		return err
+	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO task_definitions
-  (project_id, id, parent_id, kind, title, role, notes, acceptance_checks, dependencies, priority, sequence, created_at, created_by, updated_at)
-VALUES (?, ?, nullif(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.projectID, task.ID, task.ParentID, task.Kind, task.Title, task.Role, task.Notes, string(acceptance), string(deps), task.Priority, task.Sequence, now, actor, now)
+  (project_id, id, parent_id, kind, title, role, notes, acceptance_checks, dependencies, priority, sequence, profile, owning_domain, owning_layer, source_paths, target_paths, review_domains, risk_level, migration_type, created_at, created_by, updated_at)
+VALUES (?, ?, nullif(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, nullif(?, ''), nullif(?, ''), nullif(?, ''), ?, ?, ?, nullif(?, ''), nullif(?, ''), ?, ?, ?)`,
+		s.projectID, task.ID, task.ParentID, task.Kind, task.Title, task.Role, task.Notes, string(acceptance), string(deps), task.Priority, task.Sequence, task.Profile, task.OwningDomain, task.OwningLayer, sourcePaths, targetPaths, reviewDomains, task.RiskLevel, task.MigrationType, now, actor, now)
 	if err != nil {
 		return err
 	}
@@ -666,6 +690,10 @@ func (s *Store) UpdateTask(ctx context.Context, task TaskDefinition) error {
 	if err != nil {
 		return err
 	}
+	sourcePaths, targetPaths, reviewDomains, err := taskMetadataJSON(task)
+	if err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx, `
 UPDATE task_definitions
 SET parent_id=nullif(?, ''),
@@ -677,9 +705,17 @@ SET parent_id=nullif(?, ''),
     dependencies=?,
     priority=?,
     sequence=?,
+    profile=nullif(?, ''),
+    owning_domain=nullif(?, ''),
+    owning_layer=nullif(?, ''),
+    source_paths=?,
+    target_paths=?,
+    review_domains=?,
+    risk_level=nullif(?, ''),
+    migration_type=nullif(?, ''),
     updated_at=?
 WHERE project_id=? AND id=?`,
-		task.ParentID, task.Kind, task.Title, task.Role, task.Notes, string(acceptance), string(deps), task.Priority, task.Sequence, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, task.ID)
+		task.ParentID, task.Kind, task.Title, task.Role, task.Notes, string(acceptance), string(deps), task.Priority, task.Sequence, task.Profile, task.OwningDomain, task.OwningLayer, sourcePaths, targetPaths, reviewDomains, task.RiskLevel, task.MigrationType, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, task.ID)
 	if err := checkWriteResult(res, err); err != nil {
 		return err
 	}
@@ -753,6 +789,22 @@ func (s *Store) validateTaskDefinitions(tasks []TaskDefinition, allowExternalRef
 	return nil
 }
 
+func taskMetadataJSON(task TaskDefinition) (string, string, string, error) {
+	sourcePaths, err := json.Marshal(task.SourcePaths)
+	if err != nil {
+		return "", "", "", err
+	}
+	targetPaths, err := json.Marshal(task.TargetPaths)
+	if err != nil {
+		return "", "", "", err
+	}
+	reviewDomains, err := json.Marshal(task.ReviewDomains)
+	if err != nil {
+		return "", "", "", err
+	}
+	return string(sourcePaths), string(targetPaths), string(reviewDomains), nil
+}
+
 func ensureTaskExists(ctx context.Context, tx *sql.Tx, projectID, taskID string) error {
 	var exists int
 	err := tx.QueryRowContext(ctx, `SELECT 1 FROM task_definitions WHERE project_id=? AND id=?`, projectID, taskID).Scan(&exists)
@@ -771,7 +823,8 @@ func (s *Store) Ready(ctx context.Context, role string, terminal []string) ([]Ta
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
-       d.priority, d.sequence, st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
+       d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.risk_level, d.migration_type,
+       st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
 FROM task_definitions d
 JOIN task_state st ON st.project_id = d.project_id AND st.task_id = d.id
 WHERE d.project_id = ? AND st.status = 'todo'`+roleSQL+`
@@ -1300,7 +1353,8 @@ WHERE project_id=? AND task_id=?`, status, r.Reviewer, now, r.Reason, now, s.pro
 func (s *Store) TaskDetail(ctx context.Context, taskID string) (Task, []Transition, []Evidence, []Handoff, []Review, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
-       d.priority, d.sequence, st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
+       d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.risk_level, d.migration_type,
+       st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
 FROM task_definitions d JOIN task_state st ON st.project_id=d.project_id AND st.task_id=d.id
 WHERE d.project_id=? AND d.id=?`, s.projectID, taskID)
 	task, err := scanTask(row)
@@ -1329,7 +1383,8 @@ WHERE d.project_id=? AND d.id=?`, s.projectID, taskID)
 func (s *Store) AllTasks(ctx context.Context) ([]Task, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
-       d.priority, d.sequence, st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
+       d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.risk_level, d.migration_type,
+       st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
 FROM task_definitions d JOIN task_state st ON st.project_id=d.project_id AND st.task_id=d.id
 WHERE d.project_id=?
 ORDER BY d.role, st.status, COALESCE(d.priority, 9999), d.created_at`, s.projectID)
@@ -1463,17 +1518,32 @@ type rowScanner interface {
 func scanTask(row rowScanner) (Task, error) {
 	var task Task
 	var acceptance, deps string
-	var parent, kind, notes, owner, claimant, branch, reviewStatus, updated sql.NullString
+	var sourcePaths, targetPaths, reviewDomains sql.NullString
+	var parent, kind, notes, profile, owningDomain, owningLayer, riskLevel, migrationType, owner, claimant, branch, reviewStatus, updated sql.NullString
 	var priority, sequence sql.NullInt64
-	err := row.Scan(&task.Definition.ID, &parent, &kind, &task.Definition.Title, &task.Definition.Role, &notes, &acceptance, &deps, &priority, &sequence, &task.Status, &owner, &claimant, &branch, &reviewStatus, &updated)
+	err := row.Scan(&task.Definition.ID, &parent, &kind, &task.Definition.Title, &task.Definition.Role, &notes, &acceptance, &deps, &priority, &sequence, &profile, &owningDomain, &owningLayer, &sourcePaths, &targetPaths, &reviewDomains, &riskLevel, &migrationType, &task.Status, &owner, &claimant, &branch, &reviewStatus, &updated)
 	if err != nil {
 		return Task{}, err
 	}
 	task.Definition.ParentID = parent.String
 	task.Definition.Kind = kind.String
 	task.Definition.Notes = notes.String
+	task.Definition.Profile = profile.String
+	task.Definition.OwningDomain = owningDomain.String
+	task.Definition.OwningLayer = owningLayer.String
+	task.Definition.RiskLevel = riskLevel.String
+	task.Definition.MigrationType = migrationType.String
 	_ = json.Unmarshal([]byte(acceptance), &task.Definition.AcceptanceChecks)
 	_ = json.Unmarshal([]byte(deps), &task.Definition.Dependencies)
+	if sourcePaths.Valid {
+		_ = json.Unmarshal([]byte(sourcePaths.String), &task.Definition.SourcePaths)
+	}
+	if targetPaths.Valid {
+		_ = json.Unmarshal([]byte(targetPaths.String), &task.Definition.TargetPaths)
+	}
+	if reviewDomains.Valid {
+		_ = json.Unmarshal([]byte(reviewDomains.String), &task.Definition.ReviewDomains)
+	}
 	if priority.Valid {
 		v := int(priority.Int64)
 		task.Definition.Priority = &v

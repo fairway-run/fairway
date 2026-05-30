@@ -8,8 +8,10 @@ service extraction, SDK readiness, or security hardening.
 Profiles are operational in readiness checks. Fairway validates the config,
 uses `route_samples` in `fairway adoption artifact`, evaluates named profile
 gates against recorded evidence rows, and applies blocking profile gates in
-`fairway merge-ready`. Dashboard grouping, structured guard evidence, task
-ownership metadata, and template-rendered packets are planned follow-on work.
+`fairway merge-ready`. Tasks can also carry profile-aware metadata such as
+owning domain/layer, source/target paths, review domains, risk level, and
+migration type. Dashboard grouping, structured guard evidence, and
+template-rendered packets are planned follow-on work.
 
 ## When To Add One
 
@@ -112,6 +114,30 @@ summary you configured. If route samples do not resolve to the expected
 reviewers, update `[[review_routes]]` before asking agents to rely on the
 profile. If a gate reports missing tasks, record the required evidence or adjust
 the gate before treating the workstream as ready.
+
+## Task Metadata
+
+Use task metadata when the workstream needs architecture context that should
+survive handoffs and exports:
+
+```bash
+fairway add PF-003 \
+  --title "Introduce platform evidence facade" \
+  --role backend \
+  --kind facade \
+  --profile platform-foundation \
+  --owning-domain platform \
+  --owning-layer service \
+  --source-paths cmd/api/evidence.go,packages/services \
+  --target-paths packages/services/platform/evidence \
+  --review-domains architecture,security \
+  --risk-level high \
+  --migration-type facade
+```
+
+The same fields are accepted in YAML/JSON imports. See
+[`examples/platform-foundation-queue.yaml`](../examples/platform-foundation-queue.yaml)
+for a generic platform-foundation queue.
 
 ## Agent Guidance
 

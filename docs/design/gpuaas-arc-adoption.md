@@ -49,7 +49,7 @@ this track are implemented and validated.
 2. Adoption artifact command.
 3. Configurable packet templates.
 4. Structured guard evidence.
-5. Task ownership metadata.
+5. Dashboard grouping by task kind and ownership metadata.
 6. Multi-reviewer merge readiness.
 7. Release readiness/risk profile.
 8. GitLab evidence bridge.
@@ -135,9 +135,9 @@ platform-foundation track:
   - target seam, old path, new path, adapter, proof commands, rollback plan;
 - route/review examples for `doc/architecture/platform-foundation/**`;
 
-The generic follow-up should build on the initial profile config with
-template-driven packet rendering, ownership metadata, structured guard evidence,
-and dashboard grouping by task kind. See [workstream-profiles.md](workstream-profiles.md).
+The generic follow-up should build on the initial profile config and task
+metadata with template-driven packet rendering, structured guard evidence, and
+dashboard grouping by task kind. See [workstream-profiles.md](workstream-profiles.md).
 
 ## 3. Release Readiness Gates
 
