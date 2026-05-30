@@ -142,7 +142,18 @@ fairway watcher finish W-001 --result pass --artifact dist/ci.log
 
 Platform-foundation work should use the narrower packet type that matches the
 task. If a repo defines `[[packet_templates]]`, use those fields as the packet
-contract even when the current packet command is still built in:
+contract. Generic templates render with `fairway packet template <name>`:
+
+```bash
+fairway packet template architecture-map T-010 \
+  --field scope="route ownership" \
+  --field current_owner=mixed \
+  --field target_owner=D-arch \
+  --field migration_risk="route moves can hide auth regressions" \
+  --field acceptance="owners and review routes are explicit"
+```
+
+Built-in packet commands remain available for common profiles:
 
 ```bash
 fairway packet architecture-map T-010 \

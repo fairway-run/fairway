@@ -33,6 +33,7 @@ fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> [--owning-layer <text>] --proof-command <cmd> --regression-coverage <text> [--residual-risk <text>]
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
+fairway packet template <name> <task-id> --field <key=value>...
 fairway packet architecture-map <task-id> --scope <text> --current-owner <role> --target-owner <role> --migration-risk <text> [--source-doc <path>]... --acceptance <text>
 fairway packet boundary-guard <task-id> --guard-intent <text> [--finding <text>]... [--false-positive <text>]... --graduation-criteria <text> [--proof-command <cmd>]...
 fairway packet vertical-slice <task-id> --target-seam <text> --old-path <path> --new-path <path> --adapter <text> [--proof-command <cmd>]... --rollback-plan <text>
@@ -100,9 +101,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - `merge-ready` evaluates profile gates for the target task. Missing
   `blocking` gates fail readiness; missing `advisory` and `report_only` gates
   are reported as warnings.
-- `packet bugfix`, platform-foundation packets, and `regression-pack` are
-  quality surfaces. They render and validate review context; they do not
-  execute product test suites.
+- `packet bugfix`, platform-foundation packets, `packet template`, and
+  `regression-pack` are quality surfaces. They render and validate review
+  context; they do not execute product test suites.
 - `db compat --backend postgres` is a planned adapter harness, not the default
   v1 runtime.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that

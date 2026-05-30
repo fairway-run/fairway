@@ -439,6 +439,40 @@ func TestCLI_CheckpointAndPacket(t *testing.T) {
 	runOK(t, "--json", "watcher", "status", "--include-done")
 }
 
+func TestCLI_PacketTemplate(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[packet_templates]]
+name = "release-risk"
+required_fields = ["risk", "mitigation"]
+optional_fields = ["owner", "proof_command"]
+`)
+	runOK(t, "config", "validate")
+	runOK(t, "add", "T-001", "--title", "Templated packet", "--role", "backend", "--profile", "", "--risk-level", "high")
+	packet := runCapture(t, "packet", "template", "release-risk", "T-001", "--field", "risk=deploy may fail", "--field", "mitigation=rollback", "--field", "proof_command=go test ./...")
+	assertContains(t, packet, "# Release Risk Packet: T-001")
+	assertContains(t, packet, "deploy may fail")
+	jsonPacket := runCapture(t, "--json", "packet", "template", "release-risk", "T-001", "--field", "risk=deploy may fail", "--field", "mitigation=rollback")
+	assertContains(t, jsonPacket, `"Name": "release-risk"`)
+	assertContains(t, jsonPacket, `"risk"`)
+	if err := run(context.Background(), []string{"packet", "template", "release-risk", "T-001", "--field", "risk=deploy may fail"}); err == nil {
+		t.Fatal("expected missing required template field error")
+	}
+	if err := run(context.Background(), []string{"packet", "template", "release-risk", "T-001", "--field", "risk=deploy may fail", "--field", "mitigation=rollback", "--field", "extra=nope"}); err == nil {
+		t.Fatal("expected unknown template field error")
+	}
+}
+
 func TestCLI_RegressionPacks(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

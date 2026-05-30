@@ -2302,7 +2302,7 @@ func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string,
 
 func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("packet requires subcommand: context, bugfix, watcher, architecture-map, boundary-guard, vertical-slice")
+		return errors.New("packet requires subcommand: context, bugfix, watcher, template, architecture-map, boundary-guard, vertical-slice")
 	}
 	switch args[0] {
 	case "context":
@@ -2311,6 +2311,8 @@ func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdPacketBugfix(ctx, opts, args[1:])
 	case "watcher":
 		return cmdPacketWatcher(opts, args[1:])
+	case "template":
+		return cmdPacketTemplate(ctx, opts, args[1:])
 	case "architecture-map":
 		return cmdPacketArchitectureMap(ctx, opts, args[1:])
 	case "boundary-guard":
@@ -2320,6 +2322,65 @@ func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 	default:
 		return fmt.Errorf("unknown packet subcommand %q", args[0])
 	}
+}
+
+func cmdPacketTemplate(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 2 {
+		return errors.New("packet template requires template name and task id")
+	}
+	templateName := args[0]
+	taskID := args[1]
+	fs := flag.NewFlagSet("packet template", flag.ContinueOnError)
+	var fields multiFlag
+	fs.Var(&fields, "field", "template field as key=value; may repeat")
+	if err := fs.Parse(args[2:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet template arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		template, ok := packetTemplateByName(cfg.PacketTemplates, templateName)
+		if !ok {
+			return fmt.Errorf("packet template %q is not configured", templateName)
+		}
+		values, err := parsePacketTemplateFields(fields)
+		if err != nil {
+			return err
+		}
+		if err := validatePacketTemplateValues(template, values); err != nil {
+			return err
+		}
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		packet := struct {
+			Template config.PacketTemplate `json:"template"`
+			Task     store.Task            `json:"task"`
+			Fields   map[string][]string   `json:"fields"`
+			Evidence []store.Evidence      `json:"evidence"`
+			Reviews  []store.Review        `json:"reviews"`
+		}{template, task, values, evidence, reviews}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		fmt.Printf("# %s Packet: %s\n\n", packetTemplateTitle(template.Name), task.Definition.ID)
+		fmt.Printf("title: %s\nstatus: %s\nrole: %s\n", task.Definition.Title, task.Status, task.Definition.Role)
+		if task.Definition.Profile != "" || task.Definition.OwningDomain != "" || task.Definition.RiskLevel != "" {
+			fmt.Printf("profile: %s\ndomain: %s\nrisk: %s\n", task.Definition.Profile, task.Definition.OwningDomain, task.Definition.RiskLevel)
+		}
+		fmt.Println("\n## Fields")
+		for _, field := range packetTemplateFieldOrder(template) {
+			printPacketTemplateField(field, values[field])
+		}
+		printEvidenceSummary(evidence)
+		fmt.Println("\n## Reviews")
+		for _, review := range reviews {
+			fmt.Printf("- %s by %s: %s\n", review.Verdict, review.Reviewer, review.Reason)
+		}
+		return nil
+	})
 }
 
 func cmdPacketContext(ctx context.Context, opts globalOptions, args []string) error {
@@ -3270,6 +3331,86 @@ func (m *multiFlag) String() string {
 func (m *multiFlag) Set(value string) error {
 	*m = append(*m, value)
 	return nil
+}
+
+func packetTemplateByName(templates []config.PacketTemplate, name string) (config.PacketTemplate, bool) {
+	for _, template := range templates {
+		if template.Name == name {
+			return template, true
+		}
+	}
+	return config.PacketTemplate{}, false
+}
+
+func parsePacketTemplateFields(fields []string) (map[string][]string, error) {
+	values := map[string][]string{}
+	for _, raw := range fields {
+		key, value, ok := strings.Cut(raw, "=")
+		if !ok {
+			return nil, fmt.Errorf("packet template field %q must use key=value", raw)
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil, fmt.Errorf("packet template field %q has empty key", raw)
+		}
+		values[key] = append(values[key], strings.TrimSpace(value))
+	}
+	return values, nil
+}
+
+func validatePacketTemplateValues(template config.PacketTemplate, values map[string][]string) error {
+	allowed := map[string]bool{}
+	for _, field := range template.RequiredFields {
+		allowed[field] = true
+		if !hasNonEmptyPacketTemplateValue(values[field]) {
+			return fmt.Errorf("packet template %q requires field %q", template.Name, field)
+		}
+	}
+	for _, field := range template.OptionalFields {
+		allowed[field] = true
+	}
+	for field := range values {
+		if !allowed[field] {
+			return fmt.Errorf("packet template %q does not define field %q", template.Name, field)
+		}
+	}
+	return nil
+}
+
+func hasNonEmptyPacketTemplateValue(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func packetTemplateFieldOrder(template config.PacketTemplate) []string {
+	fields := append([]string(nil), template.RequiredFields...)
+	fields = append(fields, template.OptionalFields...)
+	return fields
+}
+
+func packetTemplateTitle(name string) string {
+	words := strings.Fields(strings.ReplaceAll(name, "-", " "))
+	for i, word := range words {
+		if word == "" {
+			continue
+		}
+		words[i] = strings.ToUpper(word[:1]) + word[1:]
+	}
+	return strings.Join(words, " ")
+}
+
+func printPacketTemplateField(field string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	fmt.Printf("\n### %s\n", strings.ReplaceAll(field, "_", " "))
+	for _, value := range values {
+		fmt.Printf("- %s\n", value)
+	}
 }
 
 type taskMetadataFlags struct {
@@ -4327,5 +4468,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|adoption|parity|checkpoint|packet|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
 }

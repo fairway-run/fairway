@@ -193,16 +193,29 @@ Named readiness gates under the preceding profile.
 
 ### `[[packet_templates]]`
 
-Declarative packet template metadata. The current built-in packet commands still
-render their specific packet shapes, but this config pins the generic model that
-will let projects add profile-specific packets without Fairway code changes.
+Declarative packet template metadata. `fairway packet template <name> <task-id>`
+validates required fields and renders a packet with task detail, evidence, and
+review context. The current built-in packet commands still render their
+specific packet shapes, but templates let projects add profile-specific packets
+without Fairway code changes.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `profiles` | []string | — | Optional list of workstream profile names this packet template belongs to. If profiles are configured, references must match a configured profile. |
 | `name` | string | — | Packet template name. Must be unique. |
-| `required_fields` | []string | — | Required field names for future template validation/rendering. |
+| `required_fields` | []string | — | Required field names for template validation/rendering. |
 | `optional_fields` | []string | — | Optional field names. A field cannot appear in both required and optional lists. |
+
+Render a configured template with repeated `--field key=value` arguments:
+
+```bash
+fairway packet template architecture-map T-010 \
+  --field scope="route ownership" \
+  --field current_owner=mixed \
+  --field target_owner=D-arch \
+  --field migration_risk="route moves can hide auth regressions" \
+  --field acceptance="owners and review routes are explicit"
+```
 
 ### `[states]`
 

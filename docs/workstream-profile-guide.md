@@ -11,8 +11,8 @@ evaluates named profile gates against recorded evidence rows, applies blocking
 profile gates in `fairway merge-ready`, and groups dashboard tasks by
 profile/kind when metadata is present. Tasks can also carry profile-aware
 metadata such as owning domain/layer, source/target paths, review domains, risk
-level, and migration type. Structured guard evidence and template-rendered
-packets are planned follow-on work.
+level, and migration type. Template-rendered packets are available through
+`fairway packet template`; structured guard evidence is planned follow-on work.
 
 ## When To Add One
 
@@ -144,6 +144,15 @@ for a generic platform-foundation queue.
 
 Agents should treat profile config as the local contract for that workstream.
 For example, if a task kind is `architecture-map`, the agent should use the
-matching packet command or packet template fields and record evidence against
-the named gates. If the profile is missing a gate or field, update the config or
-docs rather than inventing a private checklist in chat.
+matching packet command or configured packet template fields and record evidence
+against the named gates. If the profile is missing a gate or field, update the
+config or docs rather than inventing a private checklist in chat.
+
+```bash
+fairway packet template architecture-map T-010 \
+  --field scope="route ownership" \
+  --field current_owner=mixed \
+  --field target_owner=D-arch \
+  --field migration_risk="route moves can hide auth regressions" \
+  --field acceptance="owners and review routes are explicit"
+```

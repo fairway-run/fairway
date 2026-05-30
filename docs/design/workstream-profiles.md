@@ -104,8 +104,8 @@ required_fields = ["guard_intent", "graduation_criteria"]
 optional_fields = ["finding", "false_positive", "proof_command"]
 ```
 
-Template output should include task detail, evidence, reviews, and the template
-fields. The template validates shape; it does not run checks.
+Template output includes task detail, evidence, reviews, and the supplied
+template fields. The template validates shape; it does not run checks.
 
 ## Ownership Metadata
 
