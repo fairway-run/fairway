@@ -1896,9 +1896,6 @@ func evaluateGateForTask(gate config.WorkstreamProfileGate, evidence []store.Evi
 		accepted[result] = true
 	}
 	var matching int
-	var hasArtifact bool
-	var fresh bool
-	var hasOwnerSignoff bool
 	for _, ev := range evidence {
 		if gate.EvidenceType != "" && ev.ArtifactType != gate.EvidenceType {
 			continue
@@ -1906,31 +1903,36 @@ func evaluateGateForTask(gate config.WorkstreamProfileGate, evidence []store.Evi
 		if len(accepted) > 0 && !accepted[ev.Result] {
 			continue
 		}
+		if gate.ArtifactRequired && ev.ArtifactPath == "" {
+			continue
+		}
+		if gate.ExpiresAfter != "" && !evidenceIsFresh(ev, gate.ExpiresAfter, now) {
+			continue
+		}
+		if gate.OwnerSignoffRequired && !evidenceHasOwnerSignoff(ev) {
+			continue
+		}
 		matching++
-		if ev.ArtifactPath != "" {
-			hasArtifact = true
-		}
-		if evidenceIsFresh(ev, gate.ExpiresAfter, now) {
-			fresh = true
-		}
-		if strings.Contains(strings.ToLower(ev.Notes), "signoff") || strings.Contains(strings.ToLower(ev.Notes), "sign-off") {
-			hasOwnerSignoff = true
-		}
 	}
 	var reasons []string
 	if matching < requiredCount {
 		reasons = append(reasons, fmt.Sprintf("needs %d matching evidence row(s), found %d", requiredCount, matching))
-	}
-	if gate.ArtifactRequired && !hasArtifact {
-		reasons = append(reasons, "needs evidence artifact")
-	}
-	if gate.ExpiresAfter != "" && !fresh {
-		reasons = append(reasons, "needs fresh evidence")
-	}
-	if gate.OwnerSignoffRequired && !hasOwnerSignoff {
-		reasons = append(reasons, "needs owner signoff evidence note")
+		if gate.ArtifactRequired {
+			reasons = append(reasons, "matching rows must include evidence artifacts")
+		}
+		if gate.ExpiresAfter != "" {
+			reasons = append(reasons, "matching rows must be fresh")
+		}
+		if gate.OwnerSignoffRequired {
+			reasons = append(reasons, "matching rows must include owner signoff evidence notes")
+		}
 	}
 	return len(reasons) == 0, matching, reasons
+}
+
+func evidenceHasOwnerSignoff(ev store.Evidence) bool {
+	notes := strings.ToLower(ev.Notes)
+	return strings.Contains(notes, "signoff") || strings.Contains(notes, "sign-off")
 }
 
 func evidenceIsFresh(ev store.Evidence, expiresAfter string, now time.Time) bool {

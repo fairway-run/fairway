@@ -85,16 +85,20 @@ Profile gates can describe the evidence a workstream expects:
 These fields are validated and evaluated in adoption artifacts today. They are
 not yet enforced by `merge-ready`.
 
-Gate evaluation matches profile gates to tasks by `task_kinds`, then checks
-task evidence rows:
+Gate evaluation matches profile gates to tasks by `task_kinds`, then counts
+evidence rows that satisfy every configured requirement:
 
 - `evidence_type` matches `fairway record evidence --artifact-type`.
 - `accepted_results` matches `--result`.
-- `artifact_required` requires `--artifact`.
-- `expires_after` compares the evidence row's `created_at` timestamp to the
-  configured duration.
-- `owner_signoff_required` currently expects the evidence notes to contain
+- `artifact_required` requires the counted row to include `--artifact`.
+- `expires_after` requires the counted row's `created_at` timestamp to be
+  within the configured duration.
+- `owner_signoff_required` requires the counted row's notes to contain
   `signoff` or `sign-off`.
+
+For `required_evidence_count > 1`, every counted row must satisfy all of the
+gate's configured evidence requirements. Stale rows or rows missing required
+artifacts/signoff do not contribute to the count.
 
 ## Adoption Artifact
 

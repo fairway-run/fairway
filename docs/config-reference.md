@@ -185,10 +185,10 @@ Named readiness gates under the preceding profile.
 | `mode` | string | — | `advisory`, `blocking`, or `report_only`. |
 | `evidence_type` | string | — | Optional evidence type this gate expects. |
 | `required_evidence_count` | int | `0` | Minimum count expected for this evidence type in adoption gate evaluation. If omitted but other evidence requirements are present, evaluation treats the gate as needing at least one matching row. |
-| `accepted_results` | []string | — | Accepted `task_evidence.result` values: `pass`, `fail`, `partial`, `skipped`, or `blocked`. |
-| `artifact_required` | bool | `false` | Whether matching evidence must include an artifact path or URL. |
-| `owner_signoff_required` | bool | `false` | Whether matching evidence notes must contain `signoff` or `sign-off`. |
-| `expires_after` | duration | — | Duration after which matching evidence is considered stale, for example `720h`. |
+| `accepted_results` | []string | — | Accepted `task_evidence.result` values: `pass`, `fail`, `partial`, `skipped`, or `blocked`. Rows with other results do not count. |
+| `artifact_required` | bool | `false` | Whether each counted evidence row must include an artifact path or URL. |
+| `owner_signoff_required` | bool | `false` | Whether each counted evidence row's notes must contain `signoff` or `sign-off`. |
+| `expires_after` | duration | — | Duration after which an evidence row is considered stale and no longer counted, for example `720h`. |
 | `description` | string | — | Optional human-readable description. |
 
 ### `[[packet_templates]]`

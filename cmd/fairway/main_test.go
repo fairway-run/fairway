@@ -9,8 +9,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/store"
 )
 
 func TestCLI_Smoke(t *testing.T) {
@@ -583,6 +585,36 @@ artifact_required = true
 	jsonArtifact := runCapture(t, "--json", "adoption", "artifact")
 	assertContains(t, jsonArtifact, `"gate_evaluations"`)
 	assertContains(t, jsonArtifact, `"missing_count": 1`)
+}
+
+func TestEvaluateGateForTaskCountsOnlyRowsMeetingAllRequirements(t *testing.T) {
+	now := time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
+	gate := config.WorkstreamProfileGate{
+		Name:                  "security-review",
+		Mode:                  "advisory",
+		EvidenceType:          "security-review",
+		RequiredEvidenceCount: 2,
+		AcceptedResults:       []string{"pass"},
+		ArtifactRequired:      true,
+		OwnerSignoffRequired:  true,
+		ExpiresAfter:          "24h",
+	}
+	evidence := []store.Evidence{
+		{Result: "pass", ArtifactType: "security-review", ArtifactPath: "dist/a.txt", Notes: "owner signoff", CreatedAt: now.Add(-time.Hour).Format(time.RFC3339Nano)},
+		{Result: "pass", ArtifactType: "security-review", ArtifactPath: "", Notes: "owner signoff", CreatedAt: now.Add(-time.Hour).Format(time.RFC3339Nano)},
+		{Result: "pass", ArtifactType: "security-review", ArtifactPath: "dist/stale.txt", Notes: "owner signoff", CreatedAt: now.Add(-48 * time.Hour).Format(time.RFC3339Nano)},
+		{Result: "pass", ArtifactType: "security-review", ArtifactPath: "dist/no-signoff.txt", Notes: "reviewed", CreatedAt: now.Add(-time.Hour).Format(time.RFC3339Nano)},
+	}
+	ok, matching, reasons := evaluateGateForTask(gate, evidence, now)
+	if ok {
+		t.Fatal("expected gate to be missing")
+	}
+	if matching != 1 {
+		t.Fatalf("matching=%d, want 1", matching)
+	}
+	if len(reasons) == 0 {
+		t.Fatal("expected missing reasons")
+	}
 }
 
 func runOK(t *testing.T, args ...string) {
