@@ -44,7 +44,8 @@ this track are implemented and validated.
 
 ## Priority Order
 
-1. Configurable workstream profiles.
+1. Expand configurable workstream profiles beyond the initial metadata,
+   route-sample, named-gate, and packet-template config shape.
 2. Adoption artifact command.
 3. Configurable packet templates.
 4. Structured guard evidence.
@@ -133,9 +134,9 @@ platform-foundation track:
   - target seam, old path, new path, adapter, proof commands, rollback plan;
 - route/review examples for `doc/architecture/platform-foundation/**`;
 
-The generic follow-up should be configurable profiles, declarative packet
-templates, ownership metadata, structured guard evidence, and dashboard grouping
-by task kind. See [workstream-profiles.md](workstream-profiles.md).
+The generic follow-up should build on the initial profile config with
+template-driven packet rendering, ownership metadata, structured guard evidence,
+and dashboard grouping by task kind. See [workstream-profiles.md](workstream-profiles.md).
 
 ## 3. Release Readiness Gates
 

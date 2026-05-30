@@ -206,3 +206,43 @@ default = "task"
 
 [task_priorities]
 default = 1000
+
+[[workstream_profiles]]
+name = "platform-foundation"
+task_kinds = ["architecture-map", "guard", "facade", "frontend-contract", "release-evidence"]
+dashboard_groups = ["architecture maps", "boundary guards", "facades", "frontend contracts", "release evidence"]
+review_domains = ["architecture", "governance", "frontend", "ops"]
+route_samples = [
+  "doc/api/openapi.draft.yaml",
+  "cmd/api/routes.go",
+  "packages/services/billing/service.go",
+  "cmd/node-agent/main.go",
+  "scripts/ci/contracts_validate.sh",
+]
+
+[[workstream_profiles.gates]]
+name = "boundary-guard-report"
+mode = "advisory"
+evidence_type = "guard-report"
+description = "Report-only boundary guard evidence is expected before enforcement."
+
+[[workstream_profiles.gates]]
+name = "release-risk"
+mode = "advisory"
+evidence_type = "release-risk"
+description = "Residual risk should be recorded for release-facing platform work."
+
+[[packet_templates]]
+name = "architecture-map"
+required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "acceptance"]
+optional_fields = ["source_doc"]
+
+[[packet_templates]]
+name = "boundary-guard"
+required_fields = ["guard_intent", "mode", "graduation_criteria"]
+optional_fields = ["finding", "false_positive", "allowed_debt", "proof_command"]
+
+[[packet_templates]]
+name = "vertical-slice"
+required_fields = ["slice_goal", "owning_domain", "source_paths", "target_paths", "acceptance"]
+optional_fields = ["page_contract", "proof_command", "residual_risk"]

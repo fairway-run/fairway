@@ -1561,17 +1561,18 @@ func printCoordinatorTick(report coordinatorReport) {
 	}
 }
 
-type parityArtifact struct {
+type adoptionArtifact struct {
 	ArtifactType     string                 `json:"artifact_type"`
 	GeneratedAt      string                 `json:"generated_at"`
 	Project          string                 `json:"project"`
 	Gates            adoptionGateSummary    `json:"gates"`
+	ProfileGates     []adoptionProfileGate  `json:"profile_gates,omitempty"`
 	TaskCount        int                    `json:"task_count"`
 	ReadyCount       int                    `json:"ready_count"`
 	ReadyByRole      map[string]int         `json:"ready_by_role"`
-	ReadySample      []parityTaskSample     `json:"ready_sample"`
-	RouteSamples     []parityRouteSample    `json:"route_samples"`
-	RegressionPacks  parityRegressionResult `json:"regression_packs"`
+	ReadySample      []adoptionTaskSample   `json:"ready_sample"`
+	RouteSamples     []adoptionRouteSample  `json:"route_samples"`
+	RegressionPacks  adoptionRegressionPack `json:"regression_packs"`
 	EvidenceGapCount int                    `json:"evidence_gap_count"`
 	EvidenceGaps     []string               `json:"evidence_gaps"`
 	Health           store.Health           `json:"health"`
@@ -1585,7 +1586,15 @@ type adoptionGateSummary struct {
 	BlockedReason           string `json:"blocked_reason"`
 }
 
-type parityTaskSample struct {
+type adoptionProfileGate struct {
+	Profile      string `json:"profile"`
+	Name         string `json:"name"`
+	Mode         string `json:"mode"`
+	EvidenceType string `json:"evidence_type,omitempty"`
+	Description  string `json:"description,omitempty"`
+}
+
+type adoptionTaskSample struct {
 	ID       string `json:"id"`
 	Role     string `json:"role"`
 	Status   string `json:"status"`
@@ -1593,14 +1602,14 @@ type parityTaskSample struct {
 	Priority *int   `json:"priority,omitempty"`
 }
 
-type parityRouteSample struct {
+type adoptionRouteSample struct {
 	Path     string `json:"path"`
 	Reviewer string `json:"reviewer"`
 	Reason   string `json:"reason"`
 	OK       bool   `json:"ok"`
 }
 
-type parityRegressionResult struct {
+type adoptionRegressionPack struct {
 	CatalogPath string   `json:"catalog_path,omitempty"`
 	OK          bool     `json:"ok"`
 	PackCount   int      `json:"pack_count"`
@@ -1657,18 +1666,18 @@ func cmdAdoptionArtifact(ctx context.Context, opts globalOptions, artifactType s
 	})
 }
 
-func buildAdoptionArtifact(ctx context.Context, cfg config.Config, root string, s *store.Store, artifactType, catalogPath string, routePaths []string, limit, gapLimit int) (parityArtifact, error) {
+func buildAdoptionArtifact(ctx context.Context, cfg config.Config, root string, s *store.Store, artifactType, catalogPath string, routePaths []string, limit, gapLimit int) (adoptionArtifact, error) {
 	tasks, err := s.AllTasks(ctx)
 	if err != nil {
-		return parityArtifact{}, err
+		return adoptionArtifact{}, err
 	}
 	ready, err := s.Ready(ctx, "", cfg.States.Terminal)
 	if err != nil {
-		return parityArtifact{}, err
+		return adoptionArtifact{}, err
 	}
 	health, err := s.Health(ctx)
 	if err != nil {
-		return parityArtifact{}, err
+		return adoptionArtifact{}, err
 	}
 	coordinator, err := buildCoordinatorReport(ctx, cfg, root, s)
 	if err != nil {
@@ -1684,18 +1693,19 @@ func buildAdoptionArtifact(ctx context.Context, cfg config.Config, root string, 
 		}
 	}
 	if len(routePaths) == 0 {
-		routePaths = defaultParityRouteSamples(cfg)
+		routePaths = defaultAdoptionRouteSamples(cfg)
 	}
-	artifact := parityArtifact{
+	artifact := adoptionArtifact{
 		ArtifactType:    artifactType,
 		GeneratedAt:     time.Now().UTC().Format(time.RFC3339Nano),
 		Project:         cfg.Fairway.ProjectName,
 		Gates:           adoptionGates(cfg),
+		ProfileGates:    adoptionProfileGates(cfg),
 		TaskCount:       len(tasks),
 		ReadyCount:      len(ready),
 		ReadyByRole:     map[string]int{},
-		RouteSamples:    make([]parityRouteSample, 0, len(routePaths)),
-		RegressionPacks: validateParityRegressionCatalog(catalogPath),
+		RouteSamples:    make([]adoptionRouteSample, 0, len(routePaths)),
+		RegressionPacks: validateAdoptionRegressionCatalog(catalogPath),
 		Health:          health,
 		Coordinator:     coordinator,
 	}
@@ -1706,7 +1716,7 @@ func buildAdoptionArtifact(ctx context.Context, cfg config.Config, root string, 
 		limit = len(ready)
 	}
 	for _, task := range ready[:limit] {
-		artifact.ReadySample = append(artifact.ReadySample, parityTaskSample{
+		artifact.ReadySample = append(artifact.ReadySample, adoptionTaskSample{
 			ID:       task.Definition.ID,
 			Role:     task.Definition.Role,
 			Status:   task.Status,
@@ -1716,7 +1726,7 @@ func buildAdoptionArtifact(ctx context.Context, cfg config.Config, root string, 
 	}
 	for _, routePath := range routePaths {
 		reviewer, reason := matchReviewRoute(cfg.ReviewRoutes, []string{routePath})
-		artifact.RouteSamples = append(artifact.RouteSamples, parityRouteSample{
+		artifact.RouteSamples = append(artifact.RouteSamples, adoptionRouteSample{
 			Path:     routePath,
 			Reviewer: reviewer,
 			Reason:   reason,
@@ -1730,7 +1740,7 @@ func buildAdoptionArtifact(ctx context.Context, cfg config.Config, root string, 
 		}
 		ok, err := s.HasEvidence(ctx, task.Definition.ID)
 		if err != nil {
-			return parityArtifact{}, err
+			return adoptionArtifact{}, err
 		}
 		if !ok {
 			evidenceGaps = append(evidenceGaps, fmt.Sprintf("%s done without evidence", task.Definition.ID))
@@ -1754,6 +1764,22 @@ func adoptionGates(cfg config.Config) adoptionGateSummary {
 	}
 }
 
+func adoptionProfileGates(cfg config.Config) []adoptionProfileGate {
+	var gates []adoptionProfileGate
+	for _, profile := range cfg.WorkstreamProfiles {
+		for _, gate := range profile.Gates {
+			gates = append(gates, adoptionProfileGate{
+				Profile:      profile.Name,
+				Name:         gate.Name,
+				Mode:         gate.Mode,
+				EvidenceType: gate.EvidenceType,
+				Description:  gate.Description,
+			})
+		}
+	}
+	return gates
+}
+
 func gateMode(blocking bool) string {
 	if blocking {
 		return "blocking"
@@ -1761,7 +1787,21 @@ func gateMode(blocking bool) string {
 	return "advisory"
 }
 
-func defaultParityRouteSamples(cfg config.Config) []string {
+func defaultAdoptionRouteSamples(cfg config.Config) []string {
+	var samples []string
+	seen := map[string]bool{}
+	for _, profile := range cfg.WorkstreamProfiles {
+		for _, sample := range profile.RouteSamples {
+			if seen[sample] {
+				continue
+			}
+			samples = append(samples, sample)
+			seen[sample] = true
+		}
+	}
+	if len(samples) > 0 {
+		return samples
+	}
 	if strings.EqualFold(cfg.Fairway.ProjectName, "gpuaas") || config.RoleSet(cfg)["A-backend"] {
 		return []string{
 			"doc/api/openapi.draft.yaml",
@@ -1774,11 +1814,11 @@ func defaultParityRouteSamples(cfg config.Config) []string {
 	return nil
 }
 
-func validateParityRegressionCatalog(path string) parityRegressionResult {
+func validateAdoptionRegressionCatalog(path string) adoptionRegressionPack {
 	if path == "" {
 		path = defaultRegressionCatalogPath()
 	}
-	result := parityRegressionResult{CatalogPath: path}
+	result := adoptionRegressionPack{CatalogPath: path}
 	if _, err := os.Stat(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			result.Issues = append(result.Issues, "catalog not found")
@@ -1806,7 +1846,7 @@ func isTerminal(status string, terminal []string) bool {
 	return false
 }
 
-func printAdoptionArtifact(artifact parityArtifact) {
+func printAdoptionArtifact(artifact adoptionArtifact) {
 	title := "Adoption"
 	if artifact.ArtifactType == "parity" {
 		title = "Parity"
@@ -1818,6 +1858,20 @@ func printAdoptionArtifact(artifact parityArtifact) {
 	fmt.Printf("- review_before_done: %s\n", artifact.Gates.ReviewBeforeDone)
 	fmt.Printf("- handoff_before_merge_ready: %s\n", artifact.Gates.HandoffBeforeMergeReady)
 	fmt.Printf("- blocked_reason: %s\n", artifact.Gates.BlockedReason)
+	if len(artifact.ProfileGates) > 0 {
+		fmt.Println("\n## Profile Gates")
+		for _, gate := range artifact.ProfileGates {
+			label := gate.Name
+			if gate.Profile != "" {
+				label = gate.Profile + "/" + label
+			}
+			if gate.EvidenceType != "" {
+				fmt.Printf("- %s: %s (%s)\n", label, gate.Mode, gate.EvidenceType)
+			} else {
+				fmt.Printf("- %s: %s\n", label, gate.Mode)
+			}
+		}
+	}
 	if len(artifact.ReadyByRole) > 0 {
 		fmt.Println("\n## Ready By Role")
 		roles := make([]string, 0, len(artifact.ReadyByRole))

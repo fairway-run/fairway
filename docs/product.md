@@ -58,9 +58,10 @@ each version ships.
 ### v0.3
 - Dashboard mutations (with CSRF, audit).
 - TUI mode (`fairway tui`) for SSH / headless use.
-- GPUaaS / ARC adoption track: parity artifact, release-readiness design,
-  platform-foundation orchestration profile, security/UAT packet design, and
-  evidence bridge boundaries.
+- Generic workstream profile track: profile config, declarative packet
+  templates, named readiness gates, dashboard grouping, task ownership
+  metadata, and structured guard evidence. GPUaaS / ARC remains the adoption
+  example, not the core product shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

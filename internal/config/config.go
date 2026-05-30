@@ -14,16 +14,18 @@ import (
 const DefaultConfigPath = ".fairway/config.toml"
 
 type Config struct {
-	Fairway        FairwayConfig        `toml:"fairway"`
-	Dashboard      DashboardConfig      `toml:"dashboard"`
-	Worktrees      WorktreesConfig      `toml:"worktrees"`
-	Sessions       SessionsConfig       `toml:"sessions"`
-	States         StatesConfig         `toml:"states"`
-	Gates          GatesConfig          `toml:"gates"`
-	TaskKinds      TaskKindsConfig      `toml:"task_kinds"`
-	TaskPriorities TaskPrioritiesConfig `toml:"task_priorities"`
-	Roles          []Role               `toml:"roles"`
-	ReviewRoutes   []ReviewRoute        `toml:"review_routes"`
+	Fairway            FairwayConfig        `toml:"fairway"`
+	Dashboard          DashboardConfig      `toml:"dashboard"`
+	Worktrees          WorktreesConfig      `toml:"worktrees"`
+	Sessions           SessionsConfig       `toml:"sessions"`
+	States             StatesConfig         `toml:"states"`
+	Gates              GatesConfig          `toml:"gates"`
+	TaskKinds          TaskKindsConfig      `toml:"task_kinds"`
+	TaskPriorities     TaskPrioritiesConfig `toml:"task_priorities"`
+	Roles              []Role               `toml:"roles"`
+	ReviewRoutes       []ReviewRoute        `toml:"review_routes"`
+	WorkstreamProfiles []WorkstreamProfile  `toml:"workstream_profiles"`
+	PacketTemplates    []PacketTemplate     `toml:"packet_templates"`
 }
 
 type FairwayConfig struct {
@@ -89,6 +91,28 @@ type PriorityLevel struct {
 type ReviewRoute struct {
 	Match    string `toml:"match"`
 	Reviewer string `toml:"reviewer"`
+}
+
+type WorkstreamProfile struct {
+	Name            string                  `toml:"name"`
+	TaskKinds       []string                `toml:"task_kinds"`
+	DashboardGroups []string                `toml:"dashboard_groups"`
+	ReviewDomains   []string                `toml:"review_domains"`
+	RouteSamples    []string                `toml:"route_samples"`
+	Gates           []WorkstreamProfileGate `toml:"gates"`
+}
+
+type WorkstreamProfileGate struct {
+	Name         string `toml:"name"`
+	Mode         string `toml:"mode"`
+	EvidenceType string `toml:"evidence_type"`
+	Description  string `toml:"description"`
+}
+
+type PacketTemplate struct {
+	Name           string   `toml:"name"`
+	RequiredFields []string `toml:"required_fields"`
+	OptionalFields []string `toml:"optional_fields"`
 }
 
 func Defaults(root string) Config {
@@ -288,6 +312,98 @@ func Validate(cfg Config) error {
 	}
 	if cfg.TaskPriorities.Default != nil && len(priorityRanks) > 0 && !priorityRanks[*cfg.TaskPriorities.Default] {
 		return fmt.Errorf("[task_priorities] default %d is not in configured levels", *cfg.TaskPriorities.Default)
+	}
+	if err := validateWorkstreamProfiles(cfg.WorkstreamProfiles); err != nil {
+		return err
+	}
+	if err := validatePacketTemplates(cfg.PacketTemplates); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateWorkstreamProfiles(profiles []WorkstreamProfile) error {
+	seen := map[string]bool{}
+	validGateModes := map[string]bool{"advisory": true, "blocking": true, "report_only": true}
+	for _, profile := range profiles {
+		if profile.Name == "" {
+			return errors.New("[[workstream_profiles]] name is required")
+		}
+		if seen[profile.Name] {
+			return fmt.Errorf("duplicate workstream profile %q", profile.Name)
+		}
+		seen[profile.Name] = true
+		if err := validateStringList("[[workstream_profiles]] task_kinds", profile.TaskKinds); err != nil {
+			return err
+		}
+		if err := validateStringList("[[workstream_profiles]] dashboard_groups", profile.DashboardGroups); err != nil {
+			return err
+		}
+		if err := validateStringList("[[workstream_profiles]] review_domains", profile.ReviewDomains); err != nil {
+			return err
+		}
+		if err := validateStringList("[[workstream_profiles]] route_samples", profile.RouteSamples); err != nil {
+			return err
+		}
+		gates := map[string]bool{}
+		for _, gate := range profile.Gates {
+			if gate.Name == "" {
+				return fmt.Errorf("[[workstream_profiles.gates]] name is required for profile %q", profile.Name)
+			}
+			if gates[gate.Name] {
+				return fmt.Errorf("duplicate gate %q in workstream profile %q", gate.Name, profile.Name)
+			}
+			gates[gate.Name] = true
+			if gate.Mode == "" {
+				return fmt.Errorf("[[workstream_profiles.gates]] mode is required for gate %q", gate.Name)
+			}
+			if !validGateModes[gate.Mode] {
+				return fmt.Errorf("[[workstream_profiles.gates]] mode %q must be advisory, blocking, or report_only", gate.Mode)
+			}
+		}
+	}
+	return nil
+}
+
+func validatePacketTemplates(templates []PacketTemplate) error {
+	seen := map[string]bool{}
+	for _, template := range templates {
+		if template.Name == "" {
+			return errors.New("[[packet_templates]] name is required")
+		}
+		if seen[template.Name] {
+			return fmt.Errorf("duplicate packet template %q", template.Name)
+		}
+		seen[template.Name] = true
+		if err := validateStringList("[[packet_templates]] required_fields", template.RequiredFields); err != nil {
+			return err
+		}
+		if err := validateStringList("[[packet_templates]] optional_fields", template.OptionalFields); err != nil {
+			return err
+		}
+		fieldSeen := map[string]bool{}
+		for _, field := range template.RequiredFields {
+			fieldSeen[field] = true
+		}
+		for _, field := range template.OptionalFields {
+			if fieldSeen[field] {
+				return fmt.Errorf("[[packet_templates]] field %q appears in required_fields and optional_fields for template %q", field, template.Name)
+			}
+		}
+	}
+	return nil
+}
+
+func validateStringList(label string, values []string) error {
+	seen := map[string]bool{}
+	for _, value := range values {
+		if value == "" {
+			return fmt.Errorf("%s contains empty value", label)
+		}
+		if seen[value] {
+			return fmt.Errorf("%s contains duplicate value %q", label, value)
+		}
+		seen[value] = true
 	}
 	return nil
 }

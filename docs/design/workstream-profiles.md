@@ -42,6 +42,31 @@ Profiles should be config-driven where possible. Hardcoded commands are useful
 only for proving the first shapes; stable Fairway should let teams add their own
 packet templates and task metadata without code changes.
 
+## Config Surface
+
+Fairway now accepts a minimal profile-as-config shape:
+
+```toml
+[[workstream_profiles]]
+name = "platform-foundation"
+task_kinds = ["architecture-map", "guard", "facade", "frontend-contract"]
+dashboard_groups = ["architecture maps", "boundary guards", "facades", "frontend contracts"]
+review_domains = ["architecture", "security", "frontend"]
+route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
+
+[[workstream_profiles.gates]]
+name = "security-review"
+mode = "advisory"
+evidence_type = "security-review"
+description = "Security review evidence should be attached before release readiness."
+```
+
+The first implementation use is intentionally small: `fairway config validate`
+checks this shape, and `fairway adoption artifact` uses `route_samples` and
+reports named profile gates. Dashboard grouping, packet rendering, and named
+gate enforcement should build on this same config rather than adding
+project-specific flags.
+
 ## Packet Templates
 
 The platform-foundation packet commands are the first implementation slice:

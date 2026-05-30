@@ -97,9 +97,11 @@ to a useful v1.
    [GPUaaS / ARC adoption track](gpuaas-arc-adoption.md): architecture-map
    packets, boundary-guard packets, vertical-slice packets, and task metadata
    for package/route/schema/event/frontend ownership.
-2. Add configurable [workstream profiles](workstream-profiles.md), starting
-   with declarative packet templates, structured guard evidence, task ownership
-   metadata, and dashboard grouping by task kind.
+2. Expand configurable [workstream profiles](workstream-profiles.md). The
+   initial config shape now exists for profile metadata, route samples, named
+   gates, and packet templates; next slices are structured guard evidence, task
+   ownership metadata, dashboard grouping by task kind, and template-driven
+   packet rendering.
 3. Add multi-reviewer merge readiness for review domains such as architecture,
    security, frontend, ops, and governance.
 4. Add Homebrew tap publishing after the first tagged release settles.

@@ -49,6 +49,24 @@ reviewer = "arch"
 match = "doc/governance/**"
 reviewer = "governance"
 
+[[workstream_profiles]]
+name = "platform-foundation"
+task_kinds = ["architecture-map", "guard", "facade"]
+dashboard_groups = ["architecture maps", "boundary guards", "facades"]
+review_domains = ["architecture", "security"]
+route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
+
+[[workstream_profiles.gates]]
+name = "security-review"
+mode = "advisory"                     # advisory | blocking | report_only
+evidence_type = "security-review"
+description = "Security review evidence should be attached before release readiness."
+
+[[packet_templates]]
+name = "architecture-map"
+required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "acceptance"]
+optional_fields = ["source_doc"]
+
 [states]
 allowed = ["todo", "in_progress", "blocked", "done"]
 terminal = ["done"]
@@ -134,6 +152,44 @@ Ordered list. The first matching glob wins.
 |---|---|---|---|
 | `match` | string | — | Glob matched against paths touched in the task's commits. |
 | `reviewer` | string | — | Role name to route the review to. Must match a configured role. |
+
+### `[[workstream_profiles]]`
+
+Named coordination profiles for architecture-aware work. These are advisory
+configuration today: validation accepts them, `fairway adoption artifact` uses
+`route_samples` and reports named profile gates, and future dashboard/packet
+work can consume the same metadata without changing the file shape.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | — | Stable profile name, for example `platform-foundation`, `release-readiness`, or `sdk-readiness`. Must be unique. |
+| `task_kinds` | []string | — | Task kinds associated with this profile. |
+| `dashboard_groups` | []string | — | Human-facing groups a dashboard can use to cluster tasks for this profile. |
+| `review_domains` | []string | — | Review domains that may be required for readiness, distinct from first-match assignment routes. |
+| `route_samples` | []string | — | Paths sampled by `fairway adoption artifact` when no `--route` flags are provided. |
+
+#### `[[workstream_profiles.gates]]`
+
+Named readiness gates under the preceding profile.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | — | Gate name, for example `security-review`, `uat-evidence`, `release-risk`, or `sdk-readiness`. Must be unique within the profile. |
+| `mode` | string | — | `advisory`, `blocking`, or `report_only`. |
+| `evidence_type` | string | — | Optional evidence type this gate expects. |
+| `description` | string | — | Optional human-readable description. |
+
+### `[[packet_templates]]`
+
+Declarative packet template metadata. The current built-in packet commands still
+render their specific packet shapes, but this config pins the generic model that
+will let projects add profile-specific packets without Fairway code changes.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | — | Packet template name. Must be unique. |
+| `required_fields` | []string | — | Required field names for future template validation/rendering. |
+| `optional_fields` | []string | — | Optional field names. A field cannot appear in both required and optional lists. |
 
 ### `[states]`
 

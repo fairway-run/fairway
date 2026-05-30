@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -524,6 +525,25 @@ func TestCLI_TrackerLinks(t *testing.T) {
 	runOK(t, "tracker", "link", "T-001", "--provider", "linear", "--external-id", "LIN-1", "--url", "https://linear.app/example/issue/LIN-1")
 	runOK(t, "tracker", "links")
 	runOK(t, "--json", "tracker", "reconcile", "--dry-run")
+}
+
+func TestDefaultAdoptionRouteSamplesUsesProfiles(t *testing.T) {
+	cfg := config.Defaults("/tmp/repo")
+	cfg.WorkstreamProfiles = []config.WorkstreamProfile{
+		{
+			Name:         "platform-foundation",
+			RouteSamples: []string{"doc/api/openapi.yaml", "cmd/api/routes.go"},
+		},
+		{
+			Name:         "release-readiness",
+			RouteSamples: []string{"cmd/api/routes.go", "scripts/release/check.sh"},
+		},
+	}
+	got := defaultAdoptionRouteSamples(cfg)
+	want := []string{"doc/api/openapi.yaml", "cmd/api/routes.go", "scripts/release/check.sh"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("route samples = %#v, want %#v", got, want)
+	}
 }
 
 func runOK(t *testing.T, args ...string) {
