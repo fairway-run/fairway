@@ -86,6 +86,11 @@ type RoleGroup struct {
 	Tasks   []store.Task
 }
 
+type WorkstreamGroup struct {
+	Label string
+	Tasks []store.Task
+}
+
 func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
@@ -134,6 +139,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	data := struct {
 		Groups           []RoleGroup
+		Workstreams      []WorkstreamGroup
 		Activity         []store.Activity
 		Health           store.Health
 		Sessions         []store.Session
@@ -142,7 +148,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		StaleCheckpoints []store.Checkpoint
 		Watchers         []store.Watcher
 		Rollups          map[string]Rollup
-	}{groupTasks(tasks, s.roles), activity, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
+	}{groupTasks(tasks, s.roles), groupWorkstreams(tasks), activity, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
 	_ = indexTemplate.Execute(w, data)
 }
 
@@ -173,6 +179,40 @@ func groupTasks(tasks []store.Task, roles []string) []RoleGroup {
 		}
 	}
 	return groups
+}
+
+func groupWorkstreams(tasks []store.Task) []WorkstreamGroup {
+	byLabel := map[string]int{}
+	var groups []WorkstreamGroup
+	for _, task := range tasks {
+		label := workstreamLabel(task)
+		if label == "" {
+			continue
+		}
+		index, ok := byLabel[label]
+		if !ok {
+			groups = append(groups, WorkstreamGroup{Label: label})
+			index = len(groups) - 1
+			byLabel[label] = index
+		}
+		groups[index].Tasks = append(groups[index].Tasks, task)
+	}
+	return groups
+}
+
+func workstreamLabel(task store.Task) string {
+	profile := task.Definition.Profile
+	kind := task.Definition.Kind
+	switch {
+	case profile != "" && kind != "":
+		return profile + " / " + kind
+	case profile != "":
+		return profile
+	case kind != "" && kind != "task":
+		return kind
+	default:
+		return ""
+	}
 }
 
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {
@@ -322,10 +362,19 @@ events.addEventListener("refresh", () => window.location.reload());
 <table><tr><th>Role</th><th>Branch</th><th>State</th><th>Commit</th><th>Path</th></tr>
 {{range .Worktrees}}<tr><td class="role">{{.Role}}</td><td>{{.Branch}}</td><td>{{if .Dirty}}<span class="bad">dirty</span>{{else}}<span class="ok">clean</span>{{end}} {{if not .Exists}}missing{{else if not .Registered}}unregistered{{end}}</td><td>{{.LastCommit}}</td><td class="muted">{{.Path}}</td></tr>{{else}}<tr><td colspan="5">no configured worktrees</td></tr>{{end}}
 </table>
+{{if .Workstreams}}
+<h2>Workstreams</h2>
+{{range .Workstreams}}
+<h3>{{.Label}}</h3>
+<table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Domain</th><th>Risk</th><th>Review domains</th></tr>
+{{range .Tasks}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Definition.OwningDomain}}</td><td>{{.Definition.RiskLevel}}</td><td>{{range .Definition.ReviewDomains}}<code>{{.}}</code> {{end}}</td></tr>{{else}}<tr><td colspan="7">no tasks</td></tr>{{end}}
+</table>
+{{end}}
+{{end}}
 {{range .Groups}}
 <h2>{{.Role}}</h2>
-<table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Owner</th><th>Review</th><th>Rollup</th></tr>
-{{range .Tasks}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td><td>{{with index $.Rollups .Definition.ID}}{{.Done}}/{{.Total}}{{else}}-{{end}}</td></tr>{{else}}<tr><td colspan="7">no tasks</td></tr>{{end}}
+<table><tr><th>ID</th><th>Title</th><th>Kind</th><th>Profile</th><th>Status</th><th>Owner</th><th>Review</th><th>Rollup</th></tr>
+{{range .Tasks}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td>{{.Definition.Kind}}</td><td>{{.Definition.Profile}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td><td>{{with index $.Rollups .Definition.ID}}{{.Done}}/{{.Total}}{{else}}-{{end}}</td></tr>{{else}}<tr><td colspan="8">no tasks</td></tr>{{end}}
 </table>
 {{end}}
 </main>
@@ -339,13 +388,25 @@ events.addEventListener("refresh", () => window.location.reload());
 
 var detailTemplate = template.Must(template.New("detail").Parse(`<!doctype html>
 <html><head><title>{{.Task.Definition.ID}}</title><style>
-body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#555}pre{background:#f4f4f4;padding:12px}
+body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#555}pre{background:#f4f4f4;padding:12px}table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}code{background:#f4f4f4;padding:1px 3px}
 </style></head><body>
 <p><a href="/">back</a></p>
 <h1>{{.Task.Definition.ID}}: {{.Task.Definition.Title}}</h1>
 <p class="meta">role={{.Task.Definition.Role}} status={{.Task.Status}} owner={{.Task.Owner}} review={{.Task.ReviewStatus}}</p>
 {{if .Rollup.Total}}<p class="meta">descendants done: {{.Rollup.Done}}/{{.Rollup.Total}}</p>{{end}}
 <form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button type="submit">Claim</button></form>
+<h2>Metadata</h2>
+<table>
+<tr><th>Kind</th><td>{{.Task.Definition.Kind}}</td></tr>
+<tr><th>Profile</th><td>{{.Task.Definition.Profile}}</td></tr>
+<tr><th>Owning domain</th><td>{{.Task.Definition.OwningDomain}}</td></tr>
+<tr><th>Owning layer</th><td>{{.Task.Definition.OwningLayer}}</td></tr>
+<tr><th>Source paths</th><td>{{range .Task.Definition.SourcePaths}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
+<tr><th>Target paths</th><td>{{range .Task.Definition.TargetPaths}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
+<tr><th>Review domains</th><td>{{range .Task.Definition.ReviewDomains}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
+<tr><th>Risk</th><td>{{.Task.Definition.RiskLevel}}</td></tr>
+<tr><th>Migration type</th><td>{{.Task.Definition.MigrationType}}</td></tr>
+</table>
 <h2>Notes</h2><pre>{{.Task.Definition.Notes}}</pre>
 <h2>Dependencies</h2><ul>{{range .Task.Definition.Dependencies}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
 <h2>Acceptance</h2><ul>{{range .Task.Definition.AcceptanceChecks}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>

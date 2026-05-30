@@ -60,6 +60,7 @@ Filter chips above:
 - Role (one or more).
 - State (one or more).
 - Kind (when `[task_kinds]` is configured).
+- Profile and workstream kind when task metadata is present.
 - Priority (min rank, e.g. "P1 and above").
 - In epic (search by epic ID or title).
 - "Has unrouted review" — tasks where a review verdict needs route resolution.
@@ -87,6 +88,8 @@ Counters that double as filter links:
 Single scrollable page per task with:
 - Breadcrumb to root (`E-007 / S-013 / T-042`).
 - Definition (notes, acceptance checks, dependencies, kind).
+- Profile-aware task metadata: profile, owning domain/layer, source/target
+  paths, review domains, risk, and migration type.
 - Current state.
 - Full history (transitions, handoffs, evidence, reviews) merged into one timeline.
 - Latest checkpoints and watcher packets.

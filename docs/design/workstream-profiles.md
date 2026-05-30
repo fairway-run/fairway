@@ -77,9 +77,10 @@ evidence rows. `fairway merge-ready` evaluates the same gates for the target
 task and fails when a `blocking` gate is missing. Tasks can also carry
 profile-aware metadata (`profile`, `owning_domain`, `owning_layer`,
 `source_paths`, `target_paths`, `review_domains`, `risk_level`,
-`migration_type`) through imports and CLI flags. Dashboard grouping and packet
-rendering should build on this same config rather than adding project-specific
-flags.
+`migration_type`) through imports and CLI flags. The dashboard now uses this
+metadata for an initial workstream grouping by profile/kind, and later filters
+and packet rendering should build on the same config rather than adding
+project-specific flags.
 
 ## Packet Templates
 
@@ -169,7 +170,8 @@ domains must approve before merge/release readiness."
 
 ## Dashboard Grouping
 
-Dashboard grouping should be configurable by task kind or profile. For
+Dashboard grouping starts with task metadata: tasks with a profile or
+non-default kind appear in workstream sections grouped as `profile / kind`. For
 platform-foundation, useful groups are:
 
 - architecture maps,

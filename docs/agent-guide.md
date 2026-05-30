@@ -63,7 +63,7 @@ fairway add T-010 \
 
 When you spawn follow-up work, Fairway inherits the parent task metadata unless
 you override a metadata flag explicitly. Keep those fields accurate; they drive
-review routing, readiness reports, and future dashboard grouping.
+review routing, readiness reports, and dashboard workstream grouping.
 
 ## Claim Work
 

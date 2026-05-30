@@ -5,13 +5,14 @@ Fairway project-specific. Use them when a repo has recurring coordination needs
 such as release readiness, platform foundation work, frontend migration,
 service extraction, SDK readiness, or security hardening.
 
-Profiles are operational in readiness checks. Fairway validates the config,
-uses `route_samples` in `fairway adoption artifact`, evaluates named profile
-gates against recorded evidence rows, and applies blocking profile gates in
-`fairway merge-ready`. Tasks can also carry profile-aware metadata such as
-owning domain/layer, source/target paths, review domains, risk level, and
-migration type. Dashboard grouping, structured guard evidence, and
-template-rendered packets are planned follow-on work.
+Profiles are operational in readiness checks and dashboard visibility. Fairway
+validates the config, uses `route_samples` in `fairway adoption artifact`,
+evaluates named profile gates against recorded evidence rows, applies blocking
+profile gates in `fairway merge-ready`, and groups dashboard tasks by
+profile/kind when metadata is present. Tasks can also carry profile-aware
+metadata such as owning domain/layer, source/target paths, review domains, risk
+level, and migration type. Structured guard evidence and template-rendered
+packets are planned follow-on work.
 
 ## When To Add One
 

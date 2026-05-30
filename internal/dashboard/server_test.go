@@ -20,7 +20,17 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 	defer s.Close()
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{
 		{ID: "E-001", Title: "Epic", Kind: "epic", Role: "backend"},
-		{ID: "T-001", ParentID: "E-001", Title: "Task", Role: "backend"},
+		{
+			ID:            "T-001",
+			ParentID:      "E-001",
+			Title:         "Task",
+			Kind:          "facade",
+			Role:          "backend",
+			Profile:       "platform-foundation",
+			OwningDomain:  "platform",
+			RiskLevel:     "high",
+			ReviewDomains: []string{"architecture", "security"},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -38,9 +48,44 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.index(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Sessions", "Worktrees", "Watchers", "Checkpoints", "E-001", "W-001"} {
+	for _, want := range []string{"Sessions", "Worktrees", "Watchers", "Checkpoints", "Workstreams", "platform-foundation / facade", "architecture", "security", "E-001", "W-001"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestTaskDetailRendersMetadata(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{
+		ID:            "T-001",
+		Title:         "Task",
+		Kind:          "architecture-map",
+		Role:          "arch",
+		Profile:       "platform-foundation",
+		OwningDomain:  "platform",
+		OwningLayer:   "architecture",
+		SourcePaths:   []string{"cmd/api"},
+		TargetPaths:   []string{"doc/architecture/platform-foundation/ownership.md"},
+		ReviewDomains: []string{"architecture"},
+		RiskLevel:     "medium",
+		MigrationType: "ownership-map",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, []string{"arch"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail body missing %q:\n%s", want, body)
 		}
 	}
 }
