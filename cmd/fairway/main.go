@@ -3847,6 +3847,8 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	switch args[0] {
 	case "evidence":
 		return recordEvidence(ctx, opts, args[1:])
+	case "guard-report":
+		return recordGuardReport(ctx, opts, args[1:])
 	case "handoff":
 		return recordHandoff(ctx, opts, args[1:])
 	case "review":
@@ -3883,6 +3885,103 @@ func recordEvidence(ctx context.Context, opts globalOptions, args []string) erro
 		}
 		return s.RecordEvidence(ctx, taskID, store.Evidence{CommandText: *commandText, Result: *result, ArtifactPath: *artifact, ArtifactType: *artifactType, DurationSeconds: durationPtr, Notes: *notes})
 	})
+}
+
+func recordGuardReport(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("record guard-report requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("guard-report", flag.ContinueOnError)
+	guard := fs.String("guard", "", "guard name")
+	mode := fs.String("mode", "report_only", "guard mode: report_only, warning, or blocking")
+	result := fs.String("result", "", "evidence result override")
+	artifact := fs.String("artifact", "", "artifact path or URL")
+	graduation := fs.String("graduation-criteria", "", "graduation criteria")
+	var findings multiFlag
+	var falsePositives multiFlag
+	var allowedDebt multiFlag
+	fs.Var(&findings, "finding", "guard finding; may repeat")
+	fs.Var(&falsePositives, "false-positive", "false positive; may repeat")
+	fs.Var(&allowedDebt, "allowed-debt", "allowed debt; may repeat")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected guard-report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *guard == "" {
+		return errors.New("--guard is required")
+	}
+	if !validGuardMode(*mode) {
+		return fmt.Errorf("invalid guard mode %q", *mode)
+	}
+	evidenceResult := *result
+	if evidenceResult == "" {
+		evidenceResult = guardModeResult(*mode)
+	}
+	report := guardEvidenceReport{
+		Guard:              *guard,
+		Mode:               *mode,
+		Findings:           findings,
+		FalsePositives:     falsePositives,
+		AllowedDebt:        allowedDebt,
+		GraduationCriteria: *graduation,
+	}
+	notes, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		ev := store.Evidence{
+			CommandText:  "guard report: " + *guard,
+			Result:       evidenceResult,
+			ArtifactPath: *artifact,
+			ArtifactType: "guard-report",
+			Notes:        string(notes),
+		}
+		if err := s.RecordEvidence(ctx, taskID, ev); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(struct {
+				TaskID string              `json:"task_id"`
+				Result string              `json:"result"`
+				Report guardEvidenceReport `json:"report"`
+			}{taskID, evidenceResult, report})
+		}
+		fmt.Printf("recorded guard report for %s: %s (%s)\n", taskID, *guard, evidenceResult)
+		return nil
+	})
+}
+
+type guardEvidenceReport struct {
+	Guard              string   `json:"guard"`
+	Mode               string   `json:"mode"`
+	Findings           []string `json:"findings,omitempty"`
+	FalsePositives     []string `json:"false_positives,omitempty"`
+	AllowedDebt        []string `json:"allowed_debt,omitempty"`
+	GraduationCriteria string   `json:"graduation_criteria,omitempty"`
+}
+
+func validGuardMode(mode string) bool {
+	switch mode {
+	case "report_only", "warning", "blocking":
+		return true
+	default:
+		return false
+	}
+}
+
+func guardModeResult(mode string) string {
+	switch mode {
+	case "blocking":
+		return "fail"
+	case "warning":
+		return "partial"
+	default:
+		return "partial"
+	}
 }
 
 func recordHandoff(ctx context.Context, opts globalOptions, args []string) error {

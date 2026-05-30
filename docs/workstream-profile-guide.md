@@ -13,8 +13,8 @@ profile/kind when metadata is present. The dashboard can also filter by
 profile, kind, owning domain, risk, and review domain. Tasks can carry
 profile-aware metadata such as owning domain/layer, source/target paths, review
 domains, risk level, and migration type. Template-rendered packets are
-available through `fairway packet template`; structured guard evidence is
-planned follow-on work.
+available through `fairway packet template`; guard reports are recorded through
+`fairway record guard-report`.
 
 ## When To Add One
 
@@ -157,4 +157,17 @@ fairway packet template architecture-map T-010 \
   --field target_owner=D-arch \
   --field migration_risk="route moves can hide auth regressions" \
   --field acceptance="owners and review routes are explicit"
+```
+
+Guard reports should be recorded as evidence rather than pasted into chat:
+
+```bash
+fairway record guard-report T-011 \
+  --guard import-boundary \
+  --mode report_only \
+  --finding "cmd/api imports billing internals" \
+  --false-positive "generated client code" \
+  --allowed-debt "legacy route package" \
+  --graduation-criteria "zero critical findings for two releases" \
+  --artifact dist/import-boundary.json
 ```

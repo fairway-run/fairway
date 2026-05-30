@@ -125,8 +125,9 @@ hardening, and SDK readiness.
 
 ## Guard Reports As Evidence
 
-Boundary guards should be structured evidence, not a separate execution engine.
-Useful fields:
+Boundary guards are structured evidence, not a separate execution engine.
+`fairway record guard-report` stores a `guard-report` evidence row with
+structured notes. Useful fields:
 
 - guard name,
 - mode: `report_only`, `warning`, or `blocking`,
@@ -136,7 +137,7 @@ Useful fields:
 - graduation criteria,
 - artifact path or URL.
 
-Fairway should record and summarize the evidence. External scripts, CI jobs, or
+Fairway records and summarizes the evidence. External scripts, CI jobs, or
 scanners still produce the reports.
 
 ## Adoption Artifact
