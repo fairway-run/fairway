@@ -9,11 +9,19 @@ Fairway ships with a local web dashboard from v0.1. It is the primary surface fo
 - Server-sent events give live updates with no client framework.
 - Richer affordances for filtering and drill-down than a TUI grid.
 
-A `fairway tui` for SSH / headless use is on the roadmap but out of scope for v0.1.
+`fairway tui` covers the same headless basics for SSH sessions.
 
-## v0.1 scope: observation-only
+## Mutation Scope
 
-All mutations go through the CLI. The dashboard has no forms, no buttons that change state. This keeps CSRF, auth, and per-action audit concerns out of week 1 and forces the CLI to be the source of truth for scripts and tmux muscle memory. Mutations may come in v0.2.
+The CLI remains the complete write surface. The dashboard has a small audited
+mutation surface for day-to-day coordination:
+
+- claim a task,
+- move a task among non-terminal states.
+
+Every dashboard write uses a CSRF token and records an audit event. Terminal
+status changes still go through the CLI so evidence, handoff, review, and
+profile gates cannot be bypassed from the browser.
 
 ## Stack
 
@@ -94,7 +102,7 @@ Single scrollable page per task with:
 - Current state.
 - Full history (transitions, handoffs, evidence, reviews) merged into one timeline.
 - Latest checkpoints and watcher packets.
-- Read-only in v0.1.
+- CSRF-protected claim and non-terminal status update controls.
 
 ### Epic page
 
@@ -127,5 +135,5 @@ These are budgets, not benchmarks — they are what we measure during week 1.
 
 - Binds to `127.0.0.1` by default.
 - No authentication in v0.1. If a user changes `[dashboard] listen` to a non-loopback address, fairway prints a startup warning.
-- No mutations means no CSRF surface.
+- Mutations use CSRF tokens and write audit events.
 - No external resources loaded — HTMX and CSS are embedded in the binary.

@@ -22,6 +22,7 @@ Semver. Pre-1.0 means breaking changes are allowed in minor versions; document t
 ## goreleaser
 
 - Config at `.goreleaser.yaml`.
+- CI runs `goreleaser check` so release config drift is caught before tags.
 - Targets: `darwin/amd64`, `darwin/arm64`, `linux/amd64`, `linux/arm64`.
 - Archives: `fairway_<version>_<os>_<arch>.tar.gz`.
 - Checksums: `fairway_<version>_checksums.txt`, signed when a key is available.

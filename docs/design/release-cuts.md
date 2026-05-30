@@ -87,8 +87,9 @@ or CLI should require them.
 
 ## v0.3 Ships When
 
-- Dashboard mutations have CSRF, audit, and parity with CLI behavior.
-- `fairway tui` covers ready/claim/status/task-detail for SSH/headless use.
+- Dashboard claim and non-terminal status mutations have CSRF and audit.
+- `fairway tui` covers ready/claim/status/task-detail, status updates,
+  evidence, merge-ready, and readiness reports for SSH/headless use.
 - Optional tracker import/link/export prototype exists behind dry-run defaults.
 
 ## v1.0 Ships When

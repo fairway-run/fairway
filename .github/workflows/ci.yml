@@ -17,3 +17,8 @@ jobs:
       - run: gofmt -w cmd internal && git diff --exit-code
       - run: go test ./...
       - run: go vet ./...
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: check

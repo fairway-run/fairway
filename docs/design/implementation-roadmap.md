@@ -25,8 +25,10 @@ to a useful v1.
   detail, activity feed, sessions, worktrees, checkpoints, watchers, and
   rollups.
 - Embedded forward-only migrations and migration compatibility checks.
-- Basic TUI mode for headless ready/claim/status/detail workflows.
-- First audited dashboard mutation path with CSRF-protected claim.
+- TUI mode for headless ready/claim/status/detail, status updates, evidence,
+  merge-ready, and readiness reports.
+- Audited dashboard mutation paths with CSRF-protected claim and non-terminal
+  status updates.
 - Release packaging config and tag-triggered GitHub release workflow.
 - GPUaaS parity import path, exact GPUaaS config, parity runbook, adoption
   parity artifact, and agent usage guide.
@@ -112,8 +114,9 @@ to a useful v1.
    target task; dashboard grouping by task kind/profile has started, and
    task-level `review_domains` are enforced by `merge-ready`.
 3. Add Homebrew tap publishing after the first tagged release settles.
-4. Expand dashboard mutations beyond claim while keeping CSRF and per-action
-   audit on every write.
-5. Expand TUI ergonomics beyond the basic command loop.
+4. Expand dashboard mutations beyond claim/status only when parity with CLI
+   gates stays explicit.
+5. Expand TUI ergonomics beyond the current command loop when usage shows which
+   shortcuts matter.
 6. Expand tracker integration from local links/dry-run reporting to provider
    adapters when credentials and API mapping are explicit.

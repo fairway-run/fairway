@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -44,7 +45,7 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 	if err := s.StartWatcher(ctx, store.Watcher{ID: "W-001", TaskID: "T-001", Owner: "ops/watch", Status: "active"}); err != nil {
 		t.Fatal(err)
 	}
-	server := New(s, []string{"backend"}, []WorktreeStatus{{Role: "backend", Branch: "agent/backend", Exists: true, Registered: true}})
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, []WorktreeStatus{{Role: "backend", Branch: "agent/backend", Exists: true, Registered: true}})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	server.index(rec, req)
@@ -78,7 +79,7 @@ func TestIndexFiltersByProfileMetadata(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	server := New(s, []string{"backend"}, nil)
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/?profile=platform-foundation&review_domain=architecture", nil)
 	rec := httptest.NewRecorder()
 	server.index(rec, req)
@@ -116,7 +117,7 @@ func TestTaskDetailRendersMetadata(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	server := New(s, []string{"arch"}, nil)
+	server := New(s, config.Defaults(t.TempDir()), []string{"arch"}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
 	rec := httptest.NewRecorder()
 	server.task(rec, req)
@@ -138,7 +139,7 @@ func TestDashboardClaimRequiresCSRFAndAudits(t *testing.T) {
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
-	server := New(s, []string{"backend"}, nil)
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
 	badReq := httptest.NewRequest(http.MethodPost, "/actions/claim", strings.NewReader("task_id=T-001&csrf=bad"))
 	badReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	badRec := httptest.NewRecorder()
@@ -159,6 +160,41 @@ func TestDashboardClaimRequiresCSRFAndAudits(t *testing.T) {
 	}
 	if task.Status != "in_progress" {
 		t.Fatalf("status=%q, want in_progress", task.Status)
+	}
+}
+
+func TestDashboardSetStatusRequiresCSRFAndAudits(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	server := New(s, cfg, []string{"backend"}, nil)
+	badReq := httptest.NewRequest(http.MethodPost, "/actions/set-status", strings.NewReader("task_id=T-001&status=blocked&csrf=bad"))
+	badReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	badRec := httptest.NewRecorder()
+	server.setStatus(badRec, badReq)
+	if badRec.Code != http.StatusForbidden {
+		t.Fatalf("bad csrf status=%d, want 403", badRec.Code)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/actions/set-status", strings.NewReader("task_id=T-001&status=blocked&reason=waiting&csrf="+server.csrfToken))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	server.setStatus(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("set-status status=%d, want 303 body=%s", rec.Code, rec.Body.String())
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != "blocked" {
+		t.Fatalf("status=%q, want blocked", task.Status)
 	}
 }
 

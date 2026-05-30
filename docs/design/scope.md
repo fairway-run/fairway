@@ -35,7 +35,9 @@ A standalone Go binary plus an embedded SQLite store that coordinates multiple c
 - LLM provider integration.
 - Webhook / event emission for external systems.
 - Authn / authz beyond OS user attribution.
-- Write actions from the dashboard (v0.1 is observation-only; mutations are CLI-only).
+- Broad write actions from the dashboard. The dashboard has only narrow,
+  CSRF-protected, audited mutations for claim and non-terminal status changes;
+  terminal state changes and review/evidence writes remain CLI-first.
 - Provider launch orchestration as a core requirement. Provider/session launchers may exist as adapters, but the queue works without them.
 - Required issue tracker integration. Jira/Linear/GitHub Issues adapters are
   planned, but fairway must remain useful without any external tracker.

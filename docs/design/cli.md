@@ -55,7 +55,7 @@ fairway db compat --backend postgres [--print-ddl | --apply-ddl]
 fairway import <yaml-or-json-path> [--state-once]        # accepts a task list or {tasks: [...]} envelope; state-once seeds legacy status once
 fairway config validate
 fairway dashboard [--no-open] [--listen <addr>] [--multi]
-fairway tui [--once]
+fairway tui [--once]                                    # interactive ready/claim/status/detail/status-update/evidence/readiness loop
 fairway tracker link <task-id> --provider <jira|linear> --external-id <id> [--url <url>]
 fairway tracker links
 fairway tracker reconcile [--dry-run]

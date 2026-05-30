@@ -56,7 +56,7 @@ each version ships.
 - Coordinator tick, context packets, watcher packets, review checkout, task checkpoints, regression packs, and bug-fix packets.
 
 ### v0.3
-- Dashboard mutations (with CSRF, audit).
+- Dashboard mutations for claim/status (with CSRF, audit).
 - TUI mode (`fairway tui`) for SSH / headless use.
 - Generic workstream profile track: profile config, declarative packet
   templates, named readiness gates, dashboard grouping, task ownership

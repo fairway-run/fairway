@@ -10,11 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 )
 
 type Server struct {
 	store     *store.Store
+	cfg       config.Config
 	roles     []string
 	worktrees []WorktreeStatus
 	csrfToken string
@@ -41,8 +44,8 @@ type ProjectStore struct {
 	Store *store.Store
 }
 
-func New(s *store.Store, roles []string, worktrees []WorktreeStatus) *Server {
-	return &Server{store: s, roles: roles, worktrees: worktrees, csrfToken: newCSRFToken()}
+func New(s *store.Store, cfg config.Config, roles []string, worktrees []WorktreeStatus) *Server {
+	return &Server{store: s, cfg: cfg, roles: roles, worktrees: worktrees, csrfToken: newCSRFToken()}
 }
 
 func NewMulti(projects []ProjectStore) http.Handler {
@@ -114,6 +117,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux.HandleFunc("/", s.index)
 	mux.HandleFunc("/tasks/", s.task)
 	mux.HandleFunc("/actions/claim", s.claim)
+	mux.HandleFunc("/actions/set-status", s.setStatus)
 	mux.HandleFunc("/events", s.events)
 	return http.ListenAndServe(addr, mux)
 }
@@ -341,7 +345,8 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Reviews     []store.Review
 		Rollup      Rollup
 		CSRFToken   string
-	}{task, transitions, evidence, handoffs, reviews, rollups[task.Definition.ID], s.csrfToken}
+		States      []string
+	}{task, transitions, evidence, handoffs, reviews, rollups[task.Definition.ID], s.csrfToken, dashboardMutableStates(s.cfg)}
 	_ = detailTemplate.Execute(w, data)
 }
 
@@ -366,6 +371,51 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.claim", TaskID: taskID, Detail: "claimed from dashboard"})
 	http.Redirect(w, r, "/tasks/"+taskID, http.StatusSeeOther)
+}
+
+func (s *Server) setStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.FormValue("csrf") != s.csrfToken {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	taskID := r.FormValue("task_id")
+	target := strings.TrimSpace(r.FormValue("status"))
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	task, _, _, _, _, err := s.store.TaskDetail(r.Context(), taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	stateCfg := state.Config{Allowed: s.cfg.States.Allowed, Terminal: s.cfg.States.Terminal, Transitions: s.cfg.States.Transitions}
+	if state.IsTerminal(stateCfg, target) {
+		http.Error(w, "terminal status changes use CLI gates", http.StatusBadRequest)
+		return
+	}
+	if err := state.ValidateTransition(stateCfg, task.Status, target, false); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.store.SetStatus(r.Context(), taskID, target, reason, s.cfg.Gates.RequireBlockedReason); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.set-status", TaskID: taskID, Detail: "status=" + target})
+	http.Redirect(w, r, "/tasks/"+taskID, http.StatusSeeOther)
+}
+
+func dashboardMutableStates(cfg config.Config) []string {
+	stateCfg := state.Config{Allowed: cfg.States.Allowed, Terminal: cfg.States.Terminal, Transitions: cfg.States.Transitions}
+	var out []string
+	for _, status := range cfg.States.Allowed {
+		if !state.IsTerminal(stateCfg, status) {
+			out = append(out, status)
+		}
+	}
+	return out
 }
 
 func taskRollups(tasks []store.Task, terminal map[string]bool) map[string]Rollup {
@@ -508,6 +558,13 @@ body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#5
 <p class="meta">role={{.Task.Definition.Role}} status={{.Task.Status}} owner={{.Task.Owner}} review={{.Task.ReviewStatus}}</p>
 {{if .Rollup.Total}}<p class="meta">descendants done: {{.Rollup.Done}}/{{.Rollup.Total}}</p>{{end}}
 <form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button type="submit">Claim</button></form>
+<form method="post" action="/actions/set-status">
+<input type="hidden" name="csrf" value="{{.CSRFToken}}">
+<input type="hidden" name="task_id" value="{{.Task.Definition.ID}}">
+<select name="status">{{range .States}}<option value="{{.}}" {{if eq $.Task.Status .}}selected{{end}}>{{.}}</option>{{end}}</select>
+<input name="reason" placeholder="reason">
+<button type="submit">Set status</button>
+</form>
 <h2>Metadata</h2>
 <table>
 <tr><th>Kind</th><td>{{.Task.Definition.Kind}}</td></tr>

@@ -3348,6 +3348,48 @@ func cmdTUI(ctx context.Context, opts globalOptions, args []string) error {
 					continue
 				}
 				fmt.Println("claimed", parts[1])
+			case "set":
+				if len(parts) < 3 {
+					fmt.Fprintln(os.Stderr, "set requires task id and status")
+					continue
+				}
+				reason := strings.Join(parts[3:], " ")
+				if err := setStatusWithConfig(ctx, cfg, s, parts[1], parts[2], reason, false); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					continue
+				}
+				fmt.Println("status", parts[1], parts[2])
+			case "evidence", "ev":
+				if len(parts) < 4 {
+					fmt.Fprintln(os.Stderr, "evidence requires task id, result, and command text")
+					continue
+				}
+				ev := store.Evidence{Result: parts[2], CommandText: strings.Join(parts[3:], " ")}
+				if err := s.RecordEvidence(ctx, parts[1], ev); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					continue
+				}
+				fmt.Println("evidence", parts[1], parts[2])
+			case "merge-ready", "mr":
+				if len(parts) < 2 {
+					fmt.Fprintln(os.Stderr, "merge-ready requires task id")
+					continue
+				}
+				if err := cmdMergeReady(ctx, opts, parts[1:]); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+				}
+			case "readiness":
+				args := []string{"report"}
+				if len(parts) > 1 {
+					args = append(args, "--profile", parts[1])
+				}
+				if err := cmdReadiness(ctx, opts, args); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+				}
+			case "refresh":
+				if err := printTUIScreen(ctx, cfg, opts, s); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+				}
 			case "help", "h":
 				printTUIHelp()
 			default:
@@ -3367,7 +3409,7 @@ func printTUIScreen(ctx context.Context, cfg config.Config, opts globalOptions, 
 }
 
 func printTUIHelp() {
-	fmt.Println("commands: ready|r, claim|c <id>, status|s, detail|d <id>, help|h, quit|q")
+	fmt.Println("commands: ready|r, claim|c <id>, set <id> <status> [reason], evidence|ev <id> <result> <command>, merge-ready|mr <id>, readiness [profile], status|s, detail|d <id>, refresh, help|h, quit|q")
 }
 
 func printTUIStatus(ctx context.Context, s *store.Store) error {
@@ -3945,25 +3987,29 @@ func cmdSetStatus(ctx context.Context, opts globalOptions, args []string) error 
 		return err
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-		current, err := s.CurrentStatus(ctx, args[0])
-		if err != nil {
-			return err
-		}
-		stateCfg := state.Config{Allowed: cfg.States.Allowed, Terminal: cfg.States.Terminal, Transitions: cfg.States.Transitions}
-		if err := state.ValidateTransition(stateCfg, current, args[1], *reopen); err != nil {
-			return err
-		}
-		if state.IsTerminal(stateCfg, args[1]) {
-			if err := validateTerminalGates(ctx, cfg, s, args[0]); err != nil {
-				return err
-			}
-		}
-		if err := s.SetStatus(ctx, args[0], args[1], *reason, cfg.Gates.RequireBlockedReason); err != nil {
+		if err := setStatusWithConfig(ctx, cfg, s, args[0], args[1], *reason, *reopen); err != nil {
 			return err
 		}
 		fmt.Println("status", args[0], args[1])
 		return nil
 	})
+}
+
+func setStatusWithConfig(ctx context.Context, cfg config.Config, s *store.Store, taskID, target, reason string, reopen bool) error {
+	current, err := s.CurrentStatus(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	stateCfg := state.Config{Allowed: cfg.States.Allowed, Terminal: cfg.States.Terminal, Transitions: cfg.States.Transitions}
+	if err := state.ValidateTransition(stateCfg, current, target, reopen); err != nil {
+		return err
+	}
+	if state.IsTerminal(stateCfg, target) {
+		if err := validateTerminalGates(ctx, cfg, s, taskID); err != nil {
+			return err
+		}
+	}
+	return s.SetStatus(ctx, taskID, target, reason, cfg.Gates.RequireBlockedReason)
 }
 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
@@ -4192,7 +4238,7 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		if err != nil {
 			return err
 		}
-		return dashboard.New(s, roleNames(cfg), dashboardWorktrees(worktrees)).ListenAndServe(addr)
+		return dashboard.New(s, cfg, roleNames(cfg), dashboardWorktrees(worktrees)).ListenAndServe(addr)
 	})
 }
 
