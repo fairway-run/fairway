@@ -158,7 +158,8 @@ script-to-Fairway comparisons.
 ## Review Domains
 
 First-match review routing is enough to assign an immediate reviewer. Merge
-readiness eventually needs multiple required review domains:
+readiness also checks task-level `review_domains` and requires one approved
+review whose reviewer matches each domain:
 
 - architecture,
 - security,
@@ -166,8 +167,8 @@ readiness eventually needs multiple required review domains:
 - ops,
 - governance.
 
-The future model should distinguish "who picks this up now" from "which
-domains must approve before merge/release readiness."
+This distinguishes "who picks this up now" from "which domains must approve
+before merge/release readiness."
 
 ## Dashboard Grouping
 

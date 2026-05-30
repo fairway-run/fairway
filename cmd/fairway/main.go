@@ -673,12 +673,13 @@ func cmdPreflight(opts globalOptions, args []string) error {
 }
 
 type mergeReadyReport struct {
-	OK              bool                     `json:"ok"`
-	TaskID          string                   `json:"task_id"`
-	Git             fairwaygit.Status        `json:"git"`
-	Issues          []string                 `json:"issues"`
-	Warnings        []string                 `json:"warnings,omitempty"`
-	GateEvaluations []adoptionGateEvaluation `json:"gate_evaluations,omitempty"`
+	OK                   bool                     `json:"ok"`
+	TaskID               string                   `json:"task_id"`
+	Git                  fairwaygit.Status        `json:"git"`
+	Issues               []string                 `json:"issues"`
+	Warnings             []string                 `json:"warnings,omitempty"`
+	MissingReviewDomains []string                 `json:"missing_review_domains,omitempty"`
+	GateEvaluations      []adoptionGateEvaluation `json:"gate_evaluations,omitempty"`
 }
 
 func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error {
@@ -695,7 +696,7 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 		return fmt.Errorf("unexpected merge-ready arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
-		task, _, evidence, _, _, err := s.TaskDetail(ctx, taskID)
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, taskID)
 		if err != nil {
 			return err
 		}
@@ -730,6 +731,10 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 			if !ok {
 				report.Issues = append(report.Issues, "missing approved review")
 			}
+		}
+		report.MissingReviewDomains = missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+		for _, domain := range report.MissingReviewDomains {
+			report.Issues = append(report.Issues, "missing approved review for domain "+domain)
 		}
 		if cfg.Gates.RequireHandoffBeforeMergeReady {
 			ok, err := s.HasHandoff(ctx, taskID)
@@ -2044,6 +2049,31 @@ func mergeReadyGateMessage(evaluation adoptionGateEvaluation) string {
 		return "profile gate " + label + " missing"
 	}
 	return fmt.Sprintf("profile gate %s missing for %s: %s", label, evaluation.Missing[0].TaskID, strings.Join(evaluation.Missing[0].Reasons, "; "))
+}
+
+func missingApprovedReviewDomains(domains []string, reviews []store.Review) []string {
+	if len(domains) == 0 {
+		return nil
+	}
+	approved := map[string]bool{}
+	for _, review := range reviews {
+		if review.Verdict == "approve" {
+			approved[review.Reviewer] = true
+		}
+	}
+	var missing []string
+	seen := map[string]bool{}
+	for _, domain := range domains {
+		domain = strings.TrimSpace(domain)
+		if domain == "" || seen[domain] {
+			continue
+		}
+		seen[domain] = true
+		if !approved[domain] {
+			missing = append(missing, domain)
+		}
+	}
+	return missing
 }
 
 func tasksForProfile(profile config.WorkstreamProfile, tasks []store.Task) []store.Task {

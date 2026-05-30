@@ -102,14 +102,16 @@ to a useful v1.
    render profile-specific packets. Dashboard filters now cover profile, kind,
    owning domain, risk, and review domain. Structured guard reports can be
    recorded as typed evidence, and readiness reports evaluate profile gates
-   across a workstream. Next slice is multi-reviewer readiness.
+   across a workstream. Multi-reviewer readiness now enforces task-level
+   `review_domains` in `merge-ready`.
 2. Expand configurable [workstream profiles](workstream-profiles.md). The
    initial config shape now exists for profile metadata, route samples, named
    gates, packet templates, template profile scoping, and structured evidence
    requirements. Adoption artifacts now evaluate named gates against task
    evidence rows, and `merge-ready` enforces missing `blocking` gates for the
    target task; dashboard grouping by task kind/profile has started. Next
-   slice is multi-reviewer readiness.
+   next slices are tracker provider adapters, dashboard mutations, TUI
+   ergonomics, and release packaging polish.
 3. Add multi-reviewer merge readiness for review domains such as architecture,
    security, frontend, ops, and governance.
 4. Add Homebrew tap publishing after the first tagged release settles.

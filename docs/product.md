@@ -64,8 +64,9 @@ each version ships.
   started landing, the dashboard now has an initial profile/kind grouping, and
   dashboard filters over profile metadata; configured packet templates can
   render packets, guard reports can be recorded as typed evidence, and
-  readiness reports summarize profile gates. GPUaaS / ARC remains the adoption
-  example, not the core product shape.
+  readiness reports summarize profile gates. Merge readiness also honors
+  task-level review domains. GPUaaS / ARC remains the adoption example, not the
+  core product shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

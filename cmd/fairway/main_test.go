@@ -325,6 +325,38 @@ accepted_results = ["pass"]
 	assertContains(t, report, "satisfied")
 }
 
+func TestCLI_MergeReadyRequiresReviewDomains(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	runOK(t, "add", "T-001", "--title", "Needs domains", "--role", "backend", "--review-domains", "architecture,security")
+
+	failed := runCaptureAllowError(t, "merge-ready", "T-001")
+	assertContains(t, failed, "missing approved review for domain architecture")
+	assertContains(t, failed, "missing approved review for domain security")
+	jsonFailed := runCaptureAllowError(t, "--json", "merge-ready", "T-001")
+	assertContains(t, jsonFailed, `"missing_review_domains"`)
+
+	runOK(t, "record", "review", "T-001", "--reviewer", "architecture", "--verdict", "approve", "--reason", "arch ok")
+	failed = runCaptureAllowError(t, "merge-ready", "T-001")
+	assertContains(t, failed, "missing approved review for domain security")
+	runOK(t, "record", "review", "T-001", "--reviewer", "security", "--verdict", "approve", "--reason", "security ok")
+	runOK(t, "merge-ready", "T-001")
+}
+
 func TestCLI_WorktreeSetupStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

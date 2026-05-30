@@ -178,3 +178,8 @@ Use readiness reports when a workstream or release needs a gate summary:
 fairway readiness report --profile release-readiness
 fairway --json readiness report --profile platform-foundation
 ```
+
+Tasks with `review_domains` require one approved review per domain before
+`merge-ready` succeeds. Use domain names that match the reviewer identities your
+repo records, such as `architecture`, `security`, `frontend`, `ops`, or
+`governance`.

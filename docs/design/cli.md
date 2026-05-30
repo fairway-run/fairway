@@ -102,7 +102,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   artifact` remains a compatibility alias for GPUaaS-style comparisons.
 - `merge-ready` evaluates profile gates for the target task. Missing
   `blocking` gates fail readiness; missing `advisory` and `report_only` gates
-  are reported as warnings.
+  are reported as warnings. If task metadata declares `review_domains`,
+  `merge-ready` also requires an approved review whose reviewer matches each
+  domain.
 - `readiness report` evaluates configured profile gates across a workstream or
   all profiles. Missing blocking gates make the report fail in human mode;
   `--json` returns the full report for automation.
