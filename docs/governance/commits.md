@@ -53,6 +53,13 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 - Large binary fixtures (> 100KB) unless justified.
 - Generated files that can be reproduced by `go generate` — generate them in CI.
 
+## Docs with code
+
+- Prefer committing docs with the code change that makes them true.
+- A follow-up `docs:` commit is fine for purely editorial cleanup, but not for
+  documenting behavior that reviewers need to evaluate the code safely.
+- If a change deliberately leaves docs untouched, say why in the PR or handoff.
+
 ## Amending vs new commits
 
 - Never amend a commit you have pushed to a shared branch.

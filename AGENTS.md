@@ -48,6 +48,9 @@ Every agent must read:
 6. **Do not subdivide assigned tasks into fairway sub-tasks.** Track internal execution steps in your own scratch (todo file, Claude's task list, `WORKLOG.md`). Use `fairway spawn --sibling` only for *genuinely new* work the orchestrator should see. If a task is too big, hand it back to `arch` with a suggested split — do not split it yourself. See [hierarchy.md](docs/design/hierarchy.md#task-granularity-who-decides).
 7. **Bound side work with packets and checkpoints.** Long-running side work, watcher work, or newly discovered follow-up needs a context packet and fresh checkpoint rather than an untracked thread summary. See [context-packets.md](docs/design/context-packets.md) and [checkpoints.md](docs/design/checkpoints.md).
 8. **Respect the active profile.** For profile-shaped work, use the configured task kinds, packet templates, route samples, and named gates. Do not invent project-specific gates in chat; capture them in config or docs.
+9. **Update docs with code.** Any code change that changes commands, config,
+   schema, dashboard behavior, reports, packets, gates, examples, or agent
+   workflow must update the matching docs in the same PR/commit.
 
 ## Architecture
 

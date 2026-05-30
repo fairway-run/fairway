@@ -46,3 +46,7 @@ Governance owns and edits standards docs. When changing them:
 - Keep [docs/design/open-questions.md](../docs/design/open-questions.md) current — close decided items, list new ones.
 - Keep [docs/design/release-cuts.md](../docs/design/release-cuts.md) aligned
   with the roadmap before implementation tasks are assigned.
+- Watch code changes for stale docs. When backend, UI, ops, or arch changes
+  user-visible behavior, config, command output, examples, or agent workflow,
+  governance should either update the docs in the same change or ask for the
+  docs update before sign-off.

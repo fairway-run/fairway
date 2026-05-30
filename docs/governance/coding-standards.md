@@ -54,6 +54,20 @@ Cross-package rules:
 - Doc comments on every exported identifier in a non-`main` package. One sentence is enough.
 - Never write comments that narrate the code.
 
+## Documentation
+
+- Code and docs move together. If a change affects CLI verbs, flags, config
+  shape, schema, migrations, dashboard behavior, report output, packet fields,
+  gates, examples, or agent workflow, update the relevant docs in the same
+  change.
+- User-facing behavior belongs in `README.md`, `docs/quickstart.md`,
+  `docs/config-reference.md`, or a focused guide under `docs/`.
+- Design intent and future work belong in `docs/design/`.
+- Agent operating rules belong in `AGENTS.md`, `docs/agent-guide.md`, or the
+  relevant `agents/*.md` role file.
+- Do not leave docs saying a feature is "planned" after code lands. If only a
+  thin slice landed, document the implemented slice and the remaining limits.
+
 ## SQL
 
 - Schema lives in `internal/store/migrations/NNN_*.sql`.
