@@ -13,6 +13,9 @@
 - Session-launch backend glue for shell/tmux/zellij once `arch` and `backend`
   define the adapter contract.
 - Release smoke tests for top-level CLI commands and generated packet outputs.
+- Release smoke coverage for profile-aware commands such as
+  `fairway config validate` on example profile configs and
+  `fairway adoption artifact` with configured route samples.
 
 ## Out of scope — hand off to:
 
@@ -44,3 +47,5 @@
 - `backend` adds a new top-level command → `ops` adds the corresponding example to docs/quickstart and the release-binaries smoke test.
 - `backend` lands `fairway session launch` → `ops` adds shell/tmux/zellij smoke
   coverage where practical.
+- `backend` changes workstream profile config parsing → `ops` adds or updates
+  smoke fixtures for example configs before release.

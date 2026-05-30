@@ -18,6 +18,9 @@ Everything that is not the dashboard frontend, CI / release, or pure docs:
 - `internal/git/` — worktree shellouts.
 - `internal/report/` — report generators.
 - `internal/dashboard/` — *server* side (HTTP handlers, SSE source). UI templates and assets belong to `ui`.
+- Adoption/profile plumbing: `fairway adoption artifact`, configured
+  workstream profile validation, named profile gates, route samples, and future
+  packet-template rendering hooks after `arch` signs off the schema.
 
 ## Out of scope — hand off to:
 
@@ -26,6 +29,7 @@ Everything that is not the dashboard frontend, CI / release, or pure docs:
 | HTML templates, CSS, HTMX | `ui` |
 | GitHub Actions, goreleaser, packaging | `ops` |
 | Schema design choices, state machine semantics | `arch` |
+| Workstream profile semantics or new gate meanings | `arch` / `governance` |
 | Docs, governance, AGENTS.md | `governance` |
 
 ## Standards

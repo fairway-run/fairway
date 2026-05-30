@@ -9,13 +9,15 @@ The name comes from maritime traffic control — fairways are navigable channels
 ## Status
 
 Usable local prototype. Core CLI, SQLite store, migrations, worktrees, sessions,
-packets, checkpoints, regression-pack helpers, tracker links, dashboard, and
-release packaging are implemented and covered by smoke tests.
+packets, checkpoints, regression-pack helpers, tracker links, workstream profile
+config, dashboard, and release packaging are implemented and covered by smoke
+tests.
 
-Current focus: prove parity against the existing GPUaaS queue/scripts before
-GPUaaS switches over. See the
-[GPUaaS parity assessment](docs/assessment/gpuaas-parity-and-gap-assessment-2026-05-29.md)
-and [parity runbook](docs/assessment/gpuaas-parity-runbook.md).
+Current focus: make Fairway a generic coordination layer with configurable
+workstream profiles, while proving GPUaaS as the first adoption example. See
+[workstream profiles](docs/design/workstream-profiles.md), the
+[GPUaaS adoption track](docs/design/gpuaas-arc-adoption.md), and the
+[parity runbook](docs/assessment/gpuaas-parity-runbook.md).
 
 Still maturing: provider-specific session launchers, richer dashboard
 mutations, real Jira/Linear API adapters, Homebrew tap publishing after the
@@ -26,7 +28,7 @@ first release tag, and a future Postgres runtime adapter.
 - A single Go binary (`fairway`) plus an embedded SQLite store.
 - A CLI for claiming tasks, recording handoffs / evidence / reviews, managing sessions.
 - A local web dashboard for watching lanes, backlog, and activity in real time.
-- Config-driven: roles, branches, worktree paths, review routing, and the state machine are all defined in `.fairway/config.toml`.
+- Config-driven: roles, branches, worktree paths, review routing, workstream profiles, packet templates, and the state machine are all defined in `.fairway/config.toml`.
 
 ## What it is not
 
@@ -48,6 +50,7 @@ fairway ready                 # list tasks ready for your role to claim
 fairway claim T-001
 fairway record evidence T-001 --command-text "go test ./..." --result pass
 fairway set-status T-001 done
+fairway adoption artifact     # summarize routes, gates, health, and evidence gaps
 ```
 
 See [docs/quickstart.md](docs/quickstart.md) for the full walkthrough.
@@ -60,6 +63,7 @@ Start here:
 - [Agent guide](docs/agent-guide.md) — practical command flow for agents using fairway
 - [Architecture](docs/architecture.md) — components, data flow, package layout
 - [Product](docs/product.md) — vision, principles, roadmap, anti-goals
+- [Workstream profile guide](docs/workstream-profile-guide.md) — user-facing guide for profile config, gates, and adoption artifacts
 
 Design:
 
@@ -100,6 +104,7 @@ Reference:
 
 - [Config reference](docs/config-reference.md)
 - [Quickstart](docs/quickstart.md)
+- [Workstream profile guide](docs/workstream-profile-guide.md)
 
 Examples:
 

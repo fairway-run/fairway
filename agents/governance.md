@@ -13,6 +13,9 @@
 - `docs/design/release-cuts.md` — scope lock, owned with `arch`.
 - `docs/design/issue-tracker-integrations.md` — product/process framing,
   owned with `arch`; implementation belongs to `backend`.
+- Agent and user guidance for workstream profiles, adoption artifacts, packet
+  templates, and named gates. Config semantics are owned with `arch`;
+  implementation belongs to `backend`.
 - `CONTRIBUTING.md`, `README.md` (structure; content authority shared with arch).
 - This file.
 
@@ -21,6 +24,7 @@
 | If the task involves… | Hand off to |
 |---|---|
 | Schema or state machine semantics | `arch` |
+| Workstream profile config semantics | `arch` |
 | Code | `backend` or `ui` |
 | CI / release plumbing | `ops` |
 | Jira/Linear API implementation | `backend` |

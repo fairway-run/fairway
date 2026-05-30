@@ -91,6 +91,10 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   when agents are launched manually.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
+- `adoption artifact` is the generic readiness report. It uses configured
+  workstream profile `route_samples` when no `--route` flags are provided and
+  reports named profile gates. `parity artifact` remains a compatibility alias
+  for GPUaaS-style comparisons.
 - `packet bugfix`, platform-foundation packets, and `regression-pack` are
   quality surfaces. They render and validate review context; they do not
   execute product test suites.

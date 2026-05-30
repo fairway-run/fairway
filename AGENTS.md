@@ -20,6 +20,12 @@ Fairway is developed using fairway-style multi-agent workflows. Five role lanes 
 
 Tasks flow through the configured state machine (see [docs/design/state-machine.md](docs/design/state-machine.md)). Cross-role work hands off via `fairway record handoff`. Reviews route via config — see [docs/governance/review-guards.md](docs/governance/review-guards.md).
 
+Workstream profiles in `.fairway/config.toml` may define task kinds, route
+samples, named gates, review domains, dashboard groups, and packet templates.
+Agents should treat profile gates as the local definition of "ready enough" for
+that track. See [docs/design/workstream-profiles.md](docs/design/workstream-profiles.md)
+and [docs/config-reference.md](docs/config-reference.md).
+
 ## Before you start
 
 Every agent must read:
@@ -41,6 +47,7 @@ Every agent must read:
 5. **One worktree, one role.** Do not switch roles by changing branches inside a worktree.
 6. **Do not subdivide assigned tasks into fairway sub-tasks.** Track internal execution steps in your own scratch (todo file, Claude's task list, `WORKLOG.md`). Use `fairway spawn --sibling` only for *genuinely new* work the orchestrator should see. If a task is too big, hand it back to `arch` with a suggested split — do not split it yourself. See [hierarchy.md](docs/design/hierarchy.md#task-granularity-who-decides).
 7. **Bound side work with packets and checkpoints.** Long-running side work, watcher work, or newly discovered follow-up needs a context packet and fresh checkpoint rather than an untracked thread summary. See [context-packets.md](docs/design/context-packets.md) and [checkpoints.md](docs/design/checkpoints.md).
+8. **Respect the active profile.** For profile-shaped work, use the configured task kinds, packet templates, route samples, and named gates. Do not invent project-specific gates in chat; capture them in config or docs.
 
 ## Architecture
 

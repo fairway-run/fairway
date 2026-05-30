@@ -40,6 +40,36 @@ name = "ui"
 branch = "agent/ui"
 ```
 
+For architecture, release, migration, or security tracks, add a workstream
+profile. Profiles are optional; they give Fairway names for task kinds,
+dashboard groups, review domains, adoption route samples, readiness gates, and
+packet template fields without baking one project's workflow into the binary.
+
+```toml
+[[workstream_profiles]]
+name = "platform-foundation"
+task_kinds = ["architecture-map", "guard", "facade"]
+dashboard_groups = ["architecture maps", "boundary guards", "facades"]
+review_domains = ["architecture", "security"]
+route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
+
+[[workstream_profiles.gates]]
+name = "security-review"
+mode = "advisory"
+evidence_type = "security-review"
+
+[[packet_templates]]
+name = "architecture-map"
+required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "acceptance"]
+optional_fields = ["source_doc"]
+```
+
+Validate after changing config:
+
+```bash
+fairway config validate
+```
+
 ## Set up lanes
 
 ```bash
@@ -123,12 +153,30 @@ See [coordinator-loop.md](design/coordinator-loop.md),
 [context-packets.md](design/context-packets.md), and
 [checkpoints.md](design/checkpoints.md).
 
+## Adoption Readiness
+
+When you are trying Fairway in an existing project, generate an adoption
+artifact before switching your team over:
+
+```bash
+fairway adoption artifact --catalog examples/regression-packs.yaml
+fairway --json adoption artifact --route cmd/api/routes.go
+```
+
+The artifact summarizes task counts, ready work, configured gates, workstream
+profile gates, review-route samples, regression-pack validation, health, and
+evidence gaps. If no `--route` flags are provided, Fairway samples paths from
+the configured `route_samples`. See
+[workstream-profile-guide.md](workstream-profile-guide.md) for profile design
+guidance.
+
 ## GPUaaS Parity
 
 GPUaaS migration work should start from
 [gpuaas-parity-runbook.md](assessment/gpuaas-parity-runbook.md), not from a live
 queue cut-over. Use
 [`examples/gpuaas-a-b-c-d-e-config.toml`](../examples/gpuaas-a-b-c-d-e-config.toml)
-for the exact A/B/C/D/E lane mapping and
+for the exact A/B/C/D/E lane mapping, platform-foundation workstream profile,
+named advisory gates, packet templates, and
 [`examples/gpuaas-regression-packs.yaml`](../examples/gpuaas-regression-packs.yaml)
 to verify Fairway accepts GPUaaS-style per-environment regression blocking.

@@ -14,6 +14,9 @@ The dashboard frontend:
 - Filter chips, kanban layout, lane card design, activity feed presentation.
 - Presentation of coordinator, packet, watcher, checkpoint, tracker-link, and
   session state once backend exposes read models.
+- Presentation of workstream profile metadata once backend exposes it:
+  profile/task-kind grouping, named profile gates, review domains, and
+  guard/evidence groupings.
 
 ## Out of scope — hand off to:
 
@@ -24,6 +27,7 @@ The dashboard frontend:
 | CSP / security headers | `backend` |
 | Dashboard release packaging | `ops` |
 | Product meaning of tracker/coordinator/checkpoint states | `arch` / `governance` |
+| Product meaning of profile gates or dashboard grouping | `arch` / `governance` |
 
 ## Standards
 
@@ -48,3 +52,5 @@ The dashboard frontend:
 - `backend` adds a new endpoint → `ui` builds the partial template + filter chip.
 - `backend` exposes coordinator/checkpoint/tracker-link read models → `ui`
   renders badges, filters, and detail sections without adding write actions.
+- `backend` exposes profile/dashboard grouping metadata → `ui` renders filters
+  and sections using configured labels rather than hardcoded project names.

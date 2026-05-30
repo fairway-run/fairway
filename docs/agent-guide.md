@@ -30,6 +30,18 @@ fairway --json task-detail T-001
 Use `FAIRWAY_ROLE=<role>` or `--as <role>` when the current worktree cannot be
 resolved to one configured role.
 
+If your repo uses workstream profiles, read the configured profile before
+claiming profile-shaped work:
+
+```bash
+fairway config validate
+fairway adoption artifact --limit 5 --gap-limit 5
+```
+
+The adoption artifact shows configured gate modes, named profile gates, and
+route samples. Treat advisory gates as evidence expectations, not as optional
+background noise.
+
 ## Claim Work
 
 ```bash
@@ -106,7 +118,8 @@ fairway watcher finish W-001 --result pass --artifact dist/ci.log
 ```
 
 Platform-foundation work should use the narrower packet type that matches the
-task:
+task. If a repo defines `[[packet_templates]]`, use those fields as the packet
+contract even when the current packet command is still built in:
 
 ```bash
 fairway packet architecture-map T-010 \
