@@ -224,25 +224,35 @@ route_samples = [
 name = "boundary-guard-report"
 mode = "advisory"
 evidence_type = "guard-report"
+required_evidence_count = 1
+accepted_results = ["pass", "partial", "blocked"]
+artifact_required = true
 description = "Report-only boundary guard evidence is expected before enforcement."
 
 [[workstream_profiles.gates]]
 name = "release-risk"
 mode = "advisory"
 evidence_type = "release-risk"
+required_evidence_count = 1
+accepted_results = ["pass", "partial", "blocked"]
+owner_signoff_required = true
+expires_after = "720h"
 description = "Residual risk should be recorded for release-facing platform work."
 
 [[packet_templates]]
+profiles = ["platform-foundation"]
 name = "architecture-map"
 required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "acceptance"]
 optional_fields = ["source_doc"]
 
 [[packet_templates]]
+profiles = ["platform-foundation"]
 name = "boundary-guard"
 required_fields = ["guard_intent", "mode", "graduation_criteria"]
 optional_fields = ["finding", "false_positive", "allowed_debt", "proof_command"]
 
 [[packet_templates]]
+profiles = ["platform-foundation"]
 name = "vertical-slice"
 required_fields = ["slice_goal", "owning_domain", "source_paths", "target_paths", "acceptance"]
 optional_fields = ["page_contract", "proof_command", "residual_risk"]

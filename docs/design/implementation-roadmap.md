@@ -99,9 +99,10 @@ to a useful v1.
    for package/route/schema/event/frontend ownership.
 2. Expand configurable [workstream profiles](workstream-profiles.md). The
    initial config shape now exists for profile metadata, route samples, named
-   gates, and packet templates; next slices are structured guard evidence, task
-   ownership metadata, dashboard grouping by task kind, and template-driven
-   packet rendering.
+   gates, packet templates, template profile scoping, and structured evidence
+   requirements; next slices are task ownership metadata, dashboard grouping by
+   task kind, template-driven packet rendering, and named gate evaluation in
+   readiness reports.
 3. Add multi-reviewer merge readiness for review domains such as architecture,
    security, frontend, ops, and governance.
 4. Add Homebrew tap publishing after the first tagged release settles.

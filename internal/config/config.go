@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -103,13 +104,19 @@ type WorkstreamProfile struct {
 }
 
 type WorkstreamProfileGate struct {
-	Name         string `toml:"name"`
-	Mode         string `toml:"mode"`
-	EvidenceType string `toml:"evidence_type"`
-	Description  string `toml:"description"`
+	Name                  string   `toml:"name"`
+	Mode                  string   `toml:"mode"`
+	EvidenceType          string   `toml:"evidence_type"`
+	RequiredEvidenceCount int      `toml:"required_evidence_count"`
+	AcceptedResults       []string `toml:"accepted_results"`
+	ArtifactRequired      bool     `toml:"artifact_required"`
+	OwnerSignoffRequired  bool     `toml:"owner_signoff_required"`
+	ExpiresAfter          string   `toml:"expires_after"`
+	Description           string   `toml:"description"`
 }
 
 type PacketTemplate struct {
+	Profiles       []string `toml:"profiles"`
 	Name           string   `toml:"name"`
 	RequiredFields []string `toml:"required_fields"`
 	OptionalFields []string `toml:"optional_fields"`
@@ -313,18 +320,19 @@ func Validate(cfg Config) error {
 	if cfg.TaskPriorities.Default != nil && len(priorityRanks) > 0 && !priorityRanks[*cfg.TaskPriorities.Default] {
 		return fmt.Errorf("[task_priorities] default %d is not in configured levels", *cfg.TaskPriorities.Default)
 	}
-	if err := validateWorkstreamProfiles(cfg.WorkstreamProfiles); err != nil {
+	if err := validateWorkstreamProfiles(cfg.WorkstreamProfiles, kindSet); err != nil {
 		return err
 	}
-	if err := validatePacketTemplates(cfg.PacketTemplates); err != nil {
+	if err := validatePacketTemplates(cfg.PacketTemplates, workstreamProfileSet(cfg.WorkstreamProfiles)); err != nil {
 		return err
 	}
 	return nil
 }
 
-func validateWorkstreamProfiles(profiles []WorkstreamProfile) error {
+func validateWorkstreamProfiles(profiles []WorkstreamProfile, kindSet map[string]bool) error {
 	seen := map[string]bool{}
 	validGateModes := map[string]bool{"advisory": true, "blocking": true, "report_only": true}
+	validEvidenceResults := map[string]bool{"pass": true, "fail": true, "partial": true, "skipped": true, "blocked": true}
 	for _, profile := range profiles {
 		if profile.Name == "" {
 			return errors.New("[[workstream_profiles]] name is required")
@@ -335,6 +343,13 @@ func validateWorkstreamProfiles(profiles []WorkstreamProfile) error {
 		seen[profile.Name] = true
 		if err := validateStringList("[[workstream_profiles]] task_kinds", profile.TaskKinds); err != nil {
 			return err
+		}
+		if len(kindSet) > 0 {
+			for _, kind := range profile.TaskKinds {
+				if !kindSet[kind] {
+					return fmt.Errorf("[[workstream_profiles]] task kind %q in profile %q is not in [task_kinds].allowed", kind, profile.Name)
+				}
+			}
 		}
 		if err := validateStringList("[[workstream_profiles]] dashboard_groups", profile.DashboardGroups); err != nil {
 			return err
@@ -360,12 +375,28 @@ func validateWorkstreamProfiles(profiles []WorkstreamProfile) error {
 			if !validGateModes[gate.Mode] {
 				return fmt.Errorf("[[workstream_profiles.gates]] mode %q must be advisory, blocking, or report_only", gate.Mode)
 			}
+			if gate.RequiredEvidenceCount < 0 {
+				return fmt.Errorf("[[workstream_profiles.gates]] required_evidence_count for gate %q must be >= 0", gate.Name)
+			}
+			if err := validateStringList("[[workstream_profiles.gates]] accepted_results", gate.AcceptedResults); err != nil {
+				return err
+			}
+			for _, result := range gate.AcceptedResults {
+				if !validEvidenceResults[result] {
+					return fmt.Errorf("[[workstream_profiles.gates]] accepted result %q for gate %q must be pass, fail, partial, skipped, or blocked", result, gate.Name)
+				}
+			}
+			if gate.ExpiresAfter != "" {
+				if _, err := time.ParseDuration(gate.ExpiresAfter); err != nil {
+					return fmt.Errorf("[[workstream_profiles.gates]] expires_after for gate %q is invalid: %w", gate.Name, err)
+				}
+			}
 		}
 	}
 	return nil
 }
 
-func validatePacketTemplates(templates []PacketTemplate) error {
+func validatePacketTemplates(templates []PacketTemplate, profileSet map[string]bool) error {
 	seen := map[string]bool{}
 	for _, template := range templates {
 		if template.Name == "" {
@@ -375,6 +406,16 @@ func validatePacketTemplates(templates []PacketTemplate) error {
 			return fmt.Errorf("duplicate packet template %q", template.Name)
 		}
 		seen[template.Name] = true
+		if err := validateStringList("[[packet_templates]] profiles", template.Profiles); err != nil {
+			return err
+		}
+		if len(profileSet) > 0 {
+			for _, profile := range template.Profiles {
+				if !profileSet[profile] {
+					return fmt.Errorf("[[packet_templates]] profile %q for template %q is not a configured workstream profile", profile, template.Name)
+				}
+			}
+		}
 		if err := validateStringList("[[packet_templates]] required_fields", template.RequiredFields); err != nil {
 			return err
 		}
@@ -392,6 +433,14 @@ func validatePacketTemplates(templates []PacketTemplate) error {
 		}
 	}
 	return nil
+}
+
+func workstreamProfileSet(profiles []WorkstreamProfile) map[string]bool {
+	set := make(map[string]bool, len(profiles))
+	for _, profile := range profiles {
+		set[profile.Name] = true
+	}
+	return set
 }
 
 func validateStringList(label string, values []string) error {

@@ -58,14 +58,23 @@ route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
 name = "security-review"
 mode = "advisory"
 evidence_type = "security-review"
+required_evidence_count = 1
+accepted_results = ["pass", "partial"]
+artifact_required = true
 description = "Security review evidence should be attached before release readiness."
+
+[[packet_templates]]
+profiles = ["platform-foundation"]
+name = "architecture-map"
+required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "acceptance"]
 ```
 
 The first implementation use is intentionally small: `fairway config validate`
-checks this shape, and `fairway adoption artifact` uses `route_samples` and
-reports named profile gates. Dashboard grouping, packet rendering, and named
-gate enforcement should build on this same config rather than adding
-project-specific flags.
+checks this shape, validates profile task kinds against configured task kinds,
+validates packet-template profile references, and `fairway adoption artifact`
+uses `route_samples` and reports named profile gates with structured evidence
+requirements. Dashboard grouping, packet rendering, and named gate enforcement
+should build on this same config rather than adding project-specific flags.
 
 ## Packet Templates
 

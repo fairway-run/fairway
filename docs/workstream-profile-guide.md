@@ -38,14 +38,21 @@ route_samples = ["scripts/release/check.sh", "doc/release/runbook.md"]
 name = "security-review"
 mode = "advisory"
 evidence_type = "security-review"
+required_evidence_count = 1
+accepted_results = ["pass", "partial"]
+artifact_required = true
+expires_after = "720h"
 description = "Security review evidence should be attached before release readiness."
 
 [[workstream_profiles.gates]]
 name = "release-owner-approval"
 mode = "blocking"
 evidence_type = "approval"
+required_evidence_count = 1
+owner_signoff_required = true
 
 [[packet_templates]]
+profiles = ["release-readiness"]
 name = "release-risk"
 required_fields = ["risk", "owner", "severity", "mitigation", "residual_risk"]
 optional_fields = ["expiry", "accepted_by"]
@@ -60,6 +67,22 @@ measured.
 
 Current Fairway reports these modes; it does not yet enforce named profile
 gates.
+
+## Evidence Requirements
+
+Profile gates can describe the evidence a workstream expects:
+
+- `required_evidence_count` says how many matching evidence records should
+  exist.
+- `accepted_results` lists acceptable evidence results. Use values from
+  `fairway record evidence`: `pass`, `fail`, `partial`, `skipped`, or
+  `blocked`.
+- `artifact_required` says the evidence should include a durable path or URL.
+- `owner_signoff_required` says a named owner approval is expected.
+- `expires_after` records how long the evidence remains fresh.
+
+These fields are validated and reported in adoption artifacts today. They are
+not yet enforced by `merge-ready`.
 
 ## Adoption Artifact
 

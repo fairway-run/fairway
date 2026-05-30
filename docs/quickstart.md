@@ -57,8 +57,12 @@ route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
 name = "security-review"
 mode = "advisory"
 evidence_type = "security-review"
+required_evidence_count = 1
+accepted_results = ["pass", "partial"]
+artifact_required = true
 
 [[packet_templates]]
+profiles = ["platform-foundation"]
 name = "architecture-map"
 required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "acceptance"]
 optional_fields = ["source_doc"]

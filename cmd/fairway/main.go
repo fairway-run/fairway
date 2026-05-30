@@ -1587,11 +1587,16 @@ type adoptionGateSummary struct {
 }
 
 type adoptionProfileGate struct {
-	Profile      string `json:"profile"`
-	Name         string `json:"name"`
-	Mode         string `json:"mode"`
-	EvidenceType string `json:"evidence_type,omitempty"`
-	Description  string `json:"description,omitempty"`
+	Profile               string   `json:"profile"`
+	Name                  string   `json:"name"`
+	Mode                  string   `json:"mode"`
+	EvidenceType          string   `json:"evidence_type,omitempty"`
+	RequiredEvidenceCount int      `json:"required_evidence_count,omitempty"`
+	AcceptedResults       []string `json:"accepted_results,omitempty"`
+	ArtifactRequired      bool     `json:"artifact_required,omitempty"`
+	OwnerSignoffRequired  bool     `json:"owner_signoff_required,omitempty"`
+	ExpiresAfter          string   `json:"expires_after,omitempty"`
+	Description           string   `json:"description,omitempty"`
 }
 
 type adoptionTaskSample struct {
@@ -1769,11 +1774,16 @@ func adoptionProfileGates(cfg config.Config) []adoptionProfileGate {
 	for _, profile := range cfg.WorkstreamProfiles {
 		for _, gate := range profile.Gates {
 			gates = append(gates, adoptionProfileGate{
-				Profile:      profile.Name,
-				Name:         gate.Name,
-				Mode:         gate.Mode,
-				EvidenceType: gate.EvidenceType,
-				Description:  gate.Description,
+				Profile:               profile.Name,
+				Name:                  gate.Name,
+				Mode:                  gate.Mode,
+				EvidenceType:          gate.EvidenceType,
+				RequiredEvidenceCount: gate.RequiredEvidenceCount,
+				AcceptedResults:       gate.AcceptedResults,
+				ArtifactRequired:      gate.ArtifactRequired,
+				OwnerSignoffRequired:  gate.OwnerSignoffRequired,
+				ExpiresAfter:          gate.ExpiresAfter,
+				Description:           gate.Description,
 			})
 		}
 	}
@@ -1802,6 +1812,12 @@ func defaultAdoptionRouteSamples(cfg config.Config) []string {
 	if len(samples) > 0 {
 		return samples
 	}
+	return gpuaasCompatibilityRouteSamples(cfg)
+}
+
+func gpuaasCompatibilityRouteSamples(cfg config.Config) []string {
+	// Compatibility path for early GPUaaS parity configs. Generic adoption should
+	// use [[workstream_profiles]].route_samples instead.
 	if strings.EqualFold(cfg.Fairway.ProjectName, "gpuaas") || config.RoleSet(cfg)["A-backend"] {
 		return []string{
 			"doc/api/openapi.draft.yaml",
@@ -1869,6 +1885,25 @@ func printAdoptionArtifact(artifact adoptionArtifact) {
 				fmt.Printf("- %s: %s (%s)\n", label, gate.Mode, gate.EvidenceType)
 			} else {
 				fmt.Printf("- %s: %s\n", label, gate.Mode)
+			}
+			var requirements []string
+			if gate.RequiredEvidenceCount > 0 {
+				requirements = append(requirements, fmt.Sprintf("count >= %d", gate.RequiredEvidenceCount))
+			}
+			if len(gate.AcceptedResults) > 0 {
+				requirements = append(requirements, "results: "+strings.Join(gate.AcceptedResults, ", "))
+			}
+			if gate.ArtifactRequired {
+				requirements = append(requirements, "artifact required")
+			}
+			if gate.OwnerSignoffRequired {
+				requirements = append(requirements, "owner signoff required")
+			}
+			if gate.ExpiresAfter != "" {
+				requirements = append(requirements, "expires after "+gate.ExpiresAfter)
+			}
+			if len(requirements) > 0 {
+				fmt.Printf("  requirements: %s\n", strings.Join(requirements, "; "))
 			}
 		}
 	}

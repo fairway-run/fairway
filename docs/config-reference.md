@@ -60,9 +60,15 @@ route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
 name = "security-review"
 mode = "advisory"                     # advisory | blocking | report_only
 evidence_type = "security-review"
+required_evidence_count = 1
+accepted_results = ["pass", "partial"]
+artifact_required = true
+owner_signoff_required = false
+expires_after = "720h"
 description = "Security review evidence should be attached before release readiness."
 
 [[packet_templates]]
+profiles = ["platform-foundation"]
 name = "architecture-map"
 required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "acceptance"]
 optional_fields = ["source_doc"]
@@ -163,7 +169,7 @@ work can consume the same metadata without changing the file shape.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `name` | string | — | Stable profile name, for example `platform-foundation`, `release-readiness`, or `sdk-readiness`. Must be unique. |
-| `task_kinds` | []string | — | Task kinds associated with this profile. |
+| `task_kinds` | []string | — | Task kinds associated with this profile. If `[task_kinds].allowed` is configured, every profile kind must appear there. |
 | `dashboard_groups` | []string | — | Human-facing groups a dashboard can use to cluster tasks for this profile. |
 | `review_domains` | []string | — | Review domains that may be required for readiness, distinct from first-match assignment routes. |
 | `route_samples` | []string | — | Paths sampled by `fairway adoption artifact` when no `--route` flags are provided. |
@@ -177,6 +183,11 @@ Named readiness gates under the preceding profile.
 | `name` | string | — | Gate name, for example `security-review`, `uat-evidence`, `release-risk`, or `sdk-readiness`. Must be unique within the profile. |
 | `mode` | string | — | `advisory`, `blocking`, or `report_only`. |
 | `evidence_type` | string | — | Optional evidence type this gate expects. |
+| `required_evidence_count` | int | `0` | Minimum count expected for this evidence type. Reported today; enforcement is future work. |
+| `accepted_results` | []string | — | Accepted `task_evidence.result` values: `pass`, `fail`, `partial`, `skipped`, or `blocked`. |
+| `artifact_required` | bool | `false` | Whether evidence should include an artifact path or URL. |
+| `owner_signoff_required` | bool | `false` | Whether the workstream expects explicit owner signoff. |
+| `expires_after` | duration | — | Duration after which the evidence should be refreshed, for example `720h`. |
 | `description` | string | — | Optional human-readable description. |
 
 ### `[[packet_templates]]`
@@ -187,6 +198,7 @@ will let projects add profile-specific packets without Fairway code changes.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `profiles` | []string | — | Optional list of workstream profile names this packet template belongs to. If profiles are configured, references must match a configured profile. |
 | `name` | string | — | Packet template name. Must be unique. |
 | `required_fields` | []string | — | Required field names for future template validation/rendering. |
 | `optional_fields` | []string | — | Optional field names. A field cannot appear in both required and optional lists. |

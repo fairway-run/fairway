@@ -93,12 +93,17 @@ func TestValidate_AcceptsWorkstreamProfilesAndPacketTemplates(t *testing.T) {
 		ReviewDomains:   []string{"architecture", "security"},
 		RouteSamples:    []string{"doc/api/openapi.yaml"},
 		Gates: []WorkstreamProfileGate{{
-			Name:         "security-review",
-			Mode:         "advisory",
-			EvidenceType: "security-review",
+			Name:                  "security-review",
+			Mode:                  "advisory",
+			EvidenceType:          "security-review",
+			RequiredEvidenceCount: 1,
+			AcceptedResults:       []string{"pass", "partial"},
+			ArtifactRequired:      true,
+			ExpiresAfter:          "168h",
 		}},
 	}}
 	cfg.PacketTemplates = []PacketTemplate{{
+		Profiles:       []string{"platform-foundation"},
 		Name:           "architecture-map",
 		RequiredFields: []string{"scope", "current_owner"},
 		OptionalFields: []string{"source_doc"},
@@ -108,11 +113,51 @@ func TestValidate_AcceptsWorkstreamProfilesAndPacketTemplates(t *testing.T) {
 	}
 }
 
+func TestValidate_RejectsProfileTaskKindOutsideAllowed(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.TaskKinds.Allowed = []string{"task", "bug"}
+	cfg.WorkstreamProfiles = []WorkstreamProfile{{
+		Name:      "platform-foundation",
+		TaskKinds: []string{"architecture-map"},
+	}}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected profile task kind validation error")
+	}
+}
+
 func TestValidate_RejectsDuplicateWorkstreamProfile(t *testing.T) {
 	cfg := Defaults("/tmp/repo")
 	cfg.WorkstreamProfiles = []WorkstreamProfile{{Name: "platform-foundation"}, {Name: "platform-foundation"}}
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected duplicate workstream profile validation error")
+	}
+}
+
+func TestValidate_RejectsPacketTemplateUnknownProfile(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.WorkstreamProfiles = []WorkstreamProfile{{Name: "platform-foundation"}}
+	cfg.PacketTemplates = []PacketTemplate{{
+		Profiles:       []string{"release-readiness"},
+		Name:           "architecture-map",
+		RequiredFields: []string{"scope"},
+	}}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected packet template profile validation error")
+	}
+}
+
+func TestValidate_RejectsInvalidGateEvidenceConfig(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.WorkstreamProfiles = []WorkstreamProfile{{
+		Name: "release-readiness",
+		Gates: []WorkstreamProfileGate{{
+			Name:            "uat-evidence",
+			Mode:            "blocking",
+			AcceptedResults: []string{"green"},
+		}},
+	}}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected gate evidence validation error")
 	}
 }
 
@@ -159,6 +204,16 @@ route_samples = ["cmd/api/main.go"]
 name = "release-owner-approval"
 mode = "blocking"
 evidence_type = "approval"
+required_evidence_count = 1
+accepted_results = ["pass"]
+artifact_required = true
+owner_signoff_required = true
+expires_after = "720h"
+
+[[packet_templates]]
+profiles = ["release-readiness"]
+name = "release-risk"
+required_fields = ["risk", "owner"]
 `, &cfg); err != nil {
 		t.Fatalf("Decode() error = %v", err)
 	}
@@ -167,5 +222,11 @@ evidence_type = "approval"
 	}
 	if got := cfg.WorkstreamProfiles[0].Gates[0].Name; got != "release-owner-approval" {
 		t.Fatalf("gate name = %q", got)
+	}
+	if !cfg.WorkstreamProfiles[0].Gates[0].ArtifactRequired {
+		t.Fatal("expected artifact_required to decode")
+	}
+	if got := cfg.PacketTemplates[0].Profiles[0]; got != "release-readiness" {
+		t.Fatalf("packet template profile = %q", got)
 	}
 }
