@@ -1562,21 +1562,22 @@ func printCoordinatorTick(report coordinatorReport) {
 }
 
 type adoptionArtifact struct {
-	ArtifactType     string                 `json:"artifact_type"`
-	GeneratedAt      string                 `json:"generated_at"`
-	Project          string                 `json:"project"`
-	Gates            adoptionGateSummary    `json:"gates"`
-	ProfileGates     []adoptionProfileGate  `json:"profile_gates,omitempty"`
-	TaskCount        int                    `json:"task_count"`
-	ReadyCount       int                    `json:"ready_count"`
-	ReadyByRole      map[string]int         `json:"ready_by_role"`
-	ReadySample      []adoptionTaskSample   `json:"ready_sample"`
-	RouteSamples     []adoptionRouteSample  `json:"route_samples"`
-	RegressionPacks  adoptionRegressionPack `json:"regression_packs"`
-	EvidenceGapCount int                    `json:"evidence_gap_count"`
-	EvidenceGaps     []string               `json:"evidence_gaps"`
-	Health           store.Health           `json:"health"`
-	Coordinator      coordinatorReport      `json:"coordinator"`
+	ArtifactType     string                   `json:"artifact_type"`
+	GeneratedAt      string                   `json:"generated_at"`
+	Project          string                   `json:"project"`
+	Gates            adoptionGateSummary      `json:"gates"`
+	ProfileGates     []adoptionProfileGate    `json:"profile_gates,omitempty"`
+	GateEvaluations  []adoptionGateEvaluation `json:"gate_evaluations,omitempty"`
+	TaskCount        int                      `json:"task_count"`
+	ReadyCount       int                      `json:"ready_count"`
+	ReadyByRole      map[string]int           `json:"ready_by_role"`
+	ReadySample      []adoptionTaskSample     `json:"ready_sample"`
+	RouteSamples     []adoptionRouteSample    `json:"route_samples"`
+	RegressionPacks  adoptionRegressionPack   `json:"regression_packs"`
+	EvidenceGapCount int                      `json:"evidence_gap_count"`
+	EvidenceGaps     []string                 `json:"evidence_gaps"`
+	Health           store.Health             `json:"health"`
+	Coordinator      coordinatorReport        `json:"coordinator"`
 }
 
 type adoptionGateSummary struct {
@@ -1619,6 +1620,27 @@ type adoptionRegressionPack struct {
 	OK          bool     `json:"ok"`
 	PackCount   int      `json:"pack_count"`
 	Issues      []string `json:"issues,omitempty"`
+}
+
+type adoptionGateEvaluation struct {
+	Profile        string                 `json:"profile"`
+	Gate           string                 `json:"gate"`
+	Mode           string                 `json:"mode"`
+	EvidenceType   string                 `json:"evidence_type,omitempty"`
+	TaskCount      int                    `json:"task_count"`
+	SatisfiedCount int                    `json:"satisfied_count"`
+	MissingCount   int                    `json:"missing_count"`
+	Status         string                 `json:"status"`
+	Missing        []adoptionGateTaskMiss `json:"missing,omitempty"`
+}
+
+type adoptionGateTaskMiss struct {
+	TaskID   string   `json:"task_id"`
+	Title    string   `json:"title"`
+	Kind     string   `json:"kind"`
+	Status   string   `json:"status"`
+	Reasons  []string `json:"reasons"`
+	Matching int      `json:"matching_evidence_count"`
 }
 
 func cmdParity(ctx context.Context, opts globalOptions, args []string) error {
@@ -1714,6 +1736,10 @@ func buildAdoptionArtifact(ctx context.Context, cfg config.Config, root string, 
 		Health:          health,
 		Coordinator:     coordinator,
 	}
+	artifact.GateEvaluations, err = evaluateProfileGates(ctx, cfg, s, tasks, gapLimit)
+	if err != nil {
+		return adoptionArtifact{}, err
+	}
 	for _, task := range ready {
 		artifact.ReadyByRole[task.Definition.Role]++
 	}
@@ -1788,6 +1814,138 @@ func adoptionProfileGates(cfg config.Config) []adoptionProfileGate {
 		}
 	}
 	return gates
+}
+
+func evaluateProfileGates(ctx context.Context, cfg config.Config, s *store.Store, tasks []store.Task, gapLimit int) ([]adoptionGateEvaluation, error) {
+	var evaluations []adoptionGateEvaluation
+	now := time.Now().UTC()
+	for _, profile := range cfg.WorkstreamProfiles {
+		if len(profile.Gates) == 0 {
+			continue
+		}
+		profileTasks := tasksForProfile(profile, tasks)
+		for _, gate := range profile.Gates {
+			evaluation := adoptionGateEvaluation{
+				Profile:      profile.Name,
+				Gate:         gate.Name,
+				Mode:         gate.Mode,
+				EvidenceType: gate.EvidenceType,
+				TaskCount:    len(profileTasks),
+				Status:       "satisfied",
+			}
+			if len(profileTasks) == 0 {
+				evaluation.Status = "no_tasks"
+				evaluations = append(evaluations, evaluation)
+				continue
+			}
+			for _, task := range profileTasks {
+				_, _, evidence, _, _, err := s.TaskDetail(ctx, task.Definition.ID)
+				if err != nil {
+					return nil, err
+				}
+				ok, matching, reasons := evaluateGateForTask(gate, evidence, now)
+				if ok {
+					evaluation.SatisfiedCount++
+					continue
+				}
+				evaluation.MissingCount++
+				if gapLimit < 0 || len(evaluation.Missing) < gapLimit {
+					evaluation.Missing = append(evaluation.Missing, adoptionGateTaskMiss{
+						TaskID:   task.Definition.ID,
+						Title:    task.Definition.Title,
+						Kind:     task.Definition.Kind,
+						Status:   task.Status,
+						Reasons:  reasons,
+						Matching: matching,
+					})
+				}
+			}
+			if evaluation.MissingCount > 0 {
+				evaluation.Status = "missing"
+			}
+			evaluations = append(evaluations, evaluation)
+		}
+	}
+	return evaluations, nil
+}
+
+func tasksForProfile(profile config.WorkstreamProfile, tasks []store.Task) []store.Task {
+	if len(profile.TaskKinds) == 0 {
+		return tasks
+	}
+	kinds := map[string]bool{}
+	for _, kind := range profile.TaskKinds {
+		kinds[kind] = true
+	}
+	var out []store.Task
+	for _, task := range tasks {
+		if kinds[task.Definition.Kind] {
+			out = append(out, task)
+		}
+	}
+	return out
+}
+
+func evaluateGateForTask(gate config.WorkstreamProfileGate, evidence []store.Evidence, now time.Time) (bool, int, []string) {
+	requiredCount := gate.RequiredEvidenceCount
+	if requiredCount == 0 && (gate.EvidenceType != "" || len(gate.AcceptedResults) > 0 || gate.ArtifactRequired || gate.ExpiresAfter != "" || gate.OwnerSignoffRequired) {
+		requiredCount = 1
+	}
+	accepted := map[string]bool{}
+	for _, result := range gate.AcceptedResults {
+		accepted[result] = true
+	}
+	var matching int
+	var hasArtifact bool
+	var fresh bool
+	var hasOwnerSignoff bool
+	for _, ev := range evidence {
+		if gate.EvidenceType != "" && ev.ArtifactType != gate.EvidenceType {
+			continue
+		}
+		if len(accepted) > 0 && !accepted[ev.Result] {
+			continue
+		}
+		matching++
+		if ev.ArtifactPath != "" {
+			hasArtifact = true
+		}
+		if evidenceIsFresh(ev, gate.ExpiresAfter, now) {
+			fresh = true
+		}
+		if strings.Contains(strings.ToLower(ev.Notes), "signoff") || strings.Contains(strings.ToLower(ev.Notes), "sign-off") {
+			hasOwnerSignoff = true
+		}
+	}
+	var reasons []string
+	if matching < requiredCount {
+		reasons = append(reasons, fmt.Sprintf("needs %d matching evidence row(s), found %d", requiredCount, matching))
+	}
+	if gate.ArtifactRequired && !hasArtifact {
+		reasons = append(reasons, "needs evidence artifact")
+	}
+	if gate.ExpiresAfter != "" && !fresh {
+		reasons = append(reasons, "needs fresh evidence")
+	}
+	if gate.OwnerSignoffRequired && !hasOwnerSignoff {
+		reasons = append(reasons, "needs owner signoff evidence note")
+	}
+	return len(reasons) == 0, matching, reasons
+}
+
+func evidenceIsFresh(ev store.Evidence, expiresAfter string, now time.Time) bool {
+	if expiresAfter == "" {
+		return true
+	}
+	ttl, err := time.ParseDuration(expiresAfter)
+	if err != nil {
+		return false
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, ev.CreatedAt)
+	if err != nil {
+		return false
+	}
+	return now.Sub(createdAt) <= ttl
 }
 
 func gateMode(blocking bool) string {
@@ -1904,6 +2062,19 @@ func printAdoptionArtifact(artifact adoptionArtifact) {
 			}
 			if len(requirements) > 0 {
 				fmt.Printf("  requirements: %s\n", strings.Join(requirements, "; "))
+			}
+		}
+	}
+	if len(artifact.GateEvaluations) > 0 {
+		fmt.Println("\n## Gate Evaluation")
+		for _, evaluation := range artifact.GateEvaluations {
+			label := evaluation.Profile + "/" + evaluation.Gate
+			fmt.Printf("- %s: %s (%d/%d satisfied)\n", label, evaluation.Status, evaluation.SatisfiedCount, evaluation.TaskCount)
+			for _, miss := range evaluation.Missing {
+				fmt.Printf("  - %s [%s] %s: %s\n", miss.TaskID, miss.Kind, miss.Title, strings.Join(miss.Reasons, "; "))
+			}
+			if evaluation.MissingCount > len(evaluation.Missing) {
+				fmt.Printf("  - ... %d more missing\n", evaluation.MissingCount-len(evaluation.Missing))
 			}
 		}
 	}

@@ -6,9 +6,10 @@ such as release readiness, platform foundation work, frontend migration,
 service extraction, SDK readiness, or security hardening.
 
 Profiles are advisory in the current release. Fairway validates the config,
-uses `route_samples` in `fairway adoption artifact`, and reports named profile
-gates. Dashboard grouping, structured guard evidence, task ownership metadata,
-and template-rendered packets are planned follow-on work.
+uses `route_samples` in `fairway adoption artifact`, and evaluates named
+profile gates against recorded evidence rows. Dashboard grouping, structured
+guard evidence, task ownership metadata, and template-rendered packets are
+planned follow-on work.
 
 ## When To Add One
 
@@ -81,8 +82,19 @@ Profile gates can describe the evidence a workstream expects:
 - `owner_signoff_required` says a named owner approval is expected.
 - `expires_after` records how long the evidence remains fresh.
 
-These fields are validated and reported in adoption artifacts today. They are
+These fields are validated and evaluated in adoption artifacts today. They are
 not yet enforced by `merge-ready`.
+
+Gate evaluation matches profile gates to tasks by `task_kinds`, then checks
+task evidence rows:
+
+- `evidence_type` matches `fairway record evidence --artifact-type`.
+- `accepted_results` matches `--result`.
+- `artifact_required` requires `--artifact`.
+- `expires_after` compares the evidence row's `created_at` timestamp to the
+  configured duration.
+- `owner_signoff_required` currently expects the evidence notes to contain
+  `signoff` or `sign-off`.
 
 ## Adoption Artifact
 
@@ -94,9 +106,11 @@ fairway adoption artifact
 fairway --json adoption artifact > .fairway/adoption.json
 ```
 
-The artifact should show the profile gates and route samples you configured.
-If route samples do not resolve to the expected reviewers, update
-`[[review_routes]]` before asking agents to rely on the profile.
+The artifact should show the profile gates, route samples, and gate evaluation
+summary you configured. If route samples do not resolve to the expected
+reviewers, update `[[review_routes]]` before asking agents to rely on the
+profile. If a gate reports missing tasks, record the required evidence or adjust
+the gate before treating the workstream as ready.
 
 ## Agent Guidance
 

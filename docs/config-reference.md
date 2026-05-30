@@ -163,8 +163,9 @@ Ordered list. The first matching glob wins.
 
 Named coordination profiles for architecture-aware work. These are advisory
 configuration today: validation accepts them, `fairway adoption artifact` uses
-`route_samples` and reports named profile gates, and future dashboard/packet
-work can consume the same metadata without changing the file shape.
+`route_samples`, reports named profile gates, and evaluates those gates against
+matching task evidence rows. Future dashboard/packet work can consume the same
+metadata without changing the file shape.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -183,11 +184,11 @@ Named readiness gates under the preceding profile.
 | `name` | string | — | Gate name, for example `security-review`, `uat-evidence`, `release-risk`, or `sdk-readiness`. Must be unique within the profile. |
 | `mode` | string | — | `advisory`, `blocking`, or `report_only`. |
 | `evidence_type` | string | — | Optional evidence type this gate expects. |
-| `required_evidence_count` | int | `0` | Minimum count expected for this evidence type. Reported today; enforcement is future work. |
+| `required_evidence_count` | int | `0` | Minimum count expected for this evidence type in adoption gate evaluation. If omitted but other evidence requirements are present, evaluation treats the gate as needing at least one matching row. |
 | `accepted_results` | []string | — | Accepted `task_evidence.result` values: `pass`, `fail`, `partial`, `skipped`, or `blocked`. |
-| `artifact_required` | bool | `false` | Whether evidence should include an artifact path or URL. |
-| `owner_signoff_required` | bool | `false` | Whether the workstream expects explicit owner signoff. |
-| `expires_after` | duration | — | Duration after which the evidence should be refreshed, for example `720h`. |
+| `artifact_required` | bool | `false` | Whether matching evidence must include an artifact path or URL. |
+| `owner_signoff_required` | bool | `false` | Whether matching evidence notes must contain `signoff` or `sign-off`. |
+| `expires_after` | duration | — | Duration after which matching evidence is considered stale, for example `720h`. |
 | `description` | string | — | Optional human-readable description. |
 
 ### `[[packet_templates]]`

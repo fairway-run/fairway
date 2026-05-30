@@ -72,8 +72,8 @@ required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "
 The first implementation use is intentionally small: `fairway config validate`
 checks this shape, validates profile task kinds against configured task kinds,
 validates packet-template profile references, and `fairway adoption artifact`
-uses `route_samples` and reports named profile gates with structured evidence
-requirements. Dashboard grouping, packet rendering, and named gate enforcement
+uses `route_samples` and evaluates named profile gates against matching task
+evidence rows. Dashboard grouping, packet rendering, and named gate enforcement
 should build on this same config rather than adding project-specific flags.
 
 ## Packet Templates
@@ -142,6 +142,7 @@ scanners still produce the reports.
 - What is missing?
 - Which gates are advisory vs. blocking?
 - What evidence gaps exist?
+- Which profile gates are satisfied or missing for matching tasks?
 - What review routes and workstream samples are active?
 
 `fairway parity artifact` remains as a compatibility spelling for GPUaaS-style

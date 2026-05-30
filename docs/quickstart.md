@@ -168,9 +168,9 @@ fairway --json adoption artifact --route cmd/api/routes.go
 ```
 
 The artifact summarizes task counts, ready work, configured gates, workstream
-profile gates, review-route samples, regression-pack validation, health, and
-evidence gaps. If no `--route` flags are provided, Fairway samples paths from
-the configured `route_samples`. See
+profile gates, evidence-backed gate evaluation, review-route samples,
+regression-pack validation, health, and evidence gaps. If no `--route` flags are
+provided, Fairway samples paths from the configured `route_samples`. See
 [workstream-profile-guide.md](workstream-profile-guide.md) for profile design
 guidance.
 

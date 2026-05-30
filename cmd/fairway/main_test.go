@@ -546,6 +546,45 @@ func TestDefaultAdoptionRouteSamplesUsesProfiles(t *testing.T) {
 	}
 }
 
+func TestCLI_AdoptionArtifactEvaluatesProfileGates(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[workstream_profiles]]
+name = "release-readiness"
+task_kinds = ["release-risk"]
+
+[[workstream_profiles.gates]]
+name = "security-review"
+mode = "advisory"
+evidence_type = "security-review"
+required_evidence_count = 1
+accepted_results = ["pass"]
+artifact_required = true
+`)
+	runOK(t, "add", "T-001", "--title", "Covered", "--role", "backend", "--kind", "release-risk")
+	runOK(t, "add", "T-002", "--title", "Missing", "--role", "backend", "--kind", "release-risk")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "security review", "--result", "pass", "--artifact", "dist/security.txt", "--artifact-type", "security-review")
+
+	artifact := runCapture(t, "adoption", "artifact", "--gap-limit", "5")
+	assertContains(t, artifact, "## Gate Evaluation")
+	assertContains(t, artifact, "release-readiness/security-review: missing (1/2 satisfied)")
+	assertContains(t, artifact, "T-002 [release-risk] Missing")
+
+	jsonArtifact := runCapture(t, "--json", "adoption", "artifact")
+	assertContains(t, jsonArtifact, `"gate_evaluations"`)
+	assertContains(t, jsonArtifact, `"missing_count": 1`)
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	_ = runCapture(t, args...)

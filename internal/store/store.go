@@ -77,6 +77,7 @@ type Evidence struct {
 	ArtifactType    string
 	DurationSeconds *int
 	Notes           string
+	CreatedAt       string
 }
 
 type Handoff struct {
@@ -1502,7 +1503,7 @@ func scanTasks(rows *sql.Rows) ([]Task, error) {
 }
 
 func (s *Store) evidence(ctx context.Context, taskID string) ([]Evidence, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT command_text, result, artifact_path, artifact_type, duration_seconds, notes FROM task_evidence WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
+	rows, err := s.db.QueryContext(ctx, `SELECT command_text, result, artifact_path, artifact_type, duration_seconds, notes, created_at FROM task_evidence WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -1511,7 +1512,7 @@ func (s *Store) evidence(ctx context.Context, taskID string) ([]Evidence, error)
 	for rows.Next() {
 		var ev Evidence
 		var dur sql.NullInt64
-		if err := rows.Scan(&ev.CommandText, &ev.Result, &ev.ArtifactPath, &ev.ArtifactType, &dur, &ev.Notes); err != nil {
+		if err := rows.Scan(&ev.CommandText, &ev.Result, &ev.ArtifactPath, &ev.ArtifactType, &dur, &ev.Notes, &ev.CreatedAt); err != nil {
 			return nil, err
 		}
 		if dur.Valid {
