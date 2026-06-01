@@ -179,6 +179,18 @@ while Fairway improvements are assigned as their own bounded workstream.
    - Trigger: platform-foundation lanes launch multiple bounded Claude/Codex
      tasks through tmux and need consistent prompt/transcript/session handling.
 
+6. Guard report mode vocabulary
+   - Current state: `record guard-report` accepts `report_only`, `warning`,
+     and `blocking`, while GPUaaS platform-foundation guards now distinguish
+     `blocking_new` from `blocking_all`.
+   - Next pressure point: allow profile-configured guard modes, or add
+     first-class `blocking_new` / `blocking_all` support, so recorded evidence
+     can preserve the exact guard graduation state without overloading
+     `blocking`.
+   - Trigger: a workstream graduates a boundary guard from warning into
+     blocking-new mode and wants dashboard/readiness evidence to retain that
+     exact phase.
+
 ### Later / Product Polish
 
 1. Saved dashboard views
