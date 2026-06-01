@@ -38,6 +38,10 @@ branch = "agent/backend"
 [[roles]]
 name = "ui"
 branch = "agent/ui"
+
+[[roles]]
+name = "orchestrator"
+branch = "agent/orchestrator"
 ```
 
 For architecture, release, migration, or security tracks, add a workstream
@@ -153,8 +157,17 @@ fairway record handoff T-002 --to backend --payload "Need an example payload for
 
 ## What you see in the dashboard
 
+- The track summary shows total, ready, in-progress, blocked, done, and
+  workstream counts.
+- Workstream progress cards group tasks by profile and kind when profile
+  metadata is present.
+- Profile gate readiness shows whether evidence-backed gates are satisfied
+  across the track, with links to missing tasks.
 - The lanes strip updates within a second of each transition.
-- The activity feed shows the chain: claim → evidence → done; claim → handoff.
+- The activity feed shows the chain: claim -> evidence -> done; claim ->
+  handoff, with kind and row-count filters for busy tracks.
+- Task tables are bounded by a row limit so large queues stay usable; narrow
+  filters or raise the table limit when you need more detail.
 - Health badges flag the unacknowledged handoff to backend after one hour.
 
 Long-running side work should use packets and checkpoints:
@@ -171,7 +184,11 @@ See [coordinator-loop.md](design/coordinator-loop.md),
 
 For architecture-heavy workstreams, start from the generic
 [`examples/platform-foundation-queue.yaml`](../examples/platform-foundation-queue.yaml)
-fixture to see profile-aware task metadata in context.
+fixture to see profile-aware task metadata in context. For planning or
+documentation tasks, prefer an `orchestrator` owner with architecture,
+governance, security, ops, or frontend listed as review domains. That keeps
+coordination ownership separate from review approval and avoids self-review
+when review routes point back to the architecture lane.
 
 ## Adoption Readiness
 
@@ -189,6 +206,11 @@ regression-pack validation, health, and evidence gaps. If no `--route` flags are
 provided, Fairway samples paths from the configured `route_samples`. See
 [workstream-profile-guide.md](workstream-profile-guide.md) for profile design
 guidance.
+
+If the project does not have regression packs yet, either add a tiny catalog for
+the workstream or omit `--catalog` and treat the regression-pack section as
+future coverage. The adoption artifact is still useful for profile gates,
+review routes, evidence gaps, and worktree health.
 
 ## GPUaaS Parity
 

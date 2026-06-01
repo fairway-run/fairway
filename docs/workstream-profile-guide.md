@@ -10,9 +10,11 @@ validates the config, uses `route_samples` in `fairway adoption artifact`,
 evaluates named profile gates against recorded evidence rows, applies blocking
 profile gates in `fairway merge-ready`, and groups dashboard tasks by
 profile/kind when metadata is present. The dashboard can also filter by
-profile, kind, owning domain, risk, and review domain. Tasks can carry
-profile-aware metadata such as owning domain/layer, source/target paths, review
-domains, risk level, and migration type. Template-rendered packets are
+profile, kind, owning domain, risk, and review domain; it also evaluates
+profile gates in the main view and bounds task/activity tables for larger
+tracks. Tasks can carry profile-aware metadata such as owning domain/layer,
+source/target paths, review domains, risk level, and migration type.
+Template-rendered packets are
 available through `fairway packet template`; guard reports are recorded through
 `fairway record guard-report`.
 
@@ -118,6 +120,10 @@ reviewers, update `[[review_routes]]` before asking agents to rely on the
 profile. If a gate reports missing tasks, record the required evidence or adjust
 the gate before treating the workstream as ready.
 
+The dashboard shows the same profile gates as a live readiness panel. Use it
+while agents are working so missing evidence is visible before `merge-ready` or
+`readiness report` becomes the first place the team sees the gap.
+
 ## Task Metadata
 
 Use task metadata when the workstream needs architecture context that should
@@ -141,6 +147,12 @@ fairway add PF-003 \
 The same fields are accepted in YAML/JSON imports. See
 [`examples/platform-foundation-queue.yaml`](../examples/platform-foundation-queue.yaml)
 for a generic platform-foundation queue.
+
+For planning-heavy or documentation-heavy tracks, make the task owner an
+orchestrator role and keep architecture, security, frontend, ops, and governance
+as review domains. This avoids accidental self-review when a path such as
+`doc/architecture/**` routes to the architecture reviewer. Implementation tasks
+can still be owned by the lane doing the work, such as `backend` or `ui`.
 
 ## Agent Guidance
 

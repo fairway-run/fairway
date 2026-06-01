@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -91,6 +92,113 @@ func TestIndexFiltersByProfileMetadata(t *testing.T) {
 	}
 	if strings.Contains(body, "Billing bug") {
 		t.Fatalf("filtered dashboard body included unmatching task:\n%s", body)
+	}
+}
+
+func TestIndexFiltersBySearchAndStatus(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "DOC-001", Title: "Portal source metadata", Kind: "content-entry", Role: "docs", SourcePaths: []string{"doc/architecture/platform-foundation/README.md"}},
+		{ID: "DOC-002", Title: "API reference page", Kind: "content-entry", Role: "docs"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DOC-001", "in_progress", "", false); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"docs"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/?q=platform-foundation&status=in_progress", nil)
+	rec := httptest.NewRecorder()
+	server.index(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Portal source metadata", "value=\"platform-foundation\"", "selected>in_progress", "filtered: 1 / 2"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("search dashboard body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "API reference page") {
+		t.Fatalf("search dashboard body included unmatching task:\n%s", body)
+	}
+}
+
+func TestIndexRendersProfileGateReadiness(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "Has source doc evidence", Kind: "content-entry", Role: "docs"},
+		{ID: "T-002", Title: "Missing source doc evidence", Kind: "content-entry", Role: "docs"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{
+		CommandText:  "make docs-portal-check",
+		Result:       "pass",
+		ArtifactPath: "packages/docs",
+		ArtifactType: "source-doc-check",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.WorkstreamProfiles = []config.WorkstreamProfile{{
+		Name:      "docusaurus-portal",
+		TaskKinds: []string{"content-entry"},
+		Gates: []config.WorkstreamProfileGate{{
+			Name:                  "source-docs-linked",
+			Mode:                  "blocking",
+			EvidenceType:          "source-doc-check",
+			RequiredEvidenceCount: 1,
+			AcceptedResults:       []string{"pass"},
+			ArtifactRequired:      true,
+			Description:           "Each migrated page links back to source docs.",
+		}},
+	}}
+	server := New(s, cfg, []string{"docs"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.index(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Gate Readiness", "docusaurus-portal / source-docs-linked", "1/2 satisfied", "1 missing", "T-002", "needs 1 matching evidence row"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("gate dashboard body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestIndexFiltersActivityAndLimitsRows(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var defs []store.TaskDefinition
+	for i := 1; i <= 4; i++ {
+		defs = append(defs, store.TaskDefinition{ID: fmt.Sprintf("T-%03d", i), Title: fmt.Sprintf("Task %d", i), Kind: "content-entry", Role: "docs"})
+	}
+	if err := s.ImportTasks(ctx, defs); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "make docs-portal-check", Result: "pass", ArtifactType: "docs-build"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"docs"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/?activity_kind=evidence&activity_limit=1&table_limit=2", nil)
+	rec := httptest.NewRecorder()
+	server.index(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"showing 1 of 1", "make docs-portal-check", "showing first 2 of 4 tasks"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("limited dashboard body missing %q:\n%s", want, body)
+		}
 	}
 }
 

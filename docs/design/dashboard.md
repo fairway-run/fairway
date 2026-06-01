@@ -75,11 +75,34 @@ Filter chips above:
 - "Has unrouted review" — tasks where a review verdict needs route resolution.
 - "Stale" — task in `in_progress` with owner session heartbeat older than 2h.
 
+### Gate readiness
+
+When workstream profiles define gates, the dashboard evaluates them across all
+matching tasks and renders a live readiness panel. Each gate shows:
+
+- profile and gate name,
+- mode and evidence type,
+- satisfied / total task count,
+- missing task links with the first matching-evidence reason.
+
+This is the operator-facing view of the same evidence contract used by
+`fairway readiness report` and `fairway merge-ready`.
+
 ### Activity feed (right rail)
 
-Reverse-chronological merge of `task_state_history`, `task_handoffs`, `task_evidence`, `task_reviews`. Last 50 entries. SSE-pushed.
+Reverse-chronological merge of `task_state_history`, `task_handoffs`,
+`task_evidence`, `task_reviews`. The feed is filterable by activity kind and
+bounded by a configurable row limit so busy tracks do not turn into an
+unbounded scroll.
 
-Each entry is one line: `15:42  T-042  in_progress → done  by backend`.
+Each entry is one line: `15:42  T-042  in_progress -> done  by backend`.
+
+### Data-volume controls
+
+The dashboard treats task and activity data as operational tables, not static
+pages. Main task tables support a configurable row limit, and the activity feed
+supports kind and row-count filters. The intent is to keep the page fast and
+scan-friendly once a track has hundreds of tasks or many evidence rows.
 
 ### Health badges (header)
 

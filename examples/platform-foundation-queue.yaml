@@ -2,7 +2,7 @@ tasks:
   - id: PF-001
     title: Establish platform-foundation ownership map
     kind: architecture-map
-    role: arch
+    role: orchestrator
     profile: platform-foundation
     owning_domain: platform
     owning_layer: architecture
@@ -19,6 +19,7 @@ tasks:
     migration_type: ownership-map
     acceptance_checks:
       - ownership map names current and target owners for API, services, workers, events, and frontend surfaces
+      - architecture and governance review are recorded by roles other than the orchestrator
 
   - id: PF-002
     title: Add report-only platform boundary guard

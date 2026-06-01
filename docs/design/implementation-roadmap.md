@@ -120,3 +120,61 @@ to a useful v1.
    shortcuts matter.
 6. Expand tracker integration from local links/dry-run reporting to provider
    adapters when credentials and API mapping are explicit.
+
+## Discovered During GPUaaS Adoption
+
+These are product follow-ups found while using Fairway to coordinate the
+GPUaaS platform-foundation and Docusaurus portal tracks. Keep them here until
+they graduate into a release cut or an imported Fairway task queue.
+
+### Immediate When Needed
+
+1. Dashboard workstream data volume
+   - Current state: global search, status/profile/kind/domain/risk/review
+     filters, table row limits, and activity kind/row limits are implemented.
+   - Next pressure point: when a workstream has several days of task churn, add
+     per-workstream pagination or expandable workstream sections so the main
+     pane stays scannable without hiding too much context.
+   - Trigger: any real adoption track has more than 50 tasks in one
+     profile/kind group, or users repeatedly raise `table_limit` to 100+.
+
+2. Activity feed query scaling
+   - Current state: dashboard fetches a bounded recent activity window and
+     filters in memory.
+   - Next pressure point: add store-level filters for activity kind, task id,
+     profile, and time window instead of fetching a large mixed feed first.
+   - Trigger: activity count regularly exceeds a few hundred rows during active
+     tracks, or dashboard first paint slows noticeably.
+
+3. Gate-readiness drill-down
+   - Current state: the dashboard shows profile gates, satisfied counts, and
+     missing task links.
+   - Next pressure point: add a task-detail gate panel so a single task shows
+     which profile gates it satisfies, which evidence rows counted, and which
+     reason remains open.
+   - Trigger: users inspect a task after seeing a gate miss and still need the
+     CLI to understand why.
+
+4. SQLite busy handling for burst local writes
+   - Current state: multiple Fairway CLI writes issued at the same time can hit
+     `SQLITE_BUSY`; serial reruns succeed.
+   - Next pressure point: add a small busy timeout/retry policy around store
+     writes so shell scripts or orchestrators can record evidence/reviews in
+     quick succession without manual retry.
+   - Trigger: adoption tracks commonly record several evidence or review rows
+     from scripts, or users see database lock errors during normal local use.
+
+### Later / Product Polish
+
+1. Saved dashboard views
+   - Save common filters such as "docs portal API work", "blocked security
+     reviews", or "evidence activity" as URL-addressable views.
+
+2. Dashboard route parity with CLI reports
+   - Add read-only dashboard pages for readiness report, adoption artifact, and
+     merge-ready detail using the same evaluation logic as the CLI.
+
+3. Provider tracker follow-through
+   - Once Jira/Linear adapters are configured, export discovered Fairway
+     follow-ups to the planning tool while keeping the Fairway DB authoritative
+     for execution state.
