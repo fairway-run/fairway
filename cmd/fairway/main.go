@@ -55,6 +55,12 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 	switch args[0] {
+	case "help", "-h", "--help":
+		if len(args) > 1 {
+			return fmt.Errorf("unexpected help arguments: %s", strings.Join(args[1:], " "))
+		}
+		usage()
+		return nil
 	case "init":
 		return cmdInit(ctx, opts)
 	case "import":

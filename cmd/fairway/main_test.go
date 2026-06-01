@@ -54,6 +54,17 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "db", "backup", "backup.db")
 }
 
+func TestCLI_HelpAliases(t *testing.T) {
+	for _, args := range [][]string{
+		{"help"},
+		{"--help"},
+		{"-h"},
+	} {
+		out := runCapture(t, args...)
+		assertContains(t, out, "fairway init|import|add")
+	}
+}
+
 func TestCLI_RequiresEvidenceGate(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

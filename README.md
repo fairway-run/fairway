@@ -41,6 +41,7 @@ first release tag, and a future Postgres runtime adapter.
 
 ```bash
 fairway init                  # scaffold .fairway/config.toml and the SQLite DB
+fairway help                  # print the command summary (-h/--help also work)
 $EDITOR .fairway/config.toml  # define roles, branches, worktree root, review routes
 fairway config validate
 fairway worktree setup        # create per-role branches and worktrees
