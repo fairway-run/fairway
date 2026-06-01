@@ -164,6 +164,17 @@ they graduate into a release cut or an imported Fairway task queue.
    - Trigger: adoption tracks commonly record several evidence or review rows
      from scripts, or users see database lock errors during normal local use.
 
+5. Prompt-file session launch
+   - Current state: `session upsert` can record tmux/zellij sessions and the
+     example adapters prove the shape, but launching long agent prompts through
+     inline shell/tmux command strings is brittle.
+   - Next pressure point: add a prompt-file based adapter path or documented
+     launcher convention that writes the prompt to a file, starts the provider
+     with that file, captures a transcript, and records the session in one
+     repeatable command.
+   - Trigger: platform-foundation lanes launch multiple bounded Claude/Codex
+     tasks through tmux and need consistent prompt/transcript/session handling.
+
 ### Later / Product Polish
 
 1. Saved dashboard views
