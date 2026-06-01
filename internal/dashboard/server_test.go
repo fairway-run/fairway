@@ -173,6 +173,48 @@ func TestIndexRendersProfileGateReadiness(t *testing.T) {
 	}
 }
 
+func TestIndexProfileGateReadinessRespectsGateTaskKinds(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "PF-001", Title: "Ownership map", Kind: "architecture-map", Role: "orchestrator"},
+		{ID: "PF-002", Title: "Boundary guard", Kind: "boundary-guard", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.WorkstreamProfiles = []config.WorkstreamProfile{{
+		Name:      "platform-foundation",
+		TaskKinds: []string{"architecture-map", "boundary-guard"},
+		Gates: []config.WorkstreamProfileGate{{
+			Name:                  "boundary-guard-report",
+			Mode:                  "advisory",
+			TaskKinds:             []string{"boundary-guard"},
+			EvidenceType:          "guard-report",
+			RequiredEvidenceCount: 1,
+			AcceptedResults:       []string{"pass"},
+			ArtifactRequired:      true,
+		}},
+	}}
+	server := New(s, cfg, []string{"orchestrator", "backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.index(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"platform-foundation / boundary-guard-report", "0/1 satisfied", "PF-002"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("gate task-kind dashboard body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "PF-001</a> Ownership map <span class=\"muted\">(architecture-map") {
+		t.Fatalf("gate scoped to boundary-guard included architecture-map task:\n%s", body)
+	}
+}
+
 func TestIndexFiltersActivityAndLimitsRows(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

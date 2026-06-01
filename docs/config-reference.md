@@ -51,7 +51,7 @@ reviewer = "governance"
 
 [[workstream_profiles]]
 name = "platform-foundation"
-task_kinds = ["architecture-map", "guard", "facade"]
+task_kinds = ["architecture-map", "boundary-guard", "facade"]
 dashboard_groups = ["architecture maps", "boundary guards", "facades"]
 review_domains = ["architecture", "security"]
 route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
@@ -59,6 +59,7 @@ route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
 [[workstream_profiles.gates]]
 name = "security-review"
 mode = "advisory"                     # advisory | blocking | report_only
+task_kinds = ["facade"]               # optional; omit to apply to all profile task kinds
 evidence_type = "security-review"
 required_evidence_count = 1
 accepted_results = ["pass", "partial"]
@@ -183,6 +184,7 @@ Named readiness gates under the preceding profile.
 |---|---|---|---|
 | `name` | string | — | Gate name, for example `security-review`, `uat-evidence`, `release-risk`, or `sdk-readiness`. Must be unique within the profile. |
 | `mode` | string | — | `advisory`, `blocking`, or `report_only`. Missing `blocking` gates fail `merge-ready`; missing `advisory` and `report_only` gates are warnings. |
+| `task_kinds` | []string | — | Optional task-kind filter for this gate. Omit to apply the gate to every task kind in the profile. |
 | `evidence_type` | string | — | Optional evidence type this gate expects. |
 | `required_evidence_count` | int | `0` | Minimum count expected for this evidence type in adoption gate evaluation. If omitted but other evidence requirements are present, evaluation treats the gate as needing at least one matching row. |
 | `accepted_results` | []string | — | Accepted `task_evidence.result` values: `pass`, `fail`, `partial`, `skipped`, or `blocked`. Rows with other results do not count. |

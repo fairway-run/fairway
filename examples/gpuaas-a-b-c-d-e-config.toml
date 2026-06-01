@@ -53,6 +53,11 @@ name = "E-governance"
 branch = "agent/E-governance"
 provider = "gemini"
 
+[[roles]]
+name = "orchestrator"
+branch = "agent/orchestrator"
+provider = "codex"
+
 [[review_routes]]
 match = ".github/**"
 reviewer = "C-ops"
@@ -201,7 +206,7 @@ require_blocked_reason = true
 allow_force_without_reason = false
 
 [task_kinds]
-allowed = ["epic", "story", "task", "bug", "spike", "watch", "architecture-map", "guard", "facade", "frontend-contract", "release-evidence"]
+allowed = ["epic", "story", "task", "bug", "spike", "watch", "architecture-map", "boundary-guard", "facade", "frontend-contract", "release-evidence"]
 default = "task"
 
 [task_priorities]
@@ -209,9 +214,9 @@ default = 1000
 
 [[workstream_profiles]]
 name = "platform-foundation"
-task_kinds = ["architecture-map", "guard", "facade", "frontend-contract", "release-evidence"]
+task_kinds = ["architecture-map", "boundary-guard", "facade", "frontend-contract", "release-evidence"]
 dashboard_groups = ["architecture maps", "boundary guards", "facades", "frontend contracts", "release evidence"]
-review_domains = ["architecture", "governance", "frontend", "ops"]
+review_domains = ["D-arch", "E-governance", "B-ui", "C-ops"]
 route_samples = [
   "doc/api/openapi.draft.yaml",
   "cmd/api/routes.go",
@@ -223,6 +228,7 @@ route_samples = [
 [[workstream_profiles.gates]]
 name = "boundary-guard-report"
 mode = "advisory"
+task_kinds = ["boundary-guard"]
 evidence_type = "guard-report"
 required_evidence_count = 1
 accepted_results = ["pass", "partial", "blocked"]
@@ -232,6 +238,7 @@ description = "Report-only boundary guard evidence is expected before enforcemen
 [[workstream_profiles.gates]]
 name = "release-risk"
 mode = "advisory"
+task_kinds = ["release-evidence"]
 evidence_type = "release-risk"
 required_evidence_count = 1
 accepted_results = ["pass", "partial", "blocked"]

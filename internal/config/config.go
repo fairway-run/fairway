@@ -106,6 +106,7 @@ type WorkstreamProfile struct {
 type WorkstreamProfileGate struct {
 	Name                  string   `toml:"name"`
 	Mode                  string   `toml:"mode"`
+	TaskKinds             []string `toml:"task_kinds"`
 	EvidenceType          string   `toml:"evidence_type"`
 	RequiredEvidenceCount int      `toml:"required_evidence_count"`
 	AcceptedResults       []string `toml:"accepted_results"`
@@ -377,6 +378,16 @@ func validateWorkstreamProfiles(profiles []WorkstreamProfile, kindSet map[string
 			}
 			if gate.RequiredEvidenceCount < 0 {
 				return fmt.Errorf("[[workstream_profiles.gates]] required_evidence_count for gate %q must be >= 0", gate.Name)
+			}
+			if err := validateStringList("[[workstream_profiles.gates]] task_kinds", gate.TaskKinds); err != nil {
+				return err
+			}
+			if len(kindSet) > 0 {
+				for _, kind := range gate.TaskKinds {
+					if !kindSet[kind] {
+						return fmt.Errorf("[[workstream_profiles.gates]] task kind %q for gate %q is not in [task_kinds].allowed", kind, gate.Name)
+					}
+				}
 			}
 			if err := validateStringList("[[workstream_profiles.gates]] accepted_results", gate.AcceptedResults); err != nil {
 				return err

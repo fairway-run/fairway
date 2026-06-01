@@ -505,8 +505,8 @@ func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, 
 		if len(profile.Gates) == 0 {
 			continue
 		}
-		profileTasks := tasksForProfile(profile, tasks)
 		for _, gate := range profile.Gates {
+			profileTasks := tasksForProfileGate(profile, gate, tasks)
 			status := GateStatus{
 				Profile:      profile.Name,
 				Name:         gate.Name,
@@ -565,11 +565,33 @@ func tasksForProfile(profile config.WorkstreamProfile, tasks []store.Task) []sto
 	return out
 }
 
+func tasksForProfileGate(profile config.WorkstreamProfile, gate config.WorkstreamProfileGate, tasks []store.Task) []store.Task {
+	var out []store.Task
+	for _, task := range tasksForProfile(profile, tasks) {
+		if gateAppliesToTask(gate, task) {
+			out = append(out, task)
+		}
+	}
+	return out
+}
+
 func profileAppliesToTask(profile config.WorkstreamProfile, task store.Task) bool {
 	if len(profile.TaskKinds) == 0 {
 		return true
 	}
 	for _, kind := range profile.TaskKinds {
+		if task.Definition.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func gateAppliesToTask(gate config.WorkstreamProfileGate, task store.Task) bool {
+	if len(gate.TaskKinds) == 0 {
+		return true
+	}
+	for _, kind := range gate.TaskKinds {
 		if task.Definition.Kind == kind {
 			return true
 		}

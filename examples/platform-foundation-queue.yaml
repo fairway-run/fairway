@@ -13,8 +13,8 @@ tasks:
     target_paths:
       - doc/architecture/platform-foundation/ownership.md
     review_domains:
-      - architecture
-      - governance
+      - D-arch
+      - E-governance
     risk_level: medium
     migration_type: ownership-map
     acceptance_checks:
@@ -24,7 +24,7 @@ tasks:
   - id: PF-002
     title: Add report-only platform boundary guard
     kind: boundary-guard
-    role: backend
+    role: A-backend
     profile: platform-foundation
     owning_domain: platform
     owning_layer: guard
@@ -34,8 +34,8 @@ tasks:
     target_paths:
       - scripts/ci/platform-boundary-report.sh
     review_domains:
-      - architecture
-      - ops
+      - D-arch
+      - C-ops
     risk_level: medium
     migration_type: boundary-guard
     depends_on:
@@ -46,7 +46,7 @@ tasks:
   - id: PF-003
     title: Introduce platform evidence facade
     kind: facade
-    role: backend
+    role: A-backend
     profile: platform-foundation
     owning_domain: platform
     owning_layer: service
@@ -56,8 +56,8 @@ tasks:
     target_paths:
       - packages/services/platform/evidence
     review_domains:
-      - architecture
-      - security
+      - D-arch
+      - E-governance
     risk_level: high
     migration_type: facade
     depends_on:
@@ -70,7 +70,7 @@ tasks:
   - id: PF-004
     title: Define frontend platform contract
     kind: frontend-contract
-    role: ui
+    role: B-ui
     profile: platform-foundation
     owning_domain: platform
     owning_layer: frontend
@@ -80,8 +80,8 @@ tasks:
     target_paths:
       - doc/architecture/platform-foundation/frontend-contract.md
     review_domains:
-      - frontend
-      - architecture
+      - B-ui
+      - D-arch
     risk_level: medium
     migration_type: page-contract
     depends_on:
@@ -92,7 +92,7 @@ tasks:
   - id: PF-005
     title: Record platform release evidence
     kind: release-evidence
-    role: governance
+    role: E-governance
     profile: platform-foundation
     owning_domain: platform
     owning_layer: release
@@ -103,9 +103,9 @@ tasks:
       - .fairway/adoption.json
       - doc/release/platform-foundation-evidence.md
     review_domains:
-      - governance
-      - ops
-      - security
+      - E-governance
+      - C-ops
+      - D-arch
     risk_level: high
     migration_type: release-readiness
     depends_on:

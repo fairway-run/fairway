@@ -325,6 +325,44 @@ accepted_results = ["pass"]
 	assertContains(t, report, "satisfied")
 }
 
+func TestCLI_ProfileGateTaskKindsScopeReadiness(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[workstream_profiles]]
+name = "platform-foundation"
+task_kinds = ["architecture-map", "boundary-guard"]
+
+[[workstream_profiles.gates]]
+name = "boundary-guard-report"
+mode = "advisory"
+task_kinds = ["boundary-guard"]
+evidence_type = "guard-report"
+required_evidence_count = 1
+accepted_results = ["pass"]
+artifact_required = true
+`)
+	runOK(t, "add", "PF-001", "--title", "Ownership map", "--role", "orchestrator", "--kind", "architecture-map")
+	runOK(t, "add", "PF-002", "--title", "Boundary guard", "--role", "backend", "--kind", "boundary-guard")
+
+	jsonReport := runCapture(t, "--json", "readiness", "report", "--profile", "platform-foundation")
+	assertContains(t, jsonReport, `"task_count": 1`)
+	assertContains(t, jsonReport, `"missing_count": 1`)
+	assertContains(t, jsonReport, `"task_id": "PF-002"`)
+	if strings.Contains(jsonReport, `"task_id": "PF-001"`) {
+		t.Fatalf("gate scoped to boundary-guard included architecture-map task:\n%s", jsonReport)
+	}
+}
+
 func TestCLI_MergeReadyRequiresReviewDomains(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

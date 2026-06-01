@@ -95,6 +95,7 @@ func TestValidate_AcceptsWorkstreamProfilesAndPacketTemplates(t *testing.T) {
 		Gates: []WorkstreamProfileGate{{
 			Name:                  "security-review",
 			Mode:                  "advisory",
+			TaskKinds:             []string{"boundary-guard"},
 			EvidenceType:          "security-review",
 			RequiredEvidenceCount: 1,
 			AcceptedResults:       []string{"pass", "partial"},
@@ -122,6 +123,23 @@ func TestValidate_RejectsProfileTaskKindOutsideAllowed(t *testing.T) {
 	}}
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected profile task kind validation error")
+	}
+}
+
+func TestValidate_RejectsProfileGateTaskKindOutsideAllowed(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.TaskKinds.Allowed = []string{"task", "architecture-map"}
+	cfg.WorkstreamProfiles = []WorkstreamProfile{{
+		Name:      "platform-foundation",
+		TaskKinds: []string{"architecture-map"},
+		Gates: []WorkstreamProfileGate{{
+			Name:      "boundary-guard-report",
+			Mode:      "advisory",
+			TaskKinds: []string{"boundary-guard"},
+		}},
+	}}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected profile gate task kind validation error")
 	}
 }
 

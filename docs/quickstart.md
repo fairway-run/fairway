@@ -52,7 +52,7 @@ packet template fields without baking one project's workflow into the binary.
 ```toml
 [[workstream_profiles]]
 name = "platform-foundation"
-task_kinds = ["architecture-map", "guard", "facade"]
+task_kinds = ["architecture-map", "boundary-guard", "facade"]
 dashboard_groups = ["architecture maps", "boundary guards", "facades"]
 review_domains = ["architecture", "security"]
 route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
@@ -60,6 +60,7 @@ route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
 [[workstream_profiles.gates]]
 name = "security-review"
 mode = "advisory"
+task_kinds = ["facade"]
 evidence_type = "security-review"
 required_evidence_count = 1
 accepted_results = ["pass", "partial"]

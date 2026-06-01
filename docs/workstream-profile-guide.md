@@ -45,6 +45,7 @@ route_samples = ["scripts/release/check.sh", "doc/release/runbook.md"]
 [[workstream_profiles.gates]]
 name = "security-review"
 mode = "advisory"
+task_kinds = ["release-risk"]
 evidence_type = "security-review"
 required_evidence_count = 1
 accepted_results = ["pass", "partial"]
@@ -77,6 +78,8 @@ guard rails where findings are still being measured.
 
 Profile gates can describe the evidence a workstream expects:
 
+- `task_kinds` narrows a gate to specific task kinds inside the profile. Omit it
+  when every task kind in the profile needs the same evidence.
 - `required_evidence_count` says how many matching evidence records should
   exist.
 - `accepted_results` lists acceptable evidence results. Use values from
@@ -89,8 +92,9 @@ Profile gates can describe the evidence a workstream expects:
 These fields are validated, evaluated in adoption artifacts, and enforced by
 `merge-ready` when the gate mode is `blocking`.
 
-Gate evaluation matches profile gates to tasks by `task_kinds`, then counts
-evidence rows that satisfy every configured requirement:
+Gate evaluation first matches profile gates to tasks by the profile's
+`task_kinds`, then narrows again by the gate's optional `task_kinds`. It then
+counts evidence rows that satisfy every configured requirement:
 
 - `evidence_type` matches `fairway record evidence --artifact-type`.
 - `accepted_results` matches `--result`.
@@ -148,6 +152,13 @@ The same fields are accepted in YAML/JSON imports. See
 [`examples/platform-foundation-queue.yaml`](../examples/platform-foundation-queue.yaml)
 for a generic platform-foundation queue.
 
+For platform-foundation reshuffles, keep the queue dependency order explicit:
+ownership maps first, report-only boundary guards second, facade or
+vertical-slice implementation third. In practice, facade tasks should depend on
+both the relevant `architecture-map` task and a `boundary-guard` task unless the
+orchestrator records an explicit residual-risk exception. This makes the
+discipline visible to agents and reviewers before work starts.
+
 For planning-heavy or documentation-heavy tracks, make the task owner an
 orchestrator role and keep architecture, security, frontend, ops, and governance
 as review domains. This avoids accidental self-review when a path such as
@@ -194,4 +205,7 @@ fairway --json readiness report --profile platform-foundation
 Tasks with `review_domains` require one approved review per domain before
 `merge-ready` succeeds. Use domain names that match the reviewer identities your
 repo records, such as `architecture`, `security`, `frontend`, `ops`, or
-`governance`.
+`governance`. If the repo uses lane IDs as reviewers, such as `D-arch` or
+`E-governance`, use those exact lane IDs in `review_domains`; otherwise the
+queue can import successfully but `merge-ready` cannot be satisfied by recorded
+reviews.

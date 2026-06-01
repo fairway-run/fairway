@@ -1635,6 +1635,7 @@ type adoptionProfileGate struct {
 	Profile               string   `json:"profile"`
 	Name                  string   `json:"name"`
 	Mode                  string   `json:"mode"`
+	TaskKinds             []string `json:"task_kinds,omitempty"`
 	EvidenceType          string   `json:"evidence_type,omitempty"`
 	RequiredEvidenceCount int      `json:"required_evidence_count,omitempty"`
 	AcceptedResults       []string `json:"accepted_results,omitempty"`
@@ -1941,6 +1942,7 @@ func adoptionProfileGates(cfg config.Config) []adoptionProfileGate {
 				Profile:               profile.Name,
 				Name:                  gate.Name,
 				Mode:                  gate.Mode,
+				TaskKinds:             gate.TaskKinds,
 				EvidenceType:          gate.EvidenceType,
 				RequiredEvidenceCount: gate.RequiredEvidenceCount,
 				AcceptedResults:       gate.AcceptedResults,
@@ -1961,8 +1963,8 @@ func evaluateProfileGates(ctx context.Context, cfg config.Config, s *store.Store
 		if len(profile.Gates) == 0 {
 			continue
 		}
-		profileTasks := tasksForProfile(profile, tasks)
 		for _, gate := range profile.Gates {
+			profileTasks := tasksForProfileGate(profile, gate, tasks)
 			evaluation := adoptionGateEvaluation{
 				Profile:      profile.Name,
 				Gate:         gate.Name,
@@ -2014,6 +2016,9 @@ func evaluateTaskProfileGates(cfg config.Config, task store.Task, evidence []sto
 			continue
 		}
 		for _, gate := range profile.Gates {
+			if !gateAppliesToTask(gate, task) {
+				continue
+			}
 			ok, matching, reasons := evaluateGateForTask(gate, evidence, now)
 			evaluation := adoptionGateEvaluation{
 				Profile:        profile.Name,
@@ -2089,11 +2094,33 @@ func tasksForProfile(profile config.WorkstreamProfile, tasks []store.Task) []sto
 	return out
 }
 
+func tasksForProfileGate(profile config.WorkstreamProfile, gate config.WorkstreamProfileGate, tasks []store.Task) []store.Task {
+	var out []store.Task
+	for _, task := range tasksForProfile(profile, tasks) {
+		if gateAppliesToTask(gate, task) {
+			out = append(out, task)
+		}
+	}
+	return out
+}
+
 func profileAppliesToTask(profile config.WorkstreamProfile, task store.Task) bool {
 	if len(profile.TaskKinds) == 0 {
 		return true
 	}
 	for _, kind := range profile.TaskKinds {
+		if task.Definition.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func gateAppliesToTask(gate config.WorkstreamProfileGate, task store.Task) bool {
+	if len(gate.TaskKinds) == 0 {
+		return true
+	}
+	for _, kind := range gate.TaskKinds {
 		if task.Definition.Kind == kind {
 			return true
 		}
@@ -2262,6 +2289,9 @@ func printAdoptionArtifact(artifact adoptionArtifact) {
 				fmt.Printf("- %s: %s\n", label, gate.Mode)
 			}
 			var requirements []string
+			if len(gate.TaskKinds) > 0 {
+				requirements = append(requirements, "task kinds: "+strings.Join(gate.TaskKinds, ", "))
+			}
 			if gate.RequiredEvidenceCount > 0 {
 				requirements = append(requirements, fmt.Sprintf("count >= %d", gate.RequiredEvidenceCount))
 			}

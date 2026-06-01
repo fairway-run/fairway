@@ -49,7 +49,7 @@ Fairway now accepts a minimal profile-as-config shape:
 ```toml
 [[workstream_profiles]]
 name = "platform-foundation"
-task_kinds = ["architecture-map", "guard", "facade", "frontend-contract"]
+task_kinds = ["architecture-map", "boundary-guard", "facade", "frontend-contract"]
 dashboard_groups = ["architecture maps", "boundary guards", "facades", "frontend contracts"]
 review_domains = ["architecture", "security", "frontend"]
 route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
@@ -57,6 +57,7 @@ route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
 [[workstream_profiles.gates]]
 name = "security-review"
 mode = "advisory"
+task_kinds = ["facade"]
 evidence_type = "security-review"
 required_evidence_count = 1
 accepted_results = ["pass", "partial"]
@@ -74,13 +75,36 @@ checks this shape, validates profile task kinds against configured task kinds,
 validates packet-template profile references, and `fairway adoption artifact`
 uses `route_samples` and evaluates named profile gates against matching task
 evidence rows. `fairway merge-ready` evaluates the same gates for the target
-task and fails when a `blocking` gate is missing. Tasks can also carry
+task and fails when a `blocking` gate is missing. Gates can optionally narrow
+themselves to specific task kinds inside the profile, which keeps
+`boundary-guard` evidence from being required on unrelated facade or frontend
+tasks. Tasks can also carry
 profile-aware metadata (`profile`, `owning_domain`, `owning_layer`,
 `source_paths`, `target_paths`, `review_domains`, `risk_level`,
 `migration_type`) through imports and CLI flags. The dashboard now uses this
 metadata for an initial workstream grouping by profile/kind, and later filters
 and packet rendering should build on the same config rather than adding
 project-specific flags.
+
+## Platform-Foundation Sequence
+
+The platform-foundation profile should keep large architecture reshuffles in a
+disciplined order:
+
+1. ownership maps first,
+2. report-only boundary guard visibility second,
+3. facade or vertical-slice implementation third.
+
+That sequence should be visible in imported queue dependencies. A facade task
+should depend on the relevant `architecture-map` task and at least one
+`boundary-guard` task unless the orchestrator records an explicit exception as
+release-risk or residual-risk evidence. The point is not to block progress; it
+is to keep file moves, package extraction, and route reshaping from starting
+before ownership and guard visibility exist.
+
+Fairway enforces the concrete dependencies provided by the imported queue and
+uses profile gates to surface missing evidence. It does not infer architectural
+order by itself.
 
 ## Packet Templates
 
@@ -159,13 +183,18 @@ script-to-Fairway comparisons.
 
 First-match review routing is enough to assign an immediate reviewer. Merge
 readiness also checks task-level `review_domains` and requires one approved
-review whose reviewer matches each domain:
+review whose reviewer matches each domain. These values must match the reviewer
+identity that the project records, usually a configured role or lane:
 
 - architecture,
 - security,
 - frontend,
 - ops,
 - governance.
+
+For an A/B/C/D/E lane model, the same concept may be represented as
+`D-arch`, `E-governance`, `B-ui`, or `C-ops`. Keep profile examples and imported
+queue files aligned with the configured reviewer names.
 
 This distinguishes "who picks this up now" from "which domains must approve
 before merge/release readiness."
@@ -177,7 +206,7 @@ non-default kind appear in workstream sections grouped as `profile / kind`. For
 platform-foundation, useful groups are:
 
 - architecture maps,
-- guards,
+- boundary guards,
 - facades,
 - frontend contracts,
 - evidence tasks,
