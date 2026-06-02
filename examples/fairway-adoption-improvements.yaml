@@ -152,3 +152,29 @@ tasks:
       - repeated metadata flags such as --acceptance preserve all supplied values
       - add and update tests cover repeated acceptance values and comma-separated metadata values
       - docs state which flags are repeatable and how repeated values are rendered in task detail
+
+  - id: FW-107
+    title: Align dashboard ready metric with CLI readiness
+    kind: dashboard
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard
+      - cmd/fairway/main.go
+      - docs/design/dashboard.md
+    target_paths:
+      - internal/dashboard
+      - internal/dashboard/server_test.go
+      - docs/design/dashboard.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: product-hardening
+    acceptance_checks:
+      - dashboard summary ready count uses the same dependency-aware readiness evaluator as `fairway ready`
+      - dashboard distinguishes open/todo backlog count from claimable ready count
+      - dashboard tests cover a blocked-by-dependency task that is todo but not ready
+      - GPUaaS platform-foundation dashboard and `fairway --json ready` agree on claimable task count
