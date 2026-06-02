@@ -126,3 +126,29 @@ tasks:
       - dashboard stays scannable when a profile or kind group has more than 50 tasks
       - workstream sections can paginate, collapse, or expand without losing filter state
       - default view still favors the most actionable active tasks
+
+  - id: FW-106
+    title: Preserve repeated task metadata flags in CLI add/update
+    kind: cli-hardening
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli
+    source_paths:
+      - cmd/fairway/main.go
+      - docs/design/cli.md
+      - docs/agent-guide.md
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - docs/design/cli.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: product-hardening
+    acceptance_checks:
+      - repeated metadata flags such as --acceptance preserve all supplied values
+      - add and update tests cover repeated acceptance values and comma-separated metadata values
+      - docs state which flags are repeatable and how repeated values are rendered in task detail
