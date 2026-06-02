@@ -153,6 +153,7 @@ func TestIndexRendersProfileGateReadiness(t *testing.T) {
 		TaskKinds: []string{"content-entry"},
 		Gates: []config.WorkstreamProfileGate{{
 			Name:                  "source-docs-linked",
+			Group:                 "content coverage",
 			Mode:                  "blocking",
 			EvidenceType:          "source-doc-check",
 			RequiredEvidenceCount: 1,
@@ -166,10 +167,63 @@ func TestIndexRendersProfileGateReadiness(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.index(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Gate Readiness", "docusaurus-portal / source-docs-linked", "1/2 satisfied", "1 missing", "T-002", "needs 1 matching evidence row"} {
+	for _, want := range []string{"Gate Readiness", "docusaurus-portal / content coverage", "1 gate(s)", "1 blocking missing", "docusaurus-portal / source-docs-linked", "1/2 satisfied", "1 missing", "T-002", "needs 1 matching evidence row"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("gate dashboard body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestIndexRendersGroupedGateRollupsExceptionFirst(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "PF-001", Title: "Ownership map", Kind: "architecture-map", Role: "orchestrator"},
+		{ID: "PF-002", Title: "Boundary guard", Kind: "boundary-guard", Role: "governance"},
+		{ID: "PF-003", Title: "Evidence facade", Kind: "facade", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "PF-001", store.Evidence{CommandText: "fairway packet template architecture-map", Result: "pass", ArtifactType: "ownership-map", ArtifactPath: "dist/maps.json"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.WorkstreamProfiles = []config.WorkstreamProfile{{
+		Name:      "platform-foundation",
+		TaskKinds: []string{"architecture-map", "boundary-guard", "facade"},
+		Gates: []config.WorkstreamProfileGate{
+			{Name: "ownership-map-recorded", Group: "maps", Mode: "blocking", TaskKinds: []string{"architecture-map"}, EvidenceType: "ownership-map", RequiredEvidenceCount: 1, AcceptedResults: []string{"pass"}, ArtifactRequired: true},
+			{Name: "boundary-guard-report", Group: "guards", Mode: "blocking", TaskKinds: []string{"boundary-guard"}, EvidenceType: "guard-report", RequiredEvidenceCount: 1, AcceptedResults: []string{"pass"}, ArtifactRequired: true},
+			{Name: "facade-review", Group: "facades", Mode: "advisory", TaskKinds: []string{"facade"}, EvidenceType: "review", RequiredEvidenceCount: 1, AcceptedResults: []string{"pass"}},
+		},
+	}}
+	server := New(s, cfg, []string{"orchestrator", "governance", "backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.index(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"platform-foundation / guards",
+		"platform-foundation / facades",
+		"platform-foundation / maps",
+		"1 blocking missing",
+		"1 advisory missing",
+		"ready",
+		"Gate details",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("grouped gate dashboard body missing %q:\n%s", want, body)
+		}
+	}
+	guards := strings.Index(body, "platform-foundation / guards")
+	facades := strings.Index(body, "platform-foundation / facades")
+	maps := strings.Index(body, "platform-foundation / maps")
+	if !(guards >= 0 && facades > guards && maps > facades) {
+		t.Fatalf("gate groups not sorted exception-first: guards=%d facades=%d maps=%d", guards, facades, maps)
 	}
 }
 

@@ -44,6 +44,7 @@ route_samples = ["scripts/release/check.sh", "doc/release/runbook.md"]
 
 [[workstream_profiles.gates]]
 name = "security-review"
+group = "security gates"
 mode = "advisory"
 task_kinds = ["release-risk"]
 evidence_type = "security-review"
@@ -78,6 +79,10 @@ guard rails where findings are still being measured.
 
 Profile gates can describe the evidence a workstream expects:
 
+- `group` clusters related gates in dashboard and report surfaces. Use stable
+  nouns such as `boundary guards`, `release evidence`, `security gates`, or
+  `SDK readiness` so large tracks show readiness posture first instead of a
+  flat list of every check.
 - `task_kinds` narrows a gate to specific task kinds inside the profile. Omit it
   when every task kind in the profile needs the same evidence.
 - `required_evidence_count` says how many matching evidence records should
@@ -127,6 +132,12 @@ the gate before treating the workstream as ready.
 The dashboard shows the same profile gates as a live readiness panel. Use it
 while agents are working so missing evidence is visible before `merge-ready` or
 `readiness report` becomes the first place the team sees the gap.
+
+For large tracks, group gates by evidence family and make the default dashboard
+exception-first: missing blocking gates should be visible immediately, passed
+gates should be rollups, and detailed gate rows should be used for drill-down.
+This is the pattern that kept the GPUaaS platform-foundation track readable:
+maps first, guard visibility second, facade implementation third.
 
 ## Task Metadata
 

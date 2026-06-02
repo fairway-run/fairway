@@ -151,8 +151,9 @@ while Fairway improvements are assigned as their own bounded workstream.
      tracks, or dashboard first paint slows noticeably.
 
 3. Gate-readiness drill-down
-   - Current state: the dashboard shows profile gates, satisfied counts, and
-     missing task links.
+   - Current state: the dashboard groups profile gates by readiness family,
+     sorts exceptions first, shows satisfied/missing rollups, and keeps detailed
+     gate rows collapsible.
    - Next pressure point: add a task-detail gate panel so a single task shows
      which profile gates it satisfies, which evidence rows counted, and which
      reason remains open.

@@ -1640,6 +1640,7 @@ type adoptionGateSummary struct {
 type adoptionProfileGate struct {
 	Profile               string   `json:"profile"`
 	Name                  string   `json:"name"`
+	Group                 string   `json:"group,omitempty"`
 	Mode                  string   `json:"mode"`
 	TaskKinds             []string `json:"task_kinds,omitempty"`
 	EvidenceType          string   `json:"evidence_type,omitempty"`
@@ -1676,6 +1677,7 @@ type adoptionRegressionPack struct {
 type adoptionGateEvaluation struct {
 	Profile        string                 `json:"profile"`
 	Gate           string                 `json:"gate"`
+	Group          string                 `json:"group,omitempty"`
 	Mode           string                 `json:"mode"`
 	EvidenceType   string                 `json:"evidence_type,omitempty"`
 	TaskCount      int                    `json:"task_count"`
@@ -1805,7 +1807,11 @@ func printReadinessReport(report readinessReport) {
 	fmt.Println("\n## Gates")
 	for _, evaluation := range report.GateEvaluations {
 		label := evaluation.Profile + "/" + evaluation.Gate
-		fmt.Printf("- %s: %s (%d/%d satisfied)\n", label, evaluation.Status, evaluation.SatisfiedCount, evaluation.TaskCount)
+		group := evaluation.Group
+		if group == "" {
+			group = "general"
+		}
+		fmt.Printf("- %s: %s (%s; %d/%d satisfied)\n", label, evaluation.Status, group, evaluation.SatisfiedCount, evaluation.TaskCount)
 		for _, miss := range evaluation.Missing {
 			fmt.Printf("  - %s [%s] %s: %s\n", miss.TaskID, miss.Kind, miss.Title, strings.Join(miss.Reasons, "; "))
 		}
@@ -1947,6 +1953,7 @@ func adoptionProfileGates(cfg config.Config) []adoptionProfileGate {
 			gates = append(gates, adoptionProfileGate{
 				Profile:               profile.Name,
 				Name:                  gate.Name,
+				Group:                 profileGateGroup(profile, gate),
 				Mode:                  gate.Mode,
 				TaskKinds:             gate.TaskKinds,
 				EvidenceType:          gate.EvidenceType,
@@ -1974,6 +1981,7 @@ func evaluateProfileGates(ctx context.Context, cfg config.Config, s *store.Store
 			evaluation := adoptionGateEvaluation{
 				Profile:      profile.Name,
 				Gate:         gate.Name,
+				Group:        profileGateGroup(profile, gate),
 				Mode:         gate.Mode,
 				EvidenceType: gate.EvidenceType,
 				TaskCount:    len(profileTasks),
@@ -2015,6 +2023,26 @@ func evaluateProfileGates(ctx context.Context, cfg config.Config, s *store.Store
 	return evaluations, nil
 }
 
+func profileGateGroup(profile config.WorkstreamProfile, gate config.WorkstreamProfileGate) string {
+	if strings.TrimSpace(gate.Group) != "" {
+		return strings.TrimSpace(gate.Group)
+	}
+	if len(gate.TaskKinds) > 0 {
+		return strings.Join(gate.TaskKinds, ", ")
+	}
+	if gate.EvidenceType != "" {
+		return gate.EvidenceType
+	}
+	return "general"
+}
+
+func fallback(value, replacement string) string {
+	if strings.TrimSpace(value) == "" {
+		return replacement
+	}
+	return value
+}
+
 func evaluateTaskProfileGates(cfg config.Config, task store.Task, evidence []store.Evidence, now time.Time) []adoptionGateEvaluation {
 	var evaluations []adoptionGateEvaluation
 	for _, profile := range cfg.WorkstreamProfiles {
@@ -2029,6 +2057,7 @@ func evaluateTaskProfileGates(cfg config.Config, task store.Task, evidence []sto
 			evaluation := adoptionGateEvaluation{
 				Profile:        profile.Name,
 				Gate:           gate.Name,
+				Group:          profileGateGroup(profile, gate),
 				Mode:           gate.Mode,
 				EvidenceType:   gate.EvidenceType,
 				TaskCount:      1,
@@ -2290,9 +2319,9 @@ func printAdoptionArtifact(artifact adoptionArtifact) {
 				label = gate.Profile + "/" + label
 			}
 			if gate.EvidenceType != "" {
-				fmt.Printf("- %s: %s (%s)\n", label, gate.Mode, gate.EvidenceType)
+				fmt.Printf("- %s: %s (%s, group: %s)\n", label, gate.Mode, gate.EvidenceType, fallback(gate.Group, "general"))
 			} else {
-				fmt.Printf("- %s: %s\n", label, gate.Mode)
+				fmt.Printf("- %s: %s (group: %s)\n", label, gate.Mode, fallback(gate.Group, "general"))
 			}
 			var requirements []string
 			if len(gate.TaskKinds) > 0 {

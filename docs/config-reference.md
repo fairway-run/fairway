@@ -58,6 +58,7 @@ route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
 
 [[workstream_profiles.gates]]
 name = "security-review"
+group = "security gates"
 mode = "advisory"                     # advisory | blocking | report_only
 task_kinds = ["facade"]               # optional; omit to apply to all profile task kinds
 evidence_type = "security-review"
@@ -183,6 +184,7 @@ Named readiness gates under the preceding profile.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `name` | string | — | Gate name, for example `security-review`, `uat-evidence`, `release-risk`, or `sdk-readiness`. Must be unique within the profile. |
+| `group` | string | derived from task kind or evidence type | Optional dashboard/report grouping label, for example `boundary guards`, `release evidence`, `security gates`, or `SDK readiness`. Use it when a profile has many gates and the default gate-by-gate view would be noisy. |
 | `mode` | string | — | `advisory`, `blocking`, or `report_only`. Missing `blocking` gates fail `merge-ready`; missing `advisory` and `report_only` gates are warnings. |
 | `task_kinds` | []string | — | Optional task-kind filter for this gate. Omit to apply the gate to every task kind in the profile. |
 | `evidence_type` | string | — | Optional evidence type this gate expects. |

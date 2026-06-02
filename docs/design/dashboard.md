@@ -78,9 +78,24 @@ Filter chips above:
 ### Gate readiness
 
 When workstream profiles define gates, the dashboard evaluates them across all
-matching tasks and renders a live readiness panel. Each gate shows:
+matching tasks and renders a live readiness panel. Gates are first rolled up by
+profile and gate group, then expanded into detailed gate rows. The default
+screen is exception-first: groups with missing blocking evidence appear before
+advisory/report-only misses, no-task groups, and fully satisfied groups. This
+keeps large readiness portfolios readable when a track has dozens of gates.
+
+Each gate group shows:
+
+- profile and group label,
+- gate count,
+- satisfied / total task-check count,
+- blocking, advisory, and report-only missing counts,
+- collapsed gate details, opened automatically when the group has misses.
+
+Each detailed gate row shows:
 
 - profile and gate name,
+- group,
 - mode and evidence type,
 - satisfied / total task count,
 - missing task links with the first matching-evidence reason.

@@ -105,6 +105,7 @@ type WorkstreamProfile struct {
 
 type WorkstreamProfileGate struct {
 	Name                  string   `toml:"name"`
+	Group                 string   `toml:"group"`
 	Mode                  string   `toml:"mode"`
 	TaskKinds             []string `toml:"task_kinds"`
 	EvidenceType          string   `toml:"evidence_type"`
@@ -365,6 +366,9 @@ func validateWorkstreamProfiles(profiles []WorkstreamProfile, kindSet map[string
 		for _, gate := range profile.Gates {
 			if gate.Name == "" {
 				return fmt.Errorf("[[workstream_profiles.gates]] name is required for profile %q", profile.Name)
+			}
+			if strings.TrimSpace(gate.Group) != gate.Group {
+				return fmt.Errorf("[[workstream_profiles.gates]] group for gate %q must not have leading or trailing whitespace", gate.Name)
 			}
 			if gates[gate.Name] {
 				return fmt.Errorf("duplicate gate %q in workstream profile %q", gate.Name, profile.Name)

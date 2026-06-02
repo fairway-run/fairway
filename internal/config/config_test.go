@@ -94,6 +94,7 @@ func TestValidate_AcceptsWorkstreamProfilesAndPacketTemplates(t *testing.T) {
 		RouteSamples:    []string{"doc/api/openapi.yaml"},
 		Gates: []WorkstreamProfileGate{{
 			Name:                  "security-review",
+			Group:                 "security gates",
 			Mode:                  "advisory",
 			TaskKinds:             []string{"boundary-guard"},
 			EvidenceType:          "security-review",
@@ -111,6 +112,21 @@ func TestValidate_AcceptsWorkstreamProfilesAndPacketTemplates(t *testing.T) {
 	}}
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidate_RejectsGateGroupWhitespace(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.WorkstreamProfiles = []WorkstreamProfile{{
+		Name: "release-readiness",
+		Gates: []WorkstreamProfileGate{{
+			Name:  "uat-evidence",
+			Group: " release evidence ",
+			Mode:  "blocking",
+		}},
+	}}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected gate group whitespace validation error")
 	}
 }
 
@@ -220,6 +236,7 @@ route_samples = ["cmd/api/main.go"]
 
 [[workstream_profiles.gates]]
 name = "release-owner-approval"
+group = "approval gates"
 mode = "blocking"
 evidence_type = "approval"
 required_evidence_count = 1
@@ -240,6 +257,9 @@ required_fields = ["risk", "owner"]
 	}
 	if got := cfg.WorkstreamProfiles[0].Gates[0].Name; got != "release-owner-approval" {
 		t.Fatalf("gate name = %q", got)
+	}
+	if got := cfg.WorkstreamProfiles[0].Gates[0].Group; got != "approval gates" {
+		t.Fatalf("gate group = %q", got)
 	}
 	if !cfg.WorkstreamProfiles[0].Gates[0].ArtifactRequired {
 		t.Fatal("expected artifact_required to decode")

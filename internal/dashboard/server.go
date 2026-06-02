@@ -117,6 +117,7 @@ type DashboardSummary struct {
 type GateStatus struct {
 	Profile        string
 	Name           string
+	Group          string
 	Mode           string
 	EvidenceType   string
 	Description    string
@@ -125,6 +126,22 @@ type GateStatus struct {
 	MissingCount   int
 	Status         string
 	Missing        []GateTaskMiss
+}
+
+type GateGroup struct {
+	Profile          string
+	Name             string
+	Label            string
+	Status           string
+	GateCount        int
+	TaskCount        int
+	SatisfiedCount   int
+	MissingTaskCount int
+	BlockingMissing  int
+	AdvisoryMissing  int
+	ReportOnlyMisses int
+	NoTaskCount      int
+	Gates            []GateStatus
 }
 
 type GateTaskMiss struct {
@@ -212,12 +229,14 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	gateGroups := groupGateStatuses(gates)
 	displayTasks := filterTasks(tasks, filters)
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks)
 	data := struct {
 		Summary          DashboardSummary
 		Gates            []GateStatus
+		GateGroups       []GateGroup
 		Groups           []RoleGroup
 		Workstreams      []WorkstreamGroup
 		Filters          TaskFilters
@@ -231,7 +250,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		StaleCheckpoints []store.Checkpoint
 		Watchers         []store.Watcher
 		Rollups          map[string]Rollup
-	}{dashboardSummary(tasks, displayTasks, workstreams), gates, groupTasks(displayTasks, s.roles), workstreams, filters, filterOptions(tasks, activity), filteredActivity, activityTotal, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
+	}{dashboardSummary(tasks, displayTasks, workstreams), gates, gateGroups, groupTasks(displayTasks, s.roles), workstreams, filters, filterOptions(tasks, activity), filteredActivity, activityTotal, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
 	_ = indexTemplate.Execute(w, data)
 }
 
@@ -516,6 +535,7 @@ func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, 
 				TaskCount:    len(profileTasks),
 				Status:       "satisfied",
 			}
+			status.Group = gateGroupLabel(profile, gate)
 			if len(profileTasks) == 0 {
 				status.Status = "no_tasks"
 				statuses = append(statuses, status)
@@ -549,7 +569,125 @@ func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, 
 			statuses = append(statuses, status)
 		}
 	}
+	sortGateStatuses(statuses)
 	return statuses, nil
+}
+
+func gateGroupLabel(profile config.WorkstreamProfile, gate config.WorkstreamProfileGate) string {
+	if strings.TrimSpace(gate.Group) != "" {
+		return strings.TrimSpace(gate.Group)
+	}
+	if len(gate.TaskKinds) > 0 {
+		return strings.Join(gate.TaskKinds, ", ")
+	}
+	if gate.EvidenceType != "" {
+		return gate.EvidenceType
+	}
+	return "general"
+}
+
+func groupGateStatuses(gates []GateStatus) []GateGroup {
+	byKey := map[string]int{}
+	var groups []GateGroup
+	for _, gate := range gates {
+		groupName := gate.Group
+		if groupName == "" {
+			groupName = "general"
+		}
+		key := gate.Profile + "\x00" + groupName
+		index, ok := byKey[key]
+		if !ok {
+			groups = append(groups, GateGroup{
+				Profile: gate.Profile,
+				Name:    groupName,
+				Label:   gate.Profile + " / " + groupName,
+				Status:  "satisfied",
+			})
+			index = len(groups) - 1
+			byKey[key] = index
+		}
+		group := groups[index]
+		group.GateCount++
+		group.TaskCount += gate.TaskCount
+		group.SatisfiedCount += gate.SatisfiedCount
+		group.MissingTaskCount += gate.MissingCount
+		group.Gates = append(group.Gates, gate)
+		switch gate.Status {
+		case "missing":
+			group.Status = "missing"
+			switch gate.Mode {
+			case "blocking":
+				group.BlockingMissing += gate.MissingCount
+			case "advisory":
+				group.AdvisoryMissing += gate.MissingCount
+			case "report_only":
+				group.ReportOnlyMisses += gate.MissingCount
+			}
+		case "no_tasks":
+			group.NoTaskCount++
+			if group.Status == "satisfied" {
+				group.Status = "no_tasks"
+			}
+		}
+		groups[index] = group
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		leftRank := gateGroupStatusRank(groups[i])
+		rightRank := gateGroupStatusRank(groups[j])
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		if groups[i].BlockingMissing != groups[j].BlockingMissing {
+			return groups[i].BlockingMissing > groups[j].BlockingMissing
+		}
+		if groups[i].MissingTaskCount != groups[j].MissingTaskCount {
+			return groups[i].MissingTaskCount > groups[j].MissingTaskCount
+		}
+		return groups[i].Label < groups[j].Label
+	})
+	return groups
+}
+
+func gateGroupStatusRank(group GateGroup) int {
+	if group.BlockingMissing > 0 {
+		return 0
+	}
+	if group.MissingTaskCount > 0 {
+		return 1
+	}
+	if group.Status == "no_tasks" {
+		return 2
+	}
+	return 3
+}
+
+func sortGateStatuses(statuses []GateStatus) {
+	sort.Slice(statuses, func(i, j int) bool {
+		leftRank := gateStatusRank(statuses[i])
+		rightRank := gateStatusRank(statuses[j])
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		if statuses[i].MissingCount != statuses[j].MissingCount {
+			return statuses[i].MissingCount > statuses[j].MissingCount
+		}
+		leftLabel := statuses[i].Profile + "/" + statuses[i].Group + "/" + statuses[i].Name
+		rightLabel := statuses[j].Profile + "/" + statuses[j].Group + "/" + statuses[j].Name
+		return leftLabel < rightLabel
+	})
+}
+
+func gateStatusRank(status GateStatus) int {
+	if status.Status == "missing" && status.Mode == "blocking" {
+		return 0
+	}
+	if status.Status == "missing" {
+		return 1
+	}
+	if status.Status == "no_tasks" {
+		return 2
+	}
+	return 3
 }
 
 func tasksForProfile(profile config.WorkstreamProfile, tasks []store.Task) []store.Task {
@@ -854,7 +992,7 @@ table{border-collapse:collapse;width:100%;background:var(--panel);margin-bottom:
 .status{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.role{font-weight:650}.badges,.lanes,.filters{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}.badge,.lane{background:var(--panel);border:1px solid var(--line);padding:7px 9px;border-radius:7px}.lane{min-width:180px}.lane b{display:block}.filters{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px}.filters label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.filters select{min-width:150px}.filters button{align-self:end}.layout{display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:24px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}.panel h2{margin-top:0}.panel p{border-bottom:1px solid #eef1f5;padding-bottom:8px}.muted{color:var(--muted)}.bad{color:var(--bad)}.ok{color:var(--good)}.warn{color:var(--warn)}
 .filters input[type=search]{min-width:240px}
 .workstream-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:22px}.workstream-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}.workstream-card h3{margin:.1rem 0 .5rem;font-size:16px}.progress{height:8px;background:#eef1f5;border-radius:999px;overflow:hidden;margin:10px 0}.progress span{display:block;height:100%;background:var(--accent)}.mini{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:12px}.section-head{display:flex;justify-content:space-between;align-items:end;gap:12px}.section-head h2{margin-bottom:8px}
-.gate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:16px 0}.gate{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--good);border-radius:8px;padding:12px}.gate.missing{border-left-color:var(--warn)}.gate.no_tasks{border-left-color:var(--muted)}.gate h3{font-size:16px;margin:.1rem 0 .35rem}.gate ul{margin:.5rem 0 0;padding-left:18px}.table-note{margin:-16px 0 24px;color:var(--muted);font-size:12px}.activity-head{display:flex;justify-content:space-between;gap:8px;align-items:end}.activity-form{display:flex;gap:8px;flex-wrap:wrap}.activity-form label{display:grid;gap:3px;font-size:12px;color:var(--muted)}.activity-form select{max-width:130px}
+.gate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:16px 0}.gate-group,.gate{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--good);border-radius:8px;padding:12px}.gate-group.missing,.gate.missing{border-left-color:var(--warn)}.gate-group.no_tasks,.gate.no_tasks{border-left-color:var(--muted)}.gate-group h3,.gate h3{font-size:16px;margin:.1rem 0 .35rem}.gate ul{margin:.5rem 0 0;padding-left:18px}.gate-list{margin-top:10px}.gate-list summary{cursor:pointer;color:var(--muted);font-size:13px}.gate-list .gate{margin-top:8px;border-left-width:3px}.table-note{margin:-16px 0 24px;color:var(--muted);font-size:12px}.activity-head{display:flex;justify-content:space-between;gap:8px;align-items:end}.activity-form{display:flex;gap:8px;flex-wrap:wrap}.activity-form label{display:grid;gap:3px;font-size:12px;color:var(--muted)}.activity-form select{max-width:130px}
 @media(max-width:980px){.layout{grid-template-columns:1fr}.summary{grid-template-columns:repeat(2,1fr)}.topbar{display:block}}
 </style><script>
 const events = new EventSource("/events");
@@ -896,15 +1034,23 @@ events.addEventListener("refresh", () => window.location.reload());
 <input type="hidden" name="activity_limit" value="{{.Filters.ActivityLimit}}">
 <button type="submit">Apply</button><a href="/">Clear</a><span class="muted">filtered: {{.Summary.Filtered}} / {{.Summary.Total}}</span>
 </form>
-{{if .Gates}}
+{{if .GateGroups}}
 <div class="section-head"><h2>Gate Readiness</h2><span class="muted">profile gates evaluated against all tasks</span></div>
 <section class="gate-grid">
+{{range .GateGroups}}
+<article class="gate-group {{.Status}}">
+<h3>{{.Label}}</h3>
+<div class="mini"><span>{{.GateCount}} gate(s)</span><span>{{.SatisfiedCount}}/{{.TaskCount}} task checks satisfied</span>{{if .BlockingMissing}}<span class="bad">{{.BlockingMissing}} blocking missing</span>{{end}}{{if .AdvisoryMissing}}<span class="warn">{{.AdvisoryMissing}} advisory missing</span>{{end}}{{if .ReportOnlyMisses}}<span class="warn">{{.ReportOnlyMisses}} report-only missing</span>{{end}}{{if .NoTaskCount}}<span class="muted">{{.NoTaskCount}} no-task gate(s)</span>{{end}}{{if and (eq .Status "satisfied") (eq .MissingTaskCount 0)}}<span class="ok">ready</span>{{end}}</div>
+<details class="gate-list" {{if .MissingTaskCount}}open{{end}}><summary>Gate details</summary>
 {{range .Gates}}
 <article class="gate {{.Status}}">
 <h3>{{.Profile}} / {{.Name}}</h3>
-<div class="mini"><span>{{.Mode}}</span><span>{{.EvidenceType}}</span><span>{{.SatisfiedCount}}/{{.TaskCount}} satisfied</span>{{if .MissingCount}}<span class="warn">{{.MissingCount}} missing</span>{{else if eq .Status "no_tasks"}}<span class="muted">no tasks</span>{{else}}<span class="ok">ready</span>{{end}}</div>
+<div class="mini"><span>{{.Group}}</span><span>{{.Mode}}</span><span>{{.EvidenceType}}</span><span>{{.SatisfiedCount}}/{{.TaskCount}} satisfied</span>{{if .MissingCount}}<span class="warn">{{.MissingCount}} missing</span>{{else if eq .Status "no_tasks"}}<span class="muted">no tasks</span>{{else}}<span class="ok">ready</span>{{end}}</div>
 {{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
 {{if .Missing}}<ul>{{range .Missing}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Title}} <span class="muted">({{.Kind}}, {{.Status}}; matching evidence {{.Matching}})</span>{{if .Reasons}}<br><small>{{range .Reasons}}{{.}} {{end}}</small>{{end}}</li>{{end}}</ul>{{end}}
+</article>
+{{end}}
+</details>
 </article>
 {{end}}
 </section>

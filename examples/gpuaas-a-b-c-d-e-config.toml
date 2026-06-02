@@ -227,6 +227,7 @@ route_samples = [
 
 [[workstream_profiles.gates]]
 name = "boundary-guard-report"
+group = "boundary guards"
 mode = "advisory"
 task_kinds = ["boundary-guard"]
 evidence_type = "guard-report"
@@ -237,6 +238,7 @@ description = "Report-only boundary guard evidence is expected before enforcemen
 
 [[workstream_profiles.gates]]
 name = "release-risk"
+group = "release evidence"
 mode = "advisory"
 task_kinds = ["release-evidence"]
 evidence_type = "release-risk"
