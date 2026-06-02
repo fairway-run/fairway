@@ -58,6 +58,36 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 	}
 }
 
+func TestIndexReadyMetricUsesDependencyReadiness(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "Claimable", Kind: "task", Role: "backend", Profile: "platform-foundation"},
+		{ID: "T-002", Title: "Blocked by dependency", Kind: "task", Role: "backend", Profile: "platform-foundation", Dependencies: []string{"T-003"}},
+		{ID: "T-003", Title: "Dependency", Kind: "task", Role: "backend", Profile: "platform-foundation"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-003", "in_progress", "", false); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.index(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, "<div class=\"metric\"><b>1</b><span>Ready</span></div>") {
+		t.Fatalf("dashboard ready metric did not match dependency-ready count:\n%s", body)
+	}
+	if !strings.Contains(body, "<span>1 ready</span>") {
+		t.Fatalf("workstream ready count did not match dependency-ready count:\n%s", body)
+	}
+}
+
 func TestIndexFiltersByProfileMetadata(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

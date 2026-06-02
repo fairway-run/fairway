@@ -229,10 +229,16 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	readyTasks, err := s.store.Ready(r.Context(), "", s.cfg.States.Terminal)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	readySet := taskIDSet(readyTasks)
 	gateGroups := groupGateStatuses(gates)
 	displayTasks := filterTasks(tasks, filters)
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
-	workstreams := groupWorkstreams(displayTasks)
+	workstreams := groupWorkstreams(displayTasks, readySet)
 	data := struct {
 		Summary          DashboardSummary
 		Gates            []GateStatus
@@ -250,7 +256,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		StaleCheckpoints []store.Checkpoint
 		Watchers         []store.Watcher
 		Rollups          map[string]Rollup
-	}{dashboardSummary(tasks, displayTasks, workstreams), gates, gateGroups, groupTasks(displayTasks, s.roles), workstreams, filters, filterOptions(tasks, activity), filteredActivity, activityTotal, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
+	}{dashboardSummary(tasks, displayTasks, workstreams, readySet), gates, gateGroups, groupTasks(displayTasks, s.roles), workstreams, filters, filterOptions(tasks, activity), filteredActivity, activityTotal, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
 	_ = indexTemplate.Execute(w, data)
 }
 
@@ -435,7 +441,7 @@ func containsString(values []string, want string) bool {
 	return false
 }
 
-func groupWorkstreams(tasks []store.Task) []WorkstreamGroup {
+func groupWorkstreams(tasks []store.Task, readySet map[string]bool) []WorkstreamGroup {
 	byLabel := map[string]int{}
 	var groups []WorkstreamGroup
 	for _, task := range tasks {
@@ -459,13 +465,16 @@ func groupWorkstreams(tasks []store.Task) []WorkstreamGroup {
 		case "blocked":
 			groups[index].Blocked++
 		case "todo":
+			if !readySet[task.Definition.ID] {
+				continue
+			}
 			groups[index].Ready++
 		}
 	}
 	return groups
 }
 
-func dashboardSummary(allTasks, displayTasks []store.Task, workstreams []WorkstreamGroup) DashboardSummary {
+func dashboardSummary(allTasks, displayTasks []store.Task, workstreams []WorkstreamGroup, readySet map[string]bool) DashboardSummary {
 	summary := DashboardSummary{Total: len(allTasks), Filtered: len(displayTasks), Workstreams: len(workstreams)}
 	profiles := map[string]bool{}
 	for _, task := range allTasks {
@@ -480,11 +489,22 @@ func dashboardSummary(allTasks, displayTasks []store.Task, workstreams []Workstr
 		case "blocked":
 			summary.Blocked++
 		case "todo":
+			if !readySet[task.Definition.ID] {
+				continue
+			}
 			summary.Ready++
 		}
 	}
 	summary.Profiles = len(profiles)
 	return summary
+}
+
+func taskIDSet(tasks []store.Task) map[string]bool {
+	out := make(map[string]bool, len(tasks))
+	for _, task := range tasks {
+		out[task.Definition.ID] = true
+	}
+	return out
 }
 
 func workstreamLabel(task store.Task) string {
