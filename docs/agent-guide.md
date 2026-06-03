@@ -252,7 +252,16 @@ fairway health-report
 fairway dispatch-plan --role <role>
 fairway checkpoint status
 fairway session status
-fairway dashboard
+fairway session reconcile --dry-run
+fairway dashboard start
+fairway dashboard status
 ```
 
 See [design/cli.md](design/cli.md) for the complete command surface.
+
+Fairway sessions are records created by `fairway session upsert` or
+`fairway session launch`. Host applications may show their own subagent history
+or worker list; those entries are not Fairway sessions unless they were
+registered with Fairway. Use `fairway session status` for live Fairway-tracked
+lanes, and `fairway session reconcile --dry-run` before assuming a host-app
+sidebar count represents active Fairway work.

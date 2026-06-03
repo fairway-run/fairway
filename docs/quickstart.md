@@ -130,6 +130,19 @@ fairway dashboard
 
 Opens `http://127.0.0.1:7878`. Leave it open on a second monitor.
 
+For an operator dashboard that should survive the launching terminal or agent
+thread, use the detached lifecycle commands:
+
+```bash
+fairway dashboard start
+fairway dashboard status
+fairway dashboard restart
+fairway dashboard stop
+```
+
+Detached mode writes `.fairway/dashboard.pid` and `.fairway/dashboard.log` by
+default.
+
 ## A typical loop
 
 In the backend worktree:

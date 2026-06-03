@@ -32,7 +32,26 @@ profile gates cannot be bypassed from the browser.
 - A single `app.css`. No build step, no node_modules.
 - All assets embedded via `//go:embed`.
 
-`fairway dashboard` starts the server (default `127.0.0.1:7878`) and opens the system browser unless `--no-open` or `[dashboard] auto_open = false`.
+`fairway dashboard` starts the server in the foreground (default
+`127.0.0.1:7878`) and opens the system browser unless `--no-open` or
+`[dashboard] auto_open = false`.
+
+For long-running local coordination, use the lifecycle subcommands:
+
+```bash
+fairway dashboard start
+fairway dashboard status
+fairway dashboard restart
+fairway dashboard stop
+```
+
+`start` runs the dashboard detached, records the child process in
+`.fairway/dashboard.pid`, and appends logs to `.fairway/dashboard.log`.
+Detached lifecycle commands do not open a browser unless `--open` is passed.
+`restart` is the preferred recovery command after a host app, terminal, or
+agent runtime restart. `--pid-file` and `--log-file` can override those paths
+when multiple dashboards are needed. Multi-project lifecycle commands use
+`.fairway/dashboard-multi.pid` and `.fairway/dashboard-multi.log` by default.
 
 ## Views
 

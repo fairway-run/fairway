@@ -4275,6 +4275,18 @@ func recordReview(ctx context.Context, opts globalOptions, args []string) error 
 }
 
 func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "start":
+			return cmdDashboardLifecycle(ctx, opts, "start", args[1:])
+		case "stop":
+			return cmdDashboardLifecycle(ctx, opts, "stop", args[1:])
+		case "restart":
+			return cmdDashboardLifecycle(ctx, opts, "restart", args[1:])
+		case "status":
+			return cmdDashboardLifecycle(ctx, opts, "status", args[1:])
+		}
+	}
 	fs := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	listen := fs.String("listen", "", "listen address")
 	noOpen := fs.Bool("no-open", false, "do not open browser")
@@ -4345,6 +4357,218 @@ func cmdDashboardMulti(ctx context.Context, opts globalOptions, listen string, n
 		_ = openBrowser(url)
 	}
 	return http.ListenAndServe(addr, dashboard.NewMulti(projects))
+}
+
+type dashboardLifecycleStatus struct {
+	PIDFile string `json:"pid_file"`
+	LogFile string `json:"log_file"`
+	PID     int    `json:"pid,omitempty"`
+	Running bool   `json:"running"`
+	URL     string `json:"url,omitempty"`
+}
+
+func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action string, args []string) error {
+	fs := flag.NewFlagSet("dashboard "+action, flag.ContinueOnError)
+	listen := fs.String("listen", "", "listen address")
+	noOpen := fs.Bool("no-open", false, "do not open browser")
+	open := fs.Bool("open", false, "open browser after starting")
+	multi := fs.Bool("multi", false, "show registered projects")
+	pidFile := fs.String("pid-file", "", "pid file")
+	logFile := fs.String("log-file", "", "log file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected dashboard %s arguments: %s", action, strings.Join(fs.Args(), " "))
+	}
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	childNoOpen := true
+	if *open {
+		childNoOpen = false
+	}
+	if *noOpen {
+		childNoOpen = true
+	}
+	addr := cfg.Dashboard.Listen
+	if *listen != "" {
+		addr = *listen
+	}
+	resolvedPIDFile, resolvedLogFile := dashboardLifecycleFiles(root, *pidFile, *logFile, *multi)
+	status, err := readDashboardLifecycleStatus(resolvedPIDFile, resolvedLogFile, addr)
+	if err != nil {
+		return err
+	}
+	switch action {
+	case "status":
+		return printDashboardLifecycleStatus(status, opts.JSON)
+	case "stop":
+		if err := stopDashboardLifecycle(status); err != nil {
+			return err
+		}
+		status.Running = false
+		status.PID = 0
+		if opts.JSON {
+			return printJSON(status)
+		}
+		fmt.Println("dashboard stopped")
+		return nil
+	case "restart":
+		if status.Running {
+			if err := stopDashboardLifecycle(status); err != nil {
+				return err
+			}
+		}
+		return startDashboardLifecycle(opts, addr, childNoOpen, *multi, resolvedPIDFile, resolvedLogFile, true)
+	case "start":
+		if status.Running {
+			return printDashboardLifecycleStatus(status, opts.JSON)
+		}
+		return startDashboardLifecycle(opts, addr, childNoOpen, *multi, resolvedPIDFile, resolvedLogFile, false)
+	default:
+		return fmt.Errorf("unknown dashboard lifecycle action %q", action)
+	}
+}
+
+func dashboardLifecycleFiles(root, pidFile, logFile string, multi bool) (string, string) {
+	name := "dashboard"
+	if multi {
+		name = "dashboard-multi"
+	}
+	if pidFile == "" {
+		pidFile = filepath.Join(root, ".fairway", name+".pid")
+	}
+	if logFile == "" {
+		logFile = filepath.Join(root, ".fairway", name+".log")
+	}
+	return pidFile, logFile
+}
+
+func readDashboardLifecycleStatus(pidFile, logFile, addr string) (dashboardLifecycleStatus, error) {
+	status := dashboardLifecycleStatus{PIDFile: pidFile, LogFile: logFile, URL: dashboard.URL(addr)}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return status, nil
+		}
+		return status, err
+	}
+	raw := strings.TrimSpace(string(data))
+	if raw == "" {
+		return status, nil
+	}
+	var pid int
+	if _, err := fmt.Sscanf(raw, "%d", &pid); err != nil {
+		return status, fmt.Errorf("read dashboard pid file %s: invalid pid %q", pidFile, raw)
+	}
+	status.PID = pid
+	status.Running = processAlive(pid)
+	if !status.Running {
+		_ = os.Remove(pidFile)
+		status.PID = 0
+	}
+	return status, nil
+}
+
+func printDashboardLifecycleStatus(status dashboardLifecycleStatus, asJSON bool) error {
+	if asJSON {
+		return printJSON(status)
+	}
+	state := "stopped"
+	if status.Running {
+		state = "running"
+	}
+	fmt.Printf("dashboard %s", state)
+	if status.PID > 0 {
+		fmt.Printf("\tpid=%d", status.PID)
+	}
+	if status.URL != "" {
+		fmt.Printf("\t%s", status.URL)
+	}
+	fmt.Printf("\tpid_file=%s\tlog_file=%s\n", status.PIDFile, status.LogFile)
+	return nil
+}
+
+func stopDashboardLifecycle(status dashboardLifecycleStatus) error {
+	if !status.Running || status.PID <= 0 {
+		_ = os.Remove(status.PIDFile)
+		return nil
+	}
+	if err := syscall.Kill(status.PID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	for i := 0; i < 20; i++ {
+		if !processAlive(status.PID) {
+			_ = os.Remove(status.PIDFile)
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err := syscall.Kill(status.PID, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	_ = os.Remove(status.PIDFile)
+	return nil
+}
+
+func startDashboardLifecycle(opts globalOptions, addr string, noOpen bool, multi bool, pidFile string, logFile string, restarted bool) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(pidFile), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
+		return err
+	}
+	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+	childArgs := dashboardLifecycleChildArgs(opts, addr, noOpen, multi)
+	cmd := exec.Command(exe, childArgs...)
+	cmd.Stdout = log
+	cmd.Stderr = log
+	cmd.Stdin = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d\n", cmd.Process.Pid)), 0o644); err != nil {
+		_ = cmd.Process.Kill()
+		return err
+	}
+	verb := "started"
+	if restarted {
+		verb = "restarted"
+	}
+	fmt.Printf("dashboard %s\tpid=%d\t%s\tpid_file=%s\tlog_file=%s\n", verb, cmd.Process.Pid, dashboard.URL(addr), pidFile, logFile)
+	return nil
+}
+
+func dashboardLifecycleChildArgs(opts globalOptions, addr string, noOpen bool, multi bool) []string {
+	var args []string
+	if opts.ConfigPath != "" {
+		args = append(args, "--config", opts.ConfigPath)
+	}
+	if opts.DBPath != "" {
+		args = append(args, "--db", opts.DBPath)
+	}
+	if opts.Role != "" {
+		args = append(args, "--as", opts.Role)
+	}
+	args = append(args, "dashboard", "--listen", addr)
+	if noOpen {
+		args = append(args, "--no-open")
+	}
+	if multi {
+		args = append(args, "--multi")
+	}
+	return args
 }
 
 func dashboardWorktrees(statuses []worktreeStatus) []dashboard.WorktreeStatus {
@@ -4804,5 +5028,5 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }

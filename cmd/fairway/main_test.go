@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -860,6 +861,66 @@ func TestEvaluateGateForTaskCountsOnlyRowsMeetingAllRequirements(t *testing.T) {
 	}
 	if len(reasons) == 0 {
 		t.Fatal("expected missing reasons")
+	}
+}
+
+func TestDashboardLifecycleFilesDefaultAndMulti(t *testing.T) {
+	root := t.TempDir()
+	pidFile, logFile := dashboardLifecycleFiles(root, "", "", false)
+	if pidFile != filepath.Join(root, ".fairway", "dashboard.pid") {
+		t.Fatalf("pid file = %s", pidFile)
+	}
+	if logFile != filepath.Join(root, ".fairway", "dashboard.log") {
+		t.Fatalf("log file = %s", logFile)
+	}
+	pidFile, logFile = dashboardLifecycleFiles(root, "", "", true)
+	if pidFile != filepath.Join(root, ".fairway", "dashboard-multi.pid") {
+		t.Fatalf("multi pid file = %s", pidFile)
+	}
+	if logFile != filepath.Join(root, ".fairway", "dashboard-multi.log") {
+		t.Fatalf("multi log file = %s", logFile)
+	}
+	pidFile, logFile = dashboardLifecycleFiles(root, "custom.pid", "custom.log", false)
+	if pidFile != "custom.pid" || logFile != "custom.log" {
+		t.Fatalf("custom files = %s %s", pidFile, logFile)
+	}
+}
+
+func TestDashboardLifecycleStatusRemovesStalePIDFile(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "dashboard.pid")
+	logFile := filepath.Join(dir, "dashboard.log")
+	writeFile(t, pidFile, "999999\n")
+
+	status, err := readDashboardLifecycleStatus(pidFile, logFile, "127.0.0.1:7878")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Running {
+		t.Fatalf("status running = true, want false")
+	}
+	if status.PID != 0 {
+		t.Fatalf("pid = %d, want 0", status.PID)
+	}
+	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("pid file still exists or unexpected error: %v", err)
+	}
+}
+
+func TestDashboardLifecycleChildArgsPreservesGlobalOptions(t *testing.T) {
+	args := dashboardLifecycleChildArgs(globalOptions{
+		ConfigPath: "/tmp/fairway.toml",
+		DBPath:     "/tmp/fairway.db",
+		Role:       "backend",
+	}, "127.0.0.1:7878", true, true)
+	want := []string{
+		"--config", "/tmp/fairway.toml",
+		"--db", "/tmp/fairway.db",
+		"--as", "backend",
+		"dashboard", "--listen", "127.0.0.1:7878", "--no-open", "--multi",
+	}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %#v, want %#v", args, want)
 	}
 }
 

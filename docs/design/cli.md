@@ -54,7 +54,11 @@ fairway db migrate [--dry-run]
 fairway db compat --backend postgres [--print-ddl | --apply-ddl]
 fairway import <yaml-or-json-path> [--state-once]        # accepts a task list or {tasks: [...]} envelope; state-once seeds legacy status once
 fairway config validate
-fairway dashboard [--no-open] [--listen <addr>] [--multi]
+fairway dashboard [--no-open] [--listen <addr>] [--multi] # foreground server
+fairway dashboard start [--listen <addr>] [--multi] [--open] [--pid-file <path>] [--log-file <path>]
+fairway dashboard stop [--pid-file <path>] [--log-file <path>]
+fairway dashboard restart [--listen <addr>] [--multi] [--open] [--pid-file <path>] [--log-file <path>]
+fairway dashboard status [--listen <addr>] [--multi] [--pid-file <path>] [--log-file <path>]
 fairway tui [--once]                                    # interactive ready/claim/status/detail/status-update/evidence/readiness loop
 fairway tracker link <task-id> --provider <jira|linear> --external-id <id> [--url <url>]
 fairway tracker links
@@ -108,6 +112,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - `readiness report` evaluates configured profile gates across a workstream or
   all profiles. Missing blocking gates make the report fail in human mode;
   `--json` returns the full report for automation.
+- `dashboard` without a subcommand runs in the foreground. Use `dashboard start`,
+  `dashboard stop`, `dashboard restart`, and `dashboard status` for a detached
+  local dashboard. Detached lifecycle commands do not open a browser unless
+  `--open` is passed. They write `.fairway/dashboard.pid` and
+  `.fairway/dashboard.log` by default; multi-project mode uses
+  `.fairway/dashboard-multi.*`.
 - `packet bugfix`, platform-foundation packets, `packet template`, and
   `regression-pack` are quality surfaces. They render and validate review
   context; they do not execute product test suites.
