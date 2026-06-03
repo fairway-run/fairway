@@ -36,6 +36,7 @@ Semver. Pre-1.0 means breaking changes are allowed in minor versions; document t
 
 ## Pre-1.0 distribution
 
+- Local checkout install: `make install` (defaults to `~/.local/bin/fairway`).
 - `go install github.com/subashram/fairway/cmd/fairway@latest`.
 - Direct downloads from GitHub Releases.
 

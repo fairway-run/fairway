@@ -39,6 +39,12 @@ first release tag, and a future Postgres runtime adapter.
 
 ## Quickstart
 
+Install the local development binary:
+
+```bash
+make install                  # writes ~/.local/bin/fairway by default
+```
+
 ```bash
 fairway init                  # scaffold .fairway/config.toml and the SQLite DB
 fairway help                  # print the command summary (-h/--help also work)

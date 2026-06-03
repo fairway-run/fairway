@@ -124,6 +124,16 @@ fairway import tasks.yaml
 
 ## Run the dashboard
 
+Install or refresh the local development binary:
+
+```bash
+make install
+```
+
+This writes `~/.local/bin/fairway` by default. Override with
+`make install PREFIX=/opt/homebrew` or `make install BINDIR=/some/bin` when
+needed.
+
 ```bash
 fairway dashboard
 ```
