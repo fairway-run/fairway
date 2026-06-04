@@ -13,7 +13,10 @@
 </head>
 <body>
 <header class="wall-header {{if eq .View "detail"}}detail-header{{end}}">
-<div class="brand">fairway <small>dashboard</small></div>
+<a class="brand" href="/" aria-label="fairway dashboard">
+<img class="brand-mark" src="/assets/logo.svg" alt="" width="24" height="24">
+<span class="brand-name">fairway <small>dashboard</small></span>
+</a>
 {{if eq .View "detail"}}
 <section class="headline detail-headline" aria-label="Detail context">
 <div class="stat"><b>Task</b><span>detail</span></div>

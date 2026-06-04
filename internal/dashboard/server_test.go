@@ -189,7 +189,7 @@ func TestBoardFiltersBySearchAndStatus(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Portal source metadata", `value="platform-foundation"`, "<b>Status</b> in_progress", "showing 1 of 1 filtered tasks"} {
+	for _, want := range []string{"Portal source metadata", `value="platform-foundation"`, "<b>Status</b> in_progress", "showing 1-1 of 1 filtered tasks"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("search dashboard body missing %q:\n%s", want, body)
 		}
@@ -217,13 +217,48 @@ func TestBoardFiltersByRole(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Backend task", "<b>Role</b> backend", "showing 1 of 1 filtered tasks"} {
+	for _, want := range []string{"Backend task", "<b>Role</b> backend", "showing 1-1 of 1 filtered tasks"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("role-filtered board missing %q:\n%s", want, body)
 		}
 	}
 	if strings.Contains(body, "UI task") {
 		t.Fatalf("role-filtered board included unmatching task:\n%s", body)
+	}
+}
+
+func TestBoardFiltersByMultipleStatuses(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "Todo task", Kind: "task", Role: "backend"},
+		{ID: "T-002", Title: "Blocked task", Kind: "task", Role: "backend"},
+		{ID: "T-003", Title: "Active task", Kind: "task", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-002", "blocked", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-003", "in_progress", "", false); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?status=todo&status=blocked", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Todo task", "Blocked task", "<b>Status</b> todo, blocked", "showing 1-2 of 2 filtered tasks", `name="status" value="todo"`, `name="status" value="blocked"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("multi-status dashboard missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Active task") {
+		t.Fatalf("multi-status dashboard included unmatching task:\n%s", body)
 	}
 }
 
@@ -408,7 +443,7 @@ func TestBoardFiltersActivityAndLimitsRows(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"showing 1 of 1", "make docs-portal-check", "showing 4 of 4 filtered tasks"} {
+	for _, want := range []string{"showing 1 of 1", "make docs-portal-check", "showing 1-2 of 4 filtered tasks", "page 1 of 2", `href="/board?activity_kind=evidence&amp;activity_limit=1&amp;page=2&amp;table_limit=2"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("limited dashboard body missing %q:\n%s", want, body)
 		}
@@ -586,6 +621,22 @@ func TestDashboardAssetsServeComponents(t *testing.T) {
 	}
 }
 
+func TestDashboardAssetsServeLogo(t *testing.T) {
+	handler := dashboardAssetHandler()
+	req := httptest.NewRequest(http.MethodGet, "/assets/logo.svg", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logo.svg status=%d, want 200 body=%s", rec.Code, body)
+	}
+	for _, want := range []string{`aria-label="fairway"`, `viewBox="0 0 24 24"`, `currentColor`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("logo.svg missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 	data := struct {
 		View       string
@@ -624,6 +675,8 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 	body := out.String()
 	for _, want := range []string{
 		"dashboard",
+		`/assets/logo.svg`,
+		`aria-label="fairway dashboard"`,
 		`data-theme-toggle`,
 		`/assets/js/common.js`,
 		`/assets/css/wall.css`,
@@ -661,6 +714,11 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 				{Definition: store.TaskDefinition{ID: "T-002", Title: "Working task", Role: "backend", Kind: "dashboard"}, Status: "in_progress", Owner: "ui"},
 			},
 		}},
+		TableRows: []store.Task{
+			{Definition: store.TaskDefinition{ID: "T-001", Title: "Backlog task", Role: "backend", Kind: "task"}, Status: "todo", Owner: "backend"},
+			{Definition: store.TaskDefinition{ID: "T-002", Title: "Working task", Role: "backend", Kind: "dashboard"}, Status: "in_progress", Owner: "ui"},
+		},
+		Pagination:       TablePagination{Page: 1, PageSize: 25, TotalRows: 2, TotalPages: 1, Start: 1, End: 2},
 		GateGroups:       []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
 		Workstreams:      []WorkstreamGroup{{Label: "dashboard-v2 / task", Total: 2, Done: 1, Ready: 1, InProgress: 1}},
 		Sessions:         []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
@@ -699,7 +757,8 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		"Owner",
 		"Backlog task",
 		"Working task",
-		"showing 2 of 2 filtered tasks",
+		"showing 1-2 of 2 filtered tasks",
+		"page 1 of 1",
 		"dashboard-v2 / foundation",
 		"evidence test pass",
 	} {

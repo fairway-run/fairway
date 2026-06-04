@@ -25,6 +25,43 @@
     });
   });
 
+  document.querySelectorAll(".board-table").forEach((table) => {
+    const selectAll = table.querySelector('thead input[type="checkbox"]');
+    const rowChecks = Array.from(table.querySelectorAll('tbody input[type="checkbox"]'));
+    const selectionBar = table.closest(".task-table-section")?.querySelector(".selection-bar");
+    const selectionCount = selectionBar?.querySelector("span");
+    const clearButton = selectionBar?.querySelector("button");
+
+    function updateSelection() {
+      const selected = rowChecks.filter((check) => check.checked).length;
+      if (selectionBar) selectionBar.hidden = selected === 0;
+      if (selectionCount) selectionCount.textContent = `${selected} selected`;
+      if (selectAll) {
+        selectAll.checked = selected > 0 && selected === rowChecks.length;
+        selectAll.indeterminate = selected > 0 && selected < rowChecks.length;
+      }
+    }
+
+    if (selectAll) {
+      selectAll.addEventListener("change", () => {
+        rowChecks.forEach((check) => {
+          check.checked = selectAll.checked;
+        });
+        updateSelection();
+      });
+    }
+    rowChecks.forEach((check) => check.addEventListener("change", updateSelection));
+    if (clearButton) {
+      clearButton.addEventListener("click", () => {
+        rowChecks.forEach((check) => {
+          check.checked = false;
+        });
+        updateSelection();
+      });
+    }
+    updateSelection();
+  });
+
   document.querySelectorAll("[data-export-table]").forEach((button) => {
     button.addEventListener("click", () => {
       const table = document.querySelector(button.getAttribute("data-export-table"));

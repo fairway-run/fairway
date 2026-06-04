@@ -14,7 +14,7 @@
 {{if .Filters.Role}}<span>/</span><strong>{{.Filters.Role}}</strong>{{end}}
 {{if .Filters.Status}}<span>/</span><strong>{{.Filters.Status}}</strong>{{end}}
 </nav>
-<form class="toolbar" method="get">
+<form id="board-filter-form" class="toolbar" method="get">
 {{if eq .Filters.Tab "diagnostics"}}<input type="hidden" name="tab" value="diagnostics">{{end}}
 {{if .Filters.Role}}<input type="hidden" name="role" value="{{.Filters.Role}}">{{end}}
 <div class="tb-left">
@@ -28,9 +28,6 @@
 </div>
 <div class="tb-right">
 <a class="btn" href="/">Wall</a>
-{{if eq .Filters.Tab "tasks"}}
-<button class="btn" type="button" data-export-table=".board-table">Export CSV</button>
-{{end}}
 <button class="btn" type="submit">Apply</button>
 </div>
 </form>
@@ -100,7 +97,7 @@
 {{if .AdvisoryMissing}}<b>{{.AdvisoryMissing}} advisory missing</b>{{end}}
 {{if .ReportOnlyMisses}}<b>{{.ReportOnlyMisses}} report-only missing</b>{{end}}
 </p>
-<details {{if .MissingTaskCount}}open{{end}}>
+<details>
 <summary>Gate details</summary>
 {{range .Gates}}
 <section class="gate-detail-card">
@@ -146,6 +143,24 @@
 <h2>Task Table</h2>
 <span>sort, search, export, or open task detail</span>
 </header>
+<div class="tb-filters table-controls">
+<details class="multi-select status-filter">
+<summary><span>Status</span><b>{{if .Filters.Status}}{{.Filters.Status}}{{else}}all{{end}}</b></summary>
+<div class="multi-select-menu">
+{{range .FilterOptions.Statuses}}<label><input type="checkbox" name="status" value="{{.}}" form="board-filter-form" {{if statusSelected $.Filters .}}checked{{end}}> {{.}}</label>{{end}}
+{{if not .FilterOptions.Statuses}}<span>all</span>{{end}}
+</div>
+</details>
+<label>Profile<select name="profile" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.Profiles}}<option value="{{.}}" {{if eq $.Filters.Profile .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Kind<select name="kind" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.Kinds}}<option value="{{.}}" {{if eq $.Filters.Kind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Domain<select name="owning_domain" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.OwningDomains}}<option value="{{.}}" {{if eq $.Filters.OwningDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Risk<select name="risk_level" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.RiskLevels}}<option value="{{.}}" {{if eq $.Filters.RiskLevel .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Review<select name="review_domain" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.ReviewDomains}}<option value="{{.}}" {{if eq $.Filters.ReviewDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Rows<select name="table_limit" form="board-filter-form"><option value="25" {{if eq .Filters.TableLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.TableLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.TableLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.TableLimit 200}}selected{{end}}>200</option></select></label>
+<label>Page<input class="page-input" type="number" name="page" min="1" max="{{.Pagination.TotalPages}}" value="{{.Pagination.Page}}" form="board-filter-form"></label>
+<button class="btn" type="button" data-export-table=".board-table">Export CSV</button>
+<button class="btn" type="submit" form="board-filter-form">Apply</button>
+</div>
 <section class="selection-bar" hidden>
 <span>0 selected</span>
 <button class="btn" type="button">Clear</button>
@@ -157,7 +172,7 @@
 <table class="board-table" data-sortable>
 <thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Title</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Started</button></th><th><button type="button" data-sort="text">Last activity</button></th><th><button type="button" data-sort="text">Gates</button></th><th><button type="button" data-sort="text">Owner</button></th></tr></thead>
 <tbody>
-{{range boardRows .Groups}}
+{{range .TableRows}}
 <tr>
 <td><input type="checkbox" aria-label="Select {{.Definition.ID}}"></td>
 <td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td>
@@ -174,8 +189,12 @@
 </tbody>
 </table>
 <footer class="board-footer">
-<span>showing {{len (boardRows .Groups)}} of {{.Summary.Filtered}} filtered tasks</span>
-<span class="pagination">page 1</span>
+<span>showing {{.Pagination.Start}}-{{.Pagination.End}} of {{.Pagination.TotalRows}} filtered tasks</span>
+<nav class="pagination" aria-label="Task table pagination">
+{{if .Pagination.PrevHref}}<a class="btn" href="{{.Pagination.PrevHref}}">Previous</a>{{else}}<span class="btn disabled">Previous</span>{{end}}
+<span>page {{.Pagination.Page}} of {{.Pagination.TotalPages}}</span>
+{{if .Pagination.NextHref}}<a class="btn" href="{{.Pagination.NextHref}}">Next</a>{{else}}<span class="btn disabled">Next</span>{{end}}
+</nav>
 </footer>
 </section>
 {{end}}
@@ -187,7 +206,7 @@
 <input type="hidden" name="tab" value="{{.Filters.Tab}}">
 <input type="hidden" name="q" value="{{.Filters.Search}}">
 <input type="hidden" name="role" value="{{.Filters.Role}}">
-<input type="hidden" name="status" value="{{.Filters.Status}}">
+{{range statusFilterValues .Filters}}<input type="hidden" name="status" value="{{.}}">{{end}}
 <label>Kind<select name="activity_kind"><option value="">all</option>{{range .FilterOptions.ActivityKinds}}<option value="{{.}}" {{if eq $.Filters.ActivityKind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Rows<select name="activity_limit"><option value="10" {{if eq .Filters.ActivityLimit 10}}selected{{end}}>10</option><option value="25" {{if eq .Filters.ActivityLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.ActivityLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.ActivityLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.ActivityLimit 200}}selected{{end}}>200</option></select></label>
 <button class="btn" type="submit">Apply</button>

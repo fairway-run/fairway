@@ -3,8 +3,9 @@
 Status: superseded by the single dashboard described in [dashboard.md](dashboard.md).
 
 This document is retained as the decision log for the redesign that introduced
-the wall, board, diagnostics, and v2-style task detail flows. Fairway no longer
-ships multiple dashboard surfaces.
+the wall, board, diagnostics, and v2-style task detail flows. The redesign
+consolidated v1's overloaded dashboard into a single dashboard system with
+purpose-built views: wall, board, diagnostics, and task detail.
 
 ## Goal
 
@@ -209,14 +210,14 @@ The redesign removes ergonomics from v1 only where v2 covers them better:
 - Per-workstream tables → single sortable table filtered by `workstream`
 - Per-role tables → single sortable table filtered by `role`
 - Health badge row → headline metrics in wall header + dedicated saved views ("Blocked >24h", "Stale claims")
-- Sessions / Worktrees / Watchers / Checkpoints tables → moved to a Diagnostics tab on `/board` (separate route or modal — see open questions)
+- Sessions / Worktrees / Watchers / Checkpoints tables → moved to a Diagnostics tab on `/board`
 - Lane card strip → wall is the lane card strip, just rebuilt
 
 v1 features preserved verbatim: `/tasks/<id>`, `/epics/<id>`, CSRF on mutations, audit trail on writes, terminal status changes routed through CLI gates.
 
-## Open questions
+## Resolved And Remaining Questions
 
-1. **Diagnostics surface.** Sessions, worktrees, watchers, checkpoints are operator-relevant but not data-table-shaped. Options: (a) a `/board?tab=diagnostics` view with separate sub-tables, (b) a `/diag` route, (c) keep them on the wall view's right rail with drill-down. Lean: (a), to keep the page count bounded.
+1. **Diagnostics surface.** Resolved: sessions, worktrees, watchers, and checkpoints live at `/board?tab=diagnostics` with separate sortable tables.
 2. **Multi-project mode.** v1 has `fairway dashboard --multi` with project-prefixed tables. v2 needs the same — probably as a project filter chip on `/board` and a project group header on `/wall`.
 3. **Saved view sharing.** Per-user views in `~/.fairway/views.json` is uncontroversial. Team-shared views in `.fairway/views.json` (versioned with the project) is a stronger commitment. Needs an explicit go/no-go before we ship.
 4. **Inline edit on the board.** Setting status from a row dropdown is in scope. Editing acceptance checks or other definition fields is not — those continue through CLI or the task detail page.

@@ -71,6 +71,24 @@
   animation: fairway-pulse 1.4s ease-out infinite;
 }
 
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.brand-mark {
+  width: var(--space-5);
+  height: var(--space-5);
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.brand-name {
+  min-width: 0;
+}
+
 .status-pill {
   border-radius: var(--radius-pill);
   text-transform: capitalize;

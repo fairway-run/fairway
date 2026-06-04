@@ -737,10 +737,10 @@ tasks:
     depends_on:
       - FWRD-131
     acceptance_checks:
-      - docs/design/dashboard.md rewritten to describe v2 with a "what changed from v1" section
-      - dashboard-redesign.md kept as the redesign decision log; marked superseded once stable
+      - docs/design/dashboard.md describes the unified dashboard system with wall, board, diagnostics, and task detail views
+      - dashboard-redesign.md kept as the superseded redesign decision log
       - multi-project.md updated to reflect /board project chip and /wall project headers
-      - config-reference.md documents [dashboard] surface
+      - config-reference.md documents that [dashboard] surface is ignored and should be omitted from new configs
 
   - id: FWRD-153
     title: CHANGELOG entry and v1 deprecation note
@@ -815,6 +815,6 @@ tasks:
       - FWRD-154
     acceptance_checks:
       - v1 templates and inlined string assets removed
-      - '[dashboard] surface flag becomes a no-op with a one-release transitional warning'
+      - '[dashboard] surface flag is ignored; dashboard version selection is removed'
       - CHANGELOG records the removal with a pointer to the redesign doc
       - no regressions on /tasks, /epics, /events, /actions/*

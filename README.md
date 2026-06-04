@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo-lockup.svg" alt="fairway" width="240">
+</p>
+
 # fairway
 
 **traffic control for coding agents**

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fairway · logo sketches</title>
+<style>
+  :root {
+    --bg-dark: #0d1117;
+    --fg-dark: #c9d1d9;
+    --muted-dark: #7d8590;
+    --accent-dark: #58a6ff;
+    --bg-light: #f6f7f9;
+    --fg-light: #1f2328;
+    --muted-light: #5a6678;
+    --accent-light: #175cd3;
+  }
+  html, body { margin: 0; padding: 0; font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif; background: #1b1f24; color: #e6edf3; }
+  h1 { font-size: 16px; font-weight: 600; margin: 24px 32px 8px; letter-spacing: -0.01em; }
+  p.lede { color: #9aa4b2; margin: 0 32px 24px; max-width: 640px; }
+  .row { display: grid; grid-template-columns: 220px 1fr 1fr; gap: 24px; padding: 16px 32px; border-top: 1px solid #2b313a; }
+  .row:first-of-type { border-top: 1px solid #3a414c; }
+  .label { font-weight: 600; }
+  .label small { display: block; color: #9aa4b2; font-weight: 400; margin-top: 4px; }
+  .swatch { display: flex; align-items: center; gap: 24px; padding: 24px; border-radius: 8px; }
+  .swatch.dark { background: var(--bg-dark); color: var(--fg-dark); }
+  .swatch.light { background: var(--bg-light); color: var(--fg-light); }
+  .sizes { display: flex; align-items: center; gap: 18px; }
+  .sz { display: flex; flex-direction: column; align-items: center; gap: 6px; color: inherit; opacity: 0.95; }
+  .sz svg { color: currentColor; }
+  .sz .px { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .swatch.dark .px { color: var(--muted-dark); }
+  .swatch.light .px { color: var(--muted-light); }
+  .wordmark { display: inline-flex; align-items: center; gap: 10px; }
+  .wordmark .name { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+  .wordmark .name small { font-weight: 400; margin-left: 8px; }
+  .swatch.dark .wordmark .name small { color: var(--muted-dark); }
+  .swatch.light .wordmark .name small { color: var(--muted-light); }
+  .swatch.dark .accent { color: var(--accent-dark); }
+  .swatch.light .accent { color: var(--accent-light); }
+  .lockups { display: flex; flex-direction: column; gap: 12px; }
+</style>
+</head>
+<body>
+  <h1>fairway · logo sketches</h1>
+  <p class="lede">Four candidate marks rendered at favicon (16/24), header (32), and avatar (96) sizes against the dashboard's dark and light palettes, with the lockup pattern from the mockups. SVGs use <code>currentColor</code> so they pick up the surrounding foreground.</p>
+
+  <!-- Row template repeated per candidate -->
+  <!-- 1. Channel-mark, dots -->
+  <div class="row">
+    <div class="label">01 · channel-mark<br><small>two rails + three dots</small></div>
+    <div class="swatch dark">
+      <div class="sizes">
+        <div class="sz"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="16" height="16"></object><span class="px">16</span></div>
+        <div class="sz"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="24" height="24"></object><span class="px">24</span></div>
+        <div class="sz"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="32" height="32"></object><span class="px">32</span></div>
+        <div class="sz"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="96" height="96"></object><span class="px">96</span></div>
+      </div>
+      <div class="lockups">
+        <div class="wordmark"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· board</small></span></div>
+        <div class="wordmark accent"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· live coordination</small></span></div>
+      </div>
+    </div>
+    <div class="swatch light">
+      <div class="sizes">
+        <div class="sz"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="16" height="16"></object><span class="px">16</span></div>
+        <div class="sz"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="24" height="24"></object><span class="px">24</span></div>
+        <div class="sz"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="32" height="32"></object><span class="px">32</span></div>
+        <div class="sz"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="96" height="96"></object><span class="px">96</span></div>
+      </div>
+      <div class="lockups">
+        <div class="wordmark"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· board</small></span></div>
+        <div class="wordmark accent"><object data="01-channel-mark-dots.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· live coordination</small></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1b. Channel-mark, chevrons -->
+  <div class="row">
+    <div class="label">01b · channel-mark<br><small>two rails + three chevrons (motion)</small></div>
+    <div class="swatch dark">
+      <div class="sizes">
+        <div class="sz"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="16" height="16"></object><span class="px">16</span></div>
+        <div class="sz"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="24" height="24"></object><span class="px">24</span></div>
+        <div class="sz"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="32" height="32"></object><span class="px">32</span></div>
+        <div class="sz"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="96" height="96"></object><span class="px">96</span></div>
+      </div>
+      <div class="lockups">
+        <div class="wordmark"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· board</small></span></div>
+        <div class="wordmark accent"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· live coordination</small></span></div>
+      </div>
+    </div>
+    <div class="swatch light">
+      <div class="sizes">
+        <div class="sz"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="16" height="16"></object><span class="px">16</span></div>
+        <div class="sz"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="24" height="24"></object><span class="px">24</span></div>
+        <div class="sz"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="32" height="32"></object><span class="px">32</span></div>
+        <div class="sz"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="96" height="96"></object><span class="px">96</span></div>
+      </div>
+      <div class="lockups">
+        <div class="wordmark"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· board</small></span></div>
+        <div class="wordmark accent"><object data="01b-channel-mark-chevrons.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· live coordination</small></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Wake-V -->
+  <div class="row">
+    <div class="label">02 · wake-V<br><small>vessel + wake monogram</small></div>
+    <div class="swatch dark">
+      <div class="sizes">
+        <div class="sz"><object data="02-wake-v.svg" type="image/svg+xml" width="16" height="16"></object><span class="px">16</span></div>
+        <div class="sz"><object data="02-wake-v.svg" type="image/svg+xml" width="24" height="24"></object><span class="px">24</span></div>
+        <div class="sz"><object data="02-wake-v.svg" type="image/svg+xml" width="32" height="32"></object><span class="px">32</span></div>
+        <div class="sz"><object data="02-wake-v.svg" type="image/svg+xml" width="96" height="96"></object><span class="px">96</span></div>
+      </div>
+      <div class="lockups">
+        <div class="wordmark"><object data="02-wake-v.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· board</small></span></div>
+        <div class="wordmark accent"><object data="02-wake-v.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· live coordination</small></span></div>
+      </div>
+    </div>
+    <div class="swatch light">
+      <div class="sizes">
+        <div class="sz"><object data="02-wake-v.svg" type="image/svg+xml" width="16" height="16"></object><span class="px">16</span></div>
+        <div class="sz"><object data="02-wake-v.svg" type="image/svg+xml" width="24" height="24"></object><span class="px">24</span></div>
+        <div class="sz"><object data="02-wake-v.svg" type="image/svg+xml" width="32" height="32"></object><span class="px">32</span></div>
+        <div class="sz"><object data="02-wake-v.svg" type="image/svg+xml" width="96" height="96"></object><span class="px">96</span></div>
+      </div>
+      <div class="lockups">
+        <div class="wordmark"><object data="02-wake-v.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· board</small></span></div>
+        <div class="wordmark accent"><object data="02-wake-v.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· live coordination</small></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Lane stack -->
+  <div class="row">
+    <div class="label">03 · lane stack<br><small>three lanes, middle active</small></div>
+    <div class="swatch dark">
+      <div class="sizes">
+        <div class="sz"><object data="03-lane-stack.svg" type="image/svg+xml" width="16" height="16"></object><span class="px">16</span></div>
+        <div class="sz"><object data="03-lane-stack.svg" type="image/svg+xml" width="24" height="24"></object><span class="px">24</span></div>
+        <div class="sz"><object data="03-lane-stack.svg" type="image/svg+xml" width="32" height="32"></object><span class="px">32</span></div>
+        <div class="sz"><object data="03-lane-stack.svg" type="image/svg+xml" width="96" height="96"></object><span class="px">96</span></div>
+      </div>
+      <div class="lockups">
+        <div class="wordmark"><object data="03-lane-stack.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· board</small></span></div>
+        <div class="wordmark accent"><object data="03-lane-stack.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· live coordination</small></span></div>
+      </div>
+    </div>
+    <div class="swatch light">
+      <div class="sizes">
+        <div class="sz"><object data="03-lane-stack.svg" type="image/svg+xml" width="16" height="16"></object><span class="px">16</span></div>
+        <div class="sz"><object data="03-lane-stack.svg" type="image/svg+xml" width="24" height="24"></object><span class="px">24</span></div>
+        <div class="sz"><object data="03-lane-stack.svg" type="image/svg+xml" width="32" height="32"></object><span class="px">32</span></div>
+        <div class="sz"><object data="03-lane-stack.svg" type="image/svg+xml" width="96" height="96"></object><span class="px">96</span></div>
+      </div>
+      <div class="lockups">
+        <div class="wordmark"><object data="03-lane-stack.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· board</small></span></div>
+        <div class="wordmark accent"><object data="03-lane-stack.svg" type="image/svg+xml" width="22" height="22"></object><span class="name">fairway <small>· live coordination</small></span></div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

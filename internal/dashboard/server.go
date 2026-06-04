@@ -161,6 +161,7 @@ type TaskFilters struct {
 	Search        string
 	Role          string
 	Status        string
+	Statuses      []string
 	Profile       string
 	Kind          string
 	OwningDomain  string
@@ -170,6 +171,18 @@ type TaskFilters struct {
 	Tab           string
 	ActivityLimit int
 	TableLimit    int
+	TablePage     int
+}
+
+type TablePagination struct {
+	Page       int
+	PageSize   int
+	TotalRows  int
+	TotalPages int
+	Start      int
+	End        int
+	PrevHref   string
+	NextHref   string
 }
 
 type FilterOptions struct {
@@ -188,6 +201,8 @@ type DashboardViewData struct {
 	Gates            []GateStatus
 	GateGroups       []GateGroup
 	Groups           []RoleGroup
+	TableRows        []store.Task
+	Pagination       TablePagination
 	Workstreams      []WorkstreamGroup
 	Filters          TaskFilters
 	FilterOptions    FilterOptions
@@ -302,12 +317,16 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	displayTasks := filterTasks(tasks, filters)
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks, readySet)
+	groups := groupTasks(displayTasks, s.roles)
+	tableRows, pagination := paginateBoardRows(boardRows(groups), filters)
 	return DashboardViewData{
 		View:             view,
 		Summary:          dashboardSummary(tasks, displayTasks, workstreams, readySet),
 		Gates:            gates,
 		GateGroups:       gateGroups,
-		Groups:           groupTasks(displayTasks, s.roles),
+		Groups:           groups,
+		TableRows:        tableRows,
+		Pagination:       pagination,
 		Workstreams:      workstreams,
 		Filters:          filters,
 		FilterOptions:    filterOptions(tasks, activity),
@@ -362,10 +381,12 @@ func groupTasks(tasks []store.Task, roles []string) []RoleGroup {
 
 func taskFiltersFromRequest(r *http.Request) TaskFilters {
 	query := r.URL.Query()
+	statuses := trimmedQueryValues(query["status"])
 	return TaskFilters{
 		Search:        strings.TrimSpace(query.Get("q")),
 		Role:          strings.TrimSpace(query.Get("role")),
-		Status:        strings.TrimSpace(query.Get("status")),
+		Status:        strings.Join(statuses, ", "),
+		Statuses:      statuses,
 		Profile:       strings.TrimSpace(query.Get("profile")),
 		Kind:          strings.TrimSpace(query.Get("kind")),
 		OwningDomain:  strings.TrimSpace(query.Get("owning_domain")),
@@ -375,6 +396,7 @@ func taskFiltersFromRequest(r *http.Request) TaskFilters {
 		Tab:           dashboardTab(query.Get("tab")),
 		ActivityLimit: boundedQueryInt(query.Get("activity_limit"), defaultActivityLimit, maxActivityLimit),
 		TableLimit:    boundedQueryInt(query.Get("table_limit"), defaultTableLimit, maxTableLimit),
+		TablePage:     boundedQueryInt(query.Get("page"), 1, 999999),
 	}
 }
 
@@ -399,7 +421,9 @@ func boardTabHref(filters TaskFilters, tab string) string {
 	}
 	setIf("q", filters.Search)
 	setIf("role", filters.Role)
-	setIf("status", filters.Status)
+	for _, status := range statusFilterValues(filters) {
+		values.Add("status", status)
+	}
 	setIf("profile", filters.Profile)
 	setIf("kind", filters.Kind)
 	setIf("owning_domain", filters.OwningDomain)
@@ -412,10 +436,18 @@ func boardTabHref(filters TaskFilters, tab string) string {
 	if filters.TableLimit > 0 && filters.TableLimit != defaultTableLimit {
 		values.Set("table_limit", strconv.Itoa(filters.TableLimit))
 	}
+	if filters.TablePage > 1 {
+		values.Set("page", strconv.Itoa(filters.TablePage))
+	}
 	if encoded := values.Encode(); encoded != "" {
 		return "/board?" + encoded
 	}
 	return "/board"
+}
+
+func boardPageHref(filters TaskFilters, page int) string {
+	filters.TablePage = page
+	return boardTabHref(filters, filters.Tab)
 }
 
 func boundedQueryInt(raw string, fallback, max int) int {
@@ -433,6 +465,7 @@ func boundedQueryInt(raw string, fallback, max int) int {
 }
 
 func filterTasks(tasks []store.Task, filters TaskFilters) []store.Task {
+	statuses := statusFilterValues(filters)
 	var out []store.Task
 	for _, task := range tasks {
 		if filters.Search != "" && !taskMatchesSearch(task, filters.Search) {
@@ -441,7 +474,7 @@ func filterTasks(tasks []store.Task, filters TaskFilters) []store.Task {
 		if filters.Role != "" && task.Definition.Role != filters.Role {
 			continue
 		}
-		if filters.Status != "" && task.Status != filters.Status {
+		if len(statuses) > 0 && !containsString(statuses, task.Status) {
 			continue
 		}
 		if filters.Profile != "" && task.Definition.Profile != filters.Profile {
@@ -462,6 +495,34 @@ func filterTasks(tasks []store.Task, filters TaskFilters) []store.Task {
 		out = append(out, task)
 	}
 	return out
+}
+
+func trimmedQueryValues(values []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func statusFilterValues(filters TaskFilters) []string {
+	if len(filters.Statuses) > 0 {
+		return filters.Statuses
+	}
+	if strings.TrimSpace(filters.Status) == "" {
+		return nil
+	}
+	return []string{strings.TrimSpace(filters.Status)}
+}
+
+func statusSelected(filters TaskFilters, status string) bool {
+	return containsString(statusFilterValues(filters), status)
 }
 
 func wallRoleHref(role string) string {
@@ -663,6 +724,56 @@ func filterActivity(activity []store.Activity, kind string, limit int) ([]store.
 		filtered = filtered[:limit]
 	}
 	return filtered, total
+}
+
+func paginateBoardRows(rows []store.Task, filters TaskFilters) ([]store.Task, TablePagination) {
+	pageSize := filters.TableLimit
+	if pageSize <= 0 {
+		pageSize = defaultTableLimit
+	}
+	if pageSize > maxTableLimit {
+		pageSize = maxTableLimit
+	}
+	total := len(rows)
+	totalPages := 1
+	if total > 0 {
+		totalPages = (total + pageSize - 1) / pageSize
+	}
+	page := filters.TablePage
+	if page <= 0 {
+		page = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	startIndex := 0
+	endIndex := 0
+	displayStart := 0
+	displayEnd := 0
+	if total > 0 {
+		startIndex = (page - 1) * pageSize
+		endIndex = startIndex + pageSize
+		if endIndex > total {
+			endIndex = total
+		}
+		displayStart = startIndex + 1
+		displayEnd = endIndex
+	}
+	pagination := TablePagination{
+		Page:       page,
+		PageSize:   pageSize,
+		TotalRows:  total,
+		TotalPages: totalPages,
+		Start:      displayStart,
+		End:        displayEnd,
+	}
+	if page > 1 {
+		pagination.PrevHref = boardPageHref(filters, page-1)
+	}
+	if page < totalPages {
+		pagination.NextHref = boardPageHref(filters, page+1)
+	}
+	return rows[startIndex:endIndex], pagination
 }
 
 func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, gapLimit int) ([]GateStatus, error) {
@@ -1205,7 +1316,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//go:embed assets/templates/*.html assets/templates/partials/*.html assets/css/*.css assets/js/*.js
+//go:embed assets/*.svg assets/templates/*.html assets/templates/partials/*.html assets/css/*.css assets/js/*.js
 var dashboardAssets embed.FS
 
 var detailTemplate = mustEmbeddedTemplateSet("detail", []string{
@@ -1274,6 +1385,9 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"wallLaneHref":        wallLaneHref,
 		"boardRows":           boardRows,
 		"boardTabHref":        boardTabHref,
+		"boardPageHref":       boardPageHref,
+		"statusFilterValues":  statusFilterValues,
+		"statusSelected":      statusSelected,
 		"statusClass":         safeDashboardClass,
 		"safeClass":           safeDashboardClass,
 		"dict":                templateDict,
