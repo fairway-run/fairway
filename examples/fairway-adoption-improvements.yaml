@@ -213,3 +213,35 @@ tasks:
       - adapter records an initial checkpoint when a task is associated and documents a cadence for fresh checkpoints on long-running lanes
       - session reconcile can mark missing tmux/PID sessions stale without changing task ownership
       - docs include GPUaaS-style examples for Claude lanes that coordinate through Fairway state rather than provider chat
+
+  - id: FW-109
+    title: Add delegated provider session watcher adapter pattern
+    kind: session-adapter
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+      - examples/session-adapters
+      - cmd/fairway/main.go
+      - internal/store
+    target_paths:
+      - examples/session-adapters
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: delegated-provider-session-watcher
+    depends_on:
+      - FW-108
+    acceptance_checks:
+      - docs define how provider-specific runtime states such as waiting on approval, waiting on input, completed, failed, and stale map to Fairway sessions, checkpoints, evidence, or handoffs
+      - example adapter or documented convention covers delegated Codex thread monitoring without making Fairway core depend on Codex APIs
+      - watcher records `awaiting_input` checkpoints for delegated sessions that need approval or user input
+      - dashboard/task-detail/coordinator output can surface the session and latest checkpoint without provider-specific chat access
+      - docs state that task ownership, terminal gates, and merge readiness remain Fairway responsibilities

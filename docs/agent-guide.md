@@ -56,6 +56,53 @@ Fairway coordination should work through task state, evidence, handoffs,
 checkpoints, and session records. Provider-specific chat history is useful, but
 it is not the coordination source of truth.
 
+## Delegated Provider Sessions
+
+When one agent delegates work to another provider session, the delegating agent
+must keep the coordination loop explicit. Starting or steering a child session
+is not enough; the parent needs a watcher or heartbeat that notices when the
+child needs attention.
+
+Provider-specific watchers, such as a Codex thread monitor, should live outside
+Fairway core. Their job is to read provider runtime state and translate it into
+provider-neutral Fairway facts:
+
+- `waiting_on_approval` or `waiting_on_input` becomes a checkpoint with
+  `state=awaiting_input` and a summary of the requested action.
+- `completed` becomes evidence or a handoff, then the owning task can move
+  through normal Fairway gates.
+- `failed` becomes a blocked checkpoint or task status with the failure reason.
+- stale/no-progress sessions become stale session records or checkpoints, not
+  silent background work.
+
+For Codex-style delegated threads, the operating pattern is:
+
+```bash
+# 1. Register the delegated session.
+fairway session upsert \
+  --id <codex-thread-id> \
+  --role <role> \
+  --provider codex \
+  --backend codex-thread \
+  --task-id <task-id> \
+  --worktree <path> \
+  --branch <branch>
+
+# 2. Run a provider adapter or heartbeat outside Fairway core.
+# The adapter polls provider state and records Fairway checkpoints.
+codex-thread-watch <codex-thread-id> --task-id <task-id>
+
+# 3. Record blocking runtime state as Fairway state.
+fairway checkpoint record <task-id> \
+  --state awaiting_input \
+  --owner <role> \
+  --summary "Delegated Codex thread is waiting on approval: <short reason>"
+```
+
+Do not make Fairway depend on Codex, Claude, Gemini, or any provider API.
+Fairway should expose the session/checkpoint/evidence surfaces; provider
+watchers should feed those surfaces.
+
 If you need machine-readable output, put global flags before the subcommand:
 
 ```bash
