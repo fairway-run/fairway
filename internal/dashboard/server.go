@@ -1053,7 +1053,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//go:embed assets/templates/*.html assets/css/*.css assets/js/*.js
+//go:embed assets/templates/*.html assets/templates/partials/*.html assets/css/*.css assets/js/*.js
 var dashboardAssets embed.FS
 
 var indexTemplate = mustEmbeddedTemplate("index", "assets/templates/index.html", template.FuncMap{
@@ -1079,6 +1079,14 @@ var indexTemplate = mustEmbeddedTemplate("index", "assets/templates/index.html",
 
 var detailTemplate = mustEmbeddedTemplate("detail", "assets/templates/task-detail.html", nil)
 
+var wallTemplate = mustEmbeddedTemplateSet("wall", []string{
+	"assets/templates/layout.html",
+	"assets/templates/wall.html",
+	"assets/templates/partials/lane-card.html",
+	"assets/templates/partials/gate-gauge.html",
+	"assets/templates/partials/provider-chip.html",
+}, dashboardTemplateFuncs())
+
 func URL(addr string) string {
 	return fmt.Sprintf("http://%s", addr)
 }
@@ -1093,6 +1101,39 @@ func dashboardAssetHandler() http.Handler {
 	return http.StripPrefix("/assets/", http.FileServer(http.FS(assets)))
 }
 
+func dashboardTemplateFuncs() template.FuncMap {
+	funcs := template.FuncMap{
+		"percent": func(done, total int) float64 {
+			if total == 0 {
+				return 0
+			}
+			return float64(done) / float64(total) * 100
+		},
+		"takeTasks": func(tasks []store.Task, limit int) []store.Task {
+			if limit <= 0 || len(tasks) <= limit {
+				return tasks
+			}
+			return tasks[:limit]
+		},
+		"moreTasks": func(tasks []store.Task, limit int) int {
+			if limit <= 0 || len(tasks) <= limit {
+				return 0
+			}
+			return len(tasks) - limit
+		},
+		"wallLaneTasks":       wallLaneTasks,
+		"wallProviderClass":   wallProviderClass,
+		"wallActiveSessions":  wallActiveSessions,
+		"wallTasksMoving":     wallTasksMoving,
+		"wallHandoffCount":    wallHandoffCount,
+		"wallDoneToday":       wallDoneToday,
+		"wallTaskHasProvider": wallTaskHasProvider,
+		"safeClass":           safeDashboardClass,
+		"dict":                templateDict,
+	}
+	return funcs
+}
+
 func mustEmbeddedTemplate(name, path string, funcs template.FuncMap) *template.Template {
 	tmpl := template.New(name)
 	if funcs != nil {
@@ -1103,4 +1144,165 @@ func mustEmbeddedTemplate(name, path string, funcs template.FuncMap) *template.T
 		panic(err)
 	}
 	return template.Must(tmpl.Parse(string(data)))
+}
+
+func mustEmbeddedTemplateSet(name string, paths []string, funcs template.FuncMap) *template.Template {
+	tmpl := template.New(name)
+	if funcs != nil {
+		tmpl = tmpl.Funcs(funcs)
+	}
+	for _, path := range paths {
+		data, err := dashboardAssets.ReadFile(path)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := tmpl.Parse(string(data)); err != nil {
+			panic(err)
+		}
+	}
+	return tmpl
+}
+
+func wallLaneTasks(tasks []store.Task, lane string, sessions []store.Session) []store.Task {
+	var out []store.Task
+	for _, task := range tasks {
+		switch lane {
+		case "backlog":
+			if task.Status == "todo" {
+				out = append(out, task)
+			}
+		case "claimed":
+			if task.Status == "in_progress" && !wallTaskHasProvider(task, sessions) {
+				out = append(out, task)
+			}
+		case "working":
+			if task.Status == "in_progress" && wallTaskHasProvider(task, sessions) {
+				out = append(out, task)
+			}
+		case "review":
+			if task.Status != "done" && task.ReviewStatus != "" && task.ReviewStatus != "approved" {
+				out = append(out, task)
+			}
+		case "done":
+			if task.Status == "done" {
+				out = append(out, task)
+			}
+		}
+	}
+	return out
+}
+
+func wallTaskHasProvider(task store.Task, sessions []store.Session) bool {
+	for _, session := range sessions {
+		if session.TaskID == task.Definition.ID && isActiveDashboardSession(session) {
+			return true
+		}
+	}
+	return false
+}
+
+func wallProviderClass(task store.Task, sessions []store.Session) string {
+	for _, session := range sessions {
+		if session.TaskID == task.Definition.ID && strings.TrimSpace(session.Provider) != "" {
+			return safeDashboardClass(session.Provider)
+		}
+	}
+	if task.Owner != "" {
+		return safeDashboardClass(task.Owner)
+	}
+	return safeDashboardClass(task.Definition.Role)
+}
+
+func wallActiveSessions(sessions []store.Session) []store.Session {
+	var out []store.Session
+	for _, session := range sessions {
+		if isActiveDashboardSession(session) {
+			out = append(out, session)
+		}
+	}
+	return out
+}
+
+func isActiveDashboardSession(session store.Session) bool {
+	if session.EndedAt != "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(session.Status)) {
+	case "", "running", "active", "attached":
+		return true
+	default:
+		return false
+	}
+}
+
+func wallTasksMoving(groups []RoleGroup) int {
+	count := 0
+	for _, group := range groups {
+		for _, task := range group.Tasks {
+			if task.Status == "in_progress" {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func wallHandoffCount(activity []store.Activity) int {
+	count := 0
+	for _, item := range activity {
+		if item.Kind == "handoff" {
+			count++
+		}
+	}
+	return count
+}
+
+func wallDoneToday(groups []RoleGroup) int {
+	today := time.Now().UTC().Format("2006-01-02")
+	count := 0
+	for _, group := range groups {
+		for _, task := range group.Tasks {
+			if task.Status != "done" {
+				continue
+			}
+			if task.UpdatedAt == "" || strings.HasPrefix(task.UpdatedAt, today) {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func safeDashboardClass(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune('-')
+		}
+	}
+	if b.Len() == 0 {
+		return "unknown"
+	}
+	return b.String()
+}
+
+func templateDict(values ...any) (map[string]any, error) {
+	if len(values)%2 != 0 {
+		return nil, fmt.Errorf("dict requires key/value pairs")
+	}
+	out := map[string]any{}
+	for i := 0; i < len(values); i += 2 {
+		key, ok := values[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("dict key at index %d is not a string", i)
+		}
+		out[key] = values[i+1]
+	}
+	return out, nil
 }

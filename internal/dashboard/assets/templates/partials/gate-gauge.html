@@ -1,0 +1,9 @@
+{{define "gate-gauge"}}
+<article class="gauge">
+<div class="gauge-ring" style="--gauge-value: {{if .TaskCount}}{{printf "%.0f" (percent .SatisfiedCount .TaskCount)}}{{else}}0{{end}}"></div>
+<div class="gauge-info">
+<div class="name">{{.Label}}</div>
+<div class="pct">{{.SatisfiedCount}}/{{.TaskCount}} satisfied {{if .MissingTaskCount}}. {{.MissingTaskCount}} missing{{end}}</div>
+</div>
+</article>
+{{end}}

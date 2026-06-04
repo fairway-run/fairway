@@ -1,0 +1,33 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fairway dashboard</title>
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="/assets/css/components.css">
+</head>
+<body>
+<header class="wall-header">
+<div class="brand">fairway <small>dashboard v2</small></div>
+<section class="headline" aria-label="Track headline">
+<div class="stat"><b>{{len (wallActiveSessions .Sessions)}}</b><span>agents</span></div>
+<div class="stat"><b>{{wallTasksMoving .Groups}}</b><span>tasks moving</span></div>
+<div class="stat"><b>{{wallHandoffCount .Activity}}</b><span>handoffs</span></div>
+<div class="stat"><b>{{wallDoneToday .Groups}}</b><span>done today</span></div>
+</section>
+<div class="header-right">
+<div class="providers" aria-label="Active providers">
+{{range wallActiveSessions .Sessions}}{{template "provider-chip" .}}{{else}}<span class="provider-chip muted">no active sessions</span>{{end}}
+</div>
+<nav class="view-toggle" aria-label="Dashboard view">
+<a class="active" href="/">Wall</a><a href="/board">Board</a>
+</nav>
+<button class="theme-toggle" type="button">light</button>
+</div>
+</header>
+{{template "content" .}}
+</body>
+</html>
+{{end}}

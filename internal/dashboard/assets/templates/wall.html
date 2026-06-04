@@ -1,0 +1,36 @@
+{{define "content"}}
+<main class="wall-layout">
+<section class="wall-lanes" aria-label="Role lanes">
+<div class="lane-states" aria-hidden="true">
+<span>lane</span><span>backlog</span><span>claimed</span><span>working</span><span>review</span><span>done</span>
+</div>
+{{range .Groups}}
+<article class="wall-lane">
+<div class="lane-row">
+<div class="lane-name">
+<span>{{.Role}}</span>
+{{if .Current}}<small>working {{.Current.Definition.ID}}</small>{{else}}<small class="muted">idle . waiting</small>{{end}}
+</div>
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "backlog" $.Sessions) "Lane" "backlog" "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "claimed" $.Sessions) "Lane" "claimed" "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "working" $.Sessions) "Lane" "working" "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "review" $.Sessions) "Lane" "review" "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "done" $.Sessions) "Lane" "done" "Sessions" $.Sessions}}
+</div>
+</article>
+{{end}}
+</section>
+<aside class="wall-rail">
+<section class="card">
+<h2>Gate Readiness</h2>
+{{range .GateGroups}}{{template "gate-gauge" .}}{{else}}<p class="muted">no gates configured</p>{{end}}
+</section>
+<section class="card">
+<h2>Activity</h2>
+<div class="ticker-list">
+{{range .Activity}}<article class="ticker-entry"><b class="who">{{.TaskID}}</b><span class="what">{{.Kind}} {{.Summary}}</span><time>{{.CreatedAt}}</time></article>{{else}}<p class="muted">no recent activity</p>{{end}}
+</div>
+</section>
+</aside>
+</main>
+{{end}}

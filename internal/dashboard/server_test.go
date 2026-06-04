@@ -495,3 +495,56 @@ func TestDashboardAssetsServeComponents(t *testing.T) {
 		t.Fatalf("components.css should consume tokens only; found hardcoded pixel unit in:\n%s", body)
 	}
 }
+
+func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
+	data := struct {
+		Groups     []RoleGroup
+		GateGroups []GateGroup
+		Sessions   []store.Session
+		Activity   []store.Activity
+	}{
+		Groups: []RoleGroup{
+			{
+				Role: "backend",
+				Current: &store.Task{
+					Definition: store.TaskDefinition{ID: "T-002", Title: "Working task", Role: "backend"},
+					Status:     "in_progress",
+				},
+				Tasks: []store.Task{
+					{Definition: store.TaskDefinition{ID: "T-001", Title: "Backlog task", Role: "backend"}, Status: "todo"},
+					{Definition: store.TaskDefinition{ID: "T-002", Title: "Working task", Role: "backend"}, Status: "in_progress"},
+					{Definition: store.TaskDefinition{ID: "T-003", Title: "Done task", Role: "backend"}, Status: "done"},
+				},
+			},
+			{Role: "ui"},
+		},
+		GateGroups: []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
+		Sessions:   []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
+		Activity:   []store.Activity{{Kind: "handoff", TaskID: "T-002", Summary: "backend to ui", CreatedAt: "2026-06-04T00:00:00Z"}},
+	}
+	var out strings.Builder
+	if err := wallTemplate.ExecuteTemplate(&out, "layout", data); err != nil {
+		t.Fatalf("wall template render error = %v", err)
+	}
+	body := out.String()
+	for _, want := range []string{
+		"dashboard v2",
+		"backend",
+		"ui",
+		"backlog",
+		"claimed",
+		"working",
+		"review",
+		"done",
+		"codex",
+		"idle . waiting",
+		"dashboard-v2 / foundation",
+		"Backlog task",
+		"Working task",
+		"Done task",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("wall template missing %q:\n%s", want, body)
+		}
+	}
+}

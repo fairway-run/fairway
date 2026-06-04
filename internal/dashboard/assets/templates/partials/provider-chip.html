@@ -1,0 +1,3 @@
+{{define "provider-chip"}}
+<span class="provider-chip {{safeClass .Provider}}"><span class="dot"></span>{{if .Provider}}{{.Provider}}{{else}}{{.Role}}{{end}}</span>
+{{end}}

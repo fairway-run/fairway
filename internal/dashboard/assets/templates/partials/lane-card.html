@@ -1,0 +1,10 @@
+{{define "lane-column"}}
+<div class="lane-col {{.Lane}}">
+{{range takeTasks .Tasks 3}}
+<a class="pill {{wallProviderClass . $.Sessions}} {{if eq .Status "done"}}done{{else if eq .Status "in_progress"}}working{{end}}" href="/tasks/{{.Definition.ID}}">
+<span class="id">{{.Definition.ID}}</span><span>{{.Definition.Title}}</span>
+</a>
+{{else}}<span class="pill muted">idle . waiting</span>{{end}}
+{{if gt (moreTasks .Tasks 3) 0}}<span class="pill muted">+{{moreTasks .Tasks 3}}</span>{{end}}
+</div>
+{{end}}
