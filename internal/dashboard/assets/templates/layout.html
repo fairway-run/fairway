@@ -7,6 +7,8 @@
 <title>fairway dashboard</title>
 <link rel="stylesheet" href="/assets/css/tokens.css">
 <link rel="stylesheet" href="/assets/css/components.css">
+{{if eq .View "wall"}}<link rel="stylesheet" href="/assets/css/wall.css">{{end}}
+{{if eq .View "board"}}<link rel="stylesheet" href="/assets/css/board.css">{{end}}
 </head>
 <body>
 <header class="wall-header">

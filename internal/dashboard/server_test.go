@@ -587,6 +587,7 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		"dashboard v2",
 		`data-theme-toggle`,
 		`/assets/js/common.js`,
+		`/assets/css/wall.css`,
 		"backend",
 		"ui",
 		"backlog",
@@ -642,6 +643,7 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		`class="active" href="/board"`,
 		`/assets/js/common.js`,
 		`/assets/js/board.js`,
+		`/assets/css/board.css`,
 		"Search tasks",
 		"Columns",
 		"Views",
@@ -676,6 +678,30 @@ func TestDashboardAssetsServeViewToggleScripts(t *testing.T) {
 	}{
 		{path: "/assets/js/common.js", want: []string{"fairway.dashboard.theme", "data-theme-toggle", "localStorage"}},
 		{path: "/assets/js/board.js", want: []string{`event.key === "g"`, `event.key === "w"`, `window.location.assign("/")`}},
+	} {
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		body := rec.Body.String()
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status=%d, want 200 body=%s", tt.path, rec.Code, body)
+		}
+		for _, want := range tt.want {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s missing %q:\n%s", tt.path, want, body)
+			}
+		}
+	}
+}
+
+func TestDashboardAssetsServeSurfaceStyles(t *testing.T) {
+	handler := dashboardAssetHandler()
+	for _, tt := range []struct {
+		path string
+		want []string
+	}{
+		{path: "/assets/css/wall.css", want: []string{".wall-layout", ".wall-lane", ".lane-states", ".wall-rail"}},
+		{path: "/assets/css/board.css", want: []string{".board-layout", ".toolbar", ".board-table", ".board-rail"}},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 		rec := httptest.NewRecorder()
