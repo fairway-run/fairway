@@ -970,11 +970,17 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	last, err := s.store.LatestHistoryID(r.Context())
+	initial, err := s.store.EventSources(r.Context(), dashboardEventPollLimit)
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
 		flusher.Flush()
 		return
+	}
+	seen := map[string]bool{}
+	for _, source := range initial {
+		for _, event := range sseEventsFromSource(source) {
+			seen[event.ID] = true
+		}
 	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -983,15 +989,61 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-ticker.C:
-			current, err := s.store.LatestHistoryID(r.Context())
+			sources, err := s.store.EventSources(r.Context(), dashboardEventPollLimit)
 			if err != nil {
 				fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
 				flusher.Flush()
 				return
 			}
-			if current > last {
-				last = current
-				fmt.Fprintf(w, "event: refresh\ndata: %d\n\n", current)
+			for i := len(sources) - 1; i >= 0; i-- {
+				source := sources[i]
+				events := sseEventsFromSource(source)
+				if len(events) == 0 {
+					continue
+				}
+				sourceSeen := true
+				for _, event := range events {
+					if !seen[event.ID] {
+						sourceSeen = false
+						break
+					}
+				}
+				if sourceSeen {
+					continue
+				}
+				for _, event := range events {
+					if seen[event.ID] {
+						continue
+					}
+					if err := writeSSEEvent(w, event); err != nil {
+						fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+						flusher.Flush()
+						return
+					}
+					seen[event.ID] = true
+				}
+				gateEvents, err := s.gateChangeEvents(r.Context(), events[0].ID, source.Cursor.At)
+				if err != nil {
+					fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+					flusher.Flush()
+					return
+				}
+				for _, event := range gateEvents {
+					if seen[event.ID] {
+						continue
+					}
+					if err := writeSSEEvent(w, event); err != nil {
+						fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+						flusher.Flush()
+						return
+					}
+					seen[event.ID] = true
+				}
+				if err := writeLegacyRefresh(w, events[0].ID); err != nil {
+					fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+					flusher.Flush()
+					return
+				}
 				flusher.Flush()
 			}
 		}

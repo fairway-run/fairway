@@ -173,6 +173,33 @@ type Activity struct {
 	CreatedAt string
 }
 
+type EventCursor struct {
+	At          string
+	SourceOrder int
+	ID          int64
+}
+
+type EventSource struct {
+	Cursor        EventCursor
+	Source        string
+	TaskID        string
+	Role          string
+	Owner         string
+	FromStatus    string
+	ToStatus      string
+	Actor         string
+	Reason        string
+	FromRole      string
+	ToRole        string
+	EvidenceType  string
+	EvidenceCount int
+	Reviewer      string
+	Verdict       string
+	SessionID     string
+	Provider      string
+	EndReason     string
+}
+
 type Transition struct {
 	FromStatus string
 	ToStatus   string
@@ -1424,6 +1451,96 @@ LIMIT ?`, s.projectID, s.projectID, s.projectID, s.projectID, limit)
 			return nil, err
 		}
 		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) EventSources(ctx context.Context, limit int) ([]EventSource, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT at, source_order, id, source, task_id, role, owner, from_status, to_status,
+       actor, reason, from_role, to_role, evidence_type, evidence_count,
+       reviewer, verdict, session_id, provider, end_reason
+FROM (
+  SELECT h.at AS at, 10 AS source_order, h.id AS id, 'history' AS source,
+         h.task_id AS task_id, d.role AS role, COALESCE(h.to_owner, st.owner, '') AS owner,
+         COALESCE(h.from_status, '') AS from_status, h.to_status AS to_status,
+         h.actor AS actor, COALESCE(h.reason, '') AS reason,
+         '' AS from_role, '' AS to_role, '' AS evidence_type, 0 AS evidence_count,
+         '' AS reviewer, '' AS verdict, '' AS session_id, '' AS provider, '' AS end_reason
+    FROM task_state_history h
+    JOIN task_definitions d ON d.project_id=h.project_id AND d.id=h.task_id
+    JOIN task_state st ON st.project_id=h.project_id AND st.task_id=h.task_id
+   WHERE h.project_id=?
+  UNION ALL
+  SELECT e.created_at, 20, e.id, 'evidence',
+         e.task_id, d.role, COALESCE(st.owner, ''),
+         '', '', '', '', '', '',
+         COALESCE(NULLIF(e.artifact_type, ''), NULLIF(e.result, ''), 'evidence'),
+         (SELECT COUNT(*) FROM task_evidence ec WHERE ec.project_id=e.project_id AND ec.task_id=e.task_id),
+         '', '', '', '', ''
+    FROM task_evidence e
+    JOIN task_definitions d ON d.project_id=e.project_id AND d.id=e.task_id
+    JOIN task_state st ON st.project_id=e.project_id AND st.task_id=e.task_id
+   WHERE e.project_id=?
+  UNION ALL
+  SELECT hf.created_at, 30, hf.id, 'handoff',
+         hf.task_id, d.role, COALESCE(st.owner, ''),
+         '', '', COALESCE(hf.from_role, ''), COALESCE(hf.payload, ''),
+         COALESCE(hf.from_role, ''), COALESCE(hf.to_role, ''),
+         '', 0, '', '', '', '', ''
+    FROM task_handoffs hf
+    JOIN task_definitions d ON d.project_id=hf.project_id AND d.id=hf.task_id
+    JOIN task_state st ON st.project_id=hf.project_id AND st.task_id=hf.task_id
+   WHERE hf.project_id=?
+  UNION ALL
+  SELECT r.created_at, 40, r.id, 'review',
+         r.task_id, d.role, COALESCE(st.owner, ''),
+         '', '', COALESCE(r.reviewer, ''), COALESCE(r.notes, ''),
+         '', '', '', 0, COALESCE(r.reviewer, ''), COALESCE(r.verdict, ''),
+         '', '', ''
+    FROM task_reviews r
+    JOIN task_definitions d ON d.project_id=r.project_id AND d.id=r.task_id
+    JOIN task_state st ON st.project_id=r.project_id AND st.task_id=r.task_id
+   WHERE r.project_id=?
+  UNION ALL
+  SELECT s.started_at, 50, s.rowid, 'session_attach',
+         COALESCE(s.task_id, ''), s.role, '',
+         '', '', '', '', '', '', '', 0, '', '',
+         s.id, COALESCE(s.provider, ''), ''
+    FROM agent_sessions s
+   WHERE s.project_id=?
+  UNION ALL
+  SELECT s.last_heartbeat_at, 60, s.rowid, 'session_heartbeat',
+         COALESCE(s.task_id, ''), s.role, '',
+         '', '', '', '', '', '', '', 0, '', '',
+         s.id, COALESCE(s.provider, ''), ''
+    FROM agent_sessions s
+   WHERE s.project_id=? AND s.last_heartbeat_at IS NOT NULL
+  UNION ALL
+  SELECT s.ended_at, 70, s.rowid, 'session_detach',
+         COALESCE(s.task_id, ''), s.role, '',
+         '', '', '', '', '', '', '', 0, '', '',
+         s.id, COALESCE(s.provider, ''), COALESCE(s.end_reason, s.status, '')
+    FROM agent_sessions s
+   WHERE s.project_id=? AND s.ended_at IS NOT NULL
+)
+WHERE at IS NOT NULL AND at != ''
+ORDER BY at DESC, source_order DESC, id DESC
+LIMIT ?`, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EventSource
+	for rows.Next() {
+		var ev EventSource
+		if err := rows.Scan(&ev.Cursor.At, &ev.Cursor.SourceOrder, &ev.Cursor.ID, &ev.Source, &ev.TaskID, &ev.Role, &ev.Owner, &ev.FromStatus, &ev.ToStatus, &ev.Actor, &ev.Reason, &ev.FromRole, &ev.ToRole, &ev.EvidenceType, &ev.EvidenceCount, &ev.Reviewer, &ev.Verdict, &ev.SessionID, &ev.Provider, &ev.EndReason); err != nil {
+			return nil, err
+		}
+		out = append(out, ev)
 	}
 	return out, rows.Err()
 }
