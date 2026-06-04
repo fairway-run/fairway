@@ -82,7 +82,8 @@
   background: color-mix(in srgb, var(--muted) 18%, transparent);
 }
 
-.status-pill.in_progress {
+.status-pill.in_progress,
+.status-pill.in-progress {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 15%, transparent);
 }

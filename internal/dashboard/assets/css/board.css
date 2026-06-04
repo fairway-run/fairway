@@ -103,6 +103,24 @@ a {
   overflow-x: auto;
 }
 
+.flow-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.flow-bar a {
+  color: var(--accent);
+}
+
+.flow-bar strong {
+  color: var(--text);
+}
+
 .toolbar {
   position: sticky;
   top: 0;
@@ -365,9 +383,6 @@ a {
 }
 
 .board-table thead th {
-  position: sticky;
-  top: 65px;
-  z-index: 2;
   padding: 11px var(--space-3);
   background: var(--panel);
   color: var(--muted);
@@ -378,6 +393,40 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   white-space: nowrap;
+}
+
+.board-table th button {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.board-table th button::after {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  opacity: 0;
+}
+
+.board-table th button[aria-sort="ascending"]::after {
+  border-bottom: 5px solid currentColor;
+  opacity: 0.8;
+}
+
+.board-table th button[aria-sort="descending"]::after {
+  border-top: 5px solid currentColor;
+  opacity: 0.8;
 }
 
 .board-table tbody td {

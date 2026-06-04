@@ -159,6 +159,7 @@ type GateTaskMiss struct {
 
 type TaskFilters struct {
 	Search        string
+	Role          string
 	Status        string
 	Profile       string
 	Kind          string
@@ -201,6 +202,23 @@ type DashboardViewData struct {
 	Rollups          map[string]Rollup
 }
 
+type TaskDetailViewData struct {
+	View         string
+	Groups       []RoleGroup
+	Sessions     []store.Session
+	Activity     []store.Activity
+	BackHref     string
+	Task         store.Task
+	Transitions  []store.Transition
+	Evidence     []store.Evidence
+	Handoffs     []store.Handoff
+	Reviews      []store.Review
+	TaskSessions []store.Session
+	Rollup       Rollup
+	CSRFToken    string
+	States       []string
+}
+
 func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", dashboardAssetHandler())
@@ -215,16 +233,7 @@ func (s *Server) ListenAndServe(addr string) error {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	if config.DashboardSurface(s.cfg) == "v2" {
-		s.wall(w, r)
-		return
-	}
-	data, err := s.dashboardViewData(r, "v1")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	_ = indexTemplate.Execute(w, data)
+	s.wall(w, r)
 }
 
 func (s *Server) board(w http.ResponseWriter, r *http.Request) {
@@ -355,6 +364,7 @@ func taskFiltersFromRequest(r *http.Request) TaskFilters {
 	query := r.URL.Query()
 	return TaskFilters{
 		Search:        strings.TrimSpace(query.Get("q")),
+		Role:          strings.TrimSpace(query.Get("role")),
 		Status:        strings.TrimSpace(query.Get("status")),
 		Profile:       strings.TrimSpace(query.Get("profile")),
 		Kind:          strings.TrimSpace(query.Get("kind")),
@@ -388,6 +398,7 @@ func boardTabHref(filters TaskFilters, tab string) string {
 		}
 	}
 	setIf("q", filters.Search)
+	setIf("role", filters.Role)
 	setIf("status", filters.Status)
 	setIf("profile", filters.Profile)
 	setIf("kind", filters.Kind)
@@ -427,6 +438,9 @@ func filterTasks(tasks []store.Task, filters TaskFilters) []store.Task {
 		if filters.Search != "" && !taskMatchesSearch(task, filters.Search) {
 			continue
 		}
+		if filters.Role != "" && task.Definition.Role != filters.Role {
+			continue
+		}
 		if filters.Status != "" && task.Status != filters.Status {
 			continue
 		}
@@ -448,6 +462,26 @@ func filterTasks(tasks []store.Task, filters TaskFilters) []store.Task {
 		out = append(out, task)
 	}
 	return out
+}
+
+func wallRoleHref(role string) string {
+	values := url.Values{}
+	values.Set("role", role)
+	return "/board?" + values.Encode()
+}
+
+func wallLaneHref(role, lane string) string {
+	values := url.Values{}
+	values.Set("role", role)
+	switch lane {
+	case "backlog":
+		values.Set("status", "todo")
+	case "claimed", "working":
+		values.Set("status", "in_progress")
+	case "done":
+		values.Set("status", "done")
+	}
+	return "/board?" + values.Encode()
 }
 
 func taskMatchesSearch(task store.Task, raw string) bool {
@@ -933,18 +967,46 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
-	data := struct {
-		Task        store.Task
-		Transitions []store.Transition
-		Evidence    []store.Evidence
-		Handoffs    []store.Handoff
-		Reviews     []store.Review
-		Sessions    []store.Session
-		Rollup      Rollup
-		CSRFToken   string
-		States      []string
-	}{task, transitions, evidence, handoffs, reviews, sessionsForDashboardTask(sessions, id), rollups[task.Definition.ID], s.csrfToken, dashboardMutableStates(s.cfg)}
-	_ = detailTemplate.Execute(w, data)
+	activity, err := s.store.Activity(r.Context(), defaultActivityLimit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data := TaskDetailViewData{
+		View:         "detail",
+		Groups:       groupTasks(tasks, s.roles),
+		Sessions:     sessions,
+		Activity:     activity,
+		BackHref:     localBackHref(r.Referer(), r.Host, task.Definition.Role),
+		Task:         task,
+		Transitions:  transitions,
+		Evidence:     evidence,
+		Handoffs:     handoffs,
+		Reviews:      reviews,
+		TaskSessions: sessionsForDashboardTask(sessions, id),
+		Rollup:       rollups[task.Definition.ID],
+		CSRFToken:    s.csrfToken,
+		States:       dashboardMutableStates(s.cfg),
+	}
+	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
+}
+
+func localBackHref(referer, currentHost, role string) string {
+	fallback := wallRoleHref(role)
+	if referer == "" {
+		return fallback
+	}
+	parsed, err := url.Parse(referer)
+	if err != nil || parsed.Host != "" && parsed.Host != currentHost {
+		return fallback
+	}
+	if parsed.Path == "" || !strings.HasPrefix(parsed.Path, "/") || strings.HasPrefix(parsed.Path, "//") {
+		return fallback
+	}
+	if strings.HasPrefix(parsed.Path, "/tasks/") {
+		return fallback
+	}
+	return parsed.RequestURI()
 }
 
 func sessionsForDashboardTask(sessions []store.Session, taskID string) []store.Session {
@@ -1146,28 +1208,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 //go:embed assets/templates/*.html assets/templates/partials/*.html assets/css/*.css assets/js/*.js
 var dashboardAssets embed.FS
 
-var indexTemplate = mustEmbeddedTemplate("index", "assets/templates/index.html", template.FuncMap{
-	"percent": func(done, total int) float64 {
-		if total == 0 {
-			return 0
-		}
-		return float64(done) / float64(total) * 100
-	},
-	"takeTasks": func(tasks []store.Task, limit int) []store.Task {
-		if limit <= 0 || len(tasks) <= limit {
-			return tasks
-		}
-		return tasks[:limit]
-	},
-	"moreTasks": func(tasks []store.Task, limit int) int {
-		if limit <= 0 || len(tasks) <= limit {
-			return 0
-		}
-		return len(tasks) - limit
-	},
-})
-
-var detailTemplate = mustEmbeddedTemplate("detail", "assets/templates/task-detail.html", nil)
+var detailTemplate = mustEmbeddedTemplateSet("detail", []string{
+	"assets/templates/layout.html",
+	"assets/templates/task-detail.html",
+	"assets/templates/partials/provider-chip.html",
+}, dashboardTemplateFuncs())
 
 var wallTemplate = mustEmbeddedTemplateSet("wall", []string{
 	"assets/templates/layout.html",
@@ -1225,6 +1270,8 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"wallHandoffCount":    wallHandoffCount,
 		"wallDoneToday":       wallDoneToday,
 		"wallTaskHasProvider": wallTaskHasProvider,
+		"wallRoleHref":        wallRoleHref,
+		"wallLaneHref":        wallLaneHref,
 		"boardRows":           boardRows,
 		"boardTabHref":        boardTabHref,
 		"statusClass":         safeDashboardClass,

@@ -10,12 +10,13 @@
 <div class="lane-name">
 <span>{{.Role}}</span>
 {{if .Current}}<small>working {{.Current.Definition.ID}}</small>{{else}}<small class="muted">idle . waiting</small>{{end}}
+<a class="lane-detail" href="{{wallRoleHref .Role}}">Open lane</a>
 </div>
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "backlog" $.Sessions) "Lane" "backlog" "Sessions" $.Sessions}}
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "claimed" $.Sessions) "Lane" "claimed" "Sessions" $.Sessions}}
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "working" $.Sessions) "Lane" "working" "Sessions" $.Sessions}}
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "review" $.Sessions) "Lane" "review" "Sessions" $.Sessions}}
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "done" $.Sessions) "Lane" "done" "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "backlog" $.Sessions) "Lane" "backlog" "Role" .Role "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "claimed" $.Sessions) "Lane" "claimed" "Role" .Role "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "working" $.Sessions) "Lane" "working" "Role" .Role "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "review" $.Sessions) "Lane" "review" "Role" .Role "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "done" $.Sessions) "Lane" "done" "Role" .Role "Sessions" $.Sessions}}
 </div>
 </article>
 {{end}}

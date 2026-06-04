@@ -27,7 +27,7 @@ first release tag, and a future Postgres runtime adapter.
 
 - A single Go binary (`fairway`) plus an embedded SQLite store.
 - A CLI for claiming tasks, recording handoffs / evidence / reviews, managing sessions.
-- A local web dashboard for watching lanes, backlog, and activity in real time.
+- A local web dashboard with wall, board, diagnostics, and task-detail flows.
 - Config-driven: roles, branches, worktree paths, review routing, workstream profiles, packet templates, and the state machine are all defined in `.fairway/config.toml`.
 
 ## What it is not
@@ -51,7 +51,7 @@ fairway help                  # print the command summary (-h/--help also work)
 $EDITOR .fairway/config.toml  # define roles, branches, worktree root, review routes
 fairway config validate
 fairway worktree setup        # create per-role branches and worktrees
-fairway dashboard             # open http://127.0.0.1:7878 in your browser
+fairway dashboard             # open the dashboard at http://127.0.0.1:7878
 fairway import tasks.yaml     # or fairway add T-001 --title ... --role ...
 fairway ready                 # list tasks ready for your role to claim
 fairway claim T-001
@@ -61,6 +61,11 @@ fairway adoption artifact     # summarize routes, gate evaluation, health, and e
 ```
 
 See [docs/quickstart.md](docs/quickstart.md) for the full walkthrough.
+
+The dashboard has one route model: `/` is the wall view for lane-level
+coordination, `/board` is the sortable/filterable operator board,
+`/board?tab=diagnostics` shows sessions/worktrees/watchers/checkpoints, and
+`/tasks/<id>` opens task detail.
 
 ## Documentation
 

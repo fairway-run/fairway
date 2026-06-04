@@ -88,7 +88,9 @@ Cross-package rules:
 
 ## CSS (for the ui agent)
 
-- Single stylesheet at `internal/dashboard/assets/app.css`.
+- Dashboard assets live under `internal/dashboard/assets/`; shared tokens and
+  primitives belong in `tokens.css` and `components.css`, while view-specific
+  layout belongs in `wall.css`, `board.css`, or `detail.css`.
 - CSS custom properties (`--color-fg`, `--space-2`) at `:root`. No magic numbers in selectors.
 - Mobile is not a target. Layout assumes ≥ 1280px viewport.
 - Dark mode via `prefers-color-scheme: dark` from day 1.

@@ -1,8 +1,10 @@
-# Dashboard Redesign (v2)
+# Dashboard Redesign Decision Log
 
-The dashboard described in [dashboard.md](dashboard.md) is the v0.1 / v1 surface. This document specifies the v2 redesign: two complementary surfaces (**wall** and **board**) sharing a single design language, with the existing operator dashboard replaced rather than augmented.
+Status: superseded by the single dashboard described in [dashboard.md](dashboard.md).
 
-This is a non-trivial architecture change. Follow the change protocol in [AGENTS.md](../../AGENTS.md): spike behind a config flag, run parallel for real time, walk a GPUaaS operator through it, flip default, deprecate v1 in a later release.
+This document is retained as the decision log for the redesign that introduced
+the wall, board, diagnostics, and v2-style task detail flows. Fairway no longer
+ships multiple dashboard surfaces.
 
 ## Goal
 
@@ -35,25 +37,12 @@ Both are legitimate questions. Mixing them in one screen makes both jobs worse: 
 
 A header-level **view toggle** flips between wall and board. The toggle is intentional — the two answer different questions and the user opts in. There is no "hybrid" view.
 
-## Migration
+## Retirement Outcome
 
-A new config key controls which surface `/` serves:
-
-```toml
-[dashboard]
-surface = "v2"   # "v1" | "v2"; default flips to "v2" after walkthrough phase
-```
-
-Rollout phases:
-
-1. **v0.x-rc** — v2 ships, `surface = "v1"` is the default. Operators opt in via the flag.
-2. **v0.x stable** — flip default to `"v2"` after at least one in-product walkthrough with the GPUaaS team and any blocking gaps closed.
-3. **v0.x+1** — v1 templates removed; the flag becomes a no-op with a CHANGELOG note.
-
-No surface is removed without:
-- v2 covering every gate-readiness, sessions, worktree, watcher, checkpoint, and activity behavior present in v1
-- A documented `/board` query-string mapping for any saved `/?status=...&profile=...` links GPUaaS operators are using
-- The `compass bridge` style integrations against the existing `/` page reviewed (there are none today, but check at cut-over)
+The legacy dashboard has been retired. `/` always serves the wall view, `/board`
+serves the operator board, `/board?tab=diagnostics` serves diagnostics, and
+`/tasks/<id>` serves task detail. Older configs that still contain
+`[dashboard] surface` are tolerated by TOML decoding but the key is ignored.
 
 ## Wall view (`/`)
 

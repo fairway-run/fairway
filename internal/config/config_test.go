@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -47,29 +48,52 @@ func TestValidate_RejectsWorktreeNamingWithoutRole(t *testing.T) {
 	}
 }
 
-func TestValidate_DashboardSurface(t *testing.T) {
-	cfg := Defaults("/tmp/repo")
-	if cfg.Dashboard.Surface != "v1" {
-		t.Fatalf("default dashboard surface=%q, want v1", cfg.Dashboard.Surface)
+func TestLoadIgnoresLegacyDashboardSurface(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".fairway", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	cfg.Dashboard.Surface = "v2"
-	if err := Validate(cfg); err != nil {
-		t.Fatalf("Validate() v2 surface error = %v", err)
+	if err := os.WriteFile(path, []byte(`[fairway]
+project_name = "legacy"
+db_path = ".fairway/state.db"
+queue_source = "inline"
+main_branch = "main"
+task_id_pattern = "^[A-Z]+-[0-9]+$"
+
+[dashboard]
+listen = "127.0.0.1:7878"
+auto_open = true
+surface = "v2"
+
+[worktrees]
+root = "../worktrees"
+naming = "{repo}-{role}"
+review_branch_naming = "review/{role}"
+
+[sessions]
+default_backend = "shell"
+stale_after = "12h"
+
+[states]
+allowed = ["todo", "in_progress", "blocked", "done"]
+terminal = ["done"]
+
+[gates]
+require_blocked_reason = true
+allow_force_without_reason = false
+
+[task_kinds]
+default = "task"
+`), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	cfg.Dashboard.Surface = ""
-	if err := Validate(cfg); err != nil {
-		t.Fatalf("Validate() omitted surface error = %v", err)
+	cfg, _, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() legacy dashboard surface error = %v", err)
 	}
-	if got := DashboardSurface(cfg); got != "v1" {
-		t.Fatalf("effective dashboard surface=%q, want v1", got)
-	}
-	cfg.Dashboard.Surface = "hybrid"
-	err := Validate(cfg)
-	if err == nil {
-		t.Fatal("expected dashboard surface validation error")
-	}
-	if got := err.Error(); got != `[dashboard] surface "hybrid" must be v1 or v2` {
-		t.Fatalf("dashboard surface error=%q", got)
+	if cfg.Dashboard.Listen != "127.0.0.1:7878" {
+		t.Fatalf("dashboard listen=%q", cfg.Dashboard.Listen)
 	}
 }
 

@@ -1,10 +1,17 @@
 {{define "content"}}
 <main class="board-layout">
 <section class="board-main">
+<nav class="flow-bar" aria-label="Board flow">
+<a href="/">Wall</a>
+{{if .Filters.Role}}<span>/</span><strong>{{.Filters.Role}}</strong>{{end}}
+{{if .Filters.Status}}<span>/</span><strong>{{.Filters.Status}}</strong>{{end}}
+</nav>
 <form class="toolbar" method="get">
 {{if eq .Filters.Tab "diagnostics"}}<input type="hidden" name="tab" value="diagnostics">{{end}}
+{{if .Filters.Role}}<input type="hidden" name="role" value="{{.Filters.Role}}">{{end}}
 <div class="tb-left">
-<label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search tasks"></label>
+<label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search ID, title, owner, path" title="Searches task ID, title, metadata, status, owner, source paths, target paths, and review domains"></label>
+{{if .Filters.Role}}<span class="chip"><b>Role</b>{{.Filters.Role}}</span>{{end}}
 {{if .Filters.Status}}<span class="chip"><b>Status</b>{{.Filters.Status}}</span>{{end}}
 {{if .Filters.Profile}}<span class="chip"><b>Profile</b>{{.Filters.Profile}}</span>{{end}}
 {{if .Filters.Kind}}<span class="chip"><b>Kind</b>{{.Filters.Kind}}</span>{{end}}
@@ -12,9 +19,10 @@
 {{if .Filters.RiskLevel}}<span class="chip"><b>Risk</b>{{.Filters.RiskLevel}}</span>{{end}}
 </div>
 <div class="tb-right">
-<button class="btn" type="button">Columns</button>
-<button class="btn" type="button">Views</button>
-<button class="btn" type="button">Export</button>
+<a class="btn" href="/">Wall</a>
+{{if eq .Filters.Tab "tasks"}}
+<button class="btn" type="button" data-export-table=".board-table">Export CSV</button>
+{{end}}
 <button class="btn" type="submit">Apply</button>
 </div>
 </form>
@@ -87,8 +95,8 @@
 <button class="btn" type="button">Set status</button>
 <button class="btn" type="button">Record evidence</button>
 </section>
-<table class="board-table">
-<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Kind</th><th>Started</th><th>Last activity</th><th>Gates</th><th>Owner</th></tr></thead>
+<table class="board-table" data-sortable>
+<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Title</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Started</button></th><th><button type="button" data-sort="text">Last activity</button></th><th><button type="button" data-sort="text">Gates</button></th><th><button type="button" data-sort="text">Owner</button></th></tr></thead>
 <tbody>
 {{range boardRows .Groups}}
 <tr>
@@ -134,6 +142,8 @@
 <form class="activity-controls" method="get">
 <input type="hidden" name="tab" value="{{.Filters.Tab}}">
 <input type="hidden" name="q" value="{{.Filters.Search}}">
+<input type="hidden" name="role" value="{{.Filters.Role}}">
+<input type="hidden" name="status" value="{{.Filters.Status}}">
 <label>Kind<select name="activity_kind"><option value="">all</option>{{range .FilterOptions.ActivityKinds}}<option value="{{.}}" {{if eq $.Filters.ActivityKind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Rows<select name="activity_limit"><option value="10" {{if eq .Filters.ActivityLimit 10}}selected{{end}}>10</option><option value="25" {{if eq .Filters.ActivityLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.ActivityLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.ActivityLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.ActivityLimit 200}}selected{{end}}>200</option></select></label>
 <button class="btn" type="submit">Apply</button>

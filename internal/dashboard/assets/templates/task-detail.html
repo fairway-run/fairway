@@ -1,39 +1,91 @@
-<!doctype html>
-<html><head><title>{{.Task.Definition.ID}}</title><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/components.css"><style>
-body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#555}pre{background:#f4f4f4;padding:12px}table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}code{background:#f4f4f4;padding:1px 3px}
-</style></head><body>
-<p><a href="/">back</a></p>
+{{define "content"}}
+<main class="detail-layout">
+<nav class="flow-bar" aria-label="Task flow">
+<a href="/">Wall</a>
+<span>/</span>
+<a href="{{.BackHref}}">Board</a>
+<span>/</span>
+<strong>{{.Task.Definition.ID}}</strong>
+</nav>
+<section class="detail-hero">
+<div>
+<p class="eyebrow">{{.Task.Definition.Role}} / {{.Task.Definition.Kind}}</p>
 <h1>{{.Task.Definition.ID}}: {{.Task.Definition.Title}}</h1>
-<p class="meta">role={{.Task.Definition.Role}} status={{.Task.Status}} owner={{.Task.Owner}} review={{.Task.ReviewStatus}}</p>
-{{if .Rollup.Total}}<p class="meta">descendants done: {{.Rollup.Done}}/{{.Rollup.Total}}</p>{{end}}
-<form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button type="submit">Claim</button></form>
-<form method="post" action="/actions/set-status">
+<div class="detail-meta">
+<span class="status-pill {{statusClass .Task.Status}}">{{.Task.Status}}</span>
+{{if .Task.Owner}}<span>owner {{.Task.Owner}}</span>{{end}}
+{{if .Task.ReviewStatus}}<span>review {{.Task.ReviewStatus}}</span>{{end}}
+{{if .Rollup.Total}}<span>descendants {{.Rollup.Done}}/{{.Rollup.Total}}</span>{{end}}
+</div>
+</div>
+<div class="detail-actions">
+<a class="btn" href="{{.BackHref}}">Back</a>
+<form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button class="btn" type="submit">Claim</button></form>
+</div>
+</section>
+<section class="detail-grid">
+<article class="detail-panel">
+<h2>Status</h2>
+<form class="status-form" method="post" action="/actions/set-status">
 <input type="hidden" name="csrf" value="{{.CSRFToken}}">
 <input type="hidden" name="task_id" value="{{.Task.Definition.ID}}">
-<select name="status">{{range .States}}<option value="{{.}}" {{if eq $.Task.Status .}}selected{{end}}>{{.}}</option>{{end}}</select>
-<input name="reason" placeholder="reason">
-<button type="submit">Set status</button>
+<label>Status<select name="status">{{range .States}}<option value="{{.}}" {{if eq $.Task.Status .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Reason<input name="reason" placeholder="reason"></label>
+<button class="btn" type="submit">Set status</button>
 </form>
+</article>
+<article class="detail-panel">
 <h2>Metadata</h2>
-<table>
-<tr><th>Kind</th><td>{{.Task.Definition.Kind}}</td></tr>
-<tr><th>Profile</th><td>{{.Task.Definition.Profile}}</td></tr>
-<tr><th>Owning domain</th><td>{{.Task.Definition.OwningDomain}}</td></tr>
-<tr><th>Owning layer</th><td>{{.Task.Definition.OwningLayer}}</td></tr>
-<tr><th>Source paths</th><td>{{range .Task.Definition.SourcePaths}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
-<tr><th>Target paths</th><td>{{range .Task.Definition.TargetPaths}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
-<tr><th>Review domains</th><td>{{range .Task.Definition.ReviewDomains}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
-<tr><th>Risk</th><td>{{.Task.Definition.RiskLevel}}</td></tr>
-<tr><th>Migration type</th><td>{{.Task.Definition.MigrationType}}</td></tr>
-</table>
-<h2>Notes</h2><pre>{{.Task.Definition.Notes}}</pre>
-<h2>Dependencies</h2><ul>{{range .Task.Definition.Dependencies}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
-<h2>Acceptance</h2><ul>{{range .Task.Definition.AcceptanceChecks}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
-<h2>History</h2>{{range .Transitions}}<p><code>{{if .FromStatus}}{{.FromStatus}}{{else}}new{{end}} -> {{.ToStatus}}</code> by {{.Actor}} {{.Reason}}</p>{{else}}<p>none</p>{{end}}
-<h2>Evidence</h2>{{range .Evidence}}<p><code>{{.Result}}</code> {{.CommandText}} {{.ArtifactPath}}</p>{{else}}<p>none</p>{{end}}
-<h2>Sessions</h2><table><tr><th>ID</th><th>Backend</th><th>Provider</th><th>Status</th><th>Pane</th><th>Transcript</th></tr>
-{{range .Sessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td></tr>{{else}}<tr><td colspan="6">none</td></tr>{{end}}
-</table>
-<h2>Handoffs</h2>{{range .Handoffs}}<p>to <b>{{.ToRole}}</b>: {{.Payload}}</p>{{else}}<p>none</p>{{end}}
-<h2>Reviews</h2>{{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}
-</body></html>
+<dl class="detail-list">
+<dt>Profile</dt><dd>{{if .Task.Definition.Profile}}{{.Task.Definition.Profile}}{{else}}none{{end}}</dd>
+<dt>Owning domain</dt><dd>{{if .Task.Definition.OwningDomain}}{{.Task.Definition.OwningDomain}}{{else}}none{{end}}</dd>
+<dt>Owning layer</dt><dd>{{if .Task.Definition.OwningLayer}}{{.Task.Definition.OwningLayer}}{{else}}none{{end}}</dd>
+<dt>Risk</dt><dd>{{if .Task.Definition.RiskLevel}}{{.Task.Definition.RiskLevel}}{{else}}none{{end}}</dd>
+<dt>Migration type</dt><dd>{{if .Task.Definition.MigrationType}}{{.Task.Definition.MigrationType}}{{else}}none{{end}}</dd>
+</dl>
+</article>
+<article class="detail-panel wide">
+<h2>Paths</h2>
+<dl class="detail-list">
+<dt>Source</dt><dd>{{range .Task.Definition.SourcePaths}}<code>{{.}}</code> {{else}}none{{end}}</dd>
+<dt>Target</dt><dd>{{range .Task.Definition.TargetPaths}}<code>{{.}}</code> {{else}}none{{end}}</dd>
+<dt>Review domains</dt><dd>{{range .Task.Definition.ReviewDomains}}<code>{{.}}</code> {{else}}none{{end}}</dd>
+</dl>
+</article>
+<article class="detail-panel wide">
+<h2>Notes</h2>
+<pre>{{.Task.Definition.Notes}}</pre>
+</article>
+<article class="detail-panel">
+<h2>Dependencies</h2>
+<ul class="detail-items">{{range .Task.Definition.Dependencies}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
+</article>
+<article class="detail-panel">
+<h2>Acceptance</h2>
+<ul class="detail-items">{{range .Task.Definition.AcceptanceChecks}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
+</article>
+<article class="detail-panel">
+<h2>History</h2>
+<div class="detail-stack">{{range .Transitions}}<p><code>{{if .FromStatus}}{{.FromStatus}}{{else}}new{{end}} -> {{.ToStatus}}</code> by {{.Actor}} {{.Reason}}</p>{{else}}<p>none</p>{{end}}</div>
+</article>
+<article class="detail-panel">
+<h2>Evidence</h2>
+<div class="detail-stack">{{range .Evidence}}<p><code>{{.Result}}</code> {{.CommandText}} {{.ArtifactPath}}</p>{{else}}<p>none</p>{{end}}</div>
+</article>
+<article class="detail-panel wide">
+<h2>Sessions</h2>
+<table class="detail-table"><thead><tr><th>ID</th><th>Backend</th><th>Provider</th><th>Status</th><th>Pane</th><th>Transcript</th></tr></thead><tbody>
+{{range .TaskSessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td></tr>{{else}}<tr><td colspan="6">none</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="detail-panel">
+<h2>Handoffs</h2>
+<div class="detail-stack">{{range .Handoffs}}<p>to <b>{{.ToRole}}</b>: {{.Payload}}</p>{{else}}<p>none</p>{{end}}</div>
+</article>
+<article class="detail-panel">
+<h2>Reviews</h2>
+<div class="detail-stack">{{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}</div>
+</article>
+</section>
+</main>
+{{end}}

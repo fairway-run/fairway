@@ -9,22 +9,35 @@
 <link rel="stylesheet" href="/assets/css/components.css">
 {{if eq .View "wall"}}<link rel="stylesheet" href="/assets/css/wall.css">{{end}}
 {{if eq .View "board"}}<link rel="stylesheet" href="/assets/css/board.css">{{end}}
+{{if eq .View "detail"}}<link rel="stylesheet" href="/assets/css/detail.css">{{end}}
 </head>
 <body>
-<header class="wall-header">
-<div class="brand">fairway <small>dashboard v2</small></div>
+<header class="wall-header {{if eq .View "detail"}}detail-header{{end}}">
+<div class="brand">fairway <small>dashboard</small></div>
+{{if eq .View "detail"}}
+<section class="headline detail-headline" aria-label="Detail context">
+<div class="stat"><b>Task</b><span>detail</span></div>
+</section>
+{{else}}
 <section class="headline" aria-label="Track headline">
 <div class="stat"><b>{{len (wallActiveSessions .Sessions)}}</b><span>agents</span></div>
 <div class="stat"><b>{{wallTasksMoving .Groups}}</b><span>tasks moving</span></div>
 <div class="stat"><b>{{wallHandoffCount .Activity}}</b><span>handoffs</span></div>
 <div class="stat"><b>{{wallDoneToday .Groups}}</b><span>done today</span></div>
 </section>
+{{end}}
 <div class="header-right">
+{{if eq .View "detail"}}
+<div class="providers" aria-label="Current task">
+<span class="provider-chip muted">{{.Task.Definition.Role}}</span>
+</div>
+{{else}}
 <div class="providers" aria-label="Active providers">
 {{range wallActiveSessions .Sessions}}{{template "provider-chip" .}}{{else}}<span class="provider-chip muted">no active sessions</span>{{end}}
 </div>
+{{end}}
 <nav class="view-toggle" aria-label="Dashboard view">
-<a class="{{if eq .View "wall"}}active{{end}}" href="/">Wall</a><a class="{{if eq .View "board"}}active{{end}}" href="/board">Board</a>
+<a class="{{if eq .View "wall"}}active{{end}}" href="/">Wall</a><a class="{{if or (eq .View "board") (eq .View "detail")}}active{{end}}" href="/board">Board</a>
 </nav>
 <button class="theme-toggle" type="button" data-theme-toggle>light</button>
 </div>

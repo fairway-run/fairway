@@ -5,6 +5,6 @@
 <span class="id">{{.Definition.ID}}</span><span>{{.Definition.Title}}</span>
 </a>
 {{else}}<span class="pill muted">idle . waiting</span>{{end}}
-{{if gt (moreTasks .Tasks 3) 0}}<span class="pill muted">+{{moreTasks .Tasks 3}}</span>{{end}}
+{{if gt (moreTasks .Tasks 3) 0}}<a class="pill muted" href="{{wallLaneHref .Role .Lane}}">+{{moreTasks .Tasks 3}}</a>{{end}}
 </div>
 {{end}}

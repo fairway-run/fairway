@@ -15,7 +15,6 @@ task_id_pattern = "^[A-Z]+-[0-9]+$"    # regex enforced by add/import/update
 [dashboard]
 listen = "127.0.0.1:7878"
 auto_open = true                       # open browser when `fairway dashboard` starts
-surface = "v1"                         # "v1" | "v2"; v1 remains default during the v2 walkthrough phase
 
 [worktrees]
 root = "../worktrees"
@@ -120,7 +119,11 @@ levels = [
 |---|---|---|---|
 | `listen` | string | `127.0.0.1:7878` | HTTP listen address. Bind to `127.0.0.1` unless you understand the auth implications. |
 | `auto_open` | bool | `true` | Open the system browser when `fairway dashboard` starts. |
-| `surface` | string | `v1` | Dashboard surface served at `/`. Accepts `v1` or `v2`. `v1` remains the default while dashboard-v2 is in walkthrough; teams can opt in with `surface = "v2"`. After walkthrough signoff, the default flips to `v2`; one release later, v1 templates are removed and the flag becomes transitional/no-op with a CHANGELOG note. |
+
+Fairway has one dashboard. `/` serves the wall view, `/board` serves the
+operator board, `/board?tab=diagnostics` serves diagnostics, and `/tasks/<id>`
+serves task detail. Older configs may still contain `[dashboard] surface`; it
+is ignored and should be removed from new config files.
 
 ### `[worktrees]`
 

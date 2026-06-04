@@ -14,7 +14,7 @@ import (
 	"github.com/subashram/fairway/internal/store"
 )
 
-func TestIndexRendersV2Visibility(t *testing.T) {
+func TestIndexRendersDashboardVisibility(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -48,18 +48,18 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, []WorktreeStatus{{Role: "backend", Branch: "agent/backend", Exists: true, Registered: true}})
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
 	rec := httptest.NewRecorder()
-	server.index(rec, req)
+	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Sessions", "Worktrees", "Watchers", "Checkpoints", "Workstreams", "platform-foundation / facade", "architecture", "security", "E-001", "W-001"} {
+	for _, want := range []string{"Sessions", "Worktrees", "Watchers", "Checkpoints", "Workstreams", "E-001", "W-001"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard body missing %q:\n%s", want, body)
 		}
 	}
 }
 
-func TestDashboardRoutesRespectSurfaceConfig(t *testing.T) {
+func TestDashboardRoutes(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -75,23 +75,11 @@ func TestDashboardRoutesRespectSurfaceConfig(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.index(rec, req)
 	body := rec.Body.String()
-	if !strings.Contains(body, "Workstream Dashboard") {
-		t.Fatalf("v1 / did not render legacy dashboard:\n%s", body)
-	}
-	if strings.Contains(body, "wall-layout") {
-		t.Fatalf("v1 / rendered wall surface:\n%s", body)
-	}
-
-	cfg.Dashboard.Surface = "v2"
-	server = New(s, cfg, []string{"backend"}, nil)
-	rec = httptest.NewRecorder()
-	server.index(rec, req)
-	body = rec.Body.String()
 	if !strings.Contains(body, "wall-layout") {
-		t.Fatalf("v2 / did not render wall dashboard:\n%s", body)
+		t.Fatalf("/ did not render wall dashboard:\n%s", body)
 	}
 	if !strings.Contains(body, `class="active" href="/"`) {
-		t.Fatalf("v2 / did not mark wall toggle active:\n%s", body)
+		t.Fatalf("/ did not mark wall toggle active:\n%s", body)
 	}
 
 	boardReq := httptest.NewRequest(http.MethodGet, "/board", nil)
@@ -113,7 +101,7 @@ func TestDashboardRoutesRespectSurfaceConfig(t *testing.T) {
 	}
 }
 
-func TestIndexReadyMetricUsesDependencyReadiness(t *testing.T) {
+func TestBoardReadyMetricUsesDependencyReadiness(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -131,19 +119,19 @@ func TestIndexReadyMetricUsesDependencyReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board", nil)
 	rec := httptest.NewRecorder()
-	server.index(rec, req)
+	server.board(rec, req)
 	body := rec.Body.String()
-	if !strings.Contains(body, "<div class=\"metric\"><b>1</b><span>Ready</span></div>") {
+	if !strings.Contains(body, "<div><b>1</b><span>Ready</span></div>") {
 		t.Fatalf("dashboard ready metric did not match dependency-ready count:\n%s", body)
 	}
-	if !strings.Contains(body, "<span>1 ready</span>") {
+	if !strings.Contains(body, "1 active · 1 ready") {
 		t.Fatalf("workstream ready count did not match dependency-ready count:\n%s", body)
 	}
 }
 
-func TestIndexFiltersByProfileMetadata(t *testing.T) {
+func TestBoardFiltersByProfileMetadata(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -166,11 +154,11 @@ func TestIndexFiltersByProfileMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/?profile=platform-foundation&review_domain=architecture", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?profile=platform-foundation&review_domain=architecture", nil)
 	rec := httptest.NewRecorder()
-	server.index(rec, req)
+	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Platform facade", "selected", "architecture"} {
+	for _, want := range []string{"Platform facade", "platform-foundation", "architecture"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("filtered dashboard body missing %q:\n%s", want, body)
 		}
@@ -180,7 +168,7 @@ func TestIndexFiltersByProfileMetadata(t *testing.T) {
 	}
 }
 
-func TestIndexFiltersBySearchAndStatus(t *testing.T) {
+func TestBoardFiltersBySearchAndStatus(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -197,11 +185,11 @@ func TestIndexFiltersBySearchAndStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"docs"}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/?q=platform-foundation&status=in_progress", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?q=platform-foundation&status=in_progress", nil)
 	rec := httptest.NewRecorder()
-	server.index(rec, req)
+	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Portal source metadata", "value=\"platform-foundation\"", "selected>in_progress", "filtered: 1 / 2"} {
+	for _, want := range []string{"Portal source metadata", `value="platform-foundation"`, "<b>Status</b>in_progress", "showing 1 of 1 filtered tasks"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("search dashboard body missing %q:\n%s", want, body)
 		}
@@ -211,7 +199,35 @@ func TestIndexFiltersBySearchAndStatus(t *testing.T) {
 	}
 }
 
-func TestIndexRendersProfileGateReadiness(t *testing.T) {
+func TestBoardFiltersByRole(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "B-001", Title: "Backend task", Kind: "task", Role: "backend"},
+		{ID: "U-001", Title: "UI task", Kind: "task", Role: "ui"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend", "ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?role=backend", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Backend task", "<b>Role</b>backend", "showing 1 of 1 filtered tasks"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("role-filtered board missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "UI task") {
+		t.Fatalf("role-filtered board included unmatching task:\n%s", body)
+	}
+}
+
+func TestBoardRendersProfileGateReadiness(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -248,18 +264,18 @@ func TestIndexRendersProfileGateReadiness(t *testing.T) {
 		}},
 	}}
 	server := New(s, cfg, []string{"docs"}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board", nil)
 	rec := httptest.NewRecorder()
-	server.index(rec, req)
+	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Gate Readiness", "docusaurus-portal / content coverage", "1 gate(s)", "1 blocking missing", "docusaurus-portal / source-docs-linked", "1/2 satisfied", "1 missing", "T-002", "needs 1 matching evidence row"} {
+	for _, want := range []string{"Gate Readiness", "docusaurus-portal / content coverage", "1 gate(s), 1 missing", "docusaurus-portal / source-docs-linked", "1/2 satisfied", "T-002"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("gate dashboard body missing %q:\n%s", want, body)
 		}
 	}
 }
 
-func TestIndexRendersGroupedGateRollupsExceptionFirst(t *testing.T) {
+func TestBoardRendersGroupedGateRollupsExceptionFirst(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -287,18 +303,18 @@ func TestIndexRendersGroupedGateRollupsExceptionFirst(t *testing.T) {
 		},
 	}}
 	server := New(s, cfg, []string{"orchestrator", "governance", "backend"}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board", nil)
 	rec := httptest.NewRecorder()
-	server.index(rec, req)
+	server.board(rec, req)
 	body := rec.Body.String()
 	for _, want := range []string{
 		"platform-foundation / guards",
 		"platform-foundation / facades",
 		"platform-foundation / maps",
-		"1 blocking missing",
-		"1 advisory missing",
-		"ready",
-		"Gate details",
+		"1 gate(s), 1 missing",
+		"platform-foundation / boundary-guard-report",
+		"platform-foundation / facade-review",
+		"platform-foundation / ownership-map-recorded",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("grouped gate dashboard body missing %q:\n%s", want, body)
@@ -312,7 +328,7 @@ func TestIndexRendersGroupedGateRollupsExceptionFirst(t *testing.T) {
 	}
 }
 
-func TestIndexProfileGateReadinessRespectsGateTaskKinds(t *testing.T) {
+func TestBoardProfileGateReadinessRespectsGateTaskKinds(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -340,9 +356,9 @@ func TestIndexProfileGateReadinessRespectsGateTaskKinds(t *testing.T) {
 		}},
 	}}
 	server := New(s, cfg, []string{"orchestrator", "backend"}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board", nil)
 	rec := httptest.NewRecorder()
-	server.index(rec, req)
+	server.board(rec, req)
 	body := rec.Body.String()
 	for _, want := range []string{"platform-foundation / boundary-guard-report", "0/1 satisfied", "PF-002"} {
 		if !strings.Contains(body, want) {
@@ -354,7 +370,7 @@ func TestIndexProfileGateReadinessRespectsGateTaskKinds(t *testing.T) {
 	}
 }
 
-func TestIndexFiltersActivityAndLimitsRows(t *testing.T) {
+func TestBoardFiltersActivityAndLimitsRows(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -372,11 +388,11 @@ func TestIndexFiltersActivityAndLimitsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"docs"}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/?activity_kind=evidence&activity_limit=1&table_limit=2", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?activity_kind=evidence&activity_limit=1&table_limit=2", nil)
 	rec := httptest.NewRecorder()
-	server.index(rec, req)
+	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"showing 1 of 1", "make docs-portal-check", "showing first 2 of 4 tasks"} {
+	for _, want := range []string{"showing 1 of 1", "make docs-portal-check", "showing 4 of 4 filtered tasks"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("limited dashboard body missing %q:\n%s", want, body)
 		}
@@ -411,13 +427,17 @@ func TestTaskDetailRendersMetadata(t *testing.T) {
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"arch"}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	req.Header.Set("Referer", "http://example.com/board?role=arch&status=in_progress")
 	rec := httptest.NewRecorder()
 	server.task(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map", "tmux-arch", ".fairway/transcripts/T-001.log"} {
+	for _, want := range []string{"fairway", "dashboard", "/assets/css/detail.css", "Task", "detail", "arch", "Wall", `href="/board?role=arch&amp;status=in_progress"`, "Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map", "tmux-arch", ".fairway/transcripts/T-001.log"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("task detail body missing %q:\n%s", want, body)
 		}
+	}
+	if strings.Contains(body, "<style>") {
+		t.Fatalf("task detail should not render legacy inline styles:\n%s", body)
 	}
 }
 
@@ -570,6 +590,9 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 					{Definition: store.TaskDefinition{ID: "T-001", Title: "Backlog task", Role: "backend"}, Status: "todo"},
 					{Definition: store.TaskDefinition{ID: "T-002", Title: "Working task", Role: "backend"}, Status: "in_progress"},
 					{Definition: store.TaskDefinition{ID: "T-003", Title: "Done task", Role: "backend"}, Status: "done"},
+					{Definition: store.TaskDefinition{ID: "T-004", Title: "More backlog one", Role: "backend"}, Status: "todo"},
+					{Definition: store.TaskDefinition{ID: "T-005", Title: "More backlog two", Role: "backend"}, Status: "todo"},
+					{Definition: store.TaskDefinition{ID: "T-006", Title: "More backlog three", Role: "backend"}, Status: "todo"},
 				},
 			},
 			{Role: "ui"},
@@ -584,7 +607,7 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 	}
 	body := out.String()
 	for _, want := range []string{
-		"dashboard v2",
+		"dashboard",
 		`data-theme-toggle`,
 		`/assets/js/common.js`,
 		`/assets/css/wall.css`,
@@ -597,6 +620,9 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		"done",
 		"codex",
 		"idle . waiting",
+		"Open lane",
+		`href="/board?role=backend"`,
+		`href="/board?role=backend&amp;status=todo"`,
 		"dashboard-v2 / foundation",
 		"Backlog task",
 		"Working task",
@@ -623,7 +649,7 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		Workstreams:      []WorkstreamGroup{{Label: "dashboard-v2 / task", Total: 2, Done: 1, Ready: 1, InProgress: 1}},
 		Sessions:         []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
 		Activity:         []store.Activity{{Kind: "evidence", TaskID: "T-002", Summary: "test pass", CreatedAt: "2026-06-04T00:00:00Z"}},
-		Filters:          TaskFilters{Search: "dashboard", Status: "todo", Profile: "dashboard-v2", Kind: "task", OwningDomain: "fairway", RiskLevel: "medium", Tab: "tasks", ActivityLimit: 25},
+		Filters:          TaskFilters{Search: "dashboard", Role: "backend", Status: "todo", Profile: "dashboard-v2", Kind: "task", OwningDomain: "fairway", RiskLevel: "medium", Tab: "tasks", ActivityLimit: 25},
 		Health:           store.Health{InProgress: 1},
 		StaleCheckpoints: []store.Checkpoint{{TaskID: "T-001", State: "active"}},
 		Watchers:         []store.Watcher{{ID: "W-001", TaskID: "T-001", Status: "active"}},
@@ -639,13 +665,12 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		`/assets/js/common.js`,
 		`/assets/js/board.js`,
 		`/assets/css/board.css`,
-		"Search tasks",
+		"Search ID, title, owner, path",
 		"Diagnostics",
+		"<b>Role</b>backend",
 		"stale claims",
 		"Workstreams",
-		"Columns",
-		"Views",
-		"Export",
+		"Export CSV",
 		"selection-bar",
 		"ID",
 		"Title",

@@ -169,6 +169,24 @@ a {
   vertical-align: 1px;
 }
 
+.lane-detail {
+  width: fit-content;
+  margin-top: var(--space-1);
+  padding: 4px 8px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.lane-detail:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+}
+
 .lane-col {
   display: flex;
   flex-direction: column;
