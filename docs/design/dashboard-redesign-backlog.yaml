@@ -1,0 +1,820 @@
+# Dashboard v2 redesign backlog.
+#
+# Importable with: fairway import docs/design/dashboard-redesign-backlog.yaml
+#
+# This is the work plan for the redesign described in dashboard-redesign.md.
+# Phases are sequenced via depends_on; within a phase, tasks can be picked up
+# in parallel where lanes allow.
+#
+# Suggested profile setup before import:
+#   - register a "dashboard-v2" workstream profile in .fairway/config.toml
+#   - or change the `profile:` field below to an existing profile (e.g. fairway-adoption)
+#
+# Review routes assume the default arch + governance review domains.
+
+tasks:
+
+  # --- Phase 1: Foundation (embed + design tokens + shared components) -------
+
+  - id: FWRD-101
+    title: Move dashboard templates out of server.go via go:embed
+    kind: dashboard
+    role: backend
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/server.go
+      - internal/dashboard/assets
+    target_paths:
+      - internal/dashboard/server.go
+      - internal/dashboard/assets/templates
+      - internal/dashboard/assets/css
+      - internal/dashboard/assets/js
+      - docs/design/dashboard-redesign.md
+    review_domains:
+      - arch
+    risk_level: medium
+    migration_type: surface-redesign
+    acceptance_checks:
+      - existing v1 templates moved verbatim to assets/templates/*.html
+      - assets/css and assets/js scaffold present and embedded via //go:embed
+      - server.go reduced to routing + data prep + SSE logic (no inline template strings)
+      - existing dashboard regression tests pass without functional changes
+      - single binary; no runtime asset path lookups
+
+  - id: FWRD-102
+    title: Extract design tokens to assets/css/tokens.css
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/css
+      - docs/design/dashboard-redesign.md
+    target_paths:
+      - internal/dashboard/assets/css/tokens.css
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-101
+    acceptance_checks:
+      - tokens.css defines color palette, spacing scale, type ramp, radii, transitions as CSS variables
+      - both [data-theme="dark"] and [data-theme="light"] palettes present
+      - provider color tokens (--claude, --codex, --compass) defined
+      - light theme is the default; dark is opt-in via toggle
+      - tokens lifted from docs/design/mockups/fairway-wall-mockup.html and docs/design/mockups/fairway-board-mockup.html
+
+  - id: FWRD-103
+    title: Extract shared component primitives to assets/css/components.css
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/css
+    target_paths:
+      - internal/dashboard/assets/css/components.css
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-102
+    acceptance_checks:
+      - components.css covers pill, status-pill, button, card, modal, gauge ring, ticker entry, theme toggle, view toggle, dropdown menu
+      - components consume tokens only; no hardcoded colors or spacing
+      - components verified visually against both mockups in light and dark mode
+
+  # --- Phase 2: SSE event taxonomy -------------------------------------------
+
+  - id: FWRD-104
+    title: Emit typed SSE events from /events
+    kind: dashboard
+    role: backend
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/server.go
+      - internal/store
+    target_paths:
+      - internal/dashboard/server.go
+      - internal/dashboard/sse_events.go
+      - internal/store
+      - docs/design/dashboard-redesign.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: surface-redesign
+    acceptance_checks:
+      - typed events emitted - claim, status_change, handoff, evidence, review_verdict, done, session_attach, session_heartbeat, session_detach, gate_change
+      - each event payload matches the taxonomy in dashboard-redesign.md
+      - generic `refresh` event preserved for one release as a synthetic fallback
+      - SSE polling frequency unchanged (1Hz) or upgraded to update-hook with measurable improvement
+      - tests cover event shape and ordering under burst writes
+
+  # --- Phase 3: Wall view ----------------------------------------------------
+
+  - id: FWRD-110
+    title: Implement wall.html template
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/templates
+      - docs/design/dashboard-redesign.md
+    target_paths:
+      - internal/dashboard/assets/templates/wall.html
+      - internal/dashboard/assets/templates/layout.html
+      - internal/dashboard/assets/templates/partials/lane-card.html
+      - internal/dashboard/assets/templates/partials/gate-gauge.html
+      - internal/dashboard/assets/templates/partials/provider-chip.html
+    review_domains:
+      - arch
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-103
+    acceptance_checks:
+      - wall.html extends layout.html
+      - lane list rendered from [[roles]] in .fairway/config.toml; no hardcoded role list
+      - five-column lane row (backlog, claimed, working, review, done) per role
+      - headline metric strip (agents, tasks moving, handoffs, done today)
+      - provider chips rendered in header from active sessions
+      - idle lanes render explicitly as "idle . waiting" with muted treatment
+      - matches docs/design/mockups/fairway-wall-mockup.html layout
+
+  - id: FWRD-111
+    title: Wall arc animation on handoff SSE events
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/assets/js/wall.js
+      - internal/dashboard/assets/js/common.js
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-104
+      - FWRD-110
+    acceptance_checks:
+      - SVG arc draws from source lane to target lane only when a real `handoff` SSE event arrives
+      - arc stroke colored by source provider (or default if no provider)
+      - arc fades out after ~2s; no decorative or timed arcs
+      - handoff count in headline metric increments on each event
+
+  - id: FWRD-112
+    title: Lane expansion (queue, working detail, pending review)
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+      - internal/dashboard/assets/css
+    target_paths:
+      - internal/dashboard/assets/js/wall.js
+      - internal/dashboard/assets/css/wall.css
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-110
+    acceptance_checks:
+      - clicking lane name expands an inline panel below the lane row
+      - one lane expanded at a time; click another to swap, click same to collapse
+      - panel shows queue list, working card (kind, started, gate progress, needs, latest events), pending review list with reasons
+      - queue and pending review lists scroll internally without pushing other lanes
+      - '"Open full details for <role>" link in the panel navigates to /board?role=<role>'
+
+  - id: FWRD-113
+    title: Wall activity ticker from SSE
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/assets/js/wall.js
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-104
+      - FWRD-110
+    acceptance_checks:
+      - ticker shows last 5-6 events from SSE
+      - entries are verb-first (e.g. "Claude submitted T-042 for review") not log-shaped
+      - provider name colored by provider
+      - relative timestamps update without page reload
+
+  - id: FWRD-114
+    title: Heartbeat pulse on working task pill
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+      - internal/dashboard/assets/css
+    target_paths:
+      - internal/dashboard/assets/js/wall.js
+      - internal/dashboard/assets/css/wall.css
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-104
+      - FWRD-110
+    acceptance_checks:
+      - working pill pulses while heartbeat age is fresh (< 1 min)
+      - pulse softens with amber tint between 1-5 min
+      - pulse stops and pill goes muted past 5 min
+      - reflects real session_heartbeat events, not a timer
+
+  # --- Phase 4: Board view ---------------------------------------------------
+
+  - id: FWRD-120
+    title: Implement board.html template
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/templates
+      - docs/design/dashboard-redesign.md
+    target_paths:
+      - internal/dashboard/assets/templates/board.html
+    review_domains:
+      - arch
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-103
+    acceptance_checks:
+      - board.html extends layout.html with header view-toggle showing Board active
+      - toolbar with search, active filter chips, column chooser, saved views, export
+      - sortable table with default columns - ID, Title, Role, Status, Kind, Started, Last activity, Gates, Owner
+      - selection bar visible only when rows are selected
+      - footer with row range and pagination affordance
+      - right rail (gate readiness + activity) consistent with wall
+      - matches docs/design/mockups/fairway-board-mockup.html layout
+
+  - id: FWRD-121
+    title: Board sortable columns with URL state
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/assets/js/board.js
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - clicking a column header toggles asc/desc/clear
+      - shift-click adds a secondary sort
+      - sort state encoded in URL query string and survives reload
+      - sort applies on the server when feasible; client sort acceptable for smaller views
+
+  - id: FWRD-122
+    title: Board column chooser
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/assets/js/board.js
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - column chooser dropdown with default and toggleable columns documented in design doc
+      - column visibility encoded in URL query string
+      - chooser supports column reordering via drag or up/down controls
+
+  - id: FWRD-123
+    title: Board search with URL state
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/assets/js/board.js
+      - internal/dashboard/server.go
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - search matches against id, title, owning_domain, paths
+      - debounced input updates URL and table without reload
+      - search query reflected as a chip that can be cleared
+
+  - id: FWRD-124
+    title: Board filter chips with URL state
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/assets/js/board.js
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - applied filters render as chips with an x to remove
+      - filter state encoded in URL query string
+      - filters cover at minimum - profile, status, role, kind, owning_domain, risk_level, review_domain, project
+      - clearing all filters resets chip row but preserves columns and sort
+
+  - id: FWRD-125
+    title: Saved views (~/.fairway/views.json + team .fairway/views.json)
+    kind: dashboard
+    role: backend
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/server.go
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/views.go
+      - internal/dashboard/views_test.go
+      - internal/dashboard/assets/js/board.js
+      - docs/design/dashboard-redesign.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-124
+    acceptance_checks:
+      - personal saved views persisted to ~/.fairway/views.json
+      - team saved views read from .fairway/views.json (if present) and rendered under a Team section
+      - saved view shortcut keys (Cmd/Ctrl+1..9) bound to first N personal views
+      - '"Save current view" stores name, filters, columns, sort'
+      - team-shared views are read-only from the UI; edited in file or via CLI
+
+  - id: FWRD-126
+    title: Board keyboard navigation
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/assets/js/board.js
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - j/k move row cursor, enter opens task detail, / focuses search
+      - c toggles column chooser, v toggles saved views, x toggles selection
+      - s opens status setter for cursor row, h opens handoff for cursor row
+      - t toggles theme; g w goes to wall view
+      - '? toggles keyboard cheatsheet; esc closes menus and modals'
+      - all keys ignored when focus is in an input or textarea
+
+  - id: FWRD-127
+    title: Board bulk selection and bulk action bar
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+      - internal/dashboard/server.go
+    target_paths:
+      - internal/dashboard/assets/js/board.js
+      - internal/dashboard/server.go
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - selection bar appears when >=1 row checked, hides when 0
+      - bulk actions - Claim, Hand off to..., Set status..., Record evidence...
+      - each bulk action opens a modal with required fields and CSRF
+      - bulk mutations are non-terminal only; terminal status changes still gated through CLI
+      - audit events recorded per affected task
+
+  - id: FWRD-128
+    title: Board CSV and JSON export of current view
+    kind: dashboard
+    role: backend
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/server.go
+    target_paths:
+      - internal/dashboard/server.go
+      - internal/dashboard/export.go
+      - internal/dashboard/export_test.go
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-121
+      - FWRD-122
+      - FWRD-124
+    acceptance_checks:
+      - export endpoint accepts same query string as the board view
+      - export reflects visible columns, sort, and filters
+      - no silent row truncation; if rows are excluded, the response surfaces count and reason
+      - both CSV (default) and JSON formats covered by tests
+
+  - id: FWRD-129
+    title: Board virtualization at 200-row threshold
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/js
+    target_paths:
+      - internal/dashboard/assets/js/board.js
+    review_domains:
+      - arch
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - non-virtualized rendering when row count <= 200
+      - windowed rendering above 200 rows; scroll position stable
+      - keyboard navigation jumps correctly within and across windowed regions
+      - first paint under 200ms on the 1000-task case
+      - threshold reconfirmed against a measurement before release
+
+  # --- Phase 5: Config flag + view toggle + route dispatch -------------------
+
+  - id: FWRD-130
+    title: Add [dashboard] surface config key
+    kind: dashboard
+    role: backend
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: config
+    source_paths:
+      - internal/config
+      - docs/config-reference.md
+      - docs/design/dashboard-redesign.md
+    target_paths:
+      - internal/config
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: surface-redesign
+    acceptance_checks:
+      - '[dashboard] surface accepts "v1" or "v2"; default "v1" through walkthrough phase'
+      - unknown values rejected with a clear error
+      - config-reference.md documents the flag and the migration timeline
+
+  - id: FWRD-131
+    title: Route / based on surface flag; serve /board and /wall accordingly
+    kind: dashboard
+    role: backend
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/server.go
+    target_paths:
+      - internal/dashboard/server.go
+      - internal/dashboard/server_test.go
+    review_domains:
+      - arch
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-110
+      - FWRD-120
+      - FWRD-130
+    acceptance_checks:
+      - when surface=v1, / serves the legacy template (preserved)
+      - when surface=v2, / serves wall.html
+      - /board always serves board.html
+      - /wall redirects to / so direct links work
+      - all existing routes (/tasks, /epics, /events, /actions/*) unchanged
+
+  - id: FWRD-132
+    title: Header view toggle (wall <-> board)
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/templates
+      - internal/dashboard/assets/css
+    target_paths:
+      - internal/dashboard/assets/templates/layout.html
+      - internal/dashboard/assets/css/components.css
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-131
+    acceptance_checks:
+      - layout.html renders a view toggle in the header
+      - active view highlighted; click navigates without losing theme preference
+      - g w keyboard shortcut on /board also navigates to /
+
+  # --- Phase 6: Diagnostics surface ------------------------------------------
+
+  - id: FWRD-140
+    title: Diagnostics tab on /board (sessions, worktrees, watchers, checkpoints)
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/templates
+      - internal/dashboard/assets/js
+      - internal/dashboard/server.go
+    target_paths:
+      - internal/dashboard/assets/templates/board.html
+      - internal/dashboard/assets/js/board.js
+      - internal/dashboard/server.go
+    review_domains:
+      - arch
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - /board?tab=diagnostics shows sessions, worktrees, watchers, checkpoints
+      - each section sortable; same toolbar pattern as tasks tab
+      - default tab is tasks; URL state preserved in query string
+      - v1 health badges replicated as derived saved views (Stale claims, Blocked >24h, etc.)
+
+  # --- Phase 7: Multi-project ------------------------------------------------
+
+  - id: FWRD-141
+    title: Multi-project support on /board (project filter chip)
+    kind: dashboard
+    role: backend
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/server.go
+      - internal/registry
+    target_paths:
+      - internal/dashboard/server.go
+      - internal/dashboard/assets/js/board.js
+    review_domains:
+      - arch
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-120
+    acceptance_checks:
+      - --multi mode mounts /board with the same toolbar and table
+      - project becomes a filter chip; rows show project name in the role column or a dedicated column
+      - export and saved views respect the project filter
+
+  - id: FWRD-142
+    title: Multi-project support on /wall (project group headers)
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets/templates
+      - internal/dashboard/server.go
+    target_paths:
+      - internal/dashboard/assets/templates/wall.html
+      - internal/dashboard/server.go
+    review_domains:
+      - arch
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-110
+    acceptance_checks:
+      - --multi mode groups lanes under collapsible project headers
+      - activity ticker prefixes entries with [project]
+      - per-project gate readiness rolled up in the right rail
+
+  # --- Phase 8: Polish + docs ------------------------------------------------
+
+  - id: FWRD-150
+    title: Accessibility pass for wall and board
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard/assets
+    target_paths:
+      - internal/dashboard/assets
+    review_domains:
+      - arch
+      - governance
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-110
+      - FWRD-120
+    acceptance_checks:
+      - aria roles and labels on all interactive elements (toggles, dropdowns, tabs, table headers)
+      - color contrast verified for both light and dark themes (WCAG AA)
+      - full keyboard reach - every action achievable without mouse
+      - focus rings visible and consistent
+      - screen-reader smoke test on a representative task table page
+
+  - id: FWRD-151
+    title: Performance budget verification
+    kind: dashboard
+    role: ops
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard
+    target_paths:
+      - internal/dashboard
+      - docs/design/dashboard-redesign.md
+    review_domains:
+      - arch
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-129
+      - FWRD-140
+    acceptance_checks:
+      - first paint under 200ms on the 1000-task case (wall and board)
+      - p95 sort under 100ms on the 1000-task case
+      - activity feed SSE latency under 1.5s (or note the trade-off if upgraded to update-hook)
+      - memory footprint under 50MB for the dashboard process
+      - measurements committed under docs/assessment/
+
+  - id: FWRD-152
+    title: Update dashboard.md and supporting docs
+    kind: docs
+    role: governance
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/dashboard.md
+      - docs/design/dashboard-redesign.md
+      - docs/design/multi-project.md
+      - docs/design/hierarchy.md
+    target_paths:
+      - docs/design/dashboard.md
+      - docs/design/multi-project.md
+    review_domains:
+      - governance
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-131
+    acceptance_checks:
+      - docs/design/dashboard.md rewritten to describe v2 with a "what changed from v1" section
+      - dashboard-redesign.md kept as the redesign decision log; marked superseded once stable
+      - multi-project.md updated to reflect /board project chip and /wall project headers
+      - config-reference.md documents [dashboard] surface
+
+  - id: FWRD-153
+    title: CHANGELOG entry and v1 deprecation note
+    kind: docs
+    role: governance
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - CHANGELOG.md
+      - docs/design/dashboard-redesign.md
+    target_paths:
+      - CHANGELOG.md
+    review_domains:
+      - governance
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-131
+    acceptance_checks:
+      - CHANGELOG entry describes the new wall and board surfaces and the v1 deprecation
+      - v1 deprecation timeline documented (next-release flag flip, following-release removal)
+      - migration note covers query-string compatibility for any saved /?status= links
+
+  - id: FWRD-154
+    title: GPUaaS operator walkthrough and feedback capture
+    kind: dashboard
+    role: governance
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/dashboard-redesign.md
+    target_paths:
+      - docs/assessment/dashboard-v2-walkthrough.md
+    review_domains:
+      - governance
+    risk_level: low
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-131
+      - FWRD-150
+    acceptance_checks:
+      - walkthrough done with a GPUaaS operator using a real .fairway project
+      - feedback captured in docs/assessment/dashboard-v2-walkthrough.md
+      - blocking gaps filed as follow-up tasks before the default flips to v2
+      - go/no-go decision logged with owner and date
+
+  # --- Phase 9: Deprecation (later release) ---------------------------------
+
+  - id: FWRD-160
+    title: Remove v1 templates and surface flag
+    kind: dashboard
+    role: ui
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard
+      - internal/config
+      - CHANGELOG.md
+    target_paths:
+      - internal/dashboard
+      - internal/config
+      - CHANGELOG.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: surface-redesign
+    depends_on:
+      - FWRD-154
+    acceptance_checks:
+      - v1 templates and inlined string assets removed
+      - '[dashboard] surface flag becomes a no-op with a one-release transitional warning'
+      - CHANGELOG records the removal with a pointer to the redesign doc
+      - no regressions on /tasks, /epics, /events, /actions/*
