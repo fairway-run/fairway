@@ -69,6 +69,18 @@ must keep the coordination loop explicit. Starting or steering a child session
 is not enough; the parent needs a watcher or heartbeat that notices when the
 child needs attention.
 
+Minimum delegation checklist:
+
+1. register the provider session with `fairway session upsert`,
+2. associate it with the current Fairway task,
+3. feed provider runtime state through `provider-event.sh` or equivalent
+   Fairway commands,
+4. record `awaiting_input` checkpoints for approvals, questions, failures, or
+   stale/no-progress states,
+5. record evidence or handoff when the delegated session completes,
+6. leave task status, review approval, and merge readiness to normal Fairway
+   gates.
+
 Provider-specific watchers, such as a Codex thread monitor, should live outside
 Fairway core. Their job is to read provider runtime state and translate it into
 provider-neutral Fairway facts:
