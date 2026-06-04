@@ -447,7 +447,7 @@ func TestTaskDetailRendersMetadata(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.task(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"fairway", "dashboard", "/assets/css/detail.css", "Task", "detail", "arch", "Wall", `href="/board?role=arch&amp;status=in_progress"`, "Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map", "tmux-arch", ".fairway/transcripts/T-001.log"} {
+	for _, want := range []string{"fairway", "dashboard", "/assets/css/detail.css", "Task", "detail", "arch", "Wall", `href="/board?role=arch&amp;status=in_progress"`, `href="/board"`, `href="/board?tab=diagnostics"`, "Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map", "tmux-arch", ".fairway/transcripts/T-001.log"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("task detail body missing %q:\n%s", want, body)
 		}

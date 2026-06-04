@@ -96,6 +96,7 @@ Task detail uses the same dashboard shell with a compact detail header. It
 shows:
 
 - flow breadcrumbs back to Wall and Board,
+- direct actions back to Board and Board Diagnostics,
 - task status, owner, review status, and descendant rollup,
 - CSRF-protected claim and non-terminal status update controls,
 - metadata and source/target paths,
@@ -104,6 +105,10 @@ shows:
 - evidence,
 - task-bound sessions,
 - handoffs and reviews.
+
+Task detail is intentionally task-scoped. Global sessions, worktrees, watchers,
+and checkpoints remain in `/board?tab=diagnostics` so the detail page does not
+become the old mixed dashboard.
 
 The `Back` action returns to the referring board view when the referrer is
 local. If the task is opened directly, it falls back to the board filtered by

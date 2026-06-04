@@ -20,6 +20,8 @@
 </div>
 <div class="detail-actions">
 <a class="btn" href="{{.BackHref}}">Back</a>
+<a class="btn" href="/board">Board</a>
+<a class="btn" href="/board?tab=diagnostics">Diagnostics</a>
 <form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button class="btn" type="submit">Claim</button></form>
 </div>
 </section>
