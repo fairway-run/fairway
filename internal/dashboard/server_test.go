@@ -59,6 +59,60 @@ func TestIndexRendersV2Visibility(t *testing.T) {
 	}
 }
 
+func TestDashboardRoutesRespectSurfaceConfig(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend", Kind: "task"}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	server := New(s, cfg, []string{"backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.index(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, "Workstream Dashboard") {
+		t.Fatalf("v1 / did not render legacy dashboard:\n%s", body)
+	}
+	if strings.Contains(body, "wall-layout") {
+		t.Fatalf("v1 / rendered wall surface:\n%s", body)
+	}
+
+	cfg.Dashboard.Surface = "v2"
+	server = New(s, cfg, []string{"backend"}, nil)
+	rec = httptest.NewRecorder()
+	server.index(rec, req)
+	body = rec.Body.String()
+	if !strings.Contains(body, "wall-layout") {
+		t.Fatalf("v2 / did not render wall dashboard:\n%s", body)
+	}
+	if !strings.Contains(body, `class="active" href="/"`) {
+		t.Fatalf("v2 / did not mark wall toggle active:\n%s", body)
+	}
+
+	boardReq := httptest.NewRequest(http.MethodGet, "/board", nil)
+	boardRec := httptest.NewRecorder()
+	server.board(boardRec, boardReq)
+	boardBody := boardRec.Body.String()
+	if !strings.Contains(boardBody, "board-layout") || !strings.Contains(boardBody, `class="active" href="/board"`) {
+		t.Fatalf("/board did not render board surface:\n%s", boardBody)
+	}
+
+	wallReq := httptest.NewRequest(http.MethodGet, "/wall", nil)
+	wallRec := httptest.NewRecorder()
+	server.wallRedirect(wallRec, wallReq)
+	if wallRec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("/wall status=%d, want %d", wallRec.Code, http.StatusTemporaryRedirect)
+	}
+	if got := wallRec.Header().Get("Location"); got != "/" {
+		t.Fatalf("/wall Location=%q, want /", got)
+	}
+}
+
 func TestIndexReadyMetricUsesDependencyReadiness(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

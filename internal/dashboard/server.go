@@ -179,89 +179,137 @@ type FilterOptions struct {
 	ActivityKinds []string
 }
 
+type DashboardViewData struct {
+	View             string
+	Summary          DashboardSummary
+	Gates            []GateStatus
+	GateGroups       []GateGroup
+	Groups           []RoleGroup
+	Workstreams      []WorkstreamGroup
+	Filters          TaskFilters
+	FilterOptions    FilterOptions
+	Activity         []store.Activity
+	ActivityTotal    int
+	Health           store.Health
+	Sessions         []store.Session
+	Worktrees        []WorktreeStatus
+	Checkpoints      []store.Checkpoint
+	StaleCheckpoints []store.Checkpoint
+	Watchers         []store.Watcher
+	Rollups          map[string]Rollup
+}
+
 func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", dashboardAssetHandler())
-	mux.HandleFunc("/", s.index)
+	mux.HandleFunc("/board", s.board)
+	mux.HandleFunc("/wall", s.wallRedirect)
 	mux.HandleFunc("/tasks/", s.task)
 	mux.HandleFunc("/actions/claim", s.claim)
 	mux.HandleFunc("/actions/set-status", s.setStatus)
 	mux.HandleFunc("/events", s.events)
+	mux.HandleFunc("/", s.index)
 	return http.ListenAndServe(addr, mux)
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	tasks, err := s.store.AllTasks(r.Context())
+	if config.DashboardSurface(s.cfg) == "v2" {
+		s.wall(w, r)
+		return
+	}
+	data, err := s.dashboardViewData(r, "v1")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	_ = indexTemplate.Execute(w, data)
+}
+
+func (s *Server) board(w http.ResponseWriter, r *http.Request) {
+	data, err := s.dashboardViewData(r, "board")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = boardTemplate.ExecuteTemplate(w, "layout", data)
+}
+
+func (s *Server) wall(w http.ResponseWriter, r *http.Request) {
+	data, err := s.dashboardViewData(r, "wall")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = wallTemplate.ExecuteTemplate(w, "layout", data)
+}
+
+func (s *Server) wallRedirect(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+}
+
+func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewData, error) {
+	tasks, err := s.store.AllTasks(r.Context())
+	if err != nil {
+		return DashboardViewData{}, err
 	}
 	health, err := s.store.Health(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return DashboardViewData{}, err
 	}
 	sessions, err := s.store.Sessions(r.Context(), false)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return DashboardViewData{}, err
 	}
 	checkpoints, err := s.store.Checkpoints(r.Context(), "", false)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return DashboardViewData{}, err
 	}
 	staleCheckpoints, err := s.store.Checkpoints(r.Context(), time.Now().UTC().Format("2006-01-02"), false)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return DashboardViewData{}, err
 	}
 	watchers, err := s.store.Watchers(r.Context(), false)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return DashboardViewData{}, err
 	}
 	filters := taskFiltersFromRequest(r)
 	activity, err := s.store.Activity(r.Context(), maxActivityFetchLimit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return DashboardViewData{}, err
 	}
 	filteredActivity, activityTotal := filterActivity(activity, filters.ActivityKind, filters.ActivityLimit)
 	gates, err := s.dashboardGateStatuses(r.Context(), tasks, 8)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return DashboardViewData{}, err
 	}
 	readyTasks, err := s.store.Ready(r.Context(), "", s.cfg.States.Terminal)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return DashboardViewData{}, err
 	}
 	readySet := taskIDSet(readyTasks)
 	gateGroups := groupGateStatuses(gates)
 	displayTasks := filterTasks(tasks, filters)
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks, readySet)
-	data := struct {
-		Summary          DashboardSummary
-		Gates            []GateStatus
-		GateGroups       []GateGroup
-		Groups           []RoleGroup
-		Workstreams      []WorkstreamGroup
-		Filters          TaskFilters
-		FilterOptions    FilterOptions
-		Activity         []store.Activity
-		ActivityTotal    int
-		Health           store.Health
-		Sessions         []store.Session
-		Worktrees        []WorktreeStatus
-		Checkpoints      []store.Checkpoint
-		StaleCheckpoints []store.Checkpoint
-		Watchers         []store.Watcher
-		Rollups          map[string]Rollup
-	}{dashboardSummary(tasks, displayTasks, workstreams, readySet), gates, gateGroups, groupTasks(displayTasks, s.roles), workstreams, filters, filterOptions(tasks, activity), filteredActivity, activityTotal, health, sessions, s.worktrees, checkpoints, staleCheckpoints, watchers, rollups}
-	_ = indexTemplate.Execute(w, data)
+	return DashboardViewData{
+		View:             view,
+		Summary:          dashboardSummary(tasks, displayTasks, workstreams, readySet),
+		Gates:            gates,
+		GateGroups:       gateGroups,
+		Groups:           groupTasks(displayTasks, s.roles),
+		Workstreams:      workstreams,
+		Filters:          filters,
+		FilterOptions:    filterOptions(tasks, activity),
+		Activity:         filteredActivity,
+		ActivityTotal:    activityTotal,
+		Health:           health,
+		Sessions:         sessions,
+		Worktrees:        s.worktrees,
+		Checkpoints:      checkpoints,
+		StaleCheckpoints: staleCheckpoints,
+		Watchers:         watchers,
+		Rollups:          rollups,
+	}, nil
 }
 
 const (
