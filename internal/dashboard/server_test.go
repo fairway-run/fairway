@@ -456,3 +456,19 @@ func TestMultiDashboardRendersProjects(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardAssetsServeTokens(t *testing.T) {
+	handler := dashboardAssetHandler()
+	req := httptest.NewRequest(http.MethodGet, "/assets/css/tokens.css", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tokens.css status=%d, want 200 body=%s", rec.Code, body)
+	}
+	for _, want := range []string{`[data-theme="dark"]`, `[data-theme="light"]`, "--claude:", "--codex:", "--compass:", "--transition-base:"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("tokens.css missing %q:\n%s", want, body)
+		}
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"net/http"
 	"sort"
 	"strconv"
@@ -53,6 +54,7 @@ func New(s *store.Store, cfg config.Config, roles []string, worktrees []Worktree
 
 func NewMulti(projects []ProjectStore) http.Handler {
 	mux := http.NewServeMux()
+	mux.Handle("/assets/", dashboardAssetHandler())
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		type projectView struct {
 			Name            string
@@ -179,6 +181,7 @@ type FilterOptions struct {
 
 func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
+	mux.Handle("/assets/", dashboardAssetHandler())
 	mux.HandleFunc("/", s.index)
 	mux.HandleFunc("/tasks/", s.task)
 	mux.HandleFunc("/actions/claim", s.claim)
@@ -1081,6 +1084,14 @@ func URL(addr string) string {
 }
 
 var multiTemplate = mustEmbeddedTemplate("multi", "assets/templates/multi.html", nil)
+
+func dashboardAssetHandler() http.Handler {
+	assets, err := fs.Sub(dashboardAssets, "assets")
+	if err != nil {
+		panic(err)
+	}
+	return http.StripPrefix("/assets/", http.FileServer(http.FS(assets)))
+}
 
 func mustEmbeddedTemplate(name, path string, funcs template.FuncMap) *template.Template {
 	tmpl := template.New(name)
