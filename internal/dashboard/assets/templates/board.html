@@ -2,6 +2,7 @@
 <main class="board-layout">
 <section class="board-main">
 <form class="toolbar" method="get">
+{{if eq .Filters.Tab "diagnostics"}}<input type="hidden" name="tab" value="diagnostics">{{end}}
 <div class="tb-left">
 <label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search tasks"></label>
 {{if .Filters.Status}}<span class="chip"><b>Status</b>{{.Filters.Status}}</span>{{end}}
@@ -17,6 +18,67 @@
 <button class="btn" type="submit">Apply</button>
 </div>
 </form>
+<nav class="board-tabs" aria-label="Board sections">
+<a class="{{if eq .Filters.Tab "tasks"}}active{{end}}" href="{{boardTabHref .Filters "tasks"}}">Tasks</a>
+<a class="{{if eq .Filters.Tab "diagnostics"}}active{{end}}" href="{{boardTabHref .Filters "diagnostics"}}">Diagnostics</a>
+</nav>
+<section class="summary-strip" aria-label="Track summary">
+<div><b>{{.Summary.Total}}</b><span>Total</span></div>
+<div><b>{{.Summary.Ready}}</b><span>Ready</span></div>
+<div><b>{{.Summary.InProgress}}</b><span>In progress</span></div>
+<div><b>{{.Summary.Blocked}}</b><span>Blocked</span></div>
+<div><b>{{.Summary.Done}}</b><span>Done</span></div>
+<div><b>{{.Summary.Workstreams}}</b><span>Workstreams</span></div>
+</section>
+<section class="health-strip" aria-label="Operational health">
+<span>in progress: {{.Health.InProgress}}</span>
+<span>stale claims: {{.Health.StaleInProgress}}</span>
+<span>blocked &gt;24h: {{.Health.BlockedOver24h}}</span>
+<span>handoffs &gt;1h: {{.Health.UnacknowledgedOver1Hour}}</span>
+<span>reviews: {{.Health.UnroutedReviews}}</span>
+<span>stale checkpoints: {{len .StaleCheckpoints}}</span>
+<span>active watchers: {{len .Watchers}}</span>
+<span>sessions: {{len .Sessions}}</span>
+</section>
+{{if eq .Filters.Tab "diagnostics"}}
+<section class="diagnostics-grid">
+<article class="diagnostic-panel">
+<h2>Sessions</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Backend</button></th></tr></thead><tbody>
+{{range .Sessions}}<tr><td>{{.ID}}</td><td>{{.Role}}</td><td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td><td>{{.Branch}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionBackend}} {{.Provider}}</td></tr>{{else}}<tr><td colspan="6">no live sessions</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Worktrees</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Commit</button></th><th><button type="button" data-sort="text">Path</button></th></tr></thead><tbody>
+{{range .Worktrees}}<tr><td>{{.Role}}</td><td>{{.Branch}}</td><td>{{if .Dirty}}dirty{{else}}clean{{end}} {{if not .Exists}}missing{{else if not .Registered}}unregistered{{end}}</td><td>{{.LastCommit}}</td><td>{{.Path}}</td></tr>{{else}}<tr><td colspan="5">no configured worktrees</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Watchers</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Owner</button></th><th><button type="button" data-sort="text">Process</button></th><th><button type="button" data-sort="text">Command</button></th></tr></thead><tbody>
+{{range .Watchers}}<tr><td>{{.ID}}</td><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td><td>{{.Owner}}</td><td>{{.Process}}</td><td>{{.Command}}</td></tr>{{else}}<tr><td colspan="6">none</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Checkpoints</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Owner</button></th><th><button type="button" data-sort="text">Target close</button></th><th><button type="button" data-sort="text">Summary</button></th></tr></thead><tbody>
+{{range .Checkpoints}}<tr><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td><span class="status-pill {{statusClass .State}}">{{.State}}</span></td><td>{{.Owner}}</td><td>{{.TargetCloseBy}}</td><td>{{.Summary}}</td></tr>{{else}}<tr><td colspan="5">none</td></tr>{{end}}
+</tbody></table>
+</article>
+</section>
+{{else}}
+{{if .Workstreams}}
+<section class="workstream-strip" aria-label="Workstream progress">
+{{range .Workstreams}}
+<article>
+<h2>{{.Label}}</h2>
+<div class="progress"><span style="width:{{if .Total}}{{printf "%.0f" (percent .Done .Total)}}{{else}}0{{end}}%"></span></div>
+<p>{{.Done}}/{{.Total}} done · {{.InProgress}} active · {{.Ready}} ready · {{.Blocked}} blocked</p>
+</article>
+{{end}}
+</section>
+{{end}}
 <section class="selection-bar" hidden>
 <span>0 selected</span>
 <button class="btn" type="button">Clear</button>
@@ -48,14 +110,35 @@
 <span>showing {{len (boardRows .Groups)}} of {{.Summary.Filtered}} filtered tasks</span>
 <span class="pagination">page 1</span>
 </footer>
+{{end}}
 </section>
 <aside class="board-rail">
 <section class="card">
 <h2>Gate Readiness</h2>
-{{range .GateGroups}}{{template "gate-gauge" .}}{{else}}<p class="muted">no gates configured</p>{{end}}
+{{range .GateGroups}}
+{{template "gate-gauge" .}}
+<details class="gate-detail" {{if .MissingTaskCount}}open{{end}}>
+<summary>{{.GateCount}} gate(s), {{.MissingTaskCount}} missing</summary>
+{{range .Gates}}
+<article>
+<h3>{{.Profile}} / {{.Name}}</h3>
+<p>{{.SatisfiedCount}}/{{.TaskCount}} satisfied {{if .MissingCount}}· {{.MissingCount}} missing{{end}}</p>
+{{if .Missing}}<ul>{{range .Missing}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Title}}</li>{{end}}</ul>{{end}}
+</article>
+{{end}}
+</details>
+{{else}}<p class="muted">no gates configured</p>{{end}}
 </section>
 <section class="card">
 <h2>Activity</h2>
+<form class="activity-controls" method="get">
+<input type="hidden" name="tab" value="{{.Filters.Tab}}">
+<input type="hidden" name="q" value="{{.Filters.Search}}">
+<label>Kind<select name="activity_kind"><option value="">all</option>{{range .FilterOptions.ActivityKinds}}<option value="{{.}}" {{if eq $.Filters.ActivityKind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Rows<select name="activity_limit"><option value="10" {{if eq .Filters.ActivityLimit 10}}selected{{end}}>10</option><option value="25" {{if eq .Filters.ActivityLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.ActivityLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.ActivityLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.ActivityLimit 200}}selected{{end}}>200</option></select></label>
+<button class="btn" type="submit">Apply</button>
+</form>
+<p class="muted">showing {{len .Activity}} of {{.ActivityTotal}}</p>
 <div class="ticker-list">
 {{range .Activity}}<article class="ticker-entry"><b class="who">{{.TaskID}}</b><span class="what">{{.Kind}} {{.Summary}}</span><time>{{.CreatedAt}}</time></article>{{else}}<p class="muted">no recent activity</p>{{end}}
 </div>

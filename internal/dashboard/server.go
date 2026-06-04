@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -165,6 +166,7 @@ type TaskFilters struct {
 	RiskLevel     string
 	ReviewDomain  string
 	ActivityKind  string
+	Tab           string
 	ActivityLimit int
 	TableLimit    int
 }
@@ -360,9 +362,49 @@ func taskFiltersFromRequest(r *http.Request) TaskFilters {
 		RiskLevel:     strings.TrimSpace(query.Get("risk_level")),
 		ReviewDomain:  strings.TrimSpace(query.Get("review_domain")),
 		ActivityKind:  strings.TrimSpace(query.Get("activity_kind")),
+		Tab:           dashboardTab(query.Get("tab")),
 		ActivityLimit: boundedQueryInt(query.Get("activity_limit"), defaultActivityLimit, maxActivityLimit),
 		TableLimit:    boundedQueryInt(query.Get("table_limit"), defaultTableLimit, maxTableLimit),
 	}
+}
+
+func dashboardTab(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "diagnostics":
+		return "diagnostics"
+	default:
+		return "tasks"
+	}
+}
+
+func boardTabHref(filters TaskFilters, tab string) string {
+	values := url.Values{}
+	if tab = dashboardTab(tab); tab == "diagnostics" {
+		values.Set("tab", tab)
+	}
+	setIf := func(key, value string) {
+		if strings.TrimSpace(value) != "" {
+			values.Set(key, value)
+		}
+	}
+	setIf("q", filters.Search)
+	setIf("status", filters.Status)
+	setIf("profile", filters.Profile)
+	setIf("kind", filters.Kind)
+	setIf("owning_domain", filters.OwningDomain)
+	setIf("risk_level", filters.RiskLevel)
+	setIf("review_domain", filters.ReviewDomain)
+	setIf("activity_kind", filters.ActivityKind)
+	if filters.ActivityLimit > 0 && filters.ActivityLimit != defaultActivityLimit {
+		values.Set("activity_limit", strconv.Itoa(filters.ActivityLimit))
+	}
+	if filters.TableLimit > 0 && filters.TableLimit != defaultTableLimit {
+		values.Set("table_limit", strconv.Itoa(filters.TableLimit))
+	}
+	if encoded := values.Encode(); encoded != "" {
+		return "/board?" + encoded
+	}
+	return "/board"
 }
 
 func boundedQueryInt(raw string, fallback, max int) int {
@@ -1184,6 +1226,7 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"wallDoneToday":       wallDoneToday,
 		"wallTaskHasProvider": wallTaskHasProvider,
 		"boardRows":           boardRows,
+		"boardTabHref":        boardTabHref,
 		"statusClass":         safeDashboardClass,
 		"safeClass":           safeDashboardClass,
 		"dict":                templateDict,

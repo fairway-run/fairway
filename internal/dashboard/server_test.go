@@ -609,18 +609,9 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 }
 
 func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
-	data := struct {
-		View       string
-		Summary    DashboardSummary
-		Groups     []RoleGroup
-		GateGroups []GateGroup
-		Sessions   []store.Session
-		Activity   []store.Activity
-		Filters    TaskFilters
-		Rollups    map[string]Rollup
-	}{
+	data := DashboardViewData{
 		View:    "board",
-		Summary: DashboardSummary{Filtered: 2},
+		Summary: DashboardSummary{Total: 2, Filtered: 2, Ready: 1, InProgress: 1, Workstreams: 1},
 		Groups: []RoleGroup{{
 			Role: "backend",
 			Tasks: []store.Task{
@@ -628,11 +619,15 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 				{Definition: store.TaskDefinition{ID: "T-002", Title: "Working task", Role: "backend", Kind: "dashboard"}, Status: "in_progress", Owner: "ui"},
 			},
 		}},
-		GateGroups: []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
-		Sessions:   []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
-		Activity:   []store.Activity{{Kind: "evidence", TaskID: "T-002", Summary: "test pass", CreatedAt: "2026-06-04T00:00:00Z"}},
-		Filters:    TaskFilters{Search: "dashboard", Status: "todo", Profile: "dashboard-v2", Kind: "task", OwningDomain: "fairway", RiskLevel: "medium"},
-		Rollups:    map[string]Rollup{"T-001": {Done: 1, Total: 2}},
+		GateGroups:       []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
+		Workstreams:      []WorkstreamGroup{{Label: "dashboard-v2 / task", Total: 2, Done: 1, Ready: 1, InProgress: 1}},
+		Sessions:         []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
+		Activity:         []store.Activity{{Kind: "evidence", TaskID: "T-002", Summary: "test pass", CreatedAt: "2026-06-04T00:00:00Z"}},
+		Filters:          TaskFilters{Search: "dashboard", Status: "todo", Profile: "dashboard-v2", Kind: "task", OwningDomain: "fairway", RiskLevel: "medium", Tab: "tasks", ActivityLimit: 25},
+		Health:           store.Health{InProgress: 1},
+		StaleCheckpoints: []store.Checkpoint{{TaskID: "T-001", State: "active"}},
+		Watchers:         []store.Watcher{{ID: "W-001", TaskID: "T-001", Status: "active"}},
+		Rollups:          map[string]Rollup{"T-001": {Done: 1, Total: 2}},
 	}
 	var out strings.Builder
 	if err := boardTemplate.ExecuteTemplate(&out, "layout", data); err != nil {
@@ -645,6 +640,9 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		`/assets/js/board.js`,
 		`/assets/css/board.css`,
 		"Search tasks",
+		"Diagnostics",
+		"stale claims",
+		"Workstreams",
 		"Columns",
 		"Views",
 		"Export",
@@ -667,6 +665,51 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("board template missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestBoardTemplateRendersDiagnosticsTab(t *testing.T) {
+	data := DashboardViewData{
+		View:    "board",
+		Summary: DashboardSummary{Total: 4, Ready: 1, InProgress: 1, Blocked: 1, Done: 1, Workstreams: 2},
+		Filters: TaskFilters{
+			Tab:           "diagnostics",
+			ActivityLimit: 25,
+		},
+		Health:           store.Health{InProgress: 1, StaleInProgress: 1, BlockedOver24h: 1, UnacknowledgedOver1Hour: 1, UnroutedReviews: 1},
+		Sessions:         []store.Session{{ID: "s-1", Role: "backend", Status: "running", Branch: "agent/backend", TaskID: "T-001", SessionBackend: "tmux", Provider: "codex"}},
+		Worktrees:        []WorktreeStatus{{Role: "backend", Branch: "agent/backend", Exists: true, Registered: true, Dirty: true, LastCommit: "abc123", Path: "/tmp/backend"}},
+		Watchers:         []store.Watcher{{ID: "W-001", TaskID: "T-001", Status: "active", Owner: "ops", Process: "smoke", Command: "make test"}},
+		Checkpoints:      []store.Checkpoint{{TaskID: "T-001", State: "active", Owner: "backend", TargetCloseBy: "today", Summary: "working"}},
+		StaleCheckpoints: []store.Checkpoint{{TaskID: "T-002", State: "active", Owner: "ui", Summary: "stale"}},
+		FilterOptions:    FilterOptions{ActivityKinds: []string{"checkpoint", "evidence"}},
+		Activity:         []store.Activity{{Kind: "checkpoint", TaskID: "T-001", Summary: "working", CreatedAt: "2026-06-04T00:00:00Z"}},
+		ActivityTotal:    1,
+	}
+	var out strings.Builder
+	if err := boardTemplate.ExecuteTemplate(&out, "layout", data); err != nil {
+		t.Fatalf("board diagnostics render error = %v", err)
+	}
+	body := out.String()
+	for _, want := range []string{
+		`href="/board?tab=diagnostics"`,
+		"Sessions",
+		"Worktrees",
+		"Watchers",
+		"Checkpoints",
+		"s-1",
+		"agent/backend",
+		"W-001",
+		"stale checkpoints: 1",
+		"blocked &gt;24h: 1",
+		"checkpoint working",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("board diagnostics missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "board-table") {
+		t.Fatalf("diagnostics tab should not render task table:\n%s", body)
 	}
 }
 
