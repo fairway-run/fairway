@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"crypto/rand"
+	"embed"
 	"encoding/hex"
 	"fmt"
 	"html/template"
@@ -997,7 +998,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var indexTemplate = template.Must(template.New("index").Funcs(template.FuncMap{
+//go:embed assets/templates/*.html assets/css/*.css assets/js/*.js
+var dashboardAssets embed.FS
+
+var indexTemplate = mustEmbeddedTemplate("index", "assets/templates/index.html", template.FuncMap{
 	"percent": func(done, total int) float64 {
 		if total == 0 {
 			return 0
@@ -1016,200 +1020,24 @@ var indexTemplate = template.Must(template.New("index").Funcs(template.FuncMap{
 		}
 		return len(tasks) - limit
 	},
-}).Parse(`<!doctype html>
-<html><head><title>fairway</title><style>
-:root{--bg:#f6f7f9;--panel:#fff;--line:#d9dee7;--text:#182230;--muted:#667085;--good:#027a48;--bad:#b42318;--warn:#b54708;--accent:#245b6b}
-body{font-family:Inter,system-ui,sans-serif;margin:0;background:var(--bg);color:var(--text)}
-a{color:#175cd3;text-decoration:none}a:hover{text-decoration:underline}
-.shell{max-width:1440px;margin:0 auto;padding:24px}
-.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:18px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}.topbar h1{margin:.15rem 0;font-size:34px}.topbar p{margin:.25rem 0;color:var(--muted)}
-table{border-collapse:collapse;width:100%;background:var(--panel);margin-bottom:24px}td,th{border-bottom:1px solid var(--line);padding:9px;text-align:left;vertical-align:top}th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.summary{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:12px;margin:18px 0}.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}.metric b{display:block;font-size:28px;line-height:1}.metric span{display:block;color:var(--muted);font-size:12px;margin-top:4px}
-.status{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.role{font-weight:650}.badges,.lanes,.filters{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}.badge,.lane{background:var(--panel);border:1px solid var(--line);padding:7px 9px;border-radius:7px}.lane{min-width:180px}.lane b{display:block}.filters{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px}.filters label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.filters select{min-width:150px}.filters button{align-self:end}.layout{display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:24px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}.panel h2{margin-top:0}.panel p{border-bottom:1px solid #eef1f5;padding-bottom:8px}.muted{color:var(--muted)}.bad{color:var(--bad)}.ok{color:var(--good)}.warn{color:var(--warn)}
-.filters input[type=search]{min-width:240px}
-.workstream-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:22px}.workstream-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}.workstream-card h3{margin:.1rem 0 .5rem;font-size:16px}.progress{height:8px;background:#eef1f5;border-radius:999px;overflow:hidden;margin:10px 0}.progress span{display:block;height:100%;background:var(--accent)}.mini{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:12px}.section-head{display:flex;justify-content:space-between;align-items:end;gap:12px}.section-head h2{margin-bottom:8px}
-.gate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:16px 0}.gate-group,.gate{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--good);border-radius:8px;padding:12px}.gate-group.missing,.gate.missing{border-left-color:var(--warn)}.gate-group.no_tasks,.gate.no_tasks{border-left-color:var(--muted)}.gate-group h3,.gate h3{font-size:16px;margin:.1rem 0 .35rem}.gate ul{margin:.5rem 0 0;padding-left:18px}.gate-list{margin-top:10px}.gate-list summary{cursor:pointer;color:var(--muted);font-size:13px}.gate-list .gate{margin-top:8px;border-left-width:3px}.table-note{margin:-16px 0 24px;color:var(--muted);font-size:12px}.activity-head{display:flex;justify-content:space-between;gap:8px;align-items:end}.activity-form{display:flex;gap:8px;flex-wrap:wrap}.activity-form label{display:grid;gap:3px;font-size:12px;color:var(--muted)}.activity-form select{max-width:130px}
-@media(max-width:980px){.layout{grid-template-columns:1fr}.summary{grid-template-columns:repeat(2,1fr)}.topbar{display:block}}
-</style><script>
-const events = new EventSource("/events");
-events.addEventListener("refresh", () => window.location.reload());
-</script></head><body>
-<div class="shell">
-<div class="topbar">
-<div><div class="eyebrow">Fairway control room</div><h1>Workstream Dashboard</h1><p>Tasks, lanes, reviews, evidence, and health for the current project.</p></div>
-<div class="badge">filtered: {{.Summary.Filtered}} / {{.Summary.Total}}</div>
-</div>
-<section class="summary" aria-label="Track summary">
-<div class="metric"><b>{{.Summary.Total}}</b><span>Total tasks</span></div>
-<div class="metric"><b>{{.Summary.Ready}}</b><span>Ready</span></div>
-<div class="metric"><b>{{.Summary.InProgress}}</b><span>In progress</span></div>
-<div class="metric"><b>{{.Summary.Blocked}}</b><span>Blocked</span></div>
-<div class="metric"><b>{{.Summary.Done}}</b><span>Done</span></div>
-<div class="metric"><b>{{.Summary.Workstreams}}</b><span>Workstreams</span></div>
-</section>
-<div class="badges">
-<span class="badge">in progress: {{.Health.InProgress}}</span>
-<span class="badge">stale claims: {{.Health.StaleInProgress}}</span>
-<span class="badge">blocked &gt;24h: {{.Health.BlockedOver24h}}</span>
-<span class="badge">handoffs &gt;1h: {{.Health.UnacknowledgedOver1Hour}}</span>
-<span class="badge">reviews: {{.Health.UnroutedReviews}}</span>
-<span class="badge">stale checkpoints: {{len .StaleCheckpoints}}</span>
-<span class="badge">active watchers: {{len .Watchers}}</span>
-<span class="badge">sessions: {{len .Sessions}}</span>
-</div>
-<form class="filters" method="get">
-<label>Search<input type="search" name="q" value="{{.Filters.Search}}" placeholder="ID, title, path, domain"></label>
-<label>Status<select name="status"><option value="">all</option>{{range .FilterOptions.Statuses}}<option value="{{.}}" {{if eq $.Filters.Status .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-<label>Profile<select name="profile"><option value="">all</option>{{range .FilterOptions.Profiles}}<option value="{{.}}" {{if eq $.Filters.Profile .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-<label>Kind<select name="kind"><option value="">all</option>{{range .FilterOptions.Kinds}}<option value="{{.}}" {{if eq $.Filters.Kind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-<label>Domain<select name="owning_domain"><option value="">all</option>{{range .FilterOptions.OwningDomains}}<option value="{{.}}" {{if eq $.Filters.OwningDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-<label>Risk<select name="risk_level"><option value="">all</option>{{range .FilterOptions.RiskLevels}}<option value="{{.}}" {{if eq $.Filters.RiskLevel .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-<label>Review<select name="review_domain"><option value="">all</option>{{range .FilterOptions.ReviewDomains}}<option value="{{.}}" {{if eq $.Filters.ReviewDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-<label>Table rows<select name="table_limit"><option value="25" {{if eq .Filters.TableLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.TableLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.TableLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.TableLimit 200}}selected{{end}}>200</option></select></label>
-<input type="hidden" name="activity_kind" value="{{.Filters.ActivityKind}}">
-<input type="hidden" name="activity_limit" value="{{.Filters.ActivityLimit}}">
-<button type="submit">Apply</button><a href="/">Clear</a><span class="muted">filtered: {{.Summary.Filtered}} / {{.Summary.Total}}</span>
-</form>
-{{if .GateGroups}}
-<div class="section-head"><h2>Gate Readiness</h2><span class="muted">profile gates evaluated against all tasks</span></div>
-<section class="gate-grid">
-{{range .GateGroups}}
-<article class="gate-group {{.Status}}">
-<h3>{{.Label}}</h3>
-<div class="mini"><span>{{.GateCount}} gate(s)</span><span>{{.SatisfiedCount}}/{{.TaskCount}} task checks satisfied</span>{{if .BlockingMissing}}<span class="bad">{{.BlockingMissing}} blocking missing</span>{{end}}{{if .AdvisoryMissing}}<span class="warn">{{.AdvisoryMissing}} advisory missing</span>{{end}}{{if .ReportOnlyMisses}}<span class="warn">{{.ReportOnlyMisses}} report-only missing</span>{{end}}{{if .NoTaskCount}}<span class="muted">{{.NoTaskCount}} no-task gate(s)</span>{{end}}{{if and (eq .Status "satisfied") (eq .MissingTaskCount 0)}}<span class="ok">ready</span>{{end}}</div>
-<details class="gate-list" {{if .MissingTaskCount}}open{{end}}><summary>Gate details</summary>
-{{range .Gates}}
-<article class="gate {{.Status}}">
-<h3>{{.Profile}} / {{.Name}}</h3>
-<div class="mini"><span>{{.Group}}</span><span>{{.Mode}}</span><span>{{.EvidenceType}}</span><span>{{.SatisfiedCount}}/{{.TaskCount}} satisfied</span>{{if .MissingCount}}<span class="warn">{{.MissingCount}} missing</span>{{else if eq .Status "no_tasks"}}<span class="muted">no tasks</span>{{else}}<span class="ok">ready</span>{{end}}</div>
-{{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
-{{if .Missing}}<ul>{{range .Missing}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Title}} <span class="muted">({{.Kind}}, {{.Status}}; matching evidence {{.Matching}})</span>{{if .Reasons}}<br><small>{{range .Reasons}}{{.}} {{end}}</small>{{end}}</li>{{end}}</ul>{{end}}
-</article>
-{{end}}
-</details>
-</article>
-{{end}}
-</section>
-{{end}}
-{{if .Workstreams}}
-<div class="section-head"><h2>Workstream Progress</h2><span class="muted">{{.Summary.Profiles}} profile(s)</span></div>
-<section class="workstream-grid">
-{{range .Workstreams}}
-<article class="workstream-card">
-<h3>{{.Label}}</h3>
-<div class="progress" title="{{.Done}} of {{.Total}} done"><span style="width:{{if .Total}}{{printf "%.0f" (percent .Done .Total)}}{{else}}0{{end}}%"></span></div>
-<div class="mini"><span>{{.Done}}/{{.Total}} done</span><span>{{.InProgress}} active</span><span>{{.Ready}} ready</span><span>{{.Blocked}} blocked</span></div>
-</article>
-{{end}}
-</section>
-{{end}}
-<div class="lanes">
-{{range .Groups}}<div class="lane"><b>{{.Role}}</b>{{if .Current}}<a href="/tasks/{{.Current.Definition.ID}}">{{.Current.Definition.ID}}</a> {{.Current.Definition.Title}}{{else}}idle{{end}}</div>{{end}}
-</div>
-<div class="layout">
-<main>
-<h2>Sessions</h2>
-<table><tr><th>ID</th><th>Role</th><th>Status</th><th>Branch</th><th>Task</th><th>Backend</th></tr>
-{{range .Sessions}}<tr><td>{{.ID}}</td><td class="role">{{.Role}}</td><td class="status">{{.Status}}</td><td>{{.Branch}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionBackend}} {{.Provider}}</td></tr>{{else}}<tr><td colspan="6">no live sessions</td></tr>{{end}}
-</table>
-<h2>Worktrees</h2>
-<table><tr><th>Role</th><th>Branch</th><th>State</th><th>Commit</th><th>Path</th></tr>
-{{range .Worktrees}}<tr><td class="role">{{.Role}}</td><td>{{.Branch}}</td><td>{{if .Dirty}}<span class="bad">dirty</span>{{else}}<span class="ok">clean</span>{{end}} {{if not .Exists}}missing{{else if not .Registered}}unregistered{{end}}</td><td>{{.LastCommit}}</td><td class="muted">{{.Path}}</td></tr>{{else}}<tr><td colspan="5">no configured worktrees</td></tr>{{end}}
-</table>
-{{if .Workstreams}}
-<h2>Workstreams</h2>
-{{range .Workstreams}}
-<h3>{{.Label}}</h3>
-<table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Domain</th><th>Risk</th><th>Review domains</th></tr>
-{{range takeTasks .Tasks $.Filters.TableLimit}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td class="role">{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.Definition.OwningDomain}}</td><td>{{.Definition.RiskLevel}}</td><td>{{range .Definition.ReviewDomains}}<code>{{.}}</code> {{end}}</td></tr>{{else}}<tr><td colspan="7">no tasks</td></tr>{{end}}
-</table>
-{{if gt (moreTasks .Tasks $.Filters.TableLimit) 0}}<p class="table-note">showing first {{$.Filters.TableLimit}} of {{.Total}} tasks; narrow filters or raise the table row limit to see more.</p>{{end}}
-{{end}}
-{{end}}
-{{range .Groups}}
-<h2>{{.Role}}</h2>
-<table><tr><th>ID</th><th>Title</th><th>Kind</th><th>Profile</th><th>Status</th><th>Owner</th><th>Review</th><th>Rollup</th></tr>
-{{range takeTasks .Tasks $.Filters.TableLimit}}<tr><td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td><td>{{.Definition.Title}}</td><td>{{.Definition.Kind}}</td><td>{{.Definition.Profile}}</td><td class="status">{{.Status}}</td><td>{{.Owner}}</td><td>{{.ReviewStatus}}</td><td>{{with index $.Rollups .Definition.ID}}{{.Done}}/{{.Total}}{{else}}-{{end}}</td></tr>{{else}}<tr><td colspan="8">no tasks</td></tr>{{end}}
-</table>
-{{if gt (moreTasks .Tasks $.Filters.TableLimit) 0}}<p class="table-note">showing first {{$.Filters.TableLimit}} of {{len .Tasks}} tasks; narrow filters or raise the table row limit to see more.</p>{{end}}
-{{end}}
-</main>
-<aside>
-<section class="panel"><h2>Watchers</h2>{{range .Watchers}}<p><b>{{.ID}}</b> <a href="/tasks/{{.TaskID}}">{{.TaskID}}</a><br><code>{{.Status}}</code> {{.Owner}} {{.Process}}<br><small>{{.Command}}</small></p>{{else}}<p>none</p>{{end}}</section>
-<section class="panel"><h2>Checkpoints</h2>{{range .Checkpoints}}<p><b><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></b> <code>{{.State}}</code><br>{{.Summary}}<br><small>{{.Owner}} {{.TargetCloseBy}}</small></p>{{else}}<p>none</p>{{end}}</section>
-<section class="panel"><div class="activity-head"><h2>Activity</h2><form class="activity-form" method="get">
-<input type="hidden" name="q" value="{{.Filters.Search}}"><input type="hidden" name="status" value="{{.Filters.Status}}"><input type="hidden" name="profile" value="{{.Filters.Profile}}"><input type="hidden" name="kind" value="{{.Filters.Kind}}"><input type="hidden" name="owning_domain" value="{{.Filters.OwningDomain}}"><input type="hidden" name="risk_level" value="{{.Filters.RiskLevel}}"><input type="hidden" name="review_domain" value="{{.Filters.ReviewDomain}}"><input type="hidden" name="table_limit" value="{{.Filters.TableLimit}}">
-<label>Kind<select name="activity_kind"><option value="">all</option>{{range .FilterOptions.ActivityKinds}}<option value="{{.}}" {{if eq $.Filters.ActivityKind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-<label>Rows<select name="activity_limit"><option value="10" {{if eq .Filters.ActivityLimit 10}}selected{{end}}>10</option><option value="25" {{if eq .Filters.ActivityLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.ActivityLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.ActivityLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.ActivityLimit 200}}selected{{end}}>200</option></select></label>
-<button type="submit">Apply</button></form></div>
-<p class="muted">showing {{len .Activity}} of {{.ActivityTotal}}</p>
-{{range .Activity}}<p><b>{{.TaskID}}</b> <code>{{.Kind}}</code><br>{{.Summary}}<br><small>{{.CreatedAt}} {{.Actor}}</small></p>{{else}}<p>none</p>{{end}}</section>
-</aside>
-</div>
-</div>
-</body></html>`))
+})
 
-var detailTemplate = template.Must(template.New("detail").Parse(`<!doctype html>
-<html><head><title>{{.Task.Definition.ID}}</title><style>
-body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#555}pre{background:#f4f4f4;padding:12px}table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}code{background:#f4f4f4;padding:1px 3px}
-</style></head><body>
-<p><a href="/">back</a></p>
-<h1>{{.Task.Definition.ID}}: {{.Task.Definition.Title}}</h1>
-<p class="meta">role={{.Task.Definition.Role}} status={{.Task.Status}} owner={{.Task.Owner}} review={{.Task.ReviewStatus}}</p>
-{{if .Rollup.Total}}<p class="meta">descendants done: {{.Rollup.Done}}/{{.Rollup.Total}}</p>{{end}}
-<form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button type="submit">Claim</button></form>
-<form method="post" action="/actions/set-status">
-<input type="hidden" name="csrf" value="{{.CSRFToken}}">
-<input type="hidden" name="task_id" value="{{.Task.Definition.ID}}">
-<select name="status">{{range .States}}<option value="{{.}}" {{if eq $.Task.Status .}}selected{{end}}>{{.}}</option>{{end}}</select>
-<input name="reason" placeholder="reason">
-<button type="submit">Set status</button>
-</form>
-<h2>Metadata</h2>
-<table>
-<tr><th>Kind</th><td>{{.Task.Definition.Kind}}</td></tr>
-<tr><th>Profile</th><td>{{.Task.Definition.Profile}}</td></tr>
-<tr><th>Owning domain</th><td>{{.Task.Definition.OwningDomain}}</td></tr>
-<tr><th>Owning layer</th><td>{{.Task.Definition.OwningLayer}}</td></tr>
-<tr><th>Source paths</th><td>{{range .Task.Definition.SourcePaths}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
-<tr><th>Target paths</th><td>{{range .Task.Definition.TargetPaths}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
-<tr><th>Review domains</th><td>{{range .Task.Definition.ReviewDomains}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
-<tr><th>Risk</th><td>{{.Task.Definition.RiskLevel}}</td></tr>
-<tr><th>Migration type</th><td>{{.Task.Definition.MigrationType}}</td></tr>
-</table>
-<h2>Notes</h2><pre>{{.Task.Definition.Notes}}</pre>
-<h2>Dependencies</h2><ul>{{range .Task.Definition.Dependencies}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
-<h2>Acceptance</h2><ul>{{range .Task.Definition.AcceptanceChecks}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
-<h2>History</h2>{{range .Transitions}}<p><code>{{if .FromStatus}}{{.FromStatus}}{{else}}new{{end}} -> {{.ToStatus}}</code> by {{.Actor}} {{.Reason}}</p>{{else}}<p>none</p>{{end}}
-<h2>Evidence</h2>{{range .Evidence}}<p><code>{{.Result}}</code> {{.CommandText}} {{.ArtifactPath}}</p>{{else}}<p>none</p>{{end}}
-<h2>Sessions</h2><table><tr><th>ID</th><th>Backend</th><th>Provider</th><th>Status</th><th>Pane</th><th>Transcript</th></tr>
-{{range .Sessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td></tr>{{else}}<tr><td colspan="6">none</td></tr>{{end}}
-</table>
-<h2>Handoffs</h2>{{range .Handoffs}}<p>to <b>{{.ToRole}}</b>: {{.Payload}}</p>{{else}}<p>none</p>{{end}}
-<h2>Reviews</h2>{{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}
-</body></html>`))
+var detailTemplate = mustEmbeddedTemplate("detail", "assets/templates/task-detail.html", nil)
 
 func URL(addr string) string {
 	return fmt.Sprintf("http://%s", addr)
 }
 
-var multiTemplate = template.Must(template.New("multi").Parse(`<!doctype html>
-<html><head><title>fairway multi-project</title><style>
-body{font-family:system-ui,sans-serif;margin:32px;background:#f7f7f5;color:#1f2933}
-table{border-collapse:collapse;width:100%;background:white;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left}
-.project{background:white;border:1px solid #ddd;padding:16px;margin-bottom:24px}.badges{display:flex;gap:8px;flex-wrap:wrap}.badge{border:1px solid #ddd;border-radius:6px;padding:6px 8px}.muted{color:#667085}.status{font-family:monospace}
-</style></head><body>
-<h1>fairway multi-project</h1>
-{{range .Projects}}
-<section class="project">
-<h2>{{.Name}}</h2>
-<p class="muted">{{.Path}}</p>
-{{if .Error}}<p>{{.Error}}</p>{{else}}
-<div class="badges"><span class="badge">tasks: {{.TaskCount}}</span><span class="badge">sessions: {{.SessionCount}}</span><span class="badge">checkpoints: {{.CheckpointCount}}</span><span class="badge">watchers: {{.WatcherCount}}</span></div>
-<table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Review</th></tr>
-{{range .Tasks}}<tr><td>{{.Definition.ID}}</td><td>{{.Definition.Title}}</td><td>{{.Definition.Role}}</td><td class="status">{{.Status}}</td><td>{{.ReviewStatus}}</td></tr>{{else}}<tr><td colspan="5">no tasks</td></tr>{{end}}
-</table>
-{{end}}
-</section>
-{{else}}<p>no registered projects</p>{{end}}
-</body></html>`))
+var multiTemplate = mustEmbeddedTemplate("multi", "assets/templates/multi.html", nil)
+
+func mustEmbeddedTemplate(name, path string, funcs template.FuncMap) *template.Template {
+	tmpl := template.New(name)
+	if funcs != nil {
+		tmpl = tmpl.Funcs(funcs)
+	}
+	data, err := dashboardAssets.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+	return template.Must(tmpl.Parse(string(data)))
+}

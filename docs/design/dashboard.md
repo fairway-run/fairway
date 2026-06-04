@@ -29,8 +29,12 @@ profile gates cannot be bypassed from the browser.
 - `html/template` for server-rendered HTML.
 - HTMX for partial updates.
 - Server-Sent Events for live push to the activity feed.
-- A single `app.css`. No build step, no node_modules.
-- All assets embedded via `//go:embed`.
+- Embedded templates under `internal/dashboard/assets/templates`.
+- `internal/dashboard/assets/css` and `internal/dashboard/assets/js` are
+  embedded scaffolds for dashboard-v2 work. The current v1 pages keep their
+  existing inline styles/scripts until the visual redesign tasks extract them.
+- No build step, no node_modules.
+- All dashboard assets are embedded via `//go:embed`.
 
 `fairway dashboard` starts the server in the foreground (default
 `127.0.0.1:7878`) and opens the system browser unless `--no-open` or

@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><title>{{.Task.Definition.ID}}</title><style>
+body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#555}pre{background:#f4f4f4;padding:12px}table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border-bottom:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}code{background:#f4f4f4;padding:1px 3px}
+</style></head><body>
+<p><a href="/">back</a></p>
+<h1>{{.Task.Definition.ID}}: {{.Task.Definition.Title}}</h1>
+<p class="meta">role={{.Task.Definition.Role}} status={{.Task.Status}} owner={{.Task.Owner}} review={{.Task.ReviewStatus}}</p>
+{{if .Rollup.Total}}<p class="meta">descendants done: {{.Rollup.Done}}/{{.Rollup.Total}}</p>{{end}}
+<form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button type="submit">Claim</button></form>
+<form method="post" action="/actions/set-status">
+<input type="hidden" name="csrf" value="{{.CSRFToken}}">
+<input type="hidden" name="task_id" value="{{.Task.Definition.ID}}">
+<select name="status">{{range .States}}<option value="{{.}}" {{if eq $.Task.Status .}}selected{{end}}>{{.}}</option>{{end}}</select>
+<input name="reason" placeholder="reason">
+<button type="submit">Set status</button>
+</form>
+<h2>Metadata</h2>
+<table>
+<tr><th>Kind</th><td>{{.Task.Definition.Kind}}</td></tr>
+<tr><th>Profile</th><td>{{.Task.Definition.Profile}}</td></tr>
+<tr><th>Owning domain</th><td>{{.Task.Definition.OwningDomain}}</td></tr>
+<tr><th>Owning layer</th><td>{{.Task.Definition.OwningLayer}}</td></tr>
+<tr><th>Source paths</th><td>{{range .Task.Definition.SourcePaths}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
+<tr><th>Target paths</th><td>{{range .Task.Definition.TargetPaths}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
+<tr><th>Review domains</th><td>{{range .Task.Definition.ReviewDomains}}<code>{{.}}</code> {{else}}none{{end}}</td></tr>
+<tr><th>Risk</th><td>{{.Task.Definition.RiskLevel}}</td></tr>
+<tr><th>Migration type</th><td>{{.Task.Definition.MigrationType}}</td></tr>
+</table>
+<h2>Notes</h2><pre>{{.Task.Definition.Notes}}</pre>
+<h2>Dependencies</h2><ul>{{range .Task.Definition.Dependencies}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
+<h2>Acceptance</h2><ul>{{range .Task.Definition.AcceptanceChecks}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
+<h2>History</h2>{{range .Transitions}}<p><code>{{if .FromStatus}}{{.FromStatus}}{{else}}new{{end}} -> {{.ToStatus}}</code> by {{.Actor}} {{.Reason}}</p>{{else}}<p>none</p>{{end}}
+<h2>Evidence</h2>{{range .Evidence}}<p><code>{{.Result}}</code> {{.CommandText}} {{.ArtifactPath}}</p>{{else}}<p>none</p>{{end}}
+<h2>Sessions</h2><table><tr><th>ID</th><th>Backend</th><th>Provider</th><th>Status</th><th>Pane</th><th>Transcript</th></tr>
+{{range .Sessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td></tr>{{else}}<tr><td colspan="6">none</td></tr>{{end}}
+</table>
+<h2>Handoffs</h2>{{range .Handoffs}}<p>to <b>{{.ToRole}}</b>: {{.Payload}}</p>{{else}}<p>none</p>{{end}}
+<h2>Reviews</h2>{{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}
+</body></html>
