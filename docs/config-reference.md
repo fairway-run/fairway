@@ -135,6 +135,12 @@ levels = [
 | `default_backend` | string | `shell` | Default backend for optional `fairway session launch`. Core queue operations do not require launch adapters. |
 | `stale_after` | duration | `12h` | Session reconciliation threshold for missing PID/backend sessions. |
 
+Provider runtime watchers do not need provider API configuration in Fairway
+core. Keep provider credentials, polling, and API-specific state outside the
+Fairway config; adapters should write generic `session upsert`, `checkpoint
+record`, `record evidence`, and `record handoff` events using provider labels
+such as `codex`, `claude`, `gemini`, or `shell`.
+
 ### `[coordinator]`
 
 | Key | Type | Default | Description |

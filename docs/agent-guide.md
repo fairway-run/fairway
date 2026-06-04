@@ -56,6 +56,12 @@ Fairway coordination should work through task state, evidence, handoffs,
 checkpoints, and session records. Provider-specific chat history is useful, but
 it is not the coordination source of truth.
 
+Durable lane, replaceable provider attachment: a Fairway lane or track is the
+durable coordination identity. Provider sessions are replaceable execution
+attachments. A long-lived provider session may carry useful working memory, but
+the lane can move between Codex, Claude, Gemini, tmux, or shell without changing
+task identity, ownership, checkpoints, evidence, reviews, or merge gates.
+
 ## Delegated Provider Sessions
 
 When one agent delegates work to another provider session, the delegating agent
@@ -88,16 +94,29 @@ fairway session upsert \
   --worktree <path> \
   --branch <branch>
 
-# 2. Run a provider adapter or heartbeat outside Fairway core.
-# The adapter polls provider state and records Fairway checkpoints.
-codex-thread-watch <codex-thread-id> --task-id <task-id>
+# 2. Run a provider adapter or heartbeat outside Fairway core. A provider
+# monitor can call the generic event adapter whenever runtime state changes.
+examples/session-adapters/provider-event.sh \
+  --provider codex \
+  --backend codex-thread \
+  --external-session-id <codex-thread-id> \
+  --role <role> \
+  --task-id <task-id> \
+  --state waiting_on_approval \
+  --summary "<short reason>" \
+  --transcript <path-to-transcript>
 
-# 3. Record blocking runtime state as Fairway state.
+# 3. If no adapter is available, record the equivalent Fairway fact manually.
 fairway checkpoint record <task-id> \
   --state awaiting_input \
   --owner <role> \
   --summary "Delegated Codex thread is waiting on approval: <short reason>"
 ```
+
+The generic event adapter supports `running`, `waiting_on_approval`,
+`waiting_on_input`, `completed`, `failed`, `stale`, and `no_progress`. It
+refreshes the session record first, then records the mapped checkpoint,
+evidence, handoff, or stale-session event.
 
 Do not make Fairway depend on Codex, Claude, Gemini, or any provider API.
 Fairway should expose the session/checkpoint/evidence surfaces; provider

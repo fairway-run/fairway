@@ -68,6 +68,12 @@ Provider labels such as `claude`, `codex`, `gemini`, and `shell` are
 informational. Fairway coordinates the lane through session rows, task state,
 checkpoints, evidence, handoffs, and reviews.
 
+Durable lane, replaceable provider attachment: the Fairway lane/track is the
+stable coordination object. Provider sessions attach execution and runtime
+memory to that lane, but they do not define it. A lane can move between Codex,
+Claude, Gemini, tmux, or shell without changing task identity, ownership,
+checkpoints, evidence, reviews, or merge gates.
+
 ## Provider Runtime Watchers
 
 Some providers expose session state that does not map to a local PID or tmux
@@ -100,6 +106,27 @@ Recommended status mapping:
 
 This keeps Fairway provider-neutral while still making provider-specific runtime
 events visible to coordinators and dashboards.
+
+The reference convention is `examples/session-adapters/provider-event.sh`. A
+provider-specific watcher can translate its local enum into one of Fairway's
+generic runtime states and call:
+
+```bash
+examples/session-adapters/provider-event.sh \
+  --provider codex \
+  --backend codex-thread \
+  --external-session-id <thread-id> \
+  --role <role> \
+  --task-id <task-id> \
+  --state waiting_on_input \
+  --summary "<question or missing input>" \
+  --transcript <path-to-transcript>
+```
+
+For `waiting_on_approval` and `waiting_on_input`, the adapter records an
+`awaiting_input` checkpoint. For `completed`, it records evidence by default or
+a handoff when `--handoff-to <role>` is provided. It does not claim tasks, set
+terminal statuses, approve reviews, or mark work merge-ready.
 
 ## Rules
 

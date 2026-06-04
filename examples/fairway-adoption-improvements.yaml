@@ -229,6 +229,7 @@ tasks:
       - internal/store
     target_paths:
       - examples/session-adapters
+      - examples/session-adapters/provider-event.sh
       - docs/design/session-launch.md
       - docs/agent-guide.md
       - docs/config-reference.md
