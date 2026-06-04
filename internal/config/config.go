@@ -40,6 +40,7 @@ type FairwayConfig struct {
 type DashboardConfig struct {
 	Listen   string `toml:"listen"`
 	AutoOpen bool   `toml:"auto_open"`
+	Surface  string `toml:"surface"`
 }
 
 type WorktreesConfig struct {
@@ -140,6 +141,7 @@ func Defaults(root string) Config {
 		Dashboard: DashboardConfig{
 			Listen:   "127.0.0.1:7878",
 			AutoOpen: true,
+			Surface:  "v1",
 		},
 		Worktrees: WorktreesConfig{
 			Root:               "../worktrees",
@@ -233,6 +235,9 @@ func Validate(cfg Config) error {
 	}
 	if _, err := regexp.Compile(cfg.Fairway.TaskIDPattern); err != nil {
 		return fmt.Errorf("[fairway] task_id_pattern is invalid: %w", err)
+	}
+	if cfg.Dashboard.Surface != "" && cfg.Dashboard.Surface != "v1" && cfg.Dashboard.Surface != "v2" {
+		return fmt.Errorf("[dashboard] surface %q must be v1 or v2", cfg.Dashboard.Surface)
 	}
 	if cfg.Worktrees.Root == "" {
 		return errors.New("[worktrees] root is required")
@@ -546,6 +551,13 @@ func DefaultPriority(cfg Config) *int {
 	return &v
 }
 
+func DashboardSurface(cfg Config) string {
+	if cfg.Dashboard.Surface == "" {
+		return "v1"
+	}
+	return cfg.Dashboard.Surface
+}
+
 func WriteDefault(path, root string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -561,6 +573,7 @@ task_id_pattern = "^[A-Z]+-[0-9]+$"
 [dashboard]
 listen = "127.0.0.1:7878"
 auto_open = true
+surface = "v1"
 
 [worktrees]
 root = "../worktrees"

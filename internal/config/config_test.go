@@ -47,6 +47,32 @@ func TestValidate_RejectsWorktreeNamingWithoutRole(t *testing.T) {
 	}
 }
 
+func TestValidate_DashboardSurface(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	if cfg.Dashboard.Surface != "v1" {
+		t.Fatalf("default dashboard surface=%q, want v1", cfg.Dashboard.Surface)
+	}
+	cfg.Dashboard.Surface = "v2"
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() v2 surface error = %v", err)
+	}
+	cfg.Dashboard.Surface = ""
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() omitted surface error = %v", err)
+	}
+	if got := DashboardSurface(cfg); got != "v1" {
+		t.Fatalf("effective dashboard surface=%q, want v1", got)
+	}
+	cfg.Dashboard.Surface = "hybrid"
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("expected dashboard surface validation error")
+	}
+	if got := err.Error(); got != `[dashboard] surface "hybrid" must be v1 or v2` {
+		t.Fatalf("dashboard surface error=%q", got)
+	}
+}
+
 func TestWorktreePathUsesTemplate(t *testing.T) {
 	cfg := Defaults("/tmp/repo")
 	got := WorktreePath(cfg, "/tmp/repo", Role{Name: "backend"})
