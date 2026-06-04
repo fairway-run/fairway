@@ -60,18 +60,23 @@ The board is the working surface for operators.
 
 It includes:
 
+- a control-room header with total filtered scope,
+- gate readiness above the table, grouped by profile/gate group with
+  blocking, advisory, and report-only misses called out,
+- expandable missing-task detail for each gate so exceptions are visible before
+  opening individual tasks,
+- workstream progress above the table for quick backlog and completion scans,
 - search across task ID, title, metadata, status, owner, source paths, target
   paths, and review domains,
 - role/status/profile/kind/domain/risk/review-domain filter chips,
 - sortable task columns,
 - CSV export for the current task table,
-- workstream rollups,
 - operational health badges,
-- gate readiness with expandable missing-task detail,
 - activity kind and row-count filtering.
 
-The task table links to task detail. The board preserves role/status/search
-state when switching between task and diagnostics tabs.
+The task table is the drill-down layer after the gate and workstream highlights.
+It links to task detail. The board preserves role/status/search state when
+switching between task and diagnostics tabs.
 
 ## Diagnostics
 

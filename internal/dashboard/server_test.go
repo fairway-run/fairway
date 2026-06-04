@@ -189,7 +189,7 @@ func TestBoardFiltersBySearchAndStatus(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Portal source metadata", `value="platform-foundation"`, "<b>Status</b>in_progress", "showing 1 of 1 filtered tasks"} {
+	for _, want := range []string{"Portal source metadata", `value="platform-foundation"`, "<b>Status</b> in_progress", "showing 1 of 1 filtered tasks"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("search dashboard body missing %q:\n%s", want, body)
 		}
@@ -217,7 +217,7 @@ func TestBoardFiltersByRole(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Backend task", "<b>Role</b>backend", "showing 1 of 1 filtered tasks"} {
+	for _, want := range []string{"Backend task", "<b>Role</b> backend", "showing 1 of 1 filtered tasks"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("role-filtered board missing %q:\n%s", want, body)
 		}
@@ -268,7 +268,21 @@ func TestBoardRendersProfileGateReadiness(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Gate Readiness", "docusaurus-portal / content coverage", "1 gate(s), 1 missing", "docusaurus-portal / source-docs-linked", "1/2 satisfied", "T-002"} {
+	for _, want := range []string{
+		"Fairway control room",
+		"Workstream Dashboard",
+		"filtered: 2 / 2",
+		"Gate Readiness",
+		"profile gates evaluated against filtered tasks",
+		"docusaurus-portal / content coverage",
+		"1 gate(s)",
+		"1 blocking missing",
+		"docusaurus-portal / source-docs-linked",
+		"1/2 satisfied",
+		"Workstream Progress",
+		"Task Table",
+		"T-002",
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("gate dashboard body missing %q:\n%s", want, body)
 		}
@@ -311,7 +325,9 @@ func TestBoardRendersGroupedGateRollupsExceptionFirst(t *testing.T) {
 		"platform-foundation / guards",
 		"platform-foundation / facades",
 		"platform-foundation / maps",
-		"1 gate(s), 1 missing",
+		"1 gate(s)",
+		"1 blocking missing",
+		"1 advisory missing",
 		"platform-foundation / boundary-guard-report",
 		"platform-foundation / facade-review",
 		"platform-foundation / ownership-map-recorded",
@@ -667,7 +683,7 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		`/assets/css/board.css`,
 		"Search ID, title, owner, path",
 		"Diagnostics",
-		"<b>Role</b>backend",
+		"<b>Role</b> backend",
 		"stale claims",
 		"Workstreams",
 		"Export CSV",
@@ -769,7 +785,7 @@ func TestDashboardAssetsServeSurfaceStyles(t *testing.T) {
 		want []string
 	}{
 		{path: "/assets/css/wall.css", want: []string{".wall-layout", ".wall-lane", ".lane-states", ".wall-rail"}},
-		{path: "/assets/css/board.css", want: []string{".board-layout", ".toolbar", ".board-table", ".board-rail"}},
+		{path: "/assets/css/board.css", want: []string{".board-layout", ".control-room-head", ".gate-grid", ".board-table", ".board-rail"}},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 		rec := httptest.NewRecorder()

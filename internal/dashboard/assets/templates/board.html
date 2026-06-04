@@ -1,6 +1,14 @@
 {{define "content"}}
 <main class="board-layout">
 <section class="board-main">
+<header class="control-room-head">
+<div>
+<p class="eyebrow">Fairway control room</p>
+<h1>Workstream Dashboard</h1>
+<p>Tasks, lanes, reviews, evidence, and health for the current project.</p>
+</div>
+<span class="filtered-count">filtered: {{.Summary.Filtered}} / {{.Summary.Total}}</span>
+</header>
 <nav class="flow-bar" aria-label="Board flow">
 <a href="/">Wall</a>
 {{if .Filters.Role}}<span>/</span><strong>{{.Filters.Role}}</strong>{{end}}
@@ -11,12 +19,12 @@
 {{if .Filters.Role}}<input type="hidden" name="role" value="{{.Filters.Role}}">{{end}}
 <div class="tb-left">
 <label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search ID, title, owner, path" title="Searches task ID, title, metadata, status, owner, source paths, target paths, and review domains"></label>
-{{if .Filters.Role}}<span class="chip"><b>Role</b>{{.Filters.Role}}</span>{{end}}
-{{if .Filters.Status}}<span class="chip"><b>Status</b>{{.Filters.Status}}</span>{{end}}
-{{if .Filters.Profile}}<span class="chip"><b>Profile</b>{{.Filters.Profile}}</span>{{end}}
-{{if .Filters.Kind}}<span class="chip"><b>Kind</b>{{.Filters.Kind}}</span>{{end}}
-{{if .Filters.OwningDomain}}<span class="chip"><b>Domain</b>{{.Filters.OwningDomain}}</span>{{end}}
-{{if .Filters.RiskLevel}}<span class="chip"><b>Risk</b>{{.Filters.RiskLevel}}</span>{{end}}
+{{if .Filters.Role}}<span class="chip"><b>Role</b> {{.Filters.Role}}</span>{{end}}
+{{if .Filters.Status}}<span class="chip"><b>Status</b> {{.Filters.Status}}</span>{{end}}
+{{if .Filters.Profile}}<span class="chip"><b>Profile</b> {{.Filters.Profile}}</span>{{end}}
+{{if .Filters.Kind}}<span class="chip"><b>Kind</b> {{.Filters.Kind}}</span>{{end}}
+{{if .Filters.OwningDomain}}<span class="chip"><b>Domain</b> {{.Filters.OwningDomain}}</span>{{end}}
+{{if .Filters.RiskLevel}}<span class="chip"><b>Risk</b> {{.Filters.RiskLevel}}</span>{{end}}
 </div>
 <div class="tb-right">
 <a class="btn" href="/">Wall</a>
@@ -76,8 +84,53 @@
 </article>
 </section>
 {{else}}
+<section class="control-section gate-overview" aria-label="Gate readiness">
+<header class="section-head">
+<h2>Gate Readiness</h2>
+<span>profile gates evaluated against filtered tasks</span>
+</header>
+<div class="gate-grid">
+{{range .GateGroups}}
+<article class="gate-card {{safeClass .Status}}">
+<h3>{{.Label}}</h3>
+<p class="gate-summary">
+{{.GateCount}} gate(s)
+<span>{{.SatisfiedCount}}/{{.TaskCount}} task checks satisfied</span>
+{{if .BlockingMissing}}<b>{{.BlockingMissing}} blocking missing</b>{{end}}
+{{if .AdvisoryMissing}}<b>{{.AdvisoryMissing}} advisory missing</b>{{end}}
+{{if .ReportOnlyMisses}}<b>{{.ReportOnlyMisses}} report-only missing</b>{{end}}
+</p>
+<details {{if .MissingTaskCount}}open{{end}}>
+<summary>Gate details</summary>
+{{range .Gates}}
+<section class="gate-detail-card">
+<h4>{{.Profile}} / {{.Name}}</h4>
+<p class="gate-meta">{{.Group}} · {{.Mode}} · {{.EvidenceType}} · {{.SatisfiedCount}}/{{.TaskCount}} satisfied {{if .MissingCount}}· {{.MissingCount}} missing{{end}}</p>
+{{if .Description}}<p>{{.Description}}</p>{{end}}
+{{if .Missing}}
+<ul class="missing-list">
+{{range .Missing}}
+<li>
+<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Title}} <span>({{.Kind}}, {{.Status}}; matching evidence {{.Matching}})</span>
+{{if .Reasons}}<small>{{range .Reasons}}{{.}} {{end}}</small>{{end}}
+</li>
+{{end}}
+</ul>
+{{end}}
+</section>
+{{end}}
+</details>
+</article>
+{{else}}<p class="muted">no gates configured</p>{{end}}
+</div>
+</section>
 {{if .Workstreams}}
-<section class="workstream-strip" aria-label="Workstream progress">
+<section class="control-section" aria-label="Workstream progress">
+<header class="section-head">
+<h2>Workstream Progress</h2>
+<span>{{.Summary.Workstreams}} workstream(s)</span>
+</header>
+<div class="workstream-strip">
 {{range .Workstreams}}
 <article>
 <h2>{{.Label}}</h2>
@@ -85,8 +138,14 @@
 <p>{{.Done}}/{{.Total}} done · {{.InProgress}} active · {{.Ready}} ready · {{.Blocked}} blocked</p>
 </article>
 {{end}}
+</div>
 </section>
 {{end}}
+<section class="control-section task-table-section" aria-label="Task table">
+<header class="section-head">
+<h2>Task Table</h2>
+<span>sort, search, export, or open task detail</span>
+</header>
 <section class="selection-bar" hidden>
 <span>0 selected</span>
 <button class="btn" type="button">Clear</button>
@@ -118,25 +177,10 @@
 <span>showing {{len (boardRows .Groups)}} of {{.Summary.Filtered}} filtered tasks</span>
 <span class="pagination">page 1</span>
 </footer>
+</section>
 {{end}}
 </section>
 <aside class="board-rail">
-<section class="card">
-<h2>Gate Readiness</h2>
-{{range .GateGroups}}
-{{template "gate-gauge" .}}
-<details class="gate-detail" {{if .MissingTaskCount}}open{{end}}>
-<summary>{{.GateCount}} gate(s), {{.MissingTaskCount}} missing</summary>
-{{range .Gates}}
-<article>
-<h3>{{.Profile}} / {{.Name}}</h3>
-<p>{{.SatisfiedCount}}/{{.TaskCount}} satisfied {{if .MissingCount}}· {{.MissingCount}} missing{{end}}</p>
-{{if .Missing}}<ul>{{range .Missing}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Title}}</li>{{end}}</ul>{{end}}
-</article>
-{{end}}
-</details>
-{{else}}<p class="muted">no gates configured</p>{{end}}
-</section>
 <section class="card">
 <h2>Activity</h2>
 <form class="activity-controls" method="get">
