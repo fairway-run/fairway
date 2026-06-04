@@ -84,6 +84,26 @@ Minimum delegation checklist:
 7. leave task status, review approval, and merge readiness to normal Fairway
    gates.
 
+Approval-sensitive steps are explicit coordination events. If a delegated
+session reaches a step that may require human approval or coordinator-side
+execution, such as staging, committing, pushing, dependency installation,
+remote changes, privileged commands, or destructive cleanup, it should not wait
+silently in provider chat. It must:
+
+1. record an `awaiting_input` checkpoint with the exact blocked operation,
+2. notify the coordinator session with the command it wants to run, the
+   verification already completed, and the current git/Fairway state,
+3. wait for the coordinator to either perform the operation, grant permission,
+   or redirect the task,
+4. reconcile after notification so it does not create duplicate commits,
+   pushes, reviews, or status changes.
+
+For Codex-backed sessions, coordinator notification is usually a follow-up
+message to the owning Codex thread. For tmux/Claude/Gemini/shell lanes, use the
+provider watcher, transcript bridge, or manual checkpoint plus the team’s
+chosen coordinator channel. In all cases, the Fairway checkpoint is the durable
+signal; provider chat is only the transport.
+
 Provider-specific watchers, such as a Codex thread monitor, should live outside
 Fairway core. Their job is to read provider runtime state and translate it into
 provider-neutral Fairway facts:
@@ -127,6 +147,12 @@ fairway checkpoint record <task-id> \
   --owner <role> \
   --summary "Delegated Codex thread is waiting on approval: <short reason>"
 ```
+
+When the coordinator handles the blocked operation, it should notify the
+delegated session with the resulting commit, push, or command outcome and tell
+the delegated session whether to stop, continue, or only report final summary.
+That avoids duplicate git operations while still keeping the implementation
+session’s working context intact.
 
 The generic event adapter supports `started`, `running`, `waiting_on_approval`,
 `waiting_on_input`, `completed`, `failed`, `stale`, and `no_progress`. It
