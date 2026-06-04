@@ -20,6 +20,42 @@ fairway session upsert --role <role> --provider <codex|claude|gemini|shell>
 fairway ready
 ```
 
+For tmux-backed lanes, especially provider sessions that cannot be inspected by
+the host application directly, register enough metadata for coordination:
+
+```bash
+fairway session upsert \
+  --id <session-id> \
+  --role <role> \
+  --provider <codex|claude|gemini|shell> \
+  --backend tmux \
+  --name <tmux-session-name> \
+  --tmux-pane <session:window.pane> \
+  --transcript <path-to-transcript> \
+  --task-id <task-id> \
+  --pid <pid> \
+  --worktree <path> \
+  --branch <branch>
+fairway checkpoint record <task-id> \
+  --state active \
+  --owner <role> \
+  --summary "Started tmux-backed provider lane; transcript: <path-to-transcript>"
+```
+
+The example tmux adapter performs the same registration, transcript capture,
+and initial checkpoint in one provider-neutral command:
+
+```bash
+FAIRWAY_PROVIDER=claude \
+FAIRWAY_PROVIDER_COMMAND="claude" \
+FAIRWAY_TRANSCRIPT=".fairway/transcripts/claude-<role>-<task-id>.log" \
+examples/session-adapters/tmux.sh <role> <task-id>
+```
+
+Fairway coordination should work through task state, evidence, handoffs,
+checkpoints, and session records. Provider-specific chat history is useful, but
+it is not the coordination source of truth.
+
 If you need machine-readable output, put global flags before the subcommand:
 
 ```bash

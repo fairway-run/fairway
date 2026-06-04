@@ -559,6 +559,47 @@ func TestCLI_CheckpointAndPacket(t *testing.T) {
 	runOK(t, "--json", "watcher", "status", "--include-done")
 }
 
+func TestCLI_TmuxSessionTranscriptAndReconcile(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Tmux lane", "--role", "backend")
+	runOK(t, "session", "upsert",
+		"--id", "tmux-backend-test",
+		"--role", "backend",
+		"--backend", "tmux",
+		"--provider", "claude",
+		"--name", "fairway-backend",
+		"--task-id", "T-001",
+		"--tmux-pane", "%fairway-missing-pane",
+		"--transcript", ".fairway/transcripts/backend-T-001.log",
+		"--worktree", repo,
+		"--branch", "agent/backend",
+	)
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "tmux-backend-test")
+	assertContains(t, detail, ".fairway/transcripts/backend-T-001.log")
+	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, jsonDetail, `"transcript_path": ".fairway/transcripts/backend-T-001.log"`)
+
+	dryRun := runCapture(t, "session", "reconcile", "--dry-run")
+	assertContains(t, dryRun, "tmux pane not found")
+	runOK(t, "session", "reconcile")
+	allSessions := runCapture(t, "session", "status", "--all")
+	assertContains(t, allSessions, "tmux-backend-test")
+	assertContains(t, allSessions, "stale")
+	task := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, task, `"Status": "todo"`)
+}
+
 func TestCLI_PacketTemplate(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

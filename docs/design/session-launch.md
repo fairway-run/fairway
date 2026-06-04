@@ -42,6 +42,32 @@ The launcher returns:
 Fairway records the returned data in `agent_sessions`. Transcript contents stay
 outside the DB.
 
+## tmux Transcript Bridge
+
+For provider sessions that run inside tmux, use a bridge adapter rather than a
+provider-specific core integration. The adapter should:
+
+1. start or attach to a tmux pane,
+2. capture pane output to a transcript path with `tmux pipe-pane`,
+3. call `fairway session upsert` with provider, role, task id, pane, PID,
+   transcript, worktree, and branch,
+4. record an initial `fairway checkpoint record` when a task id is associated,
+5. rely on `fairway session reconcile` to mark missing PID or tmux-pane
+   sessions stale without changing task ownership.
+
+Example:
+
+```bash
+FAIRWAY_PROVIDER=claude \
+FAIRWAY_PROVIDER_COMMAND="claude" \
+FAIRWAY_TRANSCRIPT=".fairway/transcripts/claude-platform-map.log" \
+examples/session-adapters/tmux.sh orchestrator PF-001
+```
+
+Provider labels such as `claude`, `codex`, `gemini`, and `shell` are
+informational. Fairway coordinates the lane through session rows, task state,
+checkpoints, evidence, handoffs, and reviews.
+
 ## Rules
 
 - A failed launch must not claim a task.

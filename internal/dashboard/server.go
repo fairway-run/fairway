@@ -828,6 +828,11 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	sessions, err := s.store.Sessions(r.Context(), false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	tasks, err := s.store.AllTasks(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -840,11 +845,22 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Evidence    []store.Evidence
 		Handoffs    []store.Handoff
 		Reviews     []store.Review
+		Sessions    []store.Session
 		Rollup      Rollup
 		CSRFToken   string
 		States      []string
-	}{task, transitions, evidence, handoffs, reviews, rollups[task.Definition.ID], s.csrfToken, dashboardMutableStates(s.cfg)}
+	}{task, transitions, evidence, handoffs, reviews, sessionsForDashboardTask(sessions, id), rollups[task.Definition.ID], s.csrfToken, dashboardMutableStates(s.cfg)}
 	_ = detailTemplate.Execute(w, data)
+}
+
+func sessionsForDashboardTask(sessions []store.Session, taskID string) []store.Session {
+	var out []store.Session
+	for _, session := range sessions {
+		if session.TaskID == taskID {
+			out = append(out, session)
+		}
+	}
+	return out
 }
 
 func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
@@ -1166,6 +1182,9 @@ body{font-family:system-ui,sans-serif;margin:32px;max-width:960px}.meta{color:#5
 <h2>Acceptance</h2><ul>{{range .Task.Definition.AcceptanceChecks}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
 <h2>History</h2>{{range .Transitions}}<p><code>{{if .FromStatus}}{{.FromStatus}}{{else}}new{{end}} -> {{.ToStatus}}</code> by {{.Actor}} {{.Reason}}</p>{{else}}<p>none</p>{{end}}
 <h2>Evidence</h2>{{range .Evidence}}<p><code>{{.Result}}</code> {{.CommandText}} {{.ArtifactPath}}</p>{{else}}<p>none</p>{{end}}
+<h2>Sessions</h2><table><tr><th>ID</th><th>Backend</th><th>Provider</th><th>Status</th><th>Pane</th><th>Transcript</th></tr>
+{{range .Sessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td></tr>{{else}}<tr><td colspan="6">none</td></tr>{{end}}
+</table>
 <h2>Handoffs</h2>{{range .Handoffs}}<p>to <b>{{.ToRole}}</b>: {{.Payload}}</p>{{else}}<p>none</p>{{end}}
 <h2>Reviews</h2>{{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}
 </body></html>`))

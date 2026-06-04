@@ -178,3 +178,38 @@ tasks:
       - dashboard distinguishes open/todo backlog count from claimable ready count
       - dashboard tests cover a blocked-by-dependency task that is todo but not ready
       - GPUaaS platform-foundation dashboard and `fairway --json ready` agree on claimable task count
+
+  - id: FW-108
+    title: Add provider-neutral tmux transcript and checkpoint bridge
+    kind: session-adapter
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+      - examples/session-adapters
+      - cmd/fairway/main.go
+      - internal/session
+      - internal/store
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/session
+      - examples/session-adapters
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: provider-neutral-session-bridge
+    depends_on:
+      - FW-101
+    acceptance_checks:
+      - tmux-backed Codex, Claude, Gemini, and shell lanes can be registered with provider, role, task id, tmux pane, transcript path, pid, worktree, and branch in one repeatable command or adapter
+      - adapter captures or tails a transcript path that the dashboard and `task-detail` can surface without provider-specific APIs
+      - adapter records an initial checkpoint when a task is associated and documents a cadence for fresh checkpoints on long-running lanes
+      - session reconcile can mark missing tmux/PID sessions stale without changing task ownership
+      - docs include GPUaaS-style examples for Claude lanes that coordinate through Fairway state rather than provider chat

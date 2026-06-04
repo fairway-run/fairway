@@ -351,12 +351,15 @@ func TestTaskDetailRendersMetadata(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.UpsertSession(ctx, store.Session{ID: "tmux-arch", Role: "arch", SessionBackend: "tmux", Provider: "claude", TaskID: "T-001", TmuxPane: "%1", TranscriptPath: ".fairway/transcripts/T-001.log", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"arch"}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
 	rec := httptest.NewRecorder()
 	server.task(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map"} {
+	for _, want := range []string{"Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map", "tmux-arch", ".fairway/transcripts/T-001.log"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("task detail body missing %q:\n%s", want, body)
 		}

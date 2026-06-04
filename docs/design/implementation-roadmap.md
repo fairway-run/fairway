@@ -180,7 +180,20 @@ while Fairway improvements are assigned as their own bounded workstream.
    - Trigger: platform-foundation lanes launch multiple bounded Claude/Codex
      tasks through tmux and need consistent prompt/transcript/session handling.
 
-6. Guard report mode vocabulary
+6. Provider-neutral tmux transcript bridge
+   - Current state: `agent_sessions` stores `session_backend`, `provider`,
+     `session_name`, `tmux_pane`, and `transcript_path`, but operators still
+     have to populate those fields manually for provider sessions that are not
+     exposed through a host application's native session tooling.
+   - Next pressure point: provide a tmux-focused launcher or bridge convention
+     that registers Codex, Claude, Gemini, and shell lanes with role, task id,
+     pane, PID, transcript, worktree, and branch; records an initial checkpoint
+     when a task is associated; and leaves the transcript readable by the
+     dashboard and coordinator without provider-specific APIs.
+   - Trigger: mixed-provider adoption tracks need steering through Fairway state
+     and tmux logs, not only provider-specific chat sessions.
+
+7. Guard report mode vocabulary
    - Current state: `record guard-report` accepts `report_only`, `warning`,
      and `blocking`, while GPUaaS platform-foundation guards now distinguish
      `blocking_new` from `blocking_all`.

@@ -1209,6 +1209,7 @@ type reconcileAction struct {
 	SessionID string `json:"session_id"`
 	Role      string `json:"role"`
 	PID       *int   `json:"pid,omitempty"`
+	TmuxPane  string `json:"tmux_pane,omitempty"`
 	Action    string `json:"action"`
 	Reason    string `json:"reason"`
 }
@@ -1229,13 +1230,17 @@ func cmdSessionReconcile(ctx context.Context, opts globalOptions, args []string)
 		}
 		var actions []reconcileAction
 		for _, session := range sessions {
-			if session.PID == nil {
+			reason := ""
+			if session.PID != nil && !processAlive(*session.PID) {
+				reason = "pid not running"
+			}
+			if reason == "" && session.SessionBackend == "tmux" && session.TmuxPane != "" && !tmuxPaneAlive(session.TmuxPane) {
+				reason = "tmux pane not found"
+			}
+			if reason == "" {
 				continue
 			}
-			if processAlive(*session.PID) {
-				continue
-			}
-			action := reconcileAction{SessionID: session.ID, Role: session.Role, PID: session.PID, Action: "mark_stale", Reason: "pid not running"}
+			action := reconcileAction{SessionID: session.ID, Role: session.Role, PID: session.PID, TmuxPane: session.TmuxPane, Action: "mark_stale", Reason: reason}
 			actions = append(actions, action)
 			if !*dryRun {
 				if err := s.EndSession(ctx, session.ID, "stale", "reconciled", nil); err != nil {
@@ -1336,6 +1341,14 @@ func processAlive(pid int) bool {
 	}
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+func tmuxPaneAlive(pane string) bool {
+	if strings.TrimSpace(pane) == "" {
+		return false
+	}
+	cmd := exec.Command("tmux", "display-message", "-p", "-t", pane, "#{pane_id}")
+	return cmd.Run() == nil
 }
 
 func findRole(cfg config.Config, name string) (config.Role, bool) {
@@ -1591,6 +1604,12 @@ func printCoordinatorStatus(report coordinatorReport) {
 		fmt.Println("ready_by_role:")
 		for role, count := range report.ReadyByRole {
 			fmt.Printf("- %s: %d\n", role, count)
+		}
+	}
+	if len(report.LiveSessions) > 0 {
+		fmt.Println("sessions:")
+		for _, session := range report.LiveSessions {
+			fmt.Printf("- %s %s/%s task=%s pane=%s transcript=%s\n", session.ID, session.SessionBackend, session.Provider, session.TaskID, session.TmuxPane, session.TranscriptPath)
 		}
 	}
 	if len(report.Issues) > 0 {
@@ -4938,6 +4957,10 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	if err != nil {
 		return err
 	}
+	sessions, err := sessionsForTask(ctx, s, taskID)
+	if err != nil {
+		return err
+	}
 	if asJSON {
 		return printJSON(struct {
 			Task        store.Task         `json:"task"`
@@ -4945,7 +4968,8 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 			Evidence    []store.Evidence   `json:"evidence"`
 			Handoffs    []store.Handoff    `json:"handoffs"`
 			Reviews     []store.Review     `json:"reviews"`
-		}{task, transitions, evidence, handoffs, reviews})
+			Sessions    []store.Session    `json:"sessions"`
+		}{task, transitions, evidence, handoffs, reviews, sessions})
 	}
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
@@ -4977,7 +5001,25 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	for _, r := range reviews {
 		fmt.Printf("- %s by %s: %s\n", r.Verdict, r.Reviewer, r.Reason)
 	}
+	fmt.Println("\nsessions:")
+	for _, session := range sessions {
+		fmt.Printf("- %s %s/%s %s pane=%s transcript=%s\n", session.ID, session.SessionBackend, session.Provider, session.Status, session.TmuxPane, session.TranscriptPath)
+	}
 	return nil
+}
+
+func sessionsForTask(ctx context.Context, s *store.Store, taskID string) ([]store.Session, error) {
+	sessions, err := s.Sessions(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	var out []store.Session
+	for _, session := range sessions {
+		if session.TaskID == taskID {
+			out = append(out, session)
+		}
+	}
+	return out, nil
 }
 
 func printTaskMetadata(task store.TaskDefinition) {
