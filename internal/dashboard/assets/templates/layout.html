@@ -22,7 +22,7 @@
 {{range wallActiveSessions .Sessions}}{{template "provider-chip" .}}{{else}}<span class="provider-chip muted">no active sessions</span>{{end}}
 </div>
 <nav class="view-toggle" aria-label="Dashboard view">
-<a class="active" href="/">Wall</a><a href="/board">Board</a>
+<a class="{{if eq .View "wall"}}active{{end}}" href="/">Wall</a><a class="{{if eq .View "board"}}active{{end}}" href="/board">Board</a>
 </nav>
 <button class="theme-toggle" type="button">light</button>
 </div>

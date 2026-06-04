@@ -1087,6 +1087,13 @@ var wallTemplate = mustEmbeddedTemplateSet("wall", []string{
 	"assets/templates/partials/provider-chip.html",
 }, dashboardTemplateFuncs())
 
+var boardTemplate = mustEmbeddedTemplateSet("board", []string{
+	"assets/templates/layout.html",
+	"assets/templates/board.html",
+	"assets/templates/partials/gate-gauge.html",
+	"assets/templates/partials/provider-chip.html",
+}, dashboardTemplateFuncs())
+
 func URL(addr string) string {
 	return fmt.Sprintf("http://%s", addr)
 }
@@ -1128,6 +1135,8 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"wallHandoffCount":    wallHandoffCount,
 		"wallDoneToday":       wallDoneToday,
 		"wallTaskHasProvider": wallTaskHasProvider,
+		"boardRows":           boardRows,
+		"statusClass":         safeDashboardClass,
 		"safeClass":           safeDashboardClass,
 		"dict":                templateDict,
 	}
@@ -1271,6 +1280,32 @@ func wallDoneToday(groups []RoleGroup) int {
 		}
 	}
 	return count
+}
+
+func boardRows(groups []RoleGroup) []store.Task {
+	var rows []store.Task
+	for _, group := range groups {
+		rows = append(rows, group.Tasks...)
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		leftPriority := taskPriorityRank(rows[i])
+		rightPriority := taskPriorityRank(rows[j])
+		if leftPriority != rightPriority {
+			return leftPriority < rightPriority
+		}
+		if rows[i].Status != rows[j].Status {
+			return rows[i].Status < rows[j].Status
+		}
+		return rows[i].Definition.ID < rows[j].Definition.ID
+	})
+	return rows
+}
+
+func taskPriorityRank(task store.Task) int {
+	if task.Definition.Priority == nil {
+		return 999
+	}
+	return *task.Definition.Priority
 }
 
 func safeDashboardClass(value string) string {

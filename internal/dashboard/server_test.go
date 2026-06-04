@@ -498,11 +498,13 @@ func TestDashboardAssetsServeComponents(t *testing.T) {
 
 func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 	data := struct {
+		View       string
 		Groups     []RoleGroup
 		GateGroups []GateGroup
 		Sessions   []store.Session
 		Activity   []store.Activity
 	}{
+		View: "wall",
 		Groups: []RoleGroup{
 			{
 				Role: "backend",
@@ -545,6 +547,65 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("wall template missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
+	data := struct {
+		View       string
+		Summary    DashboardSummary
+		Groups     []RoleGroup
+		GateGroups []GateGroup
+		Sessions   []store.Session
+		Activity   []store.Activity
+		Filters    TaskFilters
+		Rollups    map[string]Rollup
+	}{
+		View:    "board",
+		Summary: DashboardSummary{Filtered: 2},
+		Groups: []RoleGroup{{
+			Role: "backend",
+			Tasks: []store.Task{
+				{Definition: store.TaskDefinition{ID: "T-001", Title: "Backlog task", Role: "backend", Kind: "task"}, Status: "todo", Owner: "backend"},
+				{Definition: store.TaskDefinition{ID: "T-002", Title: "Working task", Role: "backend", Kind: "dashboard"}, Status: "in_progress", Owner: "ui"},
+			},
+		}},
+		GateGroups: []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
+		Sessions:   []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
+		Activity:   []store.Activity{{Kind: "evidence", TaskID: "T-002", Summary: "test pass", CreatedAt: "2026-06-04T00:00:00Z"}},
+		Filters:    TaskFilters{Search: "dashboard", Status: "todo", Profile: "dashboard-v2", Kind: "task", OwningDomain: "fairway", RiskLevel: "medium"},
+		Rollups:    map[string]Rollup{"T-001": {Done: 1, Total: 2}},
+	}
+	var out strings.Builder
+	if err := boardTemplate.ExecuteTemplate(&out, "layout", data); err != nil {
+		t.Fatalf("board template render error = %v", err)
+	}
+	body := out.String()
+	for _, want := range []string{
+		`class="active" href="/board"`,
+		"Search tasks",
+		"Columns",
+		"Views",
+		"Export",
+		"selection-bar",
+		"ID",
+		"Title",
+		"Role",
+		"Status",
+		"Kind",
+		"Started",
+		"Last activity",
+		"Gates",
+		"Owner",
+		"Backlog task",
+		"Working task",
+		"showing 2 of 2 filtered tasks",
+		"dashboard-v2 / foundation",
+		"evidence test pass",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("board template missing %q:\n%s", want, body)
 		}
 	}
 }

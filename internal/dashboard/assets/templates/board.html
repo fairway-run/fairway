@@ -1,0 +1,65 @@
+{{define "content"}}
+<main class="board-layout">
+<section class="board-main">
+<form class="toolbar" method="get">
+<div class="tb-left">
+<label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search tasks"></label>
+{{if .Filters.Status}}<span class="chip"><b>Status</b>{{.Filters.Status}}</span>{{end}}
+{{if .Filters.Profile}}<span class="chip"><b>Profile</b>{{.Filters.Profile}}</span>{{end}}
+{{if .Filters.Kind}}<span class="chip"><b>Kind</b>{{.Filters.Kind}}</span>{{end}}
+{{if .Filters.OwningDomain}}<span class="chip"><b>Domain</b>{{.Filters.OwningDomain}}</span>{{end}}
+{{if .Filters.RiskLevel}}<span class="chip"><b>Risk</b>{{.Filters.RiskLevel}}</span>{{end}}
+</div>
+<div class="tb-right">
+<button class="btn" type="button">Columns</button>
+<button class="btn" type="button">Views</button>
+<button class="btn" type="button">Export</button>
+<button class="btn" type="submit">Apply</button>
+</div>
+</form>
+<section class="selection-bar" hidden>
+<span>0 selected</span>
+<button class="btn" type="button">Clear</button>
+<button class="btn" type="button">Claim</button>
+<button class="btn" type="button">Hand off</button>
+<button class="btn" type="button">Set status</button>
+<button class="btn" type="button">Record evidence</button>
+</section>
+<table class="board-table">
+<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Kind</th><th>Started</th><th>Last activity</th><th>Gates</th><th>Owner</th></tr></thead>
+<tbody>
+{{range boardRows .Groups}}
+<tr>
+<td><input type="checkbox" aria-label="Select {{.Definition.ID}}"></td>
+<td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td>
+<td>{{.Definition.Title}}</td>
+<td>{{.Definition.Role}}</td>
+<td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td>
+<td>{{.Definition.Kind}}</td>
+<td>{{.UpdatedAt}}</td>
+<td>{{.UpdatedAt}}</td>
+<td>{{with index $.Rollups .Definition.ID}}{{.Done}}/{{.Total}}{{else}}-{{end}}</td>
+<td>{{.Owner}}</td>
+</tr>
+{{else}}<tr><td colspan="10">no tasks</td></tr>{{end}}
+</tbody>
+</table>
+<footer class="board-footer">
+<span>showing {{len (boardRows .Groups)}} of {{.Summary.Filtered}} filtered tasks</span>
+<span class="pagination">page 1</span>
+</footer>
+</section>
+<aside class="board-rail">
+<section class="card">
+<h2>Gate Readiness</h2>
+{{range .GateGroups}}{{template "gate-gauge" .}}{{else}}<p class="muted">no gates configured</p>{{end}}
+</section>
+<section class="card">
+<h2>Activity</h2>
+<div class="ticker-list">
+{{range .Activity}}<article class="ticker-entry"><b class="who">{{.TaskID}}</b><span class="what">{{.Kind}} {{.Summary}}</span><time>{{.CreatedAt}}</time></article>{{else}}<p class="muted">no recent activity</p>{{end}}
+</div>
+</section>
+</aside>
+</main>
+{{end}}
