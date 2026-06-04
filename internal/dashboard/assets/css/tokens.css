@@ -42,6 +42,7 @@
   --radius-lg: 8px;
   --radius-xl: 12px;
   --radius-pill: 999px;
+  --border-width: 1px;
 
   --shadow-focus: 0 0 0 3px rgba(23, 92, 211, 0.18);
   --transition-fast: 120ms ease;

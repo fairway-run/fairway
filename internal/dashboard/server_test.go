@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -470,5 +471,27 @@ func TestDashboardAssetsServeTokens(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("tokens.css missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestDashboardAssetsServeComponents(t *testing.T) {
+	handler := dashboardAssetHandler()
+	req := httptest.NewRequest(http.MethodGet, "/assets/css/components.css", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("components.css status=%d, want 200 body=%s", rec.Code, body)
+	}
+	for _, want := range []string{".pill", ".status-pill", ".btn", ".card", ".modal", ".gauge-ring", ".ticker-entry", ".theme-toggle", ".view-toggle", ".dropdown-menu"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("components.css missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "#") {
+		t.Fatalf("components.css should consume tokens only; found hardcoded color in:\n%s", body)
+	}
+	if regexp.MustCompile(`[0-9]px\b`).MatchString(body) {
+		t.Fatalf("components.css should consume tokens only; found hardcoded pixel unit in:\n%s", body)
 	}
 }

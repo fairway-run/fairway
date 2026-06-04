@@ -1,0 +1,305 @@
+.pill,
+.status-pill,
+.btn,
+.button,
+.theme-toggle,
+.view-toggle a,
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: var(--line-height-tight);
+  text-decoration: none;
+  transition:
+    background var(--transition-base),
+    border-color var(--transition-base),
+    color var(--transition-base),
+    box-shadow var(--transition-fast);
+}
+
+.pill,
+.status-pill {
+  padding: var(--space-2) var(--space-3);
+  color: var(--muted);
+  max-width: 100%;
+}
+
+.pill .id {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  opacity: 0.75;
+}
+
+.pill.claude {
+  color: var(--claude);
+  border-color: var(--claude);
+  background: color-mix(in srgb, var(--claude) 10%, transparent);
+}
+
+.pill.codex {
+  color: var(--codex);
+  border-color: var(--codex);
+  background: color-mix(in srgb, var(--codex) 10%, transparent);
+}
+
+.pill.compass {
+  color: var(--compass);
+  border-color: var(--compass);
+  background: color-mix(in srgb, var(--compass) 10%, transparent);
+}
+
+.pill.done,
+.status-pill.done {
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+}
+
+.pill.working::before {
+  content: "";
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: fairway-pulse 1.4s ease-out infinite;
+}
+
+.status-pill {
+  border-radius: var(--radius-pill);
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.status-pill.todo {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+}
+
+.status-pill.in_progress {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.status-pill.review,
+.status-pill.blocked_review {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+}
+
+.status-pill.blocked,
+.status-pill.failed {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 15%, transparent);
+}
+
+.btn,
+.button,
+.theme-toggle,
+.dropdown-trigger {
+  min-height: calc(var(--space-6) + var(--space-1));
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.btn:hover,
+.button:hover,
+.theme-toggle:hover,
+.dropdown-trigger:hover,
+.view-toggle a:hover,
+.view-toggle a.active {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.btn:focus-visible,
+.button:focus-visible,
+.theme-toggle:focus-visible,
+.dropdown-trigger:focus-visible,
+.view-toggle a:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.card,
+.modal-panel {
+  background: var(--panel);
+  color: var(--text);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.card {
+  padding: var(--space-4);
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-panel {
+  width: min(100%, calc(var(--space-7) * 12));
+  max-height: calc(100vh - var(--space-7));
+  overflow: auto;
+  padding: var(--space-5);
+}
+
+.gauge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.gauge-ring {
+  --gauge-value: 0;
+  --gauge-color: var(--accent);
+  width: calc(var(--space-5) + var(--space-4));
+  height: calc(var(--space-5) + var(--space-4));
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background:
+    radial-gradient(circle, var(--panel) 58%, transparent 60%),
+    conic-gradient(
+      var(--gauge-color) calc(var(--gauge-value) * 1%),
+      color-mix(in srgb, var(--line) 72%, transparent) 0
+    );
+}
+
+.gauge-info {
+  min-width: 0;
+}
+
+.gauge-info .name {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.gauge-info .pct {
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.ticker,
+.ticker-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tick,
+.ticker-entry {
+  padding: var(--space-3);
+  border-left: var(--space-1) solid var(--accent);
+  background: color-mix(in srgb, var(--panel-2) 82%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.tick .who,
+.ticker-entry .who {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.tick .what,
+.ticker-entry .what,
+.tick time,
+.ticker-entry time {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.view-toggle {
+  display: inline-flex;
+  background: var(--panel);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.view-toggle a {
+  padding: var(--space-2) var(--space-4);
+  color: var(--muted);
+  border: 0;
+  border-right: var(--border-width) solid var(--line);
+  border-radius: 0;
+  font-weight: 600;
+}
+
+.view-toggle a:last-child {
+  border-right: 0;
+}
+
+.dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  min-width: calc(var(--space-7) * 5);
+  padding: var(--space-2);
+  background: var(--panel);
+  color: var(--text);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.dropdown-menu[hidden] {
+  display: none;
+}
+
+.dropdown-menu a,
+.dropdown-menu button,
+.dropdown-menu label {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.dropdown-menu a:hover,
+.dropdown-menu button:hover,
+.dropdown-menu label:hover {
+  background: var(--panel-2);
+}
+
+@keyframes fairway-pulse {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 1;
+  }
+  70% {
+    box-shadow: 0 0 0 var(--space-2) transparent;
+    opacity: 0.55;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 1;
+  }
+}
