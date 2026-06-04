@@ -73,12 +73,15 @@ Minimum delegation checklist:
 
 1. register the provider session with `fairway session upsert`,
 2. associate it with the current Fairway task,
-3. feed provider runtime state through `provider-event.sh` or equivalent
+3. immediately feed a `started` event through `provider-event.sh` so the
+   delegated session creates an `active` checkpoint,
+4. feed provider runtime state through `provider-event.sh` or equivalent
    Fairway commands,
-4. record `awaiting_input` checkpoints for approvals, questions, failures, or
+5. record `awaiting_input` checkpoints for approvals, questions, failures, or
    stale/no-progress states,
-5. record evidence or handoff when the delegated session completes,
-6. leave task status, review approval, and merge readiness to normal Fairway
+6. record a completion checkpoint plus evidence or handoff when the delegated
+   session completes,
+7. leave task status, review approval, and merge readiness to normal Fairway
    gates.
 
 Provider-specific watchers, such as a Codex thread monitor, should live outside
@@ -87,8 +90,8 @@ provider-neutral Fairway facts:
 
 - `waiting_on_approval` or `waiting_on_input` becomes a checkpoint with
   `state=awaiting_input` and a summary of the requested action.
-- `completed` becomes evidence or a handoff, then the owning task can move
-  through normal Fairway gates.
+- `completed` becomes a `done` checkpoint plus evidence or a handoff, then the
+  owning task can move through normal Fairway gates.
 - `failed` becomes a blocked checkpoint or task status with the failure reason.
 - stale/no-progress sessions become stale session records or checkpoints, not
   silent background work.
@@ -125,10 +128,12 @@ fairway checkpoint record <task-id> \
   --summary "Delegated Codex thread is waiting on approval: <short reason>"
 ```
 
-The generic event adapter supports `running`, `waiting_on_approval`,
+The generic event adapter supports `started`, `running`, `waiting_on_approval`,
 `waiting_on_input`, `completed`, `failed`, `stale`, and `no_progress`. It
-refreshes the session record first, then records the mapped checkpoint,
-evidence, handoff, or stale-session event.
+refreshes the session record first, then records
+the mapped checkpoint, evidence, handoff, or stale-session event. Use `started`,
+waiting/stale/failure states, and `completed` as mandatory lifecycle events for
+active delegated sessions; use `running` only as a metadata refresh.
 
 Do not make Fairway depend on Codex, Claude, Gemini, or any provider API.
 Fairway should expose the session/checkpoint/evidence surfaces; provider

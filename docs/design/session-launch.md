@@ -97,10 +97,11 @@ Recommended status mapping:
 
 | Provider runtime state | Fairway action |
 |---|---|
+| started | checkpoint `active` with provider session id and transcript/artifact |
 | running | keep session `running`; refresh heartbeat/checkpoint only when useful |
 | waiting on approval | checkpoint `awaiting_input` with requested command/action |
 | waiting on input | checkpoint `awaiting_input` with the question or missing input |
-| completed | record evidence or handoff; task status changes still use normal gates |
+| completed | checkpoint `done`, then record evidence or handoff; task status changes still use normal gates |
 | failed | checkpoint or task `blocked` with reason, depending on owner action needed |
 | no progress beyond threshold | checkpoint `awaiting_input` or mark session `stale` |
 
@@ -123,10 +124,14 @@ examples/session-adapters/provider-event.sh \
   --transcript <path-to-transcript>
 ```
 
-For `waiting_on_approval` and `waiting_on_input`, the adapter records an
-`awaiting_input` checkpoint. For `completed`, it records evidence by default or
-a handoff when `--handoff-to <role>` is provided. It does not claim tasks, set
-terminal statuses, approve reviews, or mark work merge-ready.
+For `started`, the adapter records an `active` checkpoint. For
+`waiting_on_approval` and `waiting_on_input`, it records an `awaiting_input`
+checkpoint. For `completed`, it records a `done` checkpoint plus evidence by
+default or a handoff when `--handoff-to <role>` is provided. Active external
+sessions should emit provider events at start, waiting/stale/failure, and
+completion so coordinators do not need to remember to poll provider-specific
+chat or thread state. The adapter does not claim tasks, set terminal statuses,
+approve reviews, or mark work merge-ready.
 
 ## Rules
 

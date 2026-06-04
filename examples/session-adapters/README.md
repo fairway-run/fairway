@@ -68,14 +68,33 @@ Fairway facts:
 
 | Runtime state | Fairway action |
 |---|---|
+| `started` | record an `active` checkpoint |
 | `running` | upsert session metadata only |
 | `waiting_on_approval` | record an `awaiting_input` checkpoint |
 | `waiting_on_input` | record an `awaiting_input` checkpoint |
-| `completed` | record evidence, or a handoff with `--handoff-to` |
+| `completed` | record a `done` checkpoint plus evidence, or a handoff with `--handoff-to` |
 | `failed` | record an `awaiting_input` checkpoint with the failure summary |
 | `stale` / `no_progress` | mark the session stale and record an `awaiting_input` checkpoint |
 
+Active delegated sessions should emit provider events at start, whenever they
+wait/block/stale, and on completion. `running` is only a metadata refresh; it is
+not enough to make the delegated session visible as active work.
+
 Example delegated Codex-style thread:
+
+```bash
+examples/session-adapters/provider-event.sh \
+  --provider codex \
+  --backend codex-thread \
+  --external-session-id thread-abc123 \
+  --role backend \
+  --task-id FW-109 \
+  --state started \
+  --summary "delegated Codex thread started" \
+  --transcript .fairway/transcripts/codex-thread-abc123.log
+```
+
+Example approval wait:
 
 ```bash
 examples/session-adapters/provider-event.sh \

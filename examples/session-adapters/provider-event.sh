@@ -6,6 +6,7 @@ usage() {
 usage: provider-event.sh --provider <name> --external-session-id <id> --role <role> --task-id <task-id> --state <state> --summary <text> [options]
 
 States:
+  started
   running
   waiting_on_approval
   waiting_on_input
@@ -65,7 +66,7 @@ if [[ -z "$provider" || -z "$external_session_id" || -z "$role" || -z "$task_id"
 fi
 
 case "$runtime_state" in
-  running|waiting_on_approval|waiting_on_input|completed|failed|stale|no_progress) ;;
+  started|running|waiting_on_approval|waiting_on_input|completed|failed|stale|no_progress) ;;
   *) echo "unsupported runtime state: $runtime_state" >&2; exit 2 ;;
 esac
 
@@ -88,6 +89,15 @@ fi
 run_cmd "${upsert_args[@]}"
 
 case "$runtime_state" in
+  started)
+    checkpoint_args=(fairway checkpoint record "$task_id" --state active --owner "$role" --summary "Provider session ${session_id} started: ${summary}")
+    if [[ -n "$artifact" ]]; then
+      checkpoint_args+=(--artifact "$artifact")
+    elif [[ -n "$transcript" ]]; then
+      checkpoint_args+=(--artifact "$transcript")
+    fi
+    run_cmd "${checkpoint_args[@]}"
+    ;;
   running)
     ;;
   waiting_on_approval)
@@ -109,6 +119,13 @@ case "$runtime_state" in
     run_cmd "${checkpoint_args[@]}"
     ;;
   completed)
+    checkpoint_args=(fairway checkpoint record "$task_id" --state done --owner "$role" --summary "Provider session ${session_id} completed: ${summary}")
+    if [[ -n "$artifact" ]]; then
+      checkpoint_args+=(--artifact "$artifact")
+    elif [[ -n "$transcript" ]]; then
+      checkpoint_args+=(--artifact "$transcript")
+    fi
+    run_cmd "${checkpoint_args[@]}"
     if [[ -n "$handoff_to" ]]; then
       run_cmd fairway record handoff "$task_id" --to "$handoff_to" --payload "Provider session ${session_id} completed: ${summary}"
     else
