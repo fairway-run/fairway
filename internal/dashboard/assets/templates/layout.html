@@ -24,10 +24,12 @@
 <nav class="view-toggle" aria-label="Dashboard view">
 <a class="{{if eq .View "wall"}}active{{end}}" href="/">Wall</a><a class="{{if eq .View "board"}}active{{end}}" href="/board">Board</a>
 </nav>
-<button class="theme-toggle" type="button">light</button>
+<button class="theme-toggle" type="button" data-theme-toggle>light</button>
 </div>
 </header>
 {{template "content" .}}
+<script src="/assets/js/common.js" defer></script>
+{{if eq .View "board"}}<script src="/assets/js/board.js" defer></script>{{end}}
 </body>
 </html>
 {{end}}

@@ -585,6 +585,8 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 	body := out.String()
 	for _, want := range []string{
 		"dashboard v2",
+		`data-theme-toggle`,
+		`/assets/js/common.js`,
 		"backend",
 		"ui",
 		"backlog",
@@ -638,6 +640,8 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 	body := out.String()
 	for _, want := range []string{
 		`class="active" href="/board"`,
+		`/assets/js/common.js`,
+		`/assets/js/board.js`,
 		"Search tasks",
 		"Columns",
 		"Views",
@@ -660,6 +664,30 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("board template missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestDashboardAssetsServeViewToggleScripts(t *testing.T) {
+	handler := dashboardAssetHandler()
+	for _, tt := range []struct {
+		path string
+		want []string
+	}{
+		{path: "/assets/js/common.js", want: []string{"fairway.dashboard.theme", "data-theme-toggle", "localStorage"}},
+		{path: "/assets/js/board.js", want: []string{`event.key === "g"`, `event.key === "w"`, `window.location.assign("/")`}},
+	} {
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		body := rec.Body.String()
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status=%d, want 200 body=%s", tt.path, rec.Code, body)
+		}
+		for _, want := range tt.want {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s missing %q:\n%s", tt.path, want, body)
+			}
 		}
 	}
 }
