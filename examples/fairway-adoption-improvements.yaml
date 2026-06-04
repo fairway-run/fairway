@@ -246,3 +246,38 @@ tasks:
       - watcher records `awaiting_input` checkpoints for delegated sessions that need approval or user input
       - dashboard/task-detail/coordinator output can surface the session and latest checkpoint without provider-specific chat access
       - docs state that task ownership, terminal gates, and merge readiness remain Fairway responsibilities
+
+  - id: FW-110
+    title: Add active provider-session readiness guard
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+      - examples/session-adapters/provider-event.sh
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/session
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/session
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: provider-session-readiness-guard
+    depends_on:
+      - FW-109
+    acceptance_checks:
+      - readiness/coordinator checks identify active external provider sessions that do not have a `started` provider-event checkpoint for their associated task
+      - guard output includes provider, external session id, role, task id, and the missing lifecycle checkpoint so the coordinator can repair state without provider-specific polling
+      - stale, waiting, failed, and completed provider sessions are evaluated against the documented lifecycle checkpoint rule instead of only session heartbeat state
+      - dashboard or task-detail surfaces the guard finding alongside existing session/checkpoint state
+      - tests cover active session without started checkpoint, active session with started checkpoint, waiting/stale checkpoint, and completed checkpoint cases

@@ -193,7 +193,19 @@ while Fairway improvements are assigned as their own bounded workstream.
    - Trigger: mixed-provider adoption tracks need steering through Fairway state
      and tmux logs, not only provider-specific chat sessions.
 
-7. Guard report mode vocabulary
+7. Active provider-session readiness guard
+   - Current state: provider-event adapters can record `started`,
+     waiting/stale/failure, and completion checkpoints, but the rule is
+     documented rather than enforced.
+   - Next pressure point: add a readiness/coordinator guard that flags any
+     active external provider session associated with a task when no `started`
+     provider-event checkpoint exists, and surface that finding in task detail
+     or dashboard session state.
+   - Trigger: delegated sessions can be active while invisible to Fairway
+     readiness if the coordinator forgets to emit the initial provider-event
+     checkpoint.
+
+8. Guard report mode vocabulary
    - Current state: `record guard-report` accepts `report_only`, `warning`,
      and `blocking`, while GPUaaS platform-foundation guards now distinguish
      `blocking_new` from `blocking_all`.
