@@ -15,8 +15,8 @@ A launcher should:
 1. choose a configured role and worktree,
 2. start the provider process or terminal pane,
 3. call `fairway session upsert` with `--id`, `--role`, `--branch`,
-   `--worktree`, `--backend`, `--provider`, and the best available process or
-   pane metadata,
+   `--worktree`, `--backend`, `--provider`, `--task-id`, `--status running`,
+   and the best available process or pane metadata,
 4. capture or tee transcript output to a file and pass that path with
    `--transcript`,
 5. record an initial checkpoint when the session is associated with a task,
@@ -25,6 +25,11 @@ A launcher should:
 
 Core Fairway commands do not require these launchers. They only make session
 visibility and stale-session reconciliation more useful.
+
+For dashboard wall accuracy, `in_progress` task state is not enough. The
+launcher or watcher must keep the session row associated with the current task
+and emit lifecycle checkpoints or provider events at start, wait/stale/failure,
+and completion.
 
 ## tmux transcript bridge
 

@@ -21,6 +21,7 @@ fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <nam
 fairway session status [--all]
 fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]
 fairway session reconcile [--dry-run]
+fairway reconcile active [--dry-run]                    # report stale/unattended active work across sessions, tasks, evidence, and checkpoints
 fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] # adapter; optional
 fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>
@@ -89,6 +90,8 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - `--payload @path/to/file` reads the file; otherwise the value is treated as inline text.
 - All commands respect `--db <path>` and `--config <path>` overrides.
 - Commands exit non-zero on validation failure. Pass `--json` for machine-readable error output.
+- Grouped commands accept `help`, `-h`, and `--help` after the group name, for
+  example `fairway session --help` or `fairway dashboard help`.
 - The caller's role is determined by (in order): `--as <role>` flag, `FAIRWAY_ROLE` env var, current worktree's configured role, prompt if ambiguous.
 - Evidence records are command-oriented. `artifact` is optional so "no-op" checks,
   skipped checks, and blocked checks can still leave an auditable row.
@@ -98,6 +101,11 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   are stored on task definitions and also supported by YAML/JSON imports.
 - `session launch` is an adapter command. The queue/session model works even
   when agents are launched manually.
+- `session reconcile` handles session-local cleanup such as missing PID/tmux
+  panes and stale sessions attached to terminal tasks. `reconcile active` is
+  broader: it reports unattended `in_progress` tasks, evidence without a status
+  decision, stale checkpoints, and parent tasks left active without direct
+  rollup work.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
 - `adoption artifact` is the generic readiness report. It uses configured

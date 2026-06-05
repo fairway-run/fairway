@@ -36,7 +36,7 @@
 </div>
 {{else}}
 <div class="providers" aria-label="Active providers">
-{{range wallActiveSessions .Sessions}}{{template "provider-chip" .}}{{else}}<span class="provider-chip muted">no active sessions</span>{{end}}
+{{range wallActiveSessions .Sessions}}{{template "provider-chip" (dict "Provider" .Provider "Role" (wallSessionTaskRole . $.TaskRoles $.Groups) "TaskID" .TaskID)}}{{else}}<span class="provider-chip muted">no active sessions</span>{{end}}
 </div>
 {{end}}
 <nav class="view-toggle" aria-label="Dashboard view">

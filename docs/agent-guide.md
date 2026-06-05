@@ -62,6 +62,60 @@ attachments. A long-lived provider session may carry useful working memory, but
 the lane can move between Codex, Claude, Gemini, tmux, or shell without changing
 task identity, ownership, checkpoints, evidence, reviews, or merge gates.
 
+## Active Work Visibility
+
+Dashboard wall visibility is driven by both task state and session state. A task
+marked `in_progress` tells Fairway the task is claimed. A running
+`agent_sessions` row tells Fairway which provider attachment is actively working
+that task. Agents must keep both current.
+
+Use this order when starting or switching to a task:
+
+```bash
+# 1. Register or refresh the provider attachment.
+fairway session upsert \
+  --id <stable-session-id> \
+  --role <provider-role> \
+  --provider <codex|claude|gemini|shell> \
+  --backend <codex-thread|tmux|zellij|shell> \
+  --task-id <task-id> \
+  --status running \
+  --worktree <path> \
+  --branch <branch>
+
+# 2. Claim the task, or keep the existing claim if the coordinator already did.
+fairway --as <task-owner-role> claim <task-id>
+
+# 3. Record the active checkpoint, or emit a provider-event "started" event.
+fairway checkpoint record <task-id> \
+  --state active \
+  --owner <provider-role> \
+  --summary "<provider> session <stable-session-id> active on <task-id>"
+
+# 4. Confirm the session/task link is visible.
+fairway session status --all
+```
+
+If step 2 returns "already claimed" and the claim belongs to the expected lane,
+continue with steps 3 and 4. If it belongs to another lane, stop and hand off or
+ask the coordinator to reassign it.
+
+When a provider switches tasks, upsert the same session ID with the new
+`--task-id`, record a completion, blocked, or handoff checkpoint for the old
+task, then record an `active` checkpoint for the new task. Do not leave a
+running session pointed at stale work.
+
+The provider role and task owner role can differ. For example, an orchestrator
+Codex thread may temporarily execute a backend task. In that case, keep the task
+owned by `backend` for routing/review, but register the session with
+`--role orchestrator --provider codex --task-id <backend-task-id>`. The session
+row explains who is attached; the task definition explains who owns the work.
+
+If an active provider is not registered, the wall can show an in-progress task
+without a live session. That is a coordination gap. Fix it by upserting the
+session and recording an active checkpoint; do not assume the dashboard can infer
+provider state from task status alone.
+
 ## Delegated Provider Sessions
 
 When one agent delegates work to another provider session, the delegating agent
@@ -250,6 +304,41 @@ fairway set-status T-001 blocked --reason "waiting for API fixture"
 ```
 
 Blocked transitions require a reason in the default config.
+
+## Reconciliation Checkpoint
+
+After every significant work burst, reconcile Fairway state before leaving the
+track:
+
+```bash
+fairway session status
+fairway status-report
+fairway ready
+fairway reconcile active --dry-run
+```
+
+Use `fairway session reconcile --dry-run` when you specifically want to inspect
+session-local cleanup such as dead PIDs, missing tmux panes, or stale sessions.
+Use `fairway reconcile active --dry-run` for the broader end-of-burst check.
+
+The expected end-of-burst state is:
+
+- active sessions are zero, or each running session is intentionally attached to
+  a non-terminal task,
+- `in_progress` contains only work that is actively owned or deliberately left
+  open with a fresh checkpoint,
+- tasks with pass evidence are moved to `done` or have a documented reason they
+  remain open,
+- tasks with fail, partial, skipped, or blocked evidence are moved to `blocked`,
+  reset to `todo`, or split into explicit follow-up work,
+- parent/backlog tasks are not left `in_progress` unless the parent itself has a
+  current rollup artifact or checkpoint.
+
+Do not use `todo` to hide meaningful partial progress without recording a
+handoff, checkpoint, or follow-up task. If the project config supports extended
+states such as `needs_followup`, `partial`, `waiting_for_prereq`, or `stale`,
+use those states consistently; otherwise use `blocked` with a clear reason or
+create a follow-up task and close/reset the parent.
 
 ## Side Work
 

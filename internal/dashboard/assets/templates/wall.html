@@ -1,15 +1,26 @@
 {{define "content"}}
 <main class="wall-layout">
 <section class="wall-lanes" aria-label="Role lanes">
+{{if .ActiveReport.Findings}}
+<section class="active-reconcile-banner" aria-label="Active work reconciliation">
+<strong>Active work needs reconciliation</strong>
+<span>{{len .ActiveReport.Findings}} finding(s)</span>
+{{if .ActiveReport.Summary.UnattendedInProgress}}<span>{{.ActiveReport.Summary.UnattendedInProgress}} unattended in_progress</span>{{end}}
+{{if .ActiveReport.Summary.StaleSessions}}<span>{{.ActiveReport.Summary.StaleSessions}} stale session(s)</span>{{end}}
+{{if .ActiveReport.Summary.StatusDecisionRequired}}<span>{{.ActiveReport.Summary.StatusDecisionRequired}} status decision(s)</span>{{end}}
+{{if .ActiveReport.Summary.ActiveParentWithoutRollup}}<span>{{.ActiveReport.Summary.ActiveParentWithoutRollup}} parent rollup warning(s)</span>{{end}}
+{{if .ActiveReport.Summary.StaleCheckpoints}}<span>{{.ActiveReport.Summary.StaleCheckpoints}} stale checkpoint(s)</span>{{end}}
+</section>
+{{end}}
 <div class="lane-states" aria-hidden="true">
-<span>lane</span><span>backlog</span><span>claimed</span><span>working</span><span>review</span><span>done</span>
+<span>lane</span><span>backlog</span><span>in progress / no session</span><span>active session</span><span>review</span><span>done</span>
 </div>
 {{range .Groups}}
 <article class="wall-lane">
 <div class="lane-row">
 <div class="lane-name">
 <span>{{.Role}}</span>
-{{if .Current}}<small>working {{.Current.Definition.ID}}</small>{{else}}<small class="muted">idle . waiting</small>{{end}}
+{{with wallRoleActiveSession .Role .Tasks $.Sessions $.TaskRoles}}<small class="active">active session {{.TaskID}}</small>{{else}}{{if .Current}}<small class="unsessioned">in_progress without session {{.Current.Definition.ID}}</small>{{else}}<small class="muted">idle . waiting</small>{{end}}{{end}}
 <a class="lane-detail" href="{{wallRoleHref .Role}}">Open lane</a>
 </div>
 {{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "backlog" $.Sessions) "Lane" "backlog" "Role" .Role "Sessions" $.Sessions}}
@@ -22,6 +33,20 @@
 {{end}}
 </section>
 <aside class="wall-rail">
+<section class="card">
+<h2>Active Sessions</h2>
+<div class="active-session-list">
+{{range wallActiveSessions .Sessions}}
+<article class="active-session-row">
+<span class="provider">{{if .Provider}}{{.Provider}}{{else}}{{.Role}}{{end}}</span>
+<span class="role">{{wallSessionTaskRole . $.TaskRoles $.Groups}}</span>
+<span class="task">{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{else}}unassigned{{end}}</span>
+<span class="status">{{.Status}}{{if .Role}} . attached as {{.Role}}{{end}}</span>
+<span class="checkpoint">{{wallSessionCheckpoint . $.Checkpoints}}</span>
+</article>
+{{else}}<p class="muted">no active sessions</p>{{end}}
+</div>
+</section>
 <section class="card">
 <h2>Gate Readiness</h2>
 {{range .GateGroups}}{{template "gate-gauge" .}}{{else}}<p class="muted">no gates configured</p>{{end}}

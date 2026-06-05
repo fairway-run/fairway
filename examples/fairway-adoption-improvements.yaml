@@ -281,3 +281,69 @@ tasks:
       - stale, waiting, failed, and completed provider sessions are evaluated against the documented lifecycle checkpoint rule instead of only session heartbeat state
       - dashboard or task-detail surfaces the guard finding alongside existing session/checkpoint state
       - tests cover active session without started checkpoint, active session with started checkpoint, waiting/stale checkpoint, and completed checkpoint cases
+
+  - id: FW-111
+    title: Add stale in-progress reconciliation and active-work watchdog
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/agent-guide.md
+      - docs/design/session-launch.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/dashboard
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: stale-in-progress-active-work-reconcile
+    depends_on:
+      - FW-110
+    acceptance_checks:
+      - `fairway reconcile active` reports active-work mismatches across sessions, tasks, checkpoints, evidence, parent tasks, and live provider attachments
+      - coordinator/readiness output distinguishes `running session + terminal task`, `in_progress task + no running session`, `in_progress task with stale checkpoint/heartbeat`, and `external process/thread + no Fairway session` as separate findings
+      - reconcile report can run in dry-run mode and prints provider, session id, task id, task status, latest evidence result, latest checkpoint, and recommended action
+      - dashboard distinguishes active provider work from unattended `in_progress` queue state without implying someone is actively working
+      - dashboard banner shows the count of `in_progress` tasks with no live session or stale checkpoint
+      - optional fix mode can end stale sessions but does not automatically close or reopen tasks without explicit operator action
+      - pass/fail/partial evidence on an `in_progress` task creates a required status-decision finding until the operator marks done, blocked, todo, or an allowed follow-up state
+      - parent or backlog tasks in `in_progress` warn unless they have direct rollup evidence/checkpoint proving someone is producing a rollup artifact
+      - default config remains four-state, but docs define extension options such as `stale`, `needs_followup`, `waiting_for_prereq`, or `partial` for tracks that need partial-completion semantics
+      - tests cover stale running session on terminal task, unattended in-progress task, evidence-without-status-decision, active parent without rollup artifact, and clean active session cases
+
+  - id: FW-112
+    title: Add grouped subcommand help coverage
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli
+    source_paths:
+      - docs/design/cli.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - docs/design/cli.md
+    review_domains:
+      - governance
+    risk_level: low
+    migration_type: cli-help-usability
+    acceptance_checks:
+      - grouped commands accept `help`, `-h`, and `--help` without returning an unknown-subcommand error
+      - `session --help` lists `upsert`, `status`, `end`, `reconcile`, and `launch`
+      - dashboard, db, record, checkpoint, packet, watcher, tracker, and regression-pack help output lists valid subcommands or grouped command usage
+      - CLI smoke tests cover representative grouped help aliases
+      - docs/design/cli.md documents grouped help behavior

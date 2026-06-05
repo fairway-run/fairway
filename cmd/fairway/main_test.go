@@ -66,6 +66,24 @@ func TestCLI_HelpAliases(t *testing.T) {
 	}
 }
 
+func TestCLI_GroupHelpAliases(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"session", "--help"}, "fairway session upsert|status|end|reconcile|launch"},
+		{[]string{"session", "help"}, "fairway session upsert|status|end|reconcile|launch"},
+		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
+		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
+		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|review"},
+		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
+		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
+	} {
+		out := runCapture(t, tc.args...)
+		assertContains(t, out, tc.want)
+	}
+}
+
 func TestCLI_RequiresEvidenceGate(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -598,6 +616,87 @@ func TestCLI_TmuxSessionTranscriptAndReconcile(t *testing.T) {
 	assertContains(t, allSessions, "stale")
 	task := runCapture(t, "--json", "task-detail", "T-001")
 	assertContains(t, task, `"Status": "todo"`)
+}
+
+func TestCLI_SessionReconcileReportsHousekeepingMismatches(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Completed but attached", "--role", "backend")
+	runOK(t, "add", "T-002", "--title", "Claimed without session", "--role", "ops")
+	t.Setenv("FAIRWAY_ROLE", "ops")
+	runOK(t, "claim", "T-002")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass")
+	runOK(t, "set-status", "T-001", "done")
+	runOK(t, "session", "upsert",
+		"--id", "codex-stale",
+		"--role", "orchestrator",
+		"--backend", "codex-thread",
+		"--provider", "codex",
+		"--task-id", "T-001",
+	)
+
+	dryRun := runCapture(t, "session", "reconcile", "--dry-run")
+	assertContains(t, dryRun, "mark_stale")
+	assertContains(t, dryRun, "session task is terminal")
+	assertContains(t, dryRun, "report_unattended_in_progress")
+	assertContains(t, dryRun, "T-002")
+
+	jsonReport := runCapture(t, "--json", "session", "reconcile", "--dry-run")
+	assertContains(t, jsonReport, `"action": "mark_stale"`)
+	assertContains(t, jsonReport, `"task_id": "T-001"`)
+	assertContains(t, jsonReport, `"action": "report_unattended_in_progress"`)
+
+	runOK(t, "session", "reconcile")
+	allSessions := runCapture(t, "session", "status", "--all")
+	assertContains(t, allSessions, "codex-stale")
+	assertContains(t, allSessions, "stale")
+}
+
+func TestCLI_ReconcileActiveReportsTaskEvidenceAndParentFindings(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "E-001", "--title", "Parent backlog", "--kind", "epic", "--role", "ops")
+	runOK(t, "add", "T-001", "--title", "Child work", "--role", "ops", "--parent", "E-001")
+	t.Setenv("FAIRWAY_ROLE", "ops")
+	runOK(t, "claim", "E-001")
+	runOK(t, "claim", "T-001")
+	evidenceOut := runCapture(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass")
+	assertContains(t, evidenceOut, "next: mark done")
+	runOK(t, "session", "upsert",
+		"--id", "codex-active",
+		"--role", "ops",
+		"--backend", "codex-thread",
+		"--provider", "codex",
+		"--task-id", "T-001",
+	)
+
+	report := runCapture(t, "reconcile", "active", "--dry-run")
+	assertContains(t, report, "status_decision_required")
+	assertContains(t, report, "active_parent_without_rollup")
+	assertContains(t, report, "E-001")
+	assertContains(t, report, "T-001")
+
+	jsonReport := runCapture(t, "--json", "reconcile", "active", "--dry-run")
+	assertContains(t, jsonReport, `"status_decision_required": 1`)
+	assertContains(t, jsonReport, `"kind": "active_parent_without_rollup"`)
 }
 
 func TestCLI_PacketTemplate(t *testing.T) {

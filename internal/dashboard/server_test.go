@@ -9,8 +9,10 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -639,11 +641,14 @@ func TestDashboardAssetsServeLogo(t *testing.T) {
 
 func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 	data := struct {
-		View       string
-		Groups     []RoleGroup
-		GateGroups []GateGroup
-		Sessions   []store.Session
-		Activity   []store.Activity
+		View         string
+		Groups       []RoleGroup
+		GateGroups   []GateGroup
+		Sessions     []store.Session
+		Checkpoints  []store.Checkpoint
+		Activity     []store.Activity
+		TaskRoles    map[string]string
+		ActiveReport reconcile.ActiveReport
 	}{
 		View: "wall",
 		Groups: []RoleGroup{
@@ -666,7 +671,18 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		},
 		GateGroups: []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
 		Sessions:   []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
-		Activity:   []store.Activity{{Kind: "handoff", TaskID: "T-002", Summary: "backend to ui", CreatedAt: "2026-06-04T00:00:00Z"}},
+		TaskRoles:  map[string]string{"T-002": "backend"},
+		Checkpoints: []store.Checkpoint{{
+			TaskID:  "T-002",
+			State:   "active",
+			Owner:   "backend",
+			Summary: "provider session attached",
+		}},
+		Activity: []store.Activity{{Kind: "handoff", TaskID: "T-002", Summary: "backend to ui", CreatedAt: "2026-06-04T00:00:00Z"}},
+		ActiveReport: reconcile.ActiveReport{
+			Findings: []reconcile.ActiveFinding{{Kind: "unattended_in_progress", TaskID: "T-004"}},
+			Summary:  reconcile.ActiveSummary{UnattendedInProgress: 1},
+		},
 	}
 	var out strings.Builder
 	if err := wallTemplate.ExecuteTemplate(&out, "layout", data); err != nil {
@@ -683,11 +699,15 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		"backend",
 		"ui",
 		"backlog",
-		"claimed",
-		"working",
+		"in progress / no session",
+		"active session",
 		"review",
 		"done",
-		"codex",
+		"codex -&gt; backend / T-002",
+		"Active Sessions",
+		"active: provider session attached",
+		"Active work needs reconciliation",
+		"1 unattended in_progress",
 		"idle . waiting",
 		"Open lane",
 		`href="/board?role=backend"`,
@@ -700,6 +720,55 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("wall template missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestWallLanesPreferRecentlyUpdatedActiveTasks(t *testing.T) {
+	tasks := []store.Task{
+		{Definition: store.TaskDefinition{ID: "OLD-001", Title: "Old active", Role: "backend"}, Status: "in_progress", UpdatedAt: "2026-06-04T10:00:00Z"},
+		{Definition: store.TaskDefinition{ID: "NEW-001", Title: "New active", Role: "backend"}, Status: "in_progress", UpdatedAt: "2026-06-04T23:00:00Z"},
+		{Definition: store.TaskDefinition{ID: "TODO-001", Title: "Todo", Role: "backend"}, Status: "todo", UpdatedAt: "2026-06-04T22:00:00Z"},
+	}
+	groups := groupTasks(tasks, []string{"backend"})
+	if groups[0].Current == nil || groups[0].Current.Definition.ID != "NEW-001" {
+		t.Fatalf("current = %#v, want NEW-001", groups[0].Current)
+	}
+	claimed := wallLaneTasks(groups[0].Tasks, "claimed", nil)
+	if len(claimed) != 2 {
+		t.Fatalf("claimed count = %d, want 2", len(claimed))
+	}
+	if claimed[0].Definition.ID != "NEW-001" {
+		t.Fatalf("first claimed task = %s, want NEW-001", claimed[0].Definition.ID)
+	}
+	review := wallLaneTasks([]store.Task{
+		{Definition: store.TaskDefinition{ID: "NO-REVIEW", Role: "backend"}, Status: "in_progress", ReviewStatus: "not_required"},
+		{Definition: store.TaskDefinition{ID: "PENDING", Role: "backend"}, Status: "in_progress", ReviewStatus: "pending"},
+	}, "review", nil)
+	if len(review) != 1 || review[0].Definition.ID != "PENDING" {
+		t.Fatalf("review tasks = %#v, want only PENDING", review)
+	}
+	activeSessionTasks := wallLaneTasks([]store.Task{
+		{Definition: store.TaskDefinition{ID: "DONE-ACTIVE", Role: "backend"}, Status: "done", UpdatedAt: "2026-06-04T20:00:00Z"},
+	}, "working", []store.Session{{TaskID: "DONE-ACTIVE", Provider: "codex", Status: "running"}})
+	if len(activeSessionTasks) != 1 || activeSessionTasks[0].Definition.ID != "DONE-ACTIVE" {
+		t.Fatalf("active session tasks = %#v, want DONE-ACTIVE even when task is done", activeSessionTasks)
+	}
+}
+
+func TestWallDoneTodayUsesLocalDashboardDate(t *testing.T) {
+	today := time.Now().Format("2006-01-02")
+	yesterday := time.Now().Add(-24 * time.Hour).Format("2006-01-02")
+	groups := []RoleGroup{{
+		Role: "backend",
+		Tasks: []store.Task{
+			{Definition: store.TaskDefinition{ID: "DONE-TODAY", Role: "backend"}, Status: "done", UpdatedAt: today + "T12:00:00Z"},
+			{Definition: store.TaskDefinition{ID: "DONE-TODAY-FALLBACK", Role: "backend"}, Status: "done", UpdatedAt: today + " local"},
+			{Definition: store.TaskDefinition{ID: "DONE-YESTERDAY", Role: "backend"}, Status: "done", UpdatedAt: yesterday + "T12:00:00Z"},
+			{Definition: store.TaskDefinition{ID: "TODO-TODAY", Role: "backend"}, Status: "todo", UpdatedAt: today + "T12:00:00Z"},
+		},
+	}}
+	if got := wallDoneToday(groups); got != 2 {
+		t.Fatalf("wallDoneToday = %d, want 2", got)
 	}
 }
 

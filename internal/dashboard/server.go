@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -215,6 +216,8 @@ type DashboardViewData struct {
 	StaleCheckpoints []store.Checkpoint
 	Watchers         []store.Watcher
 	Rollups          map[string]Rollup
+	TaskRoles        map[string]string
+	ActiveReport     reconcile.ActiveReport
 }
 
 type TaskDetailViewData struct {
@@ -319,6 +322,10 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	workstreams := groupWorkstreams(displayTasks, readySet)
 	groups := groupTasks(displayTasks, s.roles)
 	tableRows, pagination := paginateBoardRows(boardRows(groups), filters)
+	activeReport, err := reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
+	if err != nil {
+		return DashboardViewData{}, err
+	}
 	return DashboardViewData{
 		View:             view,
 		Summary:          dashboardSummary(tasks, displayTasks, workstreams, readySet),
@@ -339,6 +346,8 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		StaleCheckpoints: staleCheckpoints,
 		Watchers:         watchers,
 		Rollups:          rollups,
+		TaskRoles:        taskRoleMap(tasks),
+		ActiveReport:     activeReport,
 	}, nil
 }
 
@@ -371,7 +380,7 @@ func groupTasks(tasks []store.Task, roles []string) []RoleGroup {
 	for _, task := range tasks {
 		index := addRole(task.Definition.Role)
 		groups[index].Tasks = append(groups[index].Tasks, task)
-		if task.Status == "in_progress" && groups[index].Current == nil {
+		if task.Status == "in_progress" && (groups[index].Current == nil || dashboardTaskMoreRecent(task, *groups[index].Current)) {
 			copy := task
 			groups[index].Current = &copy
 		}
@@ -1374,23 +1383,26 @@ func dashboardTemplateFuncs() template.FuncMap {
 			}
 			return len(tasks) - limit
 		},
-		"wallLaneTasks":       wallLaneTasks,
-		"wallProviderClass":   wallProviderClass,
-		"wallActiveSessions":  wallActiveSessions,
-		"wallTasksMoving":     wallTasksMoving,
-		"wallHandoffCount":    wallHandoffCount,
-		"wallDoneToday":       wallDoneToday,
-		"wallTaskHasProvider": wallTaskHasProvider,
-		"wallRoleHref":        wallRoleHref,
-		"wallLaneHref":        wallLaneHref,
-		"boardRows":           boardRows,
-		"boardTabHref":        boardTabHref,
-		"boardPageHref":       boardPageHref,
-		"statusFilterValues":  statusFilterValues,
-		"statusSelected":      statusSelected,
-		"statusClass":         safeDashboardClass,
-		"safeClass":           safeDashboardClass,
-		"dict":                templateDict,
+		"wallLaneTasks":         wallLaneTasks,
+		"wallProviderClass":     wallProviderClass,
+		"wallActiveSessions":    wallActiveSessions,
+		"wallRoleActiveSession": wallRoleActiveSession,
+		"wallSessionCheckpoint": wallSessionCheckpoint,
+		"wallSessionTaskRole":   wallSessionTaskRole,
+		"wallTasksMoving":       wallTasksMoving,
+		"wallHandoffCount":      wallHandoffCount,
+		"wallDoneToday":         wallDoneToday,
+		"wallTaskHasProvider":   wallTaskHasProvider,
+		"wallRoleHref":          wallRoleHref,
+		"wallLaneHref":          wallLaneHref,
+		"boardRows":             boardRows,
+		"boardTabHref":          boardTabHref,
+		"boardPageHref":         boardPageHref,
+		"statusFilterValues":    statusFilterValues,
+		"statusSelected":        statusSelected,
+		"statusClass":           safeDashboardClass,
+		"safeClass":             safeDashboardClass,
+		"dict":                  templateDict,
 	}
 	return funcs
 }
@@ -1437,11 +1449,11 @@ func wallLaneTasks(tasks []store.Task, lane string, sessions []store.Session) []
 				out = append(out, task)
 			}
 		case "working":
-			if task.Status == "in_progress" && wallTaskHasProvider(task, sessions) {
+			if wallTaskHasProvider(task, sessions) {
 				out = append(out, task)
 			}
 		case "review":
-			if task.Status != "done" && task.ReviewStatus != "" && task.ReviewStatus != "approved" {
+			if task.Status != "done" && task.ReviewStatus != "" && task.ReviewStatus != "approved" && task.ReviewStatus != "not_required" {
 				out = append(out, task)
 			}
 		case "done":
@@ -1450,7 +1462,22 @@ func wallLaneTasks(tasks []store.Task, lane string, sessions []store.Session) []
 			}
 		}
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return dashboardTaskMoreRecent(out[i], out[j])
+	})
 	return out
+}
+
+func dashboardTaskMoreRecent(left, right store.Task) bool {
+	if left.UpdatedAt != right.UpdatedAt {
+		return left.UpdatedAt > right.UpdatedAt
+	}
+	leftPriority := taskPriorityRank(left)
+	rightPriority := taskPriorityRank(right)
+	if leftPriority != rightPriority {
+		return leftPriority < rightPriority
+	}
+	return left.Definition.ID < right.Definition.ID
 }
 
 func wallTaskHasProvider(task store.Task, sessions []store.Session) bool {
@@ -1481,7 +1508,75 @@ func wallActiveSessions(sessions []store.Session) []store.Session {
 			out = append(out, session)
 		}
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].LastHeartbeatAt != out[j].LastHeartbeatAt {
+			return out[i].LastHeartbeatAt > out[j].LastHeartbeatAt
+		}
+		if out[i].StartedAt != out[j].StartedAt {
+			return out[i].StartedAt > out[j].StartedAt
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
+}
+
+func wallRoleActiveSession(role string, tasks []store.Task, sessions []store.Session, taskRoles map[string]string) *store.Session {
+	taskIDs := make(map[string]bool, len(tasks))
+	for _, task := range tasks {
+		taskIDs[task.Definition.ID] = true
+	}
+	active := wallActiveSessions(sessions)
+	for i := range active {
+		sessionTaskRole := strings.TrimSpace(taskRoles[active[i].TaskID])
+		if sessionTaskRole == role || taskIDs[active[i].TaskID] || (active[i].TaskID == "" && active[i].Role == role) {
+			return &active[i]
+		}
+	}
+	return nil
+}
+
+func wallSessionTaskRole(session store.Session, taskRoles map[string]string, groups []RoleGroup) string {
+	if taskRoles != nil {
+		if role := strings.TrimSpace(taskRoles[session.TaskID]); role != "" {
+			return role
+		}
+	}
+	for _, group := range groups {
+		for _, task := range group.Tasks {
+			if task.Definition.ID == session.TaskID {
+				return task.Definition.Role
+			}
+		}
+	}
+	return session.Role
+}
+
+func taskRoleMap(tasks []store.Task) map[string]string {
+	roles := make(map[string]string, len(tasks))
+	for _, task := range tasks {
+		if task.Definition.ID == "" || task.Definition.Role == "" {
+			continue
+		}
+		roles[task.Definition.ID] = task.Definition.Role
+	}
+	return roles
+}
+
+func wallSessionCheckpoint(session store.Session, checkpoints []store.Checkpoint) string {
+	if strings.TrimSpace(session.TaskID) == "" {
+		return "no task checkpoint"
+	}
+	for _, checkpoint := range checkpoints {
+		if checkpoint.TaskID != session.TaskID {
+			continue
+		}
+		summary := strings.TrimSpace(checkpoint.Summary)
+		if summary == "" {
+			return checkpoint.State
+		}
+		return checkpoint.State + ": " + summary
+	}
+	return "no checkpoint"
 }
 
 func isActiveDashboardSession(session store.Session) bool {
@@ -1519,19 +1614,33 @@ func wallHandoffCount(activity []store.Activity) int {
 }
 
 func wallDoneToday(groups []RoleGroup) int {
-	today := time.Now().UTC().Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
 	count := 0
 	for _, group := range groups {
 		for _, task := range group.Tasks {
 			if task.Status != "done" {
 				continue
 			}
-			if task.UpdatedAt == "" || strings.HasPrefix(task.UpdatedAt, today) {
+			if dashboardLocalDate(task.UpdatedAt) == today {
 				count++
 			}
 		}
 	}
 	return count
+}
+
+func dashboardLocalDate(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return ts.Local().Format("2006-01-02")
+	}
+	if len(value) >= len("2006-01-02") {
+		return value[:len("2006-01-02")]
+	}
+	return value
 }
 
 func boardRows(groups []RoleGroup) []store.Task {

@@ -23,6 +23,7 @@ import (
 	"github.com/subashram/fairway/internal/dashboard"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
+	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/registry"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
@@ -119,6 +120,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdWorktree(opts, args[1:])
 	case "session":
 		return cmdSession(ctx, opts, args[1:])
+	case "reconcile":
+		return cmdReconcile(ctx, opts, args[1:])
 	case "coordinator":
 		return cmdCoordinator(ctx, opts, args[1:])
 	case "adoption":
@@ -914,6 +917,10 @@ func cmdWorktree(opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("worktree requires subcommand: setup, status, prune")
 	}
+	if isHelpOnly(args) {
+		subcommandUsage("worktree", "setup|status|prune")
+		return nil
+	}
 	switch args[0] {
 	case "setup":
 		if len(args) > 1 {
@@ -1053,7 +1060,11 @@ func collectWorktreeStatus(cfg config.Config, root string) ([]worktreeStatus, er
 
 func cmdSession(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("session requires subcommand: upsert, status, end")
+		return errors.New("session requires subcommand: upsert, status, end, reconcile, launch")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("session", "upsert|status|end|reconcile|launch")
+		return nil
 	}
 	switch args[0] {
 	case "upsert":
@@ -1206,12 +1217,16 @@ func cmdSessionEnd(ctx context.Context, opts globalOptions, args []string) error
 }
 
 type reconcileAction struct {
-	SessionID string `json:"session_id"`
-	Role      string `json:"role"`
-	PID       *int   `json:"pid,omitempty"`
-	TmuxPane  string `json:"tmux_pane,omitempty"`
-	Action    string `json:"action"`
-	Reason    string `json:"reason"`
+	SessionID  string `json:"session_id,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Backend    string `json:"backend,omitempty"`
+	Role       string `json:"role"`
+	TaskID     string `json:"task_id,omitempty"`
+	TaskStatus string `json:"task_status,omitempty"`
+	PID        *int   `json:"pid,omitempty"`
+	TmuxPane   string `json:"tmux_pane,omitempty"`
+	Action     string `json:"action"`
+	Reason     string `json:"reason"`
 }
 
 func cmdSessionReconcile(ctx context.Context, opts globalOptions, args []string) error {
@@ -1223,13 +1238,28 @@ func cmdSessionReconcile(ctx context.Context, opts globalOptions, args []string)
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected session reconcile arguments: %s", strings.Join(fs.Args(), " "))
 	}
-	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		sessions, err := s.Sessions(ctx, false)
 		if err != nil {
 			return err
 		}
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		taskByID := map[string]store.Task{}
+		for _, task := range tasks {
+			taskByID[task.Definition.ID] = task
+		}
+		activeSessionByTask := map[string]bool{}
+		for _, session := range sessions {
+			if session.TaskID != "" {
+				activeSessionByTask[session.TaskID] = true
+			}
+		}
 		var actions []reconcileAction
 		for _, session := range sessions {
+			task := taskByID[session.TaskID]
 			reason := ""
 			if session.PID != nil && !processAlive(*session.PID) {
 				reason = "pid not running"
@@ -1237,16 +1267,28 @@ func cmdSessionReconcile(ctx context.Context, opts globalOptions, args []string)
 			if reason == "" && session.SessionBackend == "tmux" && session.TmuxPane != "" && !tmuxPaneAlive(session.TmuxPane) {
 				reason = "tmux pane not found"
 			}
+			if reason == "" && session.TaskID != "" && task.Definition.ID == "" {
+				reason = "session task not found"
+			}
+			if reason == "" && session.TaskID != "" && isTerminal(task.Status, cfg.States.Terminal) {
+				reason = "session task is terminal"
+			}
 			if reason == "" {
 				continue
 			}
-			action := reconcileAction{SessionID: session.ID, Role: session.Role, PID: session.PID, TmuxPane: session.TmuxPane, Action: "mark_stale", Reason: reason}
+			action := reconcileAction{SessionID: session.ID, Provider: session.Provider, Backend: session.SessionBackend, Role: session.Role, TaskID: session.TaskID, TaskStatus: task.Status, PID: session.PID, TmuxPane: session.TmuxPane, Action: "mark_stale", Reason: reason}
 			actions = append(actions, action)
 			if !*dryRun {
 				if err := s.EndSession(ctx, session.ID, "stale", "reconciled", nil); err != nil {
 					return err
 				}
 			}
+		}
+		for _, task := range tasks {
+			if task.Status != "in_progress" || activeSessionByTask[task.Definition.ID] {
+				continue
+			}
+			actions = append(actions, reconcileAction{Role: task.Definition.Role, TaskID: task.Definition.ID, TaskStatus: task.Status, Action: "report_unattended_in_progress", Reason: "in_progress task has no running session"})
 		}
 		if opts.JSON {
 			return printJSON(actions)
@@ -1260,7 +1302,70 @@ func cmdSessionReconcile(ctx context.Context, opts globalOptions, args []string)
 			if *dryRun {
 				mode = "would apply"
 			}
-			fmt.Printf("%s\t%s\t%s\t%s\n", mode, action.Action, action.SessionID, action.Reason)
+			if action.SessionID == "" {
+				mode = "reported"
+			}
+			fmt.Printf("%s\t%s\tsession=%s\trole=%s\ttask=%s\tstatus=%s\treason=%s\n", mode, action.Action, action.SessionID, action.Role, action.TaskID, action.TaskStatus, action.Reason)
+		}
+		return nil
+	})
+}
+
+func cmdReconcile(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("reconcile requires subcommand: active")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("reconcile", "active")
+		return nil
+	}
+	switch args[0] {
+	case "active":
+		return cmdReconcileActive(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown reconcile subcommand %q", args[0])
+	}
+}
+
+func cmdReconcileActive(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("reconcile active", flag.ContinueOnError)
+	dryRun := fs.Bool("dry-run", false, "show findings without applying limited fixes")
+	staleCheckpointAfter := fs.Duration("stale-checkpoint-after", 2*time.Hour, "age after which an active checkpoint is stale")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected reconcile active arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		report, err := reconcile.Active(ctx, s, reconcile.ActiveOptions{Terminal: cfg.States.Terminal, StaleCheckpointAfter: *staleCheckpointAfter})
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		if len(report.Findings) == 0 {
+			fmt.Println("no active reconciliation findings")
+			return nil
+		}
+		fmt.Printf("ok: %t\n", report.OK)
+		fmt.Printf("summary: stale_sessions=%d unattended_in_progress=%d status_decision_required=%d active_parent_without_rollup=%d stale_checkpoints=%d\n",
+			report.Summary.StaleSessions,
+			report.Summary.UnattendedInProgress,
+			report.Summary.StatusDecisionRequired,
+			report.Summary.ActiveParentWithoutRollup,
+			report.Summary.StaleCheckpoints)
+		for _, finding := range report.Findings {
+			mode := "reported"
+			if !*dryRun && finding.Action == "mark_session_stale" && finding.SessionID != "" {
+				if err := s.EndSession(ctx, finding.SessionID, "stale", "reconciled by active reconcile", nil); err != nil {
+					return err
+				}
+				mode = "applied"
+			}
+			fmt.Printf("%s\t%s\trole=%s\ttask=%s\tstatus=%s\tsession=%s\taction=%s\treason=%s\n",
+				mode, finding.Kind, finding.Role, finding.TaskID, finding.TaskStatus, finding.SessionID, finding.Action, finding.Reason)
 		}
 		return nil
 	})
@@ -1502,6 +1607,10 @@ func cmdCoordinator(ctx context.Context, opts globalOptions, args []string) erro
 	if len(args) == 0 {
 		return errors.New("coordinator requires subcommand: preflight, status, tick")
 	}
+	if isHelpOnly(args) {
+		subcommandUsage("coordinator", "preflight|status|tick")
+		return nil
+	}
 	switch args[0] {
 	case "preflight":
 		return cmdCoordinatorReport(ctx, opts, args[1:], true, false)
@@ -1719,6 +1828,10 @@ func cmdParity(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("parity requires subcommand: artifact")
 	}
+	if isHelpOnly(args) {
+		subcommandUsage("parity", "artifact")
+		return nil
+	}
 	switch args[0] {
 	case "artifact":
 		return cmdAdoptionArtifact(ctx, opts, "parity", args[1:])
@@ -1730,6 +1843,10 @@ func cmdParity(ctx context.Context, opts globalOptions, args []string) error {
 func cmdAdoption(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("adoption requires subcommand: artifact")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("adoption", "artifact")
+		return nil
 	}
 	switch args[0] {
 	case "artifact":
@@ -1751,6 +1868,10 @@ type readinessReport struct {
 func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("readiness requires subcommand: report")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("readiness", "report")
+		return nil
 	}
 	if args[0] != "report" {
 		return fmt.Errorf("unknown readiness subcommand %q", args[0])
@@ -2443,6 +2564,10 @@ func cmdCheckpoint(ctx context.Context, opts globalOptions, args []string) error
 	if len(args) == 0 {
 		return errors.New("checkpoint requires subcommand: record, status, stale")
 	}
+	if isHelpOnly(args) {
+		subcommandUsage("checkpoint", "record|status|stale")
+		return nil
+	}
 	switch args[0] {
 	case "record":
 		return cmdCheckpointRecord(ctx, opts, args[1:])
@@ -2513,6 +2638,10 @@ func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string,
 func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("packet requires subcommand: context, bugfix, watcher, template, architecture-map, boundary-guard, vertical-slice")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("packet", "context|bugfix|watcher|template|architecture-map|boundary-guard|vertical-slice")
+		return nil
 	}
 	switch args[0] {
 	case "context":
@@ -2912,6 +3041,10 @@ func cmdWatcher(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("watcher requires subcommand: start, finish, status")
 	}
+	if isHelpOnly(args) {
+		subcommandUsage("watcher", "start|finish|status")
+		return nil
+	}
 	switch args[0] {
 	case "start":
 		return cmdWatcherStart(ctx, opts, args[1:])
@@ -3096,6 +3229,10 @@ type regressionPack struct {
 func cmdRegressionPack(opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("regression-pack requires subcommand: list, show, validate")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("regression-pack", "list|show|validate")
+		return nil
 	}
 	switch args[0] {
 	case "list":
@@ -3291,6 +3428,10 @@ func cmdProjects(opts globalOptions, args []string) error {
 func cmdTracker(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("tracker requires subcommand: link, links, reconcile")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("tracker", "link|links|reconcile")
+		return nil
 	}
 	switch args[0] {
 	case "link":
@@ -4098,7 +4239,15 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, s *store.Store,
 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
+		if isHelpOnly(args) {
+			subcommandUsage("record", "evidence|guard-report|handoff|review")
+			return nil
+		}
 		return errors.New("record requires type and task id")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("record", "evidence|guard-report|handoff|review")
+		return nil
 	}
 	switch args[0] {
 	case "evidence":
@@ -4139,8 +4288,26 @@ func recordEvidence(ctx context.Context, opts globalOptions, args []string) erro
 		if *duration > 0 {
 			durationPtr = duration
 		}
-		return s.RecordEvidence(ctx, taskID, store.Evidence{CommandText: *commandText, Result: *result, ArtifactPath: *artifact, ArtifactType: *artifactType, DurationSeconds: durationPtr, Notes: *notes})
+		if err := s.RecordEvidence(ctx, taskID, store.Evidence{CommandText: *commandText, Result: *result, ArtifactPath: *artifact, ArtifactType: *artifactType, DurationSeconds: durationPtr, Notes: *notes}); err != nil {
+			return err
+		}
+		if !opts.JSON {
+			fmt.Println("evidence recorded", taskID)
+			printEvidenceStatusPrompt(*result)
+		}
+		return nil
 	})
+}
+
+func printEvidenceStatusPrompt(result string) {
+	switch strings.ToLower(strings.TrimSpace(result)) {
+	case "pass":
+		fmt.Println("next: mark done, or record a checkpoint explaining why the task remains open")
+	case "fail", "partial", "skipped", "blocked":
+		fmt.Println("next: set blocked, reset to todo with a reason, or create/record explicit follow-up work")
+	default:
+		fmt.Println("next: run fairway reconcile active before leaving this work block")
+	}
 }
 
 func recordGuardReport(ctx context.Context, opts globalOptions, args []string) error {
@@ -4295,6 +4462,10 @@ func recordReview(ctx context.Context, opts globalOptions, args []string) error 
 
 func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) > 0 {
+		if isHelpOnly(args) {
+			subcommandUsage("dashboard", "[--listen <addr>] [--no-open] [--multi] | start|stop|restart|status")
+			return nil
+		}
 		switch args[0] {
 		case "start":
 			return cmdDashboardLifecycle(ctx, opts, "start", args[1:])
@@ -4609,6 +4780,10 @@ func dashboardWorktrees(statuses []worktreeStatus) []dashboard.WorktreeStatus {
 func cmdDB(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("db requires backup, export, migrate, or compat")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("db", "backup|export|migrate|compat")
+		return nil
 	}
 	switch args[0] {
 	case "backup":
@@ -5070,5 +5245,21 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+}
+
+func isHelpOnly(args []string) bool {
+	if len(args) != 1 {
+		return false
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		return true
+	default:
+		return false
+	}
+}
+
+func subcommandUsage(command, subcommands string) {
+	fmt.Printf("fairway %s %s\n", command, subcommands)
 }
