@@ -5137,14 +5137,16 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 		return err
 	}
 	if asJSON {
+		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		return printJSON(struct {
-			Task        store.Task         `json:"task"`
-			Transitions []store.Transition `json:"transitions"`
-			Evidence    []store.Evidence   `json:"evidence"`
-			Handoffs    []store.Handoff    `json:"handoffs"`
-			Reviews     []store.Review     `json:"reviews"`
-			Sessions    []store.Session    `json:"sessions"`
-		}{task, transitions, evidence, handoffs, reviews, sessions})
+			Task                 store.Task         `json:"task"`
+			Transitions          []store.Transition `json:"transitions"`
+			Evidence             []store.Evidence   `json:"evidence"`
+			Handoffs             []store.Handoff    `json:"handoffs"`
+			Reviews              []store.Review     `json:"reviews"`
+			MissingReviewDomains []string           `json:"missing_review_domains,omitempty"`
+			Sessions             []store.Session    `json:"sessions"`
+		}{task, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions})
 	}
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
@@ -5175,6 +5177,13 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	fmt.Println("\nreviews:")
 	for _, r := range reviews {
 		fmt.Printf("- %s by %s: %s\n", r.Verdict, r.Reviewer, r.Reason)
+	}
+	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+	if len(missingReviewDomains) > 0 {
+		fmt.Println("\nmissing review domains:")
+		for _, domain := range missingReviewDomains {
+			fmt.Printf("- %s\n", domain)
+		}
 	}
 	fmt.Println("\nsessions:")
 	for _, session := range sessions {

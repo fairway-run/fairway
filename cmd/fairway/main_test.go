@@ -417,6 +417,12 @@ func TestCLI_MergeReadyRequiresReviewDomains(t *testing.T) {
 	assertContains(t, failed, "missing approved review for domain security")
 	jsonFailed := runCaptureAllowError(t, "--json", "merge-ready", "T-001")
 	assertContains(t, jsonFailed, `"missing_review_domains"`)
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "missing review domains:")
+	assertContains(t, detail, "- architecture")
+	assertContains(t, detail, "- security")
+	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, jsonDetail, `"missing_review_domains"`)
 
 	runOK(t, "record", "review", "T-001", "--reviewer", "architecture", "--verdict", "approve", "--reason", "arch ok")
 	failed = runCaptureAllowError(t, "merge-ready", "T-001")

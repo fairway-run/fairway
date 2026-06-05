@@ -113,7 +113,8 @@ shows:
 - transition history,
 - evidence,
 - task-bound sessions,
-- handoffs and reviews.
+- handoffs and reviews,
+- missing required review domains before merge-ready.
 
 Task detail is intentionally task-scoped. Global sessions, worktrees, watchers,
 and checkpoints remain in `/board?tab=diagnostics` so the detail page does not

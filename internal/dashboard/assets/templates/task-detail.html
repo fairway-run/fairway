@@ -86,7 +86,10 @@
 </article>
 <article class="detail-panel">
 <h2>Reviews</h2>
-<div class="detail-stack">{{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}</div>
+<div class="detail-stack">
+{{if .MissingReviewDomains}}<p><b>Missing required domains</b>: {{range .MissingReviewDomains}}<code>{{.}}</code> {{end}}</p>{{end}}
+{{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}
+</div>
 </article>
 </section>
 </main>

@@ -221,20 +221,21 @@ type DashboardViewData struct {
 }
 
 type TaskDetailViewData struct {
-	View         string
-	Groups       []RoleGroup
-	Sessions     []store.Session
-	Activity     []store.Activity
-	BackHref     string
-	Task         store.Task
-	Transitions  []store.Transition
-	Evidence     []store.Evidence
-	Handoffs     []store.Handoff
-	Reviews      []store.Review
-	TaskSessions []store.Session
-	Rollup       Rollup
-	CSRFToken    string
-	States       []string
+	View                 string
+	Groups               []RoleGroup
+	Sessions             []store.Session
+	Activity             []store.Activity
+	BackHref             string
+	Task                 store.Task
+	Transitions          []store.Transition
+	Evidence             []store.Evidence
+	Handoffs             []store.Handoff
+	Reviews              []store.Review
+	MissingReviewDomains []string
+	TaskSessions         []store.Session
+	Rollup               Rollup
+	CSRFToken            string
+	States               []string
 }
 
 func (s *Server) ListenAndServe(addr string) error {
@@ -1093,22 +1094,48 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := TaskDetailViewData{
-		View:         "detail",
-		Groups:       groupTasks(tasks, s.roles),
-		Sessions:     sessions,
-		Activity:     activity,
-		BackHref:     localBackHref(r.Referer(), r.Host, task.Definition.Role),
-		Task:         task,
-		Transitions:  transitions,
-		Evidence:     evidence,
-		Handoffs:     handoffs,
-		Reviews:      reviews,
-		TaskSessions: sessionsForDashboardTask(sessions, id),
-		Rollup:       rollups[task.Definition.ID],
-		CSRFToken:    s.csrfToken,
-		States:       dashboardMutableStates(s.cfg),
+		View:                 "detail",
+		Groups:               groupTasks(tasks, s.roles),
+		Sessions:             sessions,
+		Activity:             activity,
+		BackHref:             localBackHref(r.Referer(), r.Host, task.Definition.Role),
+		Task:                 task,
+		Transitions:          transitions,
+		Evidence:             evidence,
+		Handoffs:             handoffs,
+		Reviews:              reviews,
+		MissingReviewDomains: dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews),
+		TaskSessions:         sessionsForDashboardTask(sessions, id),
+		Rollup:               rollups[task.Definition.ID],
+		CSRFToken:            s.csrfToken,
+		States:               dashboardMutableStates(s.cfg),
 	}
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
+}
+
+func dashboardMissingApprovedReviewDomains(domains []string, reviews []store.Review) []string {
+	if len(domains) == 0 {
+		return nil
+	}
+	approved := map[string]bool{}
+	for _, review := range reviews {
+		if review.Verdict == "approve" {
+			approved[review.Reviewer] = true
+		}
+	}
+	seen := map[string]bool{}
+	var missing []string
+	for _, domain := range domains {
+		domain = strings.TrimSpace(domain)
+		if domain == "" || seen[domain] {
+			continue
+		}
+		seen[domain] = true
+		if !approved[domain] {
+			missing = append(missing, domain)
+		}
+	}
+	return missing
 }
 
 func localBackHref(referer, currentHost, role string) string {

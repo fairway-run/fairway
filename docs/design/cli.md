@@ -24,7 +24,7 @@ fairway session reconcile [--dry-run]
 fairway reconcile active [--dry-run]                    # report stale/unattended active work across sessions, tasks, evidence, and checkpoints
 fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] # adapter; optional
 fairway worktree setup | status | prune [--force]
-fairway task-detail <task-id>
+fairway task-detail <task-id>                          # includes missing required review domains before merge-ready
 fairway status-report | health-report | timing-report
 fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
