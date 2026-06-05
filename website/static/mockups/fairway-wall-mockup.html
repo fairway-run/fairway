@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fairway · live coordination (mockup)</title>
+<style>
+:root {
+  /* dark (default) */
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel-2: #1c2128;
+  --line: #30363d;
+  --text: #e6edf3;
+  --muted: #7d8590;
+  --good: #2ea043;
+  --warn: #d29922;
+  --bad: #f85149;
+  --claude: #ff7b3a;
+  --codex: #00c389;
+  --compass: #a78bfa;
+}
+[data-theme="light"] {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-2: #f0f2f5;
+  --line: #d9dee7;
+  --text: #182230;
+  --muted: #5a6678;
+  --good: #027a48;
+  --warn: #b54708;
+  --bad: #b42318;
+  --claude: #e35d1a;
+  --codex: #027a48;
+  --compass: #6938c5;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, "SF Pro Display", system-ui, sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  transition: background .2s, color .2s;
+}
+.header {
+  display: grid;
+  grid-template-columns: 220px 1fr auto;
+  align-items: center;
+  gap: 32px;
+  padding: 20px 32px;
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+.brand small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+.headline { display: flex; gap: 48px; justify-content: center; }
+.headline .stat { text-align: center; }
+.headline .num { font-size: 42px; font-weight: 800; line-height: 1; letter-spacing: -0.025em; }
+.headline .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-top: 6px; }
+.header-right { display: flex; gap: 14px; align-items: center; }
+.providers { display: flex; gap: 8px; align-items: center; }
+.provider-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid currentColor; border-radius: 20px;
+  font-size: 12px; font-weight: 500;
+}
+.provider-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.theme-toggle, .config-select {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.theme-toggle:hover, .config-select:hover { background: var(--panel-2); }
+.view-toggle {
+  display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; overflow: hidden;
+}
+.view-toggle a {
+  display: inline-block; padding: 7px 14px; font-size: 12px; font-weight: 600;
+  color: var(--muted); text-decoration: none;
+  border-right: 1px solid var(--line);
+}
+.view-toggle a:last-child { border-right: 0; }
+.view-toggle a:hover { color: var(--text); background: var(--panel-2); }
+.view-toggle a.active { color: var(--text); background: var(--panel-2); }
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  padding: 24px 32px;
+}
+
+.lanes { position: relative; }
+.lane-states {
+  display: grid;
+  grid-template-columns: 160px repeat(5, 1fr);
+  gap: 8px;
+  padding: 0 18px 10px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted);
+}
+.lane {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  transition: background .2s;
+}
+.lane-row {
+  display: grid;
+  grid-template-columns: 160px repeat(5, 1fr);
+  gap: 8px;
+  padding: 14px 18px;
+  min-height: 70px;
+  align-items: center;
+  cursor: pointer;
+}
+.lane:hover { background: var(--panel-2); }
+.lane.expanded { background: var(--panel-2); }
+.lane-name {
+  font-weight: 700; font-size: 13px;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.lane-name .heart {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 500; letter-spacing: 0;
+  text-transform: none; color: var(--muted);
+}
+.lane-name .heart::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+}
+.chevron {
+  width: 14px; height: 14px;
+  display: inline-block;
+  margin-left: 6px;
+  transition: transform .2s;
+  opacity: .5;
+}
+.lane.expanded .chevron { transform: rotate(180deg); }
+.lane-col { display: flex; flex-direction: column; gap: 6px; min-height: 50px; align-items: flex-start; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 12px; font-weight: 500;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  transition: all .25s ease;
+  max-width: 100%;
+  position: relative;
+}
+.pill .id { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; opacity: .75; }
+.pill.claude { color: var(--claude); border-color: var(--claude); background: rgba(255,123,58,.10); }
+.pill.codex  { color: var(--codex);  border-color: var(--codex);  background: rgba(0,195,137,.10); }
+.pill.compass{ color: var(--compass);border-color: var(--compass);background: rgba(167,139,250,.10); }
+[data-theme="light"] .pill.claude  { background: rgba(227,93,26,.07); }
+[data-theme="light"] .pill.codex   { background: rgba(2,122,72,.07); }
+[data-theme="light"] .pill.compass { background: rgba(105,56,197,.07); }
+.pill.done { color: var(--good); border-color: rgba(46,160,67,.4); background: rgba(46,160,67,.08); }
+.pill.working::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: pulse 1.4s ease-out infinite;
+}
+.pill .overflow { color: var(--muted); font-size: 11px; }
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  70%  { box-shadow: 0 0 0 8px transparent; opacity: .55; }
+  100% { box-shadow: 0 0 0 0 transparent; opacity: 1; }
+}
+.arc-layer {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%; height: 100%; pointer-events: none;
+}
+
+/* Expanded detail panel */
+.lane-detail {
+  display: none;
+  border-top: 1px solid var(--line);
+  padding: 16px 18px 18px;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  grid-template-rows: minmax(0, 380px);
+  gap: 18px;
+  overflow: hidden;
+}
+.lane.expanded .lane-detail { display: grid; }
+.detail-col {
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
+}
+.detail-col h4 {
+  margin: 0 0 10px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--muted); font-weight: 700;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.detail-col h4 .details-link {
+  font-size: 10px; font-weight: 600; letter-spacing: .04em;
+  color: var(--text); opacity: .6; text-transform: none;
+  cursor: pointer; background: none; border: 0; padding: 0;
+}
+.detail-col h4 .details-link:hover { opacity: 1; text-decoration: underline; }
+.detail-list {
+  display: flex; flex-direction: column; gap: 6px;
+  flex: 1 1 0; min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.detail-list::-webkit-scrollbar { width: 6px; }
+.detail-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+.detail-list::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+.detail-list::-webkit-scrollbar-track { background: transparent; }
+.detail-item {
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex; flex-direction: column; gap: 3px;
+  flex-shrink: 0;
+}
+.detail-item .id { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
+.detail-item .meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+.detail-empty { font-size: 12px; color: var(--muted); font-style: italic; padding: 8px 4px; }
+
+.working-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.working-card.claude { border-left: 3px solid var(--claude); }
+.working-card.codex  { border-left: 3px solid var(--codex); }
+.working-card.compass{ border-left: 3px solid var(--compass); }
+.working-card .title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+.working-card .sub { font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace; }
+.working-card .row { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; }
+.working-card .row b { color: var(--text); }
+.working-card .needs {
+  margin-top: 10px; padding: 8px 10px;
+  background: var(--panel-2); border-radius: 6px;
+  font-size: 12px; color: var(--muted);
+}
+.working-card .needs b { color: var(--warn); font-weight: 600; }
+.working-card .events {
+  margin-top: 10px; font-size: 12px;
+  display: flex; flex-direction: column; gap: 4px; color: var(--muted);
+}
+.working-card .events span::before { content: '·'; margin-right: 6px; opacity: .5; }
+.gate-bar {
+  height: 6px; background: var(--panel-2); border-radius: 4px;
+  margin-top: 6px; overflow: hidden;
+}
+.gate-bar > span { display: block; height: 100%; background: var(--good); transition: width .3s; }
+.gate-bar > span.warn { background: var(--warn); }
+.gate-bar > span.bad  { background: var(--bad); }
+.lane-detail-foot {
+  display: none;
+  border-top: 1px solid var(--line);
+  padding: 10px 18px;
+  text-align: right;
+}
+.lane.expanded .lane-detail-foot { display: block; }
+.open-details {
+  background: transparent; color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 12px; font: inherit; font-size: 12px;
+  cursor: pointer; opacity: .75;
+}
+.open-details:hover { opacity: 1; background: var(--panel); }
+
+.rail { display: flex; flex-direction: column; gap: 16px; }
+.rail-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+}
+.rail-card h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--muted); margin: 0 0 14px; font-weight: 700;
+}
+.gauge { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.gauge:last-child { margin-bottom: 0; }
+.gauge-ring { width: 40px; height: 40px; flex-shrink: 0; }
+.gauge-info { flex: 1; min-width: 0; }
+.gauge-info .name { font-size: 13px; font-weight: 600; }
+.gauge-info .pct { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.ticker { display: flex; flex-direction: column; gap: 10px; }
+.tick { display: flex; gap: 7px; font-size: 13px; align-items: baseline; animation: slidein .35s ease; }
+.tick .who { font-weight: 700; }
+.tick .what { color: var(--text); opacity: .85; }
+.tick .when { color: var(--muted); font-size: 11px; margin-left: auto; font-family: ui-monospace, monospace; }
+@keyframes slidein { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+.footer-note {
+  padding: 12px 32px 24px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.footer-note code {
+  background: var(--panel); padding: 2px 6px; border-radius: 4px;
+  border: 1px solid var(--line);
+}
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="header">
+  <div class="brand">fairway <small>· live coordination</small></div>
+  <div class="headline">
+    <div class="stat"><div class="num" id="num-agents">3</div><div class="lbl">agents</div></div>
+    <div class="stat"><div class="num" id="num-active">5</div><div class="lbl">tasks moving</div></div>
+    <div class="stat"><div class="num" id="num-handoffs">4</div><div class="lbl">handoffs</div></div>
+    <div class="stat"><div class="num" id="num-done">12</div><div class="lbl">done today</div></div>
+  </div>
+  <div class="header-right">
+    <select class="config-select" id="config-select" title="Pick a fairway config to preview">
+      <option value="gpuaas-backend">gpuaas-backend (7 lanes)</option>
+      <option value="fairway-dogfood">fairway dogfood (5 lanes)</option>
+      <option value="hackathon-demo">hackathon demo (3 lanes)</option>
+    </select>
+    <div class="providers" id="providers"></div>
+    <div class="view-toggle">
+      <a href="fairway-wall-mockup.html" class="active">Wall</a>
+      <a href="fairway-board-mockup.html">Board</a>
+    </div>
+    <button class="theme-toggle" id="theme-toggle">☼ light</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="lanes">
+    <div class="lane-states">
+      <span></span>
+      <span>Backlog</span><span>Claimed</span><span>Working</span><span>Review</span><span>Done</span>
+    </div>
+    <div id="lane-list"></div>
+    <svg class="arc-layer" id="arcs" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div class="rail">
+    <div class="rail-card">
+      <h3>Gate Readiness</h3>
+      <div class="gauge">
+        <svg class="gauge-ring" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--panel-2)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--good)" stroke-width="3"
+            stroke-dasharray="93 100" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        </svg>
+        <div class="gauge-info"><div class="name">ownership-map</div><div class="pct">28 / 30 satisfied</div></div>
+      </div>
+      <div class="gauge">
+        <svg class="gauge-ring" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--panel-2)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--good)" stroke-width="3"
+            stroke-dasharray="70 100" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        </svg>
+        <div class="gauge-info"><div class="name">architecture-map</div><div class="pct">19 / 27 satisfied</div></div>
+      </div>
+      <div class="gauge">
+        <svg class="gauge-ring" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--panel-2)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--warn)" stroke-width="3"
+            stroke-dasharray="35 100" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        </svg>
+        <div class="gauge-info"><div class="name">boundary-guard</div><div class="pct">13 / 37 satisfied</div></div>
+      </div>
+    </div>
+
+    <div class="rail-card">
+      <h3>Activity</h3>
+      <div class="ticker" id="ticker"></div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-note">
+  mockup · would render at <code>/wall</code>; lane list comes from <code>[[roles]]</code> in <code>.fairway/config.toml</code> · operator dashboard preserved at <code>/</code>
+</div>
+
+<script>
+// =========================
+// Sample configs (in the real implementation these come from the server)
+// =========================
+const CONFIGS = {
+  'gpuaas-backend': {
+    providers: ['Claude', 'Codex', 'compass-agent'],
+    lanes: [
+      { role: 'orchestrator', provider: null, heart: 'idle',
+        backlog: [{id:'T-054', title:'tick interval audit', kind:'task'}],
+        claimed: [], working: null, review: [], doneCount: 28 },
+      { role: 'architecture', provider: null, heart: 'idle',
+        backlog: [
+          {id:'T-053', title:'state machine v2 sketch', kind:'architecture-map'},
+          {id:'T-058', title:'extraction candidate review', kind:'architecture-map'},
+        ],
+        claimed: [], working: null, review: [], doneCount: 44 },
+      { role: 'backend', provider: 'Claude', heart: '12s ago',
+        backlog: [
+          {id:'T-049', title:'billing audit suite', kind:'task'},
+          {id:'T-061', title:'outbox dlq backfill', kind:'task'},
+          {id:'T-067', title:'alarm rule sync', kind:'bug'},
+          {id:'T-070', title:'cost report contract', kind:'release-evidence'},
+          {id:'T-073', title:'event hash collision repro', kind:'bug'},
+          {id:'T-074', title:'workspace quota composition', kind:'architecture-map'},
+          {id:'T-076', title:'rate-limit middleware integration', kind:'task'},
+          {id:'T-079', title:'usage-event outbox contract', kind:'architecture-map'},
+          {id:'T-081', title:'idempotency keys for billing API', kind:'task'},
+          {id:'T-084', title:'product-onboarding checklist webhook', kind:'task'},
+          {id:'T-088', title:'soft-delete cascade for orgs', kind:'task'},
+          {id:'T-092', title:'extraction candidate gate evaluator', kind:'architecture-map'},
+        ],
+        claimed: [],
+        working: {
+          id:'T-042', title:'evidence rows for ownership map', kind:'architecture-map',
+          provider:'claude', started:'2m ago',
+          gates: { satisfied: 0, total: 1, status: 'warn' },
+          needs: 'ownership-map evidence artifact',
+          events: ['recorded partial evidence', 'started T-042', 'claimed from queue'],
+        },
+        review: [
+          {id:'T-041', title:'cost projection schema', reason:'awaiting governance verdict'},
+          {id:'T-040', title:'usage-event outbox migration', reason:'awaiting arch verdict'},
+          {id:'T-037', title:'rate-limit middleware tests', reason:'awaiting ops verdict'},
+          {id:'T-034', title:'audit log retention policy', reason:'awaiting governance verdict'},
+        ],
+        doneCount: 87,
+      },
+      { role: 'frontend', provider: 'Codex', heart: '4s ago',
+        backlog: [
+          {id:'T-051', title:'filter chip layout', kind:'task'},
+          {id:'T-055', title:'gate readiness empty state', kind:'task'},
+        ],
+        claimed: [{id:'T-046', title:'dark theme polish', kind:'task', provider:'codex'}],
+        working: {
+          id:'T-043', title:'swim-lane CSS', kind:'task',
+          provider:'codex', started:'45s ago',
+          gates: { satisfied: 1, total: 1, status: 'good' },
+          needs: null,
+          events: ['ran lint clean', 'tightened keyframes', 'started T-043'],
+        },
+        review: [{id:'T-039', title:'lane card hover state', reason:'review routing to ui'}],
+        doneCount: 51,
+      },
+      { role: 'ops', provider: 'compass-agent', heart: '1s ago',
+        backlog: [],
+        claimed: [{id:'T-052', title:'goreleaser tag bump', kind:'task', provider:'compass'}],
+        working: {
+          id:'T-047', title:'release prep · v0.2.0', kind:'release-evidence',
+          provider:'compass', started:'5m ago',
+          gates: { satisfied: 2, total: 3, status: 'warn' },
+          needs: 'signed checksum manifest',
+          events: ['built darwin/arm64 archive', 'staged release notes', 'started T-047'],
+        },
+        review: [],
+        doneCount: 33,
+      },
+      { role: 'governance', provider: 'Claude', heart: '18s ago',
+        backlog: [],
+        claimed: [],
+        working: null,
+        review: [{id:'T-042', title:'ownership-map policy check', reason:'awaiting Claude verdict'}],
+        doneCount: 22,
+      },
+      { role: 'security', provider: null, heart: 'idle',
+        backlog: [
+          {id:'T-063', title:'MFA gate for sensitive ops', kind:'task'},
+          {id:'T-065', title:'secret-exposure evaluator update', kind:'bug'},
+        ],
+        claimed: [], working: null, review: [], doneCount: 18 },
+    ],
+    headline: { agents: 3, active: 5, handoffs: 4, done: 12 },
+  },
+
+  'fairway-dogfood': {
+    providers: ['Claude', 'Codex', 'compass-agent'],
+    lanes: [
+      { role: 'backend', provider: 'Claude', heart: '8s ago',
+        backlog: [{id:'F-091', title:'multi-project ATTACH lock', kind:'task'}],
+        claimed: [],
+        working: {
+          id:'F-088', title:'typed SSE events for /wall', kind:'task',
+          provider:'claude', started:'3m ago',
+          gates: {satisfied: 0, total: 1, status: 'warn'},
+          needs: 'SSE event shape doc',
+          events: ['drafted event types', 'started F-088'],
+        },
+        review: [], doneCount: 41,
+      },
+      { role: 'ui', provider: 'Codex', heart: '2s ago',
+        backlog: [{id:'F-094', title:'config-select dropdown', kind:'task'}],
+        claimed: [],
+        working: {
+          id:'F-090', title:'/wall demo view template', kind:'task',
+          provider:'codex', started:'1m ago',
+          gates: {satisfied: 1, total: 1, status: 'good'}, needs: null,
+          events: ['arc animation pass', 'started F-090'],
+        },
+        review: [], doneCount: 28,
+      },
+      { role: 'ops', provider: 'compass-agent', heart: '6s ago',
+        backlog: [],
+        claimed: [],
+        working: {
+          id:'F-092', title:'fairway demo seed command', kind:'task',
+          provider:'compass', started:'4m ago',
+          gates: {satisfied: 0, total: 2, status: 'bad'},
+          needs: 'simulator harness + seed corpus',
+          events: ['wired CLI subcommand', 'started F-092'],
+        },
+        review: [], doneCount: 22,
+      },
+      { role: 'arch', provider: null, heart: 'idle',
+        backlog: [{id:'F-098', title:'wall route boundary', kind:'task'}],
+        claimed: [], working: null, review: [], doneCount: 15,
+      },
+      { role: 'governance', provider: null, heart: 'idle',
+        backlog: [],
+        claimed: [], working: null,
+        review: [{id:'F-088', title:'SSE event shape doc', reason:'awaiting arch verdict'}],
+        doneCount: 12,
+      },
+    ],
+    headline: { agents: 3, active: 3, handoffs: 2, done: 6 },
+  },
+
+  'hackathon-demo': {
+    providers: ['Claude', 'compass-agent'],
+    lanes: [
+      { role: 'coding', provider: 'Claude', heart: '5s ago',
+        backlog: [
+          {id:'H-007', title:'add /wall demo dataset seed', kind:'task'},
+          {id:'H-009', title:'provider event adapter for Claude Code', kind:'task'},
+        ],
+        claimed: [],
+        working: {
+          id:'H-004', title:'swim-lane visual template', kind:'task',
+          provider:'claude', started:'2m ago',
+          gates: {satisfied: 1, total: 1, status: 'good'}, needs: null,
+          events: ['integrated theme toggle', 'started H-004'],
+        },
+        review: [], doneCount: 6,
+      },
+      { role: 'review', provider: 'compass-agent', heart: '12s ago',
+        backlog: [],
+        claimed: [],
+        working: {
+          id:'H-003', title:'contract suite for /wall route', kind:'task',
+          provider:'compass', started:'4m ago',
+          gates: {satisfied: 1, total: 2, status: 'warn'}, needs: 'screenshot regression baseline',
+          events: ['captured 3 baseline frames', 'started H-003'],
+        },
+        review: [{id:'H-002', title:'demo seed corpus design', reason:'awaiting coding verdict'}],
+        doneCount: 3,
+      },
+      { role: 'ops', provider: null, heart: 'idle',
+        backlog: [{id:'H-008', title:'video capture script', kind:'task'}],
+        claimed: [], working: null, review: [], doneCount: 2,
+      },
+    ],
+    headline: { agents: 2, active: 2, handoffs: 1, done: 3 },
+  },
+};
+
+const providerClass = { claude:'claude', codex:'codex', compass:'compass', 'compass-agent':'compass' };
+const providerColor = {
+  Claude: 'var(--claude)',
+  Codex: 'var(--codex)',
+  'compass-agent': 'var(--compass)',
+};
+const providerHex = { Claude:'#ff7b3a', Codex:'#00c389', 'compass-agent':'#a78bfa' };
+
+// =========================
+// Render
+// =========================
+function render(configKey) {
+  const cfg = CONFIGS[configKey];
+  // headline
+  document.getElementById('num-agents').textContent = cfg.headline.agents;
+  document.getElementById('num-active').textContent = cfg.headline.active;
+  document.getElementById('num-handoffs').textContent = cfg.headline.handoffs;
+  document.getElementById('num-done').textContent = cfg.headline.done;
+
+  // providers
+  const pHost = document.getElementById('providers');
+  pHost.innerHTML = '';
+  cfg.providers.forEach(name => {
+    const chip = document.createElement('div');
+    chip.className = 'provider-chip';
+    chip.style.color = providerColor[name];
+    chip.innerHTML = `<span class="dot"></span>${name}`;
+    pHost.appendChild(chip);
+  });
+
+  // lanes
+  const host = document.getElementById('lane-list');
+  host.innerHTML = '';
+  cfg.lanes.forEach(lane => host.appendChild(renderLane(lane)));
+}
+
+function renderLane(lane) {
+  const el = document.createElement('div');
+  el.className = 'lane';
+  el.dataset.role = lane.role;
+
+  const provColor = lane.provider ? providerColor[lane.provider] : 'var(--muted)';
+  const heartLabel = lane.provider ? `${lane.provider} · ${lane.heart}` : lane.heart;
+  const provCls = lane.working ? providerClass[lane.working.provider] : '';
+
+  const workingPillHTML = lane.working
+    ? `<span class="pill ${provCls} working"><span class="id">${lane.working.id}</span> ${lane.working.title}</span>`
+    : '';
+  const backlogTopHTML = lane.backlog.length
+    ? `<span class="pill"><span class="id">${lane.backlog[0].id}</span> ${truncate(lane.backlog[0].title, 22)}</span>${lane.backlog.length>1?`<span class="overflow">+${lane.backlog.length-1} more</span>`:''}`
+    : '';
+  const claimedHTML = lane.claimed.length
+    ? lane.claimed.map(t => `<span class="pill ${providerClass[t.provider]}"><span class="id">${t.id}</span> ${truncate(t.title, 22)}</span>`).join('')
+    : '';
+  const reviewHTML = lane.review.length
+    ? lane.review.map(t => `<span class="pill claude"><span class="id">${t.id}</span> ${truncate(t.title, 22)}</span>`).join('')
+    : '';
+  const doneHTML = lane.doneCount
+    ? `<span class="pill done">${lane.doneCount} ✓</span>`
+    : '';
+
+  el.innerHTML = `
+    <div class="lane-row">
+      <div class="lane-name">
+        <span>${lane.role}<svg class="chevron" viewBox="0 0 12 12"><path d="M2 4 L6 8 L10 4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></span>
+        <span class="heart" style="color: ${provColor};">${heartLabel}</span>
+      </div>
+      <div class="lane-col">${backlogTopHTML}</div>
+      <div class="lane-col">${claimedHTML}</div>
+      <div class="lane-col">${workingPillHTML}</div>
+      <div class="lane-col">${reviewHTML}</div>
+      <div class="lane-col">${doneHTML}</div>
+    </div>
+    <div class="lane-detail">
+      <div class="detail-col">
+        <h4>Queue (${lane.backlog.length})</h4>
+        <div class="detail-list">
+          ${lane.backlog.length ? lane.backlog.map(t => `
+            <div class="detail-item">
+              <div><span class="id">${t.id}</span> ${t.title}</div>
+              <div class="meta"><span>kind: ${t.kind}</span></div>
+            </div>`).join('') : '<div class="detail-empty">no queued tasks</div>'}
+        </div>
+      </div>
+      <div class="detail-col">
+        <h4>Working</h4>
+        ${lane.working ? renderWorkingCard(lane.working) : '<div class="detail-empty">lane idle · no active task</div>'}
+      </div>
+      <div class="detail-col">
+        <h4>Pending review (${lane.review.length})</h4>
+        <div class="detail-list">
+          ${lane.review.length ? lane.review.map(t => `
+            <div class="detail-item">
+              <div><span class="id">${t.id}</span> ${t.title}</div>
+              <div class="meta"><span>${t.reason}</span></div>
+            </div>`).join('') : '<div class="detail-empty">no tasks awaiting review</div>'}
+        </div>
+      </div>
+    </div>
+    <div class="lane-detail-foot">
+      <button class="open-details" data-role="${lane.role}">Open full details for ${lane.role} →</button>
+    </div>
+  `;
+
+  el.querySelector('.lane-row').addEventListener('click', () => {
+    const wasOpen = el.classList.contains('expanded');
+    document.querySelectorAll('.lane').forEach(l => l.classList.remove('expanded'));
+    if (!wasOpen) el.classList.add('expanded');
+  });
+  return el;
+}
+
+function renderWorkingCard(w) {
+  const cls = providerClass[w.provider] || '';
+  const gatePct = w.gates.total ? Math.round((w.gates.satisfied / w.gates.total) * 100) : 0;
+  const gateCls = w.gates.status === 'good' ? '' : (w.gates.status === 'bad' ? 'bad' : 'warn');
+  return `
+    <div class="working-card ${cls}">
+      <div class="title">${w.title}</div>
+      <div class="sub">${w.id} · ${w.kind} · started ${w.started}</div>
+      <div class="row">
+        <span><b>Gates</b>&nbsp;${w.gates.satisfied}/${w.gates.total}</span>
+        <span><b>Provider</b>&nbsp;${capitalize(w.provider)}</span>
+      </div>
+      <div class="gate-bar"><span class="${gateCls}" style="width: ${gatePct}%"></span></div>
+      ${w.needs ? `<div class="needs"><b>needs:</b> ${w.needs}</div>` : ''}
+      <div class="events">
+        ${w.events.map(e => `<span>${e}</span>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function truncate(s, n) { return s.length > n ? s.slice(0, n-1) + '…' : s; }
+function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
+
+// =========================
+// Theme toggle
+// =========================
+const themeBtn = document.getElementById('theme-toggle');
+themeBtn.addEventListener('click', () => {
+  const isLight = document.body.dataset.theme === 'light';
+  document.body.dataset.theme = isLight ? 'dark' : 'light';
+  themeBtn.textContent = isLight ? '☼ light' : '☾ dark';
+});
+
+// =========================
+// Config switcher
+// =========================
+document.getElementById('config-select').addEventListener('change', e => render(e.target.value));
+
+// =========================
+// Live arc animation
+// =========================
+function drawArc() {
+  const lanes = Array.from(document.querySelectorAll('.lane'));
+  if (lanes.length < 2) return;
+  const active = lanes.filter(l => l.querySelector('.pill.working'));
+  if (active.length === 0) return;
+  const fromEl = active[Math.floor(Math.random() * active.length)];
+  let toEl = lanes[Math.floor(Math.random() * lanes.length)];
+  let tries = 0;
+  while (toEl === fromEl && tries++ < 5) toEl = lanes[Math.floor(Math.random() * lanes.length)];
+  if (toEl === fromEl) return;
+
+  const svg = document.getElementById('arcs');
+  const lanesRect = document.querySelector('.lanes').getBoundingClientRect();
+  const a = fromEl.getBoundingClientRect();
+  const b = toEl.getBoundingClientRect();
+  const x1 = (a.left + a.width * 0.55) - lanesRect.left;
+  const y1 = a.top + a.height/2 - lanesRect.top;
+  const x2 = (b.left + b.width * 0.55) - lanesRect.left;
+  const y2 = b.top + b.height/2 - lanesRect.top;
+  const cx = x1 + Math.abs(y2-y1) * 0.35 + 40;
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`);
+  path.setAttribute('fill', 'none');
+  const hexes = Object.values(providerHex);
+  path.setAttribute('stroke', hexes[Math.floor(Math.random()*hexes.length)]);
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-dasharray', '6 5');
+  path.style.strokeDashoffset = '1000';
+  path.style.transition = 'stroke-dashoffset 0.7s ease, opacity 0.6s ease';
+  path.style.opacity = '0.85';
+  svg.appendChild(path);
+  requestAnimationFrame(() => path.style.strokeDashoffset = '0');
+  setTimeout(() => {
+    path.style.opacity = '0';
+    setTimeout(() => path.remove(), 700);
+  }, 1800);
+
+  const hc = document.getElementById('num-handoffs');
+  hc.textContent = parseInt(hc.textContent, 10) + 1;
+}
+
+// =========================
+// Activity ticker
+// =========================
+const tickerData = [
+  ['Codex', 'claimed T-051 frontend refresh'],
+  ['compass-agent', 'recorded evidence for T-047'],
+  ['Claude', 'reviewed T-031 — approved'],
+  ['Codex', 'handed off T-046 to ops'],
+  ['compass-agent', 'completed T-038 release tag'],
+  ['Claude', 'started T-042 ownership map'],
+  ['Codex', 'submitted T-043 for review'],
+];
+let tickerIdx = 0;
+function tick() {
+  const [who, what] = tickerData[tickerIdx++ % tickerData.length];
+  const ticker = document.getElementById('ticker');
+  const t = document.createElement('div');
+  t.className = 'tick';
+  t.innerHTML = `<span class="who" style="color: ${providerColor[who]};">${who}</span><span class="what">${what}</span><span class="when">just now</span>`;
+  ticker.insertBefore(t, ticker.firstChild);
+  ticker.querySelectorAll('.tick').forEach((el, idx) => {
+    if (idx === 0) return;
+    const when = el.querySelector('.when');
+    if (when && when.textContent === 'just now') when.textContent = '4s';
+    else if (when && when.textContent === '4s') when.textContent = '12s';
+  });
+  while (ticker.children.length > 6) ticker.lastChild.remove();
+}
+
+// Seed initial ticker
+['Claude submitted T-042 for review|just now',
+ 'compass-agent claimed T-047 release prep|14s',
+ 'Codex handed off T-046 to ops|38s',
+ 'Claude recorded evidence for T-035|1m',
+ 'Codex marked T-029 done|1m'].forEach(s => {
+  const [line, when] = s.split('|');
+  const [who, ...rest] = line.split(' ');
+  const what = rest.join(' ');
+  const el = document.createElement('div');
+  el.className = 'tick';
+  el.innerHTML = `<span class="who" style="color: ${providerColor[who]};">${who}</span><span class="what">${what}</span><span class="when">${when}</span>`;
+  document.getElementById('ticker').appendChild(el);
+});
+
+render('gpuaas-backend');
+setTimeout(drawArc, 800);
+setInterval(drawArc, 4200);
+setInterval(tick, 3500);
+</script>
+
+</body>
+</html>

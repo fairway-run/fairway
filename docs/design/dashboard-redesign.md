@@ -75,7 +75,7 @@ serves the operator board, `/board?tab=diagnostics` serves diagnostics, and
 **Interactions:**
 
 - Click lane name → expand inline panel (queue list · working card with gate progress · pending review list). Click again or click another lane to swap. Only one expanded at a time.
-- Click "Open full details for <role>" inside the expanded panel → navigate to `/board?role=<role>` with the role filter pre-applied. This eliminates the need for a separate per-lane modal.
+- Click `Open full details for <role>` inside the expanded panel → navigate to `/board?role=<role>` with the role filter pre-applied. This eliminates the need for a separate per-lane modal.
 - Click task pill → navigate to `/tasks/<id>`.
 
 **Animations are tied to real events, not timed.** Arcs draw when a handoff is recorded. Ticker updates when an SSE event arrives. The pulsing dot on the working pill ties to heartbeat freshness. Nothing fakes liveness.
@@ -227,10 +227,10 @@ v1 features preserved verbatim: `/tasks/<id>`, `/epics/<id>`, CSRF on mutations,
 ## References
 
 - Mockups:
-  - [fairway-wall-mockup.html](mockups/fairway-wall-mockup.html)
-  - [fairway-board-mockup.html](mockups/fairway-board-mockup.html)
+  - [fairway-wall-mockup.html](https://fairway.run/mockups/fairway-wall-mockup.html)
+  - [fairway-board-mockup.html](https://fairway.run/mockups/fairway-board-mockup.html)
 - v1 design doc: [dashboard.md](dashboard.md)
 - v1 multi-project: [multi-project.md](multi-project.md)
 - v1 hierarchy: [hierarchy.md](hierarchy.md)
-- Architecture change protocol: [../../AGENTS.md](../../AGENTS.md) (operating principle 10, "Update docs with code")
+- Architecture change protocol: [AGENTS.md](https://github.com/fairway-run/fairway/blob/main/AGENTS.md) (operating principle 10, "Update docs with code")
 - Backlog: [dashboard-redesign-backlog.yaml](dashboard-redesign-backlog.yaml)

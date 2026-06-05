@@ -1,0 +1,90 @@
+.hero {
+  background: #f6f8fb;
+  border-bottom: 1px solid #dbe2ea;
+}
+
+.heroInner {
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 72px 24px 64px;
+}
+
+.logo {
+  display: block;
+  height: auto;
+  margin-bottom: 28px;
+  width: 220px;
+}
+
+.hero h1 {
+  color: #172033;
+  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  letter-spacing: 0;
+  line-height: 1.02;
+  margin: 0 0 18px;
+  max-width: 760px;
+}
+
+.lede {
+  color: #536175;
+  font-size: 1.18rem;
+  line-height: 1.7;
+  max-width: 760px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.primary {
+  background: #244c5a;
+  border-color: #244c5a;
+}
+
+.features {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 42px 24px;
+}
+
+.feature {
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  padding: 22px;
+}
+
+.feature h3 {
+  color: #172033;
+  margin-top: 0;
+}
+
+.feature p {
+  color: #5e6c80;
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+
+.install {
+  margin: 0 auto 56px;
+  max-width: 960px;
+  padding: 0 24px;
+}
+
+.install pre {
+  background: #172033;
+  border-radius: 8px;
+  color: #f8fbfd;
+  padding: 22px;
+}
+
+@media (max-width: 840px) {
+  .features {
+    grid-template-columns: 1fr;
+  }
+}

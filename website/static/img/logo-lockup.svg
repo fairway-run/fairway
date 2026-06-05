@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="56" viewBox="0 0 280 56" fill="none" role="img" aria-label="fairway">
+  <g transform="translate(8 16)">
+    <line x1="4" y1="3" x2="4" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <line x1="20" y1="3" x2="20" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="12" cy="7" r="1.6" fill="currentColor"/>
+    <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
+    <circle cx="12" cy="17" r="1.6" fill="currentColor"/>
+  </g>
+  <text x="44" y="36"
+        font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="26" font-weight="700" letter-spacing="-0.4" fill="currentColor">fairway</text>
+</svg>

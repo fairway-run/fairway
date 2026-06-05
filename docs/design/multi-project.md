@@ -17,12 +17,12 @@ Every row in every table carries a `project_id` column (see [schema.md](schema.m
 ```toml
 [[project]]
 name = "gpuaas"
-path = "/Users/subash/dev/GPUasService"
+path = "/path/to/GPUasService"
 # db_path optional; defaults to <path>/.fairway/state.db
 
 [[project]]
 name = "fairway"
-path = "/Users/subash/dev/fairway"
+path = "/path/to/fairway"
 ```
 
 The registry is the only file outside of a project's own directory that fairway writes. Plain TOML; editing by hand is fine.

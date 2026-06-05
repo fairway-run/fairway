@@ -90,8 +90,9 @@ to a useful v1.
   checksums file.
 - `.github/workflows/release.yml` runs on `v*` tags and creates a draft GitHub
   release.
-- Homebrew tap publishing is intentionally left off until the v0.1 CLI is cut
-  and the binary name/artifact layout has settled.
+- Homebrew cask publishing is configured for `fairway-run/homebrew-tap`.
+  Tagged releases update the cask after GoReleaser builds archives, checksums,
+  and macOS signing/notarization.
 
 ## Remaining Work
 
@@ -113,7 +114,8 @@ to a useful v1.
    evidence rows, and `merge-ready` enforces missing `blocking` gates for the
    target task; dashboard grouping by task kind/profile has started, and
    task-level `review_domains` are enforced by `merge-ready`.
-3. Add Homebrew tap publishing after the first tagged release settles.
+3. Cut and verify the first tagged release through the GitHub Release and
+   Homebrew cask pipeline.
 4. Expand dashboard mutations beyond claim/status only when parity with CLI
    gates stays explicit.
 5. Expand TUI ergonomics beyond the current command loop when usage shows which

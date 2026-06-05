@@ -264,7 +264,7 @@ See [docs/design/hierarchy.md](design/hierarchy.md) for the hierarchy model and 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `default` | int | — | Priority assigned when `fairway add` / `fairway spawn` omits `--priority`. |
-| `levels` | []{rank,label,description?} | — | Optional label table. The stored value is always the integer `rank`; labels are display-time only. Omit `[task_priorities]` entirely to leave priority as a free integer with no labels. |
+| `levels` | `[]{rank,label,description?}` | — | Optional label table. The stored value is always the integer `rank`; labels are display-time only. Omit `[task_priorities]` entirely to leave priority as a free integer with no labels. |
 
 Lower `rank` is more urgent. Priority is cross-cutting — it overrides epic boundaries in `fairway ready` and dashboard backlog sort.
 

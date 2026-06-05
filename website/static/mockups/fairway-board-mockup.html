@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fairway · board (mockup)</title>
+<style>
+/* === shared tokens (also lives in tokens.css later) === */
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel-2: #1c2128;
+  --line: #30363d;
+  --text: #e6edf3;
+  --muted: #7d8590;
+  --good: #2ea043;
+  --warn: #d29922;
+  --bad: #f85149;
+  --accent: #58a6ff;
+  --claude: #ff7b3a;
+  --codex: #00c389;
+  --compass: #a78bfa;
+  --row-hover: rgba(88,166,255,.06);
+}
+[data-theme="light"] {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-2: #f0f2f5;
+  --line: #d9dee7;
+  --text: #182230;
+  --muted: #5a6678;
+  --good: #027a48;
+  --warn: #b54708;
+  --bad: #b42318;
+  --accent: #175cd3;
+  --claude: #e35d1a;
+  --codex: #027a48;
+  --compass: #6938c5;
+  --row-hover: rgba(23,92,211,.05);
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.5 -apple-system, "SF Pro Display", system-ui, sans-serif;
+  margin: 0; min-height: 100vh;
+  transition: background .2s, color .2s;
+}
+
+/* === header (consistent with wall) === */
+.header {
+  display: grid; grid-template-columns: 220px 1fr auto;
+  align-items: center; gap: 32px;
+  padding: 18px 32px;
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+.brand small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+.headline { display: flex; gap: 40px; justify-content: center; }
+.headline .stat { text-align: center; }
+.headline .num { font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -0.025em; }
+.headline .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-top: 4px; }
+.header-right { display: flex; gap: 12px; align-items: center; }
+.view-toggle {
+  display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; overflow: hidden;
+}
+.view-toggle a {
+  display: inline-block; padding: 7px 14px; font-size: 12px; font-weight: 600;
+  color: var(--muted); text-decoration: none;
+  border-right: 1px solid var(--line);
+}
+.view-toggle a:last-child { border-right: 0; }
+.view-toggle a:hover { color: var(--text); background: var(--panel-2); }
+.view-toggle a.active { color: var(--text); background: var(--panel-2); }
+.theme-toggle {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer;
+}
+
+/* === toolbar === */
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 16px 32px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 10;
+}
+.tb-left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tb-right { display: flex; gap: 8px; align-items: center; }
+.search {
+  position: relative;
+}
+.search input {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 8px 12px 8px 32px; font: inherit; font-size: 13px;
+  width: 280px;
+}
+.search::before {
+  content: '⌕'; position: absolute; left: 10px; top: 50%;
+  transform: translateY(-50%); color: var(--muted); font-size: 14px;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 10px;
+  font-size: 12px;
+}
+.chip b { color: var(--muted); font-weight: 500; margin-right: 2px; }
+.chip .x { color: var(--muted); cursor: pointer; opacity: .6; }
+.chip .x:hover { opacity: 1; }
+.chip.active-saved { border-color: var(--accent); color: var(--accent); }
+
+.tb-btn {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 7px 12px; font: inherit; font-size: 12px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.tb-btn:hover { background: var(--panel-2); }
+.tb-btn .caret { opacity: .5; font-size: 10px; }
+.tb-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* === selection bar === */
+.selection-bar {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(88,166,255,.10);
+  border-bottom: 1px solid rgba(88,166,255,.30);
+  padding: 10px 32px;
+  font-size: 13px;
+}
+.selection-bar b { color: var(--accent); }
+.selection-bar .actions { display: flex; gap: 8px; margin-left: auto; }
+.selection-bar .actions button {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 10px; font: inherit; font-size: 12px;
+  cursor: pointer;
+}
+.selection-bar .actions button:hover { background: var(--panel-2); }
+.selection-bar .clear { color: var(--muted); cursor: pointer; }
+
+/* === layout === */
+.layout {
+  display: grid; grid-template-columns: 1fr 320px;
+  gap: 24px; padding: 24px 32px;
+}
+
+/* === table === */
+.table-wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+table.tasks {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+table.tasks thead th {
+  position: sticky; top: 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 11px 12px;
+  text-align: left;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+table.tasks thead th:hover { color: var(--text); background: var(--panel-2); }
+table.tasks thead th .sort-ind {
+  display: inline-block; margin-left: 4px; opacity: .35; font-size: 10px;
+}
+table.tasks thead th.sorted-asc .sort-ind,
+table.tasks thead th.sorted-desc .sort-ind { opacity: 1; color: var(--accent); }
+table.tasks thead th.sel { width: 36px; cursor: default; }
+table.tasks tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+table.tasks tbody tr:last-child td { border-bottom: 0; }
+table.tasks tbody tr:hover { background: var(--row-hover); }
+table.tasks tbody tr.selected { background: rgba(88,166,255,.06); }
+table.tasks tbody tr.selected td:first-child { border-left: 2px solid var(--accent); padding-left: 10px; }
+
+table.tasks td.id { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; color: var(--muted); white-space: nowrap; }
+table.tasks td.title { font-weight: 500; }
+table.tasks td.title a { color: var(--text); text-decoration: none; }
+table.tasks td.title a:hover { color: var(--accent); }
+table.tasks td.role-cell { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+table.tasks td.when { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.tasks td.gates-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.status-pill {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+}
+.status-pill.todo        { background: rgba(125,133,144,.18); color: var(--muted); }
+.status-pill.in_progress { background: rgba(88,166,255,.15); color: var(--accent); }
+.status-pill.review      { background: rgba(210,153,34,.15); color: var(--warn); }
+.status-pill.blocked     { background: rgba(248,81,73,.15); color: var(--bad); }
+.status-pill.done        { background: rgba(46,160,67,.15); color: var(--good); }
+
+.kind-tag {
+  font-family: ui-monospace, monospace; font-size: 11px;
+  color: var(--muted);
+  background: var(--panel-2);
+  padding: 2px 6px; border-radius: 4px;
+  white-space: nowrap;
+}
+.gate-mini { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+.gate-mini .bar { width: 40px; height: 5px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.gate-mini .bar > span { display: block; height: 100%; background: var(--good); }
+.gate-mini .bar > span.warn { background: var(--warn); }
+.gate-mini .bar > span.bad  { background: var(--bad); }
+
+.owner {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px;
+}
+.owner .dot { width: 7px; height: 7px; border-radius: 50%; }
+.owner .dot.claude { background: var(--claude); }
+.owner .dot.codex  { background: var(--codex); }
+.owner .dot.compass{ background: var(--compass); }
+.owner.idle { color: var(--muted); }
+
+input[type=checkbox] { accent-color: var(--accent); cursor: pointer; }
+
+/* === column chooser dropdown (open in mockup) === */
+.dd-wrap { position: relative; display: inline-block; }
+.dd-menu {
+  position: absolute; top: 100%; right: 0; margin-top: 4px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px;
+  min-width: 240px; z-index: 5;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+}
+.dd-menu h5 {
+  margin: 4px 6px 8px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--muted); font-weight: 700;
+}
+.dd-menu label {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 5px;
+  font-size: 13px; cursor: pointer;
+}
+.dd-menu label:hover { background: var(--panel-2); }
+.dd-divider { height: 1px; background: var(--line); margin: 6px 0; }
+.dd-menu .item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border-radius: 5px;
+  font-size: 13px; cursor: pointer;
+}
+.dd-menu .item:hover { background: var(--panel-2); }
+.dd-menu .item .id { color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; margin-left: auto; }
+
+/* === footer / pagination === */
+.foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 12px; color: var(--muted);
+}
+.foot .pager { display: flex; gap: 4px; }
+.foot .pager button {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 5px;
+  padding: 4px 9px; font-size: 12px; cursor: pointer;
+}
+.foot .pager button[disabled] { opacity: .35; cursor: default; }
+
+/* === right rail (same as wall) === */
+.rail { display: flex; flex-direction: column; gap: 16px; }
+.rail-card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 18px;
+}
+.rail-card h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--muted); margin: 0 0 14px; font-weight: 700;
+}
+.gauge { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.gauge:last-child { margin-bottom: 0; }
+.gauge-ring { width: 40px; height: 40px; flex-shrink: 0; }
+.gauge-info { flex: 1; min-width: 0; }
+.gauge-info .name { font-size: 13px; font-weight: 600; }
+.gauge-info .pct { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.ticker { display: flex; flex-direction: column; gap: 10px; }
+.tick { display: flex; gap: 7px; font-size: 13px; align-items: baseline; }
+.tick .who { font-weight: 700; }
+.tick .what { color: var(--text); opacity: .85; }
+.tick .when { color: var(--muted); font-size: 11px; margin-left: auto; font-family: ui-monospace, monospace; }
+
+.footer-note {
+  padding: 12px 32px 24px;
+  color: var(--muted); font-size: 11px; text-align: center;
+}
+.footer-note code {
+  background: var(--panel); padding: 2px 6px; border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+/* === keyboard shortcut overlay (closed by default) === */
+.kbd-card {
+  display: none;
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 18px; font-size: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.4);
+  z-index: 20;
+}
+.kbd-card.open { display: block; }
+.kbd-card h4 { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.kbd-card .row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; }
+.kbd-card kbd {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 6px; font-family: ui-monospace, monospace; font-size: 11px;
+}
+.kbd-fab {
+  position: fixed; bottom: 16px; right: 16px;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--panel); color: var(--muted);
+  border: 1px solid var(--line); cursor: pointer;
+  font-size: 12px; font-weight: 700;
+  z-index: 19;
+}
+.kbd-fab:hover { color: var(--text); }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="header">
+  <div class="brand">fairway <small>· board</small></div>
+  <div class="headline">
+    <div class="stat"><div class="num">347</div><div class="lbl">tasks</div></div>
+    <div class="stat"><div class="num">15</div><div class="lbl">ready</div></div>
+    <div class="stat"><div class="num">18</div><div class="lbl">in progress</div></div>
+    <div class="stat"><div class="num">6</div><div class="lbl">blocked</div></div>
+    <div class="stat"><div class="num">293</div><div class="lbl">done</div></div>
+  </div>
+  <div class="header-right">
+    <div class="view-toggle">
+      <a href="fairway-wall-mockup.html">Wall</a>
+      <a href="fairway-board-mockup.html" class="active">Board</a>
+    </div>
+    <button class="theme-toggle" id="theme-toggle">☼ light</button>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="tb-left">
+    <div class="search"><input type="search" placeholder="Search id, title, path…" /></div>
+    <div class="chip"><b>profile:</b>platform-foundation<span class="x">×</span></div>
+    <div class="chip"><b>status:</b>in_progress, todo<span class="x">×</span></div>
+    <div class="chip active-saved">★ My active work</div>
+  </div>
+  <div class="tb-right">
+    <div class="dd-wrap">
+      <button class="tb-btn" id="cols-btn">Columns <span class="caret">▾</span></button>
+      <div class="dd-menu" id="cols-menu" style="display: none;">
+        <h5>Show columns</h5>
+        <label><input type="checkbox" checked> ID</label>
+        <label><input type="checkbox" checked> Title</label>
+        <label><input type="checkbox" checked> Role</label>
+        <label><input type="checkbox" checked> Status</label>
+        <label><input type="checkbox" checked> Kind</label>
+        <label><input type="checkbox" checked> Started</label>
+        <label><input type="checkbox" checked> Last activity</label>
+        <label><input type="checkbox" checked> Gates</label>
+        <label><input type="checkbox" checked> Owner</label>
+        <div class="dd-divider"></div>
+        <label><input type="checkbox"> Profile</label>
+        <label><input type="checkbox"> Owning domain</label>
+        <label><input type="checkbox"> Risk</label>
+        <label><input type="checkbox"> Review domain</label>
+        <label><input type="checkbox"> Created</label>
+      </div>
+    </div>
+    <div class="dd-wrap">
+      <button class="tb-btn" id="views-btn">★ Saved views <span class="caret">▾</span></button>
+      <div class="dd-menu" id="views-menu" style="display: none;">
+        <h5>My views</h5>
+        <div class="item">My active work <span class="id">⌘1</span></div>
+        <div class="item">Blocked &gt;24h <span class="id">⌘2</span></div>
+        <div class="item">Pending review (governance) <span class="id">⌘3</span></div>
+        <div class="dd-divider"></div>
+        <h5>Team views</h5>
+        <div class="item">platform-foundation epics</div>
+        <div class="item">release-evidence gaps</div>
+        <div class="dd-divider"></div>
+        <div class="item">＋ Save current view…</div>
+      </div>
+    </div>
+    <button class="tb-btn">Export <span class="caret">▾</span></button>
+  </div>
+</div>
+
+<div class="selection-bar" id="sel-bar">
+  <b>3 selected</b>
+  <span class="clear" id="clear-sel">clear</span>
+  <div class="actions">
+    <button>Claim</button>
+    <button>Hand off to…</button>
+    <button>Set status…</button>
+    <button>Record evidence…</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div>
+    <div class="table-wrap">
+      <table class="tasks" id="tasks">
+        <thead>
+          <tr>
+            <th class="sel"><input type="checkbox" id="sel-all"></th>
+            <th data-col="id">ID<span class="sort-ind">↕</span></th>
+            <th data-col="title">Title<span class="sort-ind">↕</span></th>
+            <th data-col="role">Role<span class="sort-ind">↕</span></th>
+            <th data-col="status">Status<span class="sort-ind">↕</span></th>
+            <th data-col="kind">Kind<span class="sort-ind">↕</span></th>
+            <th data-col="started" class="sorted-desc">Started<span class="sort-ind">↓</span></th>
+            <th data-col="last_activity">Last activity<span class="sort-ind">↕</span></th>
+            <th data-col="gates">Gates<span class="sort-ind">↕</span></th>
+            <th data-col="owner">Owner<span class="sort-ind">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="foot">
+        <div>Showing 1–25 of 347 · filter chips reflect URL state</div>
+        <div class="pager">
+          <button disabled>‹ Prev</button>
+          <button>Next ›</button>
+          <button>Last »</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rail">
+    <div class="rail-card">
+      <h3>Gate Readiness</h3>
+      <div class="gauge">
+        <svg class="gauge-ring" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--panel-2)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--good)" stroke-width="3"
+            stroke-dasharray="93 100" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        </svg>
+        <div class="gauge-info"><div class="name">ownership-map</div><div class="pct">28 / 30 satisfied</div></div>
+      </div>
+      <div class="gauge">
+        <svg class="gauge-ring" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--panel-2)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--good)" stroke-width="3"
+            stroke-dasharray="70 100" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        </svg>
+        <div class="gauge-info"><div class="name">architecture-map</div><div class="pct">19 / 27 satisfied</div></div>
+      </div>
+      <div class="gauge">
+        <svg class="gauge-ring" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--panel-2)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--warn)" stroke-width="3"
+            stroke-dasharray="35 100" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        </svg>
+        <div class="gauge-info"><div class="name">boundary-guard</div><div class="pct">13 / 37 satisfied</div></div>
+      </div>
+    </div>
+
+    <div class="rail-card">
+      <h3>Recent Activity</h3>
+      <div class="ticker">
+        <div class="tick"><span class="who" style="color: var(--claude);">Claude</span><span class="what">submitted T-042 for review</span><span class="when">just now</span></div>
+        <div class="tick"><span class="who" style="color: var(--compass);">compass-agent</span><span class="what">claimed T-047</span><span class="when">14s</span></div>
+        <div class="tick"><span class="who" style="color: var(--codex);">Codex</span><span class="what">handed off T-046 to ops</span><span class="when">38s</span></div>
+        <div class="tick"><span class="who" style="color: var(--claude);">Claude</span><span class="what">recorded evidence for T-035</span><span class="when">1m</span></div>
+        <div class="tick"><span class="who" style="color: var(--codex);">Codex</span><span class="what">marked T-029 done</span><span class="when">1m</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-note">
+  mockup · would render at <code>/board</code> · header view-toggle flips to <code>/wall</code> · filters and sort encoded in URL query string for shareable links
+</div>
+
+<!-- keyboard cheatsheet -->
+<button class="kbd-fab" id="kbd-fab" title="Keyboard shortcuts">?</button>
+<div class="kbd-card" id="kbd-card">
+  <h4>Keyboard</h4>
+  <div class="row"><span>Move row</span><span><kbd>j</kbd> / <kbd>k</kbd></span></div>
+  <div class="row"><span>Open task</span><kbd>↵</kbd></div>
+  <div class="row"><span>Search</span><kbd>/</kbd></div>
+  <div class="row"><span>Toggle columns</span><kbd>c</kbd></div>
+  <div class="row"><span>Saved views</span><kbd>v</kbd></div>
+  <div class="row"><span>Select row</span><kbd>x</kbd></div>
+  <div class="row"><span>Set status</span><kbd>s</kbd></div>
+  <div class="row"><span>Hand off</span><kbd>h</kbd></div>
+  <div class="row"><span>Toggle theme</span><kbd>t</kbd></div>
+  <div class="row"><span>Wall view</span><kbd>g</kbd> <kbd>w</kbd></div>
+  <div class="row"><span>Close</span><kbd>esc</kbd></div>
+</div>
+
+<script>
+// === sample data (matches the gpuas-backend feel) ===
+const PROVIDERS = { claude: 'Claude', codex: 'Codex', compass: 'compass-agent' };
+const ROWS = [
+  {id:'T-042', title:'evidence rows for ownership map', role:'backend', status:'in_progress', kind:'architecture-map', started:'2m', last:'14s', gates:[0,1,'warn'], owner:'claude', selected:true},
+  {id:'T-043', title:'swim-lane CSS', role:'frontend', status:'in_progress', kind:'task', started:'45s', last:'4s', gates:[1,1,'good'], owner:'codex', selected:true},
+  {id:'T-047', title:'release prep · v0.2.0', role:'ops', status:'in_progress', kind:'release-evidence', started:'5m', last:'1s', gates:[2,3,'warn'], owner:'compass', selected:true},
+  {id:'T-046', title:'dark theme polish', role:'frontend', status:'in_progress', kind:'task', started:'8m', last:'2m', gates:[1,1,'good'], owner:'codex'},
+  {id:'T-052', title:'goreleaser tag bump', role:'ops', status:'in_progress', kind:'task', started:'12m', last:'3m', gates:[1,1,'good'], owner:'compass'},
+  {id:'T-041', title:'cost projection schema', role:'backend', status:'review', kind:'release-evidence', started:'1h', last:'12m', gates:[1,1,'good'], owner:'claude'},
+  {id:'T-040', title:'usage-event outbox migration', role:'backend', status:'review', kind:'release-evidence', started:'2h', last:'45m', gates:[1,1,'good'], owner:'claude'},
+  {id:'T-037', title:'rate-limit middleware tests', role:'backend', status:'review', kind:'task', started:'3h', last:'1h', gates:[1,1,'good'], owner:null},
+  {id:'T-034', title:'audit log retention policy', role:'backend', status:'review', kind:'task', started:'4h', last:'2h', gates:[0,1,'warn'], owner:null},
+  {id:'T-039', title:'lane card hover state', role:'frontend', status:'review', kind:'task', started:'5h', last:'2h', gates:[1,1,'good'], owner:'codex'},
+  {id:'T-049', title:'billing audit suite', role:'backend', status:'todo', kind:'task', started:'-', last:'-', gates:[0,2,'bad'], owner:null},
+  {id:'T-061', title:'outbox dlq backfill', role:'backend', status:'todo', kind:'task', started:'-', last:'-', gates:[0,1,'warn'], owner:null},
+  {id:'T-067', title:'alarm rule sync', role:'backend', status:'todo', kind:'bug', started:'-', last:'-', gates:[0,1,'warn'], owner:null},
+  {id:'T-051', title:'filter chip layout', role:'frontend', status:'todo', kind:'task', started:'-', last:'-', gates:[0,1,'warn'], owner:null},
+  {id:'T-053', title:'state machine v2 sketch', role:'architecture', status:'todo', kind:'architecture-map', started:'-', last:'-', gates:[0,2,'bad'], owner:null},
+  {id:'T-063', title:'MFA gate for sensitive ops', role:'security', status:'todo', kind:'task', started:'-', last:'-', gates:[0,1,'warn'], owner:null},
+  {id:'T-070', title:'cost report contract', role:'backend', status:'todo', kind:'release-evidence', started:'-', last:'-', gates:[0,2,'bad'], owner:null},
+  {id:'T-073', title:'event hash collision repro', role:'backend', status:'blocked', kind:'bug', started:'1d', last:'6h', gates:[0,1,'bad'], owner:null},
+  {id:'T-074', title:'workspace quota composition', role:'backend', status:'blocked', kind:'architecture-map', started:'2d', last:'1d', gates:[0,1,'bad'], owner:null},
+  {id:'T-031', title:'workspace audit endpoint', role:'backend', status:'done', kind:'task', started:'1d', last:'4h', gates:[1,1,'good'], owner:'claude'},
+  {id:'T-035', title:'iam role binding sweep', role:'backend', status:'done', kind:'task', started:'1d', last:'5h', gates:[1,1,'good'], owner:'claude'},
+  {id:'T-029', title:'sidebar collapse anim', role:'frontend', status:'done', kind:'task', started:'2d', last:'1d', gates:[1,1,'good'], owner:'codex'},
+  {id:'T-038', title:'release notes generator', role:'ops', status:'done', kind:'task', started:'2d', last:'1d', gates:[1,1,'good'], owner:'compass'},
+  {id:'T-022', title:'state-machine v1 spec', role:'architecture', status:'done', kind:'architecture-map', started:'4d', last:'3d', gates:[1,1,'good'], owner:null},
+  {id:'T-019', title:'governance routing audit', role:'governance', status:'done', kind:'task', started:'5d', last:'4d', gates:[1,1,'good'], owner:'claude'},
+];
+
+const ownerLabel = o => o ? PROVIDERS[o] : 'unassigned';
+
+function render() {
+  const tbody = document.getElementById('rows');
+  tbody.innerHTML = ROWS.map(r => `
+    <tr class="${r.selected ? 'selected' : ''}" data-id="${r.id}">
+      <td><input type="checkbox" ${r.selected ? 'checked' : ''} class="row-sel" data-id="${r.id}"></td>
+      <td class="id">${r.id}</td>
+      <td class="title"><a href="#">${r.title}</a></td>
+      <td class="role-cell">${r.role}</td>
+      <td><span class="status-pill ${r.status}">${r.status.replace('_',' ')}</span></td>
+      <td><span class="kind-tag">${r.kind}</span></td>
+      <td class="when">${r.started}</td>
+      <td class="when">${r.last}</td>
+      <td class="gates-cell">
+        <div class="gate-mini">
+          <span>${r.gates[0]}/${r.gates[1]}</span>
+          <span class="bar"><span class="${r.gates[2]==='good'?'':r.gates[2]}" style="width:${r.gates[1]?(r.gates[0]/r.gates[1])*100:0}%"></span></span>
+        </div>
+      </td>
+      <td>
+        ${r.owner
+          ? `<span class="owner"><span class="dot ${r.owner}"></span>${ownerLabel(r.owner)}</span>`
+          : `<span class="owner idle">unassigned</span>`}
+      </td>
+    </tr>
+  `).join('');
+}
+
+render();
+
+// theme toggle
+const themeBtn = document.getElementById('theme-toggle');
+themeBtn.addEventListener('click', () => {
+  const isLight = document.body.dataset.theme === 'light';
+  document.body.dataset.theme = isLight ? 'dark' : 'light';
+  themeBtn.textContent = isLight ? '☼ light' : '☾ dark';
+});
+
+// open dropdowns (initially closed; click to open)
+function bindDD(btnId, menuId) {
+  const btn = document.getElementById(btnId);
+  const menu = document.getElementById(menuId);
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const open = menu.style.display === 'block';
+    document.querySelectorAll('.dd-menu').forEach(m => m.style.display = 'none');
+    menu.style.display = open ? 'none' : 'block';
+  });
+}
+bindDD('cols-btn', 'cols-menu');
+bindDD('views-btn', 'views-menu');
+document.addEventListener('click', () => {
+  document.querySelectorAll('.dd-menu').forEach(m => m.style.display = 'none');
+});
+
+// row selection bar wiring (just for the static demo)
+document.getElementById('clear-sel').addEventListener('click', () => {
+  document.querySelectorAll('.row-sel').forEach(c => c.checked = false);
+  document.querySelectorAll('tr.selected').forEach(r => r.classList.remove('selected'));
+  document.getElementById('sel-bar').style.display = 'none';
+});
+document.querySelectorAll('.row-sel').forEach(cb => cb.addEventListener('change', e => {
+  const tr = e.target.closest('tr');
+  tr.classList.toggle('selected', e.target.checked);
+  const n = document.querySelectorAll('.row-sel:checked').length;
+  const bar = document.getElementById('sel-bar');
+  bar.style.display = n ? 'flex' : 'none';
+  bar.querySelector('b').textContent = n + ' selected';
+}));
+
+// sortable header toggling (visual only)
+document.querySelectorAll('thead th[data-col]').forEach(th => th.addEventListener('click', () => {
+  const cur = th.classList.contains('sorted-asc') ? 'asc' : (th.classList.contains('sorted-desc') ? 'desc' : null);
+  document.querySelectorAll('thead th').forEach(o => { o.classList.remove('sorted-asc','sorted-desc'); o.querySelector('.sort-ind').textContent = '↕'; });
+  if (cur === 'asc') { th.classList.add('sorted-desc'); th.querySelector('.sort-ind').textContent = '↓'; }
+  else { th.classList.add('sorted-asc'); th.querySelector('.sort-ind').textContent = '↑'; }
+}));
+
+// keyboard cheatsheet toggle
+const kbdFab = document.getElementById('kbd-fab');
+const kbdCard = document.getElementById('kbd-card');
+kbdFab.addEventListener('click', e => { e.stopPropagation(); kbdCard.classList.toggle('open'); });
+document.addEventListener('keydown', e => {
+  if (e.key === '?' || (e.key === '/' && e.target === document.body)) {
+    e.preventDefault();
+    kbdCard.classList.toggle('open');
+  }
+  if (e.key === 'Escape') kbdCard.classList.remove('open');
+  if (e.key === 't' && e.target === document.body) themeBtn.click();
+});
+document.addEventListener('click', e => {
+  if (!kbdCard.contains(e.target) && e.target !== kbdFab) kbdCard.classList.remove('open');
+});
+</script>
+
+</body>
+</html>

@@ -14,11 +14,10 @@ Fairway task.
 - `doc/governance/Workflow_Regression_Packs.yaml` or
   `examples/gpuaas-regression-packs.yaml` for catalog validation.
 
-The exact config mirrors the current sibling worktree layout under
-`/Users/subash/dev/gpuas-A-backend`, `/Users/subash/dev/gpuas-B-ui`, and so on:
-`root = ".."` and `naming = "gpuas-{role}"`. For a fully isolated disposable
-parity run, change `root` to something like `../worktrees` before running
-`fairway worktree setup`.
+The exact config mirrors a sibling worktree layout such as
+`../gpuas-A-backend`, `../gpuas-B-ui`, and so on: `root = ".."` and
+`naming = "gpuas-{role}"`. For a fully isolated disposable parity run, change
+`root` to something like `../worktrees` before running `fairway worktree setup`.
 
 ## Setup
 

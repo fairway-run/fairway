@@ -82,18 +82,62 @@ Expected secret split:
 | `FAIRWAY_CLOUDFLARE_ZONE_ID` | Zone id for `fairway.run`. |
 | `FAIRWAY_PAGES_PROJECT` | Cloudflare Pages project name. |
 
+Minimum Cloudflare token permissions:
+
+| Scope | Permission | Why |
+|---|---|---|
+| Account / selected Fairway account | Cloudflare Pages Edit or Pages Write | Create/update Pages projects and publish deployments. |
+| Account / selected Fairway account | Account Settings Read | Resolve account metadata during Pages deploy/setup tooling. |
+| Zone / `fairway.run` only | DNS Edit or DNS Write | Create/update `fairway.run`, `www.fairway.run`, and `docs.fairway.run` DNS records. |
+| Zone / `fairway.run` only | Zone Read | Resolve the zone and validate custom-domain routing. |
+
+If Cloudflare Pages is connected directly to GitHub and Cloudflare owns deploys,
+the CI token may not need DNS write after initial custom-domain setup. Keep DNS
+write on a setup/admin token when possible, and use a narrower Pages-only deploy
+token for routine GitHub Actions deploys.
+
+Local Fairway Cloudflare credentials may be stored in
+`.env.cloudflare.fairway-run`. The file is ignored by git and must not be
+printed, committed, or mixed with Core42/Core42.dev credentials.
+
+## Docs portal edge security
+
+Do not assume Cloudflare Pages alone is the complete security posture. The docs
+portal setup should explicitly verify the following before the site is treated as
+production-ready:
+
+- Cloudflare bot protection is enabled for `fairway.run` using the available
+  plan capability, such as Bot Fight Mode, Super Bot Fight Mode, or an
+  equivalent managed bot rule.
+- Security headers are shipped from the Pages project, normally through a
+  `_headers` file in the static output path:
+  - `X-Frame-Options: DENY`
+  - `X-Content-Type-Options: nosniff`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy` with unused browser features disabled
+  - `Content-Security-Policy` appropriate for the generated Docusaurus assets
+- The Pages preview host is not indexed if preview deployments are public. Use
+  `X-Robots-Tag: noindex` for `*.pages.dev` preview hosts where appropriate.
+- Custom-domain routing is verified for `fairway.run`, `www.fairway.run`, and
+  `docs.fairway.run`.
+- Any WAF/bot challenge rule is checked against normal docs traffic, GitHub
+  release downloads, Homebrew install paths, and legitimate search crawlers.
+
 Cloudflare setup belongs to its own tracked task because it includes domain,
 token, static-site, and public-content boundary decisions.
 
 ## Pre-1.0 distribution
 
-- Local checkout install: `make install` (defaults to `~/.local/bin/fairway`).
-- `go install github.com/fairway-run/fairway/cmd/fairway@latest`.
+- Homebrew cask for tagged releases:
+  `brew tap fairway-run/tap && brew install --cask fairway`.
 - Direct downloads from GitHub Releases.
+- Source install before the first tag:
+  `go install github.com/fairway-run/fairway/cmd/fairway@latest`.
+- Local checkout install: `make install` (defaults to `~/.local/bin/fairway`).
 
 ## Post-1.0 distribution
 
-- Homebrew cask: `brew tap fairway-run/tap && brew install --cask fairway`.
+- Homebrew cask remains the primary macOS path.
 - Possibly Scoop, Nix, AUR — community-contributed.
 
 ## Yanking a release

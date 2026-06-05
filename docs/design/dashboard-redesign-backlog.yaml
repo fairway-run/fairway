@@ -885,4 +885,39 @@ tasks:
       - Fairway Cloudflare API token, account id, zone id, and Pages project secrets are separate from Core42/core42.dev credentials.
       - Deploy workflow lists required secret names but never stores secret values in repo.
       - Public docs exclude GPUaaS-private, Core42-private, credential, customer, and internal deployment details unless explicitly sanitized.
+      - Cloudflare bot protection posture is explicitly configured or documented for fairway.run; do not rely on an unstated default.
+      - Docusaurus output includes Pages security headers for frame denial, content-type sniffing prevention, referrer policy, permissions policy, and CSP.
+      - Pages preview hosts are prevented from indexing when public preview URLs are enabled.
+      - Post-deploy checks verify custom domains, security headers, bot/WAF behavior, and legitimate crawler/install-path access.
       - README and quickstart point readers to the public docs portal once the site is live.
+
+  - id: FW-172
+    title: Review Docusaurus portal dependency audit and supply-chain posture
+    kind: task
+    role: governance
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: docs-portal-security
+    source_paths:
+      - website/package.json
+      - website/package-lock.json
+      - .github/workflows/docs-portal.yml
+      - docs/docs-portal.md
+    target_paths:
+      - website/package.json
+      - website/package-lock.json
+      - .github/workflows/docs-portal.yml
+      - docs/docs-portal.md
+    review_domains:
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: docs-portal
+    depends_on:
+      - FW-171
+    acceptance_checks:
+      - npm audit output for the Docusaurus portal is reviewed and classified.
+      - Any actionable high or critical issue is fixed, pinned, waived with rationale, or tracked as upstream dependency risk.
+      - GitHub Actions workflow uses pinned major versions and does not expose Cloudflare secrets to pull_request workflows.
+      - Portal dependency update cadence is documented.
+      - Public docs site build remains green after any dependency changes.

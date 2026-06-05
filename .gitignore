@@ -3,6 +3,9 @@
 fairway.exe
 /dist/
 /bin/
+/website/build/
+/website/.docusaurus/
+/website/node_modules/
 
 # State
 .fairway/state.db
@@ -18,6 +21,7 @@ fairway.exe
 
 # Local release credentials
 .apple-app-specific.env
+.env.cloudflare.fairway-run
 
 # OS
 .DS_Store
