@@ -30,5 +30,6 @@ and uses semantic versioning.
   and governance; historical GPUaaS adoption and dashboard redesign material
   moved to archive/provenance.
 - GoReleaser cask metadata now uses the repository's Apache-2.0 license.
-- Release workflow uses GoReleaser OSS for CLI binary signing/notarization
-  instead of requiring GoReleaser Pro.
+- Release workflow uses GoReleaser OSS with native macOS `codesign` and
+  `notarytool` hooks for CLI binary signing/notarization instead of requiring
+  GoReleaser Pro.

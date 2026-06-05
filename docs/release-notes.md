@@ -70,6 +70,7 @@ Homebrew cask publish cleanly.
 - Homebrew tap repository has an initialized `main` branch.
 - Required release secrets are configured on `fairway-run/fairway`:
   `HOMEBREW_TAP_GITHUB_TOKEN`, `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`,
-  `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`, and `MACOS_NOTARY_ISSUER_ID`.
+  `MACOS_CODESIGN_IDENTITY`, `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`, and
+  `MACOS_NOTARY_ISSUER_ID`.
 - Local signing/notarization smoke has passed with ignored certificate artifacts.
 - Homebrew cask update is verified after the tagged release publishes.

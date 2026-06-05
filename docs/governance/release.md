@@ -27,10 +27,11 @@ Semver. Pre-1.0 means breaking changes are allowed in minor versions; document t
 - Archives: `fairway_<version>_<os>_<arch>.tar.gz`.
 - Checksums: `fairway_<version>_checksums.txt`.
 - GitHub Releases are published from `fairway-run/fairway`.
-- The macOS CLI binaries are signed and notarized with GoReleaser OSS before
-  Homebrew publishing when the Apple release secrets are configured. GoReleaser
-  Pro is not required unless Fairway later ships macOS app bundles, DMGs, or
-  PKGs.
+- The macOS CLI binaries are signed with native `codesign` and submitted with
+  native `notarytool` from the macOS release runner before Homebrew publishing.
+  GoReleaser OSS still drives the release, archives, checksums, GitHub release,
+  and cask update. GoReleaser Pro is not required unless Fairway later ships
+  macOS app bundles, DMGs, or PKGs.
 
 ## CI release flow
 
@@ -82,6 +83,7 @@ release tag:
 | `HOMEBREW_TAP_GITHUB_TOKEN` | Fine-scoped token with write access to `fairway-run/homebrew-tap`. |
 | `MACOS_SIGN_P12` | Base64-encoded Developer ID Application `.p12` certificate. |
 | `MACOS_SIGN_PASSWORD` | Password for the `.p12` certificate. |
+| `MACOS_CODESIGN_IDENTITY` | Developer ID Application identity fingerprint or exact name used by native `codesign`. |
 | `MACOS_NOTARY_KEY` | Base64-encoded App Store Connect `.p8` API key. |
 | `MACOS_NOTARY_KEY_ID` | App Store Connect API key id. |
 | `MACOS_NOTARY_ISSUER_ID` | App Store Connect issuer id. |
@@ -93,55 +95,64 @@ secrets. CI should use the App Store Connect API key secrets above.
 
 ## macOS signing and notarization baseline
 
-Fairway uses Developer ID signing and GoReleaser OSS binary notarization for
-macOS CLI artifacts. The current local baseline is:
+Fairway uses Developer ID signing and native Apple notarization for macOS CLI
+artifacts. The current release baseline is:
 
 - Certificate type: `Developer ID Application`.
 - Certificate chain: `Developer ID Application -> Developer ID Certification
   Authority -> Apple Root CA`.
 - Team identifier: Apple Developer team id for the Fairway release account.
-- Hardened runtime: enabled through GoReleaser cross-platform binary signing
-  and notarization config.
+- Hardened runtime: enabled by the release hook with `codesign --options
+  runtime`.
 - Notarization auth: App Store Connect API key, not Apple ID password auth.
 
 GoReleaser Pro is only needed if Fairway later ships native app bundles,
 macOS DMGs, or macOS PKGs. The first release distributes a CLI binary, so the
-OSS binary notarization path is sufficient.
+OSS release path plus native macOS build hooks is sufficient.
 
 For the first `v0.1.0` release, use the working Developer ID certificate from
-the previous Sub-CA if the G2 chain is not trusted locally. Previous Sub-CA
-certificates created after February 1, 2022 expire on February 1, 2027; revisit
-G2 signing before that date.
+the previous Sub-CA. The G2 certificate is available, but local validation showed
+that `codesign` will not build the G2 chain until the Developer ID G2
+intermediate is trusted from the System chain. Previous Sub-CA certificates
+created after February 1, 2022 expire on February 1, 2027; switch to G2 well
+before that date and require a passing local/CI `codesign --verify --strict`
+check before publishing.
 
 Local release material lives under ignored paths only:
 
 | Local path | Purpose |
 |---|---|
-| `dist/certs/developerID_application_previous-subCA.p12` | Developer ID Application certificate and private key. |
-| `dist/certs/developerID_application_previous-subCA.p12.base64` | Value source for `MACOS_SIGN_P12`. |
-| `dist/certs/macos-sign-p12-password.local` | Value source for `MACOS_SIGN_PASSWORD`. |
-| `dist/certs/AuthKey_<KEY_ID>.p8` | App Store Connect notary API key. |
-| `dist/certs/AuthKey_<KEY_ID>.p8.base64` | Value source for `MACOS_NOTARY_KEY`. |
+| `.release-certs/developerID_application_identities.p12` | Local Developer ID signing bundle. |
+| `.release-certs/developerID_application_identities.p12.base64` | Value source for `MACOS_SIGN_P12`. |
+| `.release-certs/macos-sign-p12-password.local` | Value source for `MACOS_SIGN_PASSWORD`. |
+| `.release-certs/AuthKey_<KEY_ID>.p8` | App Store Connect notary API key. |
+| `.release-certs/AuthKey_<KEY_ID>.p8.base64` | Value source for `MACOS_NOTARY_KEY`. |
 | `.apple-app-specific.env` | Local-only Apple release environment values. |
 
 Back up these files outside git, for example under the operator's private
 iCloud project folder. Do not place certificate passwords, private keys, API
-keys, issuer ids, or key ids in public docs or task evidence.
+keys, issuer ids, or key ids in public docs or task evidence. Do not use
+`dist/certs/` for durable release credentials because GoReleaser cleans
+`dist/`.
 
 Set release secrets without echoing values:
 
 ```bash
 gh secret set MACOS_SIGN_P12 \
   --repo fairway-run/fairway \
-  < dist/certs/developerID_application_previous-subCA.p12.base64
+  < .release-certs/developerID_application_identities.p12.base64
 
 gh secret set MACOS_SIGN_PASSWORD \
   --repo fairway-run/fairway \
-  < dist/certs/macos-sign-p12-password.local
+  < .release-certs/macos-sign-p12-password.local
+
+gh secret set MACOS_CODESIGN_IDENTITY \
+  --repo fairway-run/fairway \
+  --body "$MACOS_CODESIGN_IDENTITY"
 
 gh secret set MACOS_NOTARY_KEY \
   --repo fairway-run/fairway \
-  < dist/certs/AuthKey_<KEY_ID>.p8.base64
+  < .release-certs/AuthKey_<KEY_ID>.p8.base64
 
 gh secret set MACOS_NOTARY_KEY_ID \
   --repo fairway-run/fairway \
@@ -172,7 +183,7 @@ submit the zip to `notarytool` with the App Store Connect API key:
 
 ```bash
 xcrun notarytool submit fairway.zip \
-  --key dist/certs/AuthKey_<KEY_ID>.p8 \
+  --key .release-certs/AuthKey_<KEY_ID>.p8 \
   --key-id "$MACOS_NOTARY_KEY_ID" \
   --issuer "$MACOS_NOTARY_ISSUER_ID" \
   --wait

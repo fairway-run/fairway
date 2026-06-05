@@ -24,6 +24,7 @@ fairway.exe
 .env.cloudflare.fairway-run
 .git-homebrw-tap.env
 .git-homebrew-tap.env
+.release-certs/
 
 # OS
 .DS_Store

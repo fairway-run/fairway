@@ -20,6 +20,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
+    hooks:
+      post:
+        - ./scripts/release/macos_sign_notarize_binary.sh "{{ .Path }}" "{{ .Os }}" "{{ .Arch }}"
 
 archives:
   - id: fairway
@@ -49,21 +52,6 @@ release:
     name: fairway
   draft: true
   replace_existing_draft: true
-
-notarize:
-  macos:
-    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
-      ids:
-        - fairway
-      sign:
-        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
-        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
-      notarize:
-        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
-        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
-        key: "{{ .Env.MACOS_NOTARY_KEY }}"
-        wait: true
-        timeout: 20m
 
 homebrew_casks:
   - name: fairway
