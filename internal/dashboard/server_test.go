@@ -641,14 +641,15 @@ func TestDashboardAssetsServeLogo(t *testing.T) {
 
 func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 	data := struct {
-		View         string
-		Groups       []RoleGroup
-		GateGroups   []GateGroup
-		Sessions     []store.Session
-		Checkpoints  []store.Checkpoint
-		Activity     []store.Activity
-		TaskRoles    map[string]string
-		ActiveReport reconcile.ActiveReport
+		View                 string
+		Groups               []RoleGroup
+		MissingReviewDomains map[string][]string
+		GateGroups           []GateGroup
+		Sessions             []store.Session
+		Checkpoints          []store.Checkpoint
+		Activity             []store.Activity
+		TaskRoles            map[string]string
+		ActiveReport         reconcile.ActiveReport
 	}{
 		View: "wall",
 		Groups: []RoleGroup{
@@ -665,13 +666,15 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 					{Definition: store.TaskDefinition{ID: "T-004", Title: "More backlog one", Role: "backend"}, Status: "todo"},
 					{Definition: store.TaskDefinition{ID: "T-005", Title: "More backlog two", Role: "backend"}, Status: "todo"},
 					{Definition: store.TaskDefinition{ID: "T-006", Title: "More backlog three", Role: "backend"}, Status: "todo"},
+					{Definition: store.TaskDefinition{ID: "T-007", Title: "Domain review task", Role: "backend", ReviewDomains: []string{"ops", "backend"}}, Status: "done", ReviewStatus: "approved"},
 				},
 			},
 			{Role: "ui"},
 		},
-		GateGroups: []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
-		Sessions:   []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
-		TaskRoles:  map[string]string{"T-002": "backend"},
+		MissingReviewDomains: map[string][]string{"T-007": {"ops", "backend"}},
+		GateGroups:           []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
+		Sessions:             []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
+		TaskRoles:            map[string]string{"T-002": "backend"},
 		Checkpoints: []store.Checkpoint{{
 			TaskID:  "T-002",
 			State:   "active",
@@ -716,6 +719,10 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		"Backlog task",
 		"Working task",
 		"Done task",
+		"Domain review task",
+		"missing",
+		"<code>ops</code>",
+		"<code>backend</code>",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("wall template missing %q:\n%s", want, body)
@@ -733,7 +740,7 @@ func TestWallLanesPreferRecentlyUpdatedActiveTasks(t *testing.T) {
 	if groups[0].Current == nil || groups[0].Current.Definition.ID != "NEW-001" {
 		t.Fatalf("current = %#v, want NEW-001", groups[0].Current)
 	}
-	claimed := wallLaneTasks(groups[0].Tasks, "claimed", nil)
+	claimed := wallLaneTasks(groups[0].Tasks, "claimed", nil, nil)
 	if len(claimed) != 2 {
 		t.Fatalf("claimed count = %d, want 2", len(claimed))
 	}
@@ -743,13 +750,24 @@ func TestWallLanesPreferRecentlyUpdatedActiveTasks(t *testing.T) {
 	review := wallLaneTasks([]store.Task{
 		{Definition: store.TaskDefinition{ID: "NO-REVIEW", Role: "backend"}, Status: "in_progress", ReviewStatus: "not_required"},
 		{Definition: store.TaskDefinition{ID: "PENDING", Role: "backend"}, Status: "in_progress", ReviewStatus: "pending"},
-	}, "review", nil)
-	if len(review) != 1 || review[0].Definition.ID != "PENDING" {
-		t.Fatalf("review tasks = %#v, want only PENDING", review)
+		{Definition: store.TaskDefinition{ID: "DONE-MISSING", Role: "backend", ReviewDomains: []string{"ops"}}, Status: "done", ReviewStatus: "approved"},
+		{Definition: store.TaskDefinition{ID: "ACTIVE-MISSING", Role: "backend", ReviewDomains: []string{"backend"}}, Status: "in_progress", ReviewStatus: "approved"},
+	}, "review", nil, map[string][]string{
+		"DONE-MISSING":   {"ops"},
+		"ACTIVE-MISSING": {"backend"},
+	})
+	if len(review) != 3 {
+		t.Fatalf("review task count = %d, want 3: %#v", len(review), review)
+	}
+	gotReviewIDs := []string{review[0].Definition.ID, review[1].Definition.ID, review[2].Definition.ID}
+	for _, want := range []string{"PENDING", "DONE-MISSING", "ACTIVE-MISSING"} {
+		if !containsString(gotReviewIDs, want) {
+			t.Fatalf("review tasks = %#v, missing %s", gotReviewIDs, want)
+		}
 	}
 	activeSessionTasks := wallLaneTasks([]store.Task{
 		{Definition: store.TaskDefinition{ID: "DONE-ACTIVE", Role: "backend"}, Status: "done", UpdatedAt: "2026-06-04T20:00:00Z"},
-	}, "working", []store.Session{{TaskID: "DONE-ACTIVE", Provider: "codex", Status: "running"}})
+	}, "working", []store.Session{{TaskID: "DONE-ACTIVE", Provider: "codex", Status: "running"}}, nil)
 	if len(activeSessionTasks) != 1 || activeSessionTasks[0].Definition.ID != "DONE-ACTIVE" {
 		t.Fatalf("active session tasks = %#v, want DONE-ACTIVE even when task is done", activeSessionTasks)
 	}

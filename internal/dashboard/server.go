@@ -197,27 +197,28 @@ type FilterOptions struct {
 }
 
 type DashboardViewData struct {
-	View             string
-	Summary          DashboardSummary
-	Gates            []GateStatus
-	GateGroups       []GateGroup
-	Groups           []RoleGroup
-	TableRows        []store.Task
-	Pagination       TablePagination
-	Workstreams      []WorkstreamGroup
-	Filters          TaskFilters
-	FilterOptions    FilterOptions
-	Activity         []store.Activity
-	ActivityTotal    int
-	Health           store.Health
-	Sessions         []store.Session
-	Worktrees        []WorktreeStatus
-	Checkpoints      []store.Checkpoint
-	StaleCheckpoints []store.Checkpoint
-	Watchers         []store.Watcher
-	Rollups          map[string]Rollup
-	TaskRoles        map[string]string
-	ActiveReport     reconcile.ActiveReport
+	View                 string
+	Summary              DashboardSummary
+	Gates                []GateStatus
+	GateGroups           []GateGroup
+	Groups               []RoleGroup
+	MissingReviewDomains map[string][]string
+	TableRows            []store.Task
+	Pagination           TablePagination
+	Workstreams          []WorkstreamGroup
+	Filters              TaskFilters
+	FilterOptions        FilterOptions
+	Activity             []store.Activity
+	ActivityTotal        int
+	Health               store.Health
+	Sessions             []store.Session
+	Worktrees            []WorktreeStatus
+	Checkpoints          []store.Checkpoint
+	StaleCheckpoints     []store.Checkpoint
+	Watchers             []store.Watcher
+	Rollups              map[string]Rollup
+	TaskRoles            map[string]string
+	ActiveReport         reconcile.ActiveReport
 }
 
 type TaskDetailViewData struct {
@@ -319,6 +320,10 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	readySet := taskIDSet(readyTasks)
 	gateGroups := groupGateStatuses(gates)
 	displayTasks := filterTasks(tasks, filters)
+	missingReviewDomains, err := s.dashboardMissingReviewDomainsByTask(r.Context(), displayTasks)
+	if err != nil {
+		return DashboardViewData{}, err
+	}
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks, readySet)
 	groups := groupTasks(displayTasks, s.roles)
@@ -328,27 +333,28 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		return DashboardViewData{}, err
 	}
 	return DashboardViewData{
-		View:             view,
-		Summary:          dashboardSummary(tasks, displayTasks, workstreams, readySet),
-		Gates:            gates,
-		GateGroups:       gateGroups,
-		Groups:           groups,
-		TableRows:        tableRows,
-		Pagination:       pagination,
-		Workstreams:      workstreams,
-		Filters:          filters,
-		FilterOptions:    filterOptions(tasks, activity),
-		Activity:         filteredActivity,
-		ActivityTotal:    activityTotal,
-		Health:           health,
-		Sessions:         sessions,
-		Worktrees:        s.worktrees,
-		Checkpoints:      checkpoints,
-		StaleCheckpoints: staleCheckpoints,
-		Watchers:         watchers,
-		Rollups:          rollups,
-		TaskRoles:        taskRoleMap(tasks),
-		ActiveReport:     activeReport,
+		View:                 view,
+		Summary:              dashboardSummary(tasks, displayTasks, workstreams, readySet),
+		Gates:                gates,
+		GateGroups:           gateGroups,
+		Groups:               groups,
+		MissingReviewDomains: missingReviewDomains,
+		TableRows:            tableRows,
+		Pagination:           pagination,
+		Workstreams:          workstreams,
+		Filters:              filters,
+		FilterOptions:        filterOptions(tasks, activity),
+		Activity:             filteredActivity,
+		ActivityTotal:        activityTotal,
+		Health:               health,
+		Sessions:             sessions,
+		Worktrees:            s.worktrees,
+		Checkpoints:          checkpoints,
+		StaleCheckpoints:     staleCheckpoints,
+		Watchers:             watchers,
+		Rollups:              rollups,
+		TaskRoles:            taskRoleMap(tasks),
+		ActiveReport:         activeReport,
 	}, nil
 }
 
@@ -1138,6 +1144,24 @@ func dashboardMissingApprovedReviewDomains(domains []string, reviews []store.Rev
 	return missing
 }
 
+func (s *Server) dashboardMissingReviewDomainsByTask(ctx context.Context, tasks []store.Task) (map[string][]string, error) {
+	missingByTask := map[string][]string{}
+	for _, task := range tasks {
+		if len(task.Definition.ReviewDomains) == 0 {
+			continue
+		}
+		_, _, _, _, reviews, err := s.store.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, err
+		}
+		missing := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+		if len(missing) > 0 {
+			missingByTask[task.Definition.ID] = missing
+		}
+	}
+	return missingByTask, nil
+}
+
 func localBackHref(referer, currentHost, role string) string {
 	fallback := wallRoleHref(role)
 	if referer == "" {
@@ -1410,26 +1434,27 @@ func dashboardTemplateFuncs() template.FuncMap {
 			}
 			return len(tasks) - limit
 		},
-		"wallLaneTasks":         wallLaneTasks,
-		"wallProviderClass":     wallProviderClass,
-		"wallActiveSessions":    wallActiveSessions,
-		"wallRoleActiveSession": wallRoleActiveSession,
-		"wallSessionCheckpoint": wallSessionCheckpoint,
-		"wallSessionTaskRole":   wallSessionTaskRole,
-		"wallTasksMoving":       wallTasksMoving,
-		"wallHandoffCount":      wallHandoffCount,
-		"wallDoneToday":         wallDoneToday,
-		"wallTaskHasProvider":   wallTaskHasProvider,
-		"wallRoleHref":          wallRoleHref,
-		"wallLaneHref":          wallLaneHref,
-		"boardRows":             boardRows,
-		"boardTabHref":          boardTabHref,
-		"boardPageHref":         boardPageHref,
-		"statusFilterValues":    statusFilterValues,
-		"statusSelected":        statusSelected,
-		"statusClass":           safeDashboardClass,
-		"safeClass":             safeDashboardClass,
-		"dict":                  templateDict,
+		"wallLaneTasks":            wallLaneTasks,
+		"wallMissingReviewDomains": wallMissingReviewDomains,
+		"wallProviderClass":        wallProviderClass,
+		"wallActiveSessions":       wallActiveSessions,
+		"wallRoleActiveSession":    wallRoleActiveSession,
+		"wallSessionCheckpoint":    wallSessionCheckpoint,
+		"wallSessionTaskRole":      wallSessionTaskRole,
+		"wallTasksMoving":          wallTasksMoving,
+		"wallHandoffCount":         wallHandoffCount,
+		"wallDoneToday":            wallDoneToday,
+		"wallTaskHasProvider":      wallTaskHasProvider,
+		"wallRoleHref":             wallRoleHref,
+		"wallLaneHref":             wallLaneHref,
+		"boardRows":                boardRows,
+		"boardTabHref":             boardTabHref,
+		"boardPageHref":            boardPageHref,
+		"statusFilterValues":       statusFilterValues,
+		"statusSelected":           statusSelected,
+		"statusClass":              safeDashboardClass,
+		"safeClass":                safeDashboardClass,
+		"dict":                     templateDict,
 	}
 	return funcs
 }
@@ -1463,7 +1488,7 @@ func mustEmbeddedTemplateSet(name string, paths []string, funcs template.FuncMap
 	return tmpl
 }
 
-func wallLaneTasks(tasks []store.Task, lane string, sessions []store.Session) []store.Task {
+func wallLaneTasks(tasks []store.Task, lane string, sessions []store.Session, missingReviewDomains map[string][]string) []store.Task {
 	var out []store.Task
 	for _, task := range tasks {
 		switch lane {
@@ -1480,11 +1505,11 @@ func wallLaneTasks(tasks []store.Task, lane string, sessions []store.Session) []
 				out = append(out, task)
 			}
 		case "review":
-			if task.Status != "done" && task.ReviewStatus != "" && task.ReviewStatus != "approved" && task.ReviewStatus != "not_required" {
+			if wallTaskNeedsReview(task, missingReviewDomains) {
 				out = append(out, task)
 			}
 		case "done":
-			if task.Status == "done" {
+			if task.Status == "done" && !wallTaskNeedsReview(task, missingReviewDomains) {
 				out = append(out, task)
 			}
 		}
@@ -1493,6 +1518,17 @@ func wallLaneTasks(tasks []store.Task, lane string, sessions []store.Session) []
 		return dashboardTaskMoreRecent(out[i], out[j])
 	})
 	return out
+}
+
+func wallTaskNeedsReview(task store.Task, missingReviewDomains map[string][]string) bool {
+	if len(missingReviewDomains[task.Definition.ID]) > 0 {
+		return true
+	}
+	return task.ReviewStatus != "" && task.ReviewStatus != "approved" && task.ReviewStatus != "not_required"
+}
+
+func wallMissingReviewDomains(task store.Task, missingReviewDomains map[string][]string) []string {
+	return missingReviewDomains[task.Definition.ID]
 }
 
 func dashboardTaskMoreRecent(left, right store.Task) bool {

@@ -23,11 +23,11 @@
 {{with wallRoleActiveSession .Role .Tasks $.Sessions $.TaskRoles}}<small class="active">active session {{.TaskID}}</small>{{else}}{{if .Current}}<small class="unsessioned">in_progress without session {{.Current.Definition.ID}}</small>{{else}}<small class="muted">idle . waiting</small>{{end}}{{end}}
 <a class="lane-detail" href="{{wallRoleHref .Role}}">Open lane</a>
 </div>
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "backlog" $.Sessions) "Lane" "backlog" "Role" .Role "Sessions" $.Sessions}}
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "claimed" $.Sessions) "Lane" "claimed" "Role" .Role "Sessions" $.Sessions}}
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "working" $.Sessions) "Lane" "working" "Role" .Role "Sessions" $.Sessions}}
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "review" $.Sessions) "Lane" "review" "Role" .Role "Sessions" $.Sessions}}
-{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "done" $.Sessions) "Lane" "done" "Role" .Role "Sessions" $.Sessions}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "backlog" $.Sessions $.MissingReviewDomains) "Lane" "backlog" "Role" .Role "Sessions" $.Sessions "MissingReviewDomains" $.MissingReviewDomains}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "claimed" $.Sessions $.MissingReviewDomains) "Lane" "claimed" "Role" .Role "Sessions" $.Sessions "MissingReviewDomains" $.MissingReviewDomains}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "working" $.Sessions $.MissingReviewDomains) "Lane" "working" "Role" .Role "Sessions" $.Sessions "MissingReviewDomains" $.MissingReviewDomains}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "review" $.Sessions $.MissingReviewDomains) "Lane" "review" "Role" .Role "Sessions" $.Sessions "MissingReviewDomains" $.MissingReviewDomains}}
+{{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "done" $.Sessions $.MissingReviewDomains) "Lane" "done" "Role" .Role "Sessions" $.Sessions "MissingReviewDomains" $.MissingReviewDomains}}
 </div>
 </article>
 {{end}}
