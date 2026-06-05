@@ -9,6 +9,12 @@ fairway.exe
 .fairway/state.db-journal
 .fairway/state.db-shm
 .fairway/state.db-wal
+.fairway/config.toml
+.fairway/dashboard.pid
+.fairway/dashboard.log
+.fairway/dashboard-multi.pid
+.fairway/dashboard-multi.log
+.fairway/transcripts/
 
 # OS
 .DS_Store
