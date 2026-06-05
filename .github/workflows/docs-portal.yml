@@ -38,7 +38,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'fairway-run/fairway' && github.ref == 'refs/heads/main'
     defaults:
       run:
         working-directory: website
