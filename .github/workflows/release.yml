@@ -11,6 +11,13 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,13 +32,16 @@ jobs:
           go vet ./...
       - uses: goreleaser/goreleaser-action@v6
         with:
-          distribution: goreleaser
-          version: latest
+          distribution: goreleaser-pro
+          version: "~> v2"
           args: check
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - uses: goreleaser/goreleaser-action@v6
         with:
-          distribution: goreleaser
-          version: latest
+          distribution: goreleaser-pro
+          version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}

@@ -849,9 +849,40 @@ tasks:
       - FWRD-160
     acceptance_checks:
       - fairway-run/homebrew-tap exists and is documented as the release tap.
-      - GoReleaser is configured to publish the `fairway` formula to fairway-run/homebrew-tap after tagged releases.
+      - GoReleaser is configured to publish the `fairway` cask to fairway-run/homebrew-tap after tagged releases.
       - Release artifacts include checksums and supported darwin/linux amd64/arm64 binaries.
       - macOS release binaries are signed and notarized before Homebrew publishing.
       - Release docs describe required Apple signing/notarization inputs and keep `.apple-app-specific.env` as local-only credential material.
-      - Quickstart documents `brew tap fairway-run/tap && brew install fairway` as the primary macOS install path once releases are cut.
+      - Quickstart documents `brew tap fairway-run/tap && brew install --cask fairway` as the primary macOS install path once releases are cut.
       - Manual `make install` remains documented for local development.
+
+  - id: FW-171
+    title: Create Fairway Docusaurus portal on Cloudflare Pages
+    kind: task
+    role: ops
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: docs-portal
+    source_paths:
+      - docs
+      - README.md
+      - .github/workflows
+    target_paths:
+      - docs
+      - README.md
+      - .github/workflows
+      - docs/governance/release.md
+    review_domains:
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: docs-portal
+    depends_on:
+      - FW-170
+    acceptance_checks:
+      - Docusaurus portal builds locally from public Fairway docs.
+      - Cloudflare Pages project and custom-domain routing are documented for fairway.run, www.fairway.run, and docs.fairway.run.
+      - Fairway Cloudflare API token, account id, zone id, and Pages project secrets are separate from Core42/core42.dev credentials.
+      - Deploy workflow lists required secret names but never stores secret values in repo.
+      - Public docs exclude GPUaaS-private, Core42-private, credential, customer, and internal deployment details unless explicitly sanitized.
+      - README and quickstart point readers to the public docs portal once the site is live.

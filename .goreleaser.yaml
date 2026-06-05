@@ -45,7 +45,42 @@ changelog:
 
 release:
   github:
-    owner: subashram
+    owner: fairway-run
     name: fairway
   draft: true
   replace_existing_draft: true
+
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - fairway
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
+homebrew_casks:
+  - name: fairway
+    ids:
+      - fairway
+    binaries:
+      - fairway
+    repository:
+      owner: fairway-run
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: fairway-release-bot
+      email: release@fairway.run
+    commit_msg_template: "Update fairway cask to {{ .Tag }}"
+    directory: Casks
+    homepage: "https://fairway.run"
+    description: "Traffic control for coding agents"
+    license: "MIT"

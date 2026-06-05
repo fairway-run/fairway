@@ -7,14 +7,15 @@ This is a runnable local flow for the current Fairway prototype.
 Once release binaries ship:
 
 ```bash
-brew install subashram/tap/fairway     # macOS
+brew tap fairway-run/tap
+brew install --cask fairway            # macOS
 # or download from the releases page
 ```
 
 For now:
 
 ```bash
-go install github.com/subashram/fairway/cmd/fairway@latest
+go install github.com/fairway-run/fairway/cmd/fairway@latest
 ```
 
 ## Bootstrap a repo

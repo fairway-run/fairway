@@ -27,7 +27,7 @@ The benchmark: a solo developer with three Claude lanes and one Codex lane open 
 
 A user can:
 
-- `brew install fairway`
+- `brew tap fairway-run/tap && brew install --cask fairway`
 - `fairway init` in any git repo
 - Edit five lines of TOML to name their roles
 - `fairway worktree setup` to create the lanes
