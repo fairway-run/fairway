@@ -1,10 +1,10 @@
 # Release Notes
 
-Fairway has not cut a tagged stable release yet. These notes track the public
-release candidate that will become `v0.1.0` once the first signed artifacts and
-Homebrew cask publish cleanly.
+Fairway `v0.1.1` is the first public release with signed/notarized macOS
+artifacts and a Homebrew cask. The initial `v0.1.0` release artifact was yanked
+because its CLI version metadata still reported the development version.
 
-## v0.1.0 Release Candidate
+## v0.1.1
 
 ### What Is Included
 

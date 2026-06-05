@@ -11,7 +11,7 @@ Semver. Pre-1.0 means breaking changes are allowed in minor versions; document t
 
 - Tag format: `vX.Y.Z`. No `v0.0.1-rc1` shenanigans during week 1.
 - Tag from `main` only.
-- Annotated tags: `git tag -a v0.1.0 -m "v0.1.0"`.
+- Annotated tags: `git tag -a v0.1.1 -m "v0.1.1"`.
 
 ## Changelog
 
@@ -110,7 +110,7 @@ GoReleaser Pro is only needed if Fairway later ships native app bundles,
 macOS DMGs, or macOS PKGs. The first release distributes a CLI binary, so the
 OSS release path plus native macOS build hooks is sufficient.
 
-For the first `v0.1.0` release, use the working Developer ID certificate from
+For the first public release, use the working Developer ID certificate from
 the previous Sub-CA. The G2 certificate is available, but local validation showed
 that `codesign` will not build the G2 chain until the Developer ID G2
 intermediate is trusted from the System chain. Previous Sub-CA certificates
@@ -209,13 +209,13 @@ go run ./cmd/fairway workflow check \
   --require-pushed
 ```
 
-Cut the first tag from a clean, pushed `main`:
+Cut the release tag from a clean, pushed `main`:
 
 ```bash
 git fetch --all --tags
 git status --short --branch
-git tag -a v0.1.0 -m "v0.1.0"
-git push fairway-run v0.1.0
+git tag -a v0.1.1 -m "v0.1.1"
+git push fairway-run v0.1.1
 ```
 
 Watch the release workflow:
