@@ -27,8 +27,10 @@ Semver. Pre-1.0 means breaking changes are allowed in minor versions; document t
 - Archives: `fairway_<version>_<os>_<arch>.tar.gz`.
 - Checksums: `fairway_<version>_checksums.txt`.
 - GitHub Releases are published from `fairway-run/fairway`.
-- The macOS artifacts are signed and notarized before Homebrew publishing when
-  the Apple release secrets are configured.
+- The macOS CLI binaries are signed and notarized with GoReleaser OSS before
+  Homebrew publishing when the Apple release secrets are configured. GoReleaser
+  Pro is not required unless Fairway later ships macOS app bundles, DMGs, or
+  PKGs.
 
 ## CI release flow
 
@@ -77,7 +79,6 @@ release tag:
 
 | Secret | Purpose |
 |---|---|
-| `GORELEASER_KEY` | Enables GoReleaser Pro features used for macOS notarization. |
 | `HOMEBREW_TAP_GITHUB_TOKEN` | Fine-scoped token with write access to `fairway-run/homebrew-tap`. |
 | `MACOS_SIGN_P12` | Base64-encoded Developer ID Application `.p12` certificate. |
 | `MACOS_SIGN_PASSWORD` | Password for the `.p12` certificate. |
@@ -92,15 +93,20 @@ secrets. CI should use the App Store Connect API key secrets above.
 
 ## macOS signing and notarization baseline
 
-Fairway uses Developer ID signing for macOS CLI artifacts. The current local
-baseline is:
+Fairway uses Developer ID signing and GoReleaser OSS binary notarization for
+macOS CLI artifacts. The current local baseline is:
 
 - Certificate type: `Developer ID Application`.
 - Certificate chain: `Developer ID Application -> Developer ID Certification
   Authority -> Apple Root CA`.
 - Team identifier: Apple Developer team id for the Fairway release account.
-- Hardened runtime: enabled through GoReleaser notarization/signing config.
+- Hardened runtime: enabled through GoReleaser cross-platform binary signing
+  and notarization config.
 - Notarization auth: App Store Connect API key, not Apple ID password auth.
+
+GoReleaser Pro is only needed if Fairway later ships native app bundles,
+macOS DMGs, or macOS PKGs. The first release distributes a CLI binary, so the
+OSS binary notarization path is sufficient.
 
 For the first `v0.1.0` release, use the working Developer ID certificate from
 the previous Sub-CA if the G2 chain is not trusted locally. Previous Sub-CA
@@ -144,9 +150,6 @@ gh secret set MACOS_NOTARY_KEY_ID \
 gh secret set MACOS_NOTARY_ISSUER_ID \
   --repo fairway-run/fairway \
   --body "$MACOS_NOTARY_ISSUER_ID"
-
-gh secret set GORELEASER_KEY \
-  --repo fairway-run/fairway
 
 gh secret set HOMEBREW_TAP_GITHUB_TOKEN \
   --repo fairway-run/fairway

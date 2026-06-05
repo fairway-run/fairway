@@ -22,6 +22,8 @@ fairway.exe
 # Local release credentials
 .apple-app-specific.env
 .env.cloudflare.fairway-run
+.git-homebrw-tap.env
+.git-homebrew-tap.env
 
 # OS
 .DS_Store
