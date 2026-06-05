@@ -51,6 +51,15 @@ Each role lane shows:
 - overflow links that drill into the matching board filter,
 - an `Open lane` action that opens the full board filtered by role.
 
+The lane header distinguishes live provider attachments from task status. An
+`active session` label means Fairway has a running session row attached to a
+task. An `in_progress without session` label means the task state is active but
+Fairway does not have a live provider attachment. That state is acceptable only
+for short direct coordinator/orchestrator work with a fresh checkpoint and an
+end-of-burst close/reset/block/handoff. For delegated, UAT, production-readiness,
+tmux/Claude/Codex external, or multi-step work, register a provider session and
+emit a `started` provider event so the wall can show who is actually attached.
+
 The right rail shows gate readiness and recent activity for quick situational
 awareness.
 

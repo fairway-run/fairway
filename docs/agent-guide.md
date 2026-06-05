@@ -116,6 +116,17 @@ without a live session. That is a coordination gap. Fix it by upserting the
 session and recording an active checkpoint; do not assume the dashboard can infer
 provider state from task status alone.
 
+Short direct coordinator/orchestrator work is the exception. A coordinator may
+briefly work a task without registering a provider session when the work is
+expected to finish in one short burst, the task has a fresh checkpoint naming
+the active owner, and the task will be closed, reset, blocked, or handed off
+before the burst ends. In that case the wall may show `in_progress without
+session`; read it as intentionally un-attached only while the checkpoint is
+fresh. High-risk stabilization, UAT, production-readiness, delegated provider
+work, tmux/Claude/Codex external work, or anything expected to span multiple
+checkpoints must register a provider session and emit a `started` provider
+event.
+
 ## Delegated Provider Sessions
 
 When one agent delegates work to another provider session, the delegating agent
