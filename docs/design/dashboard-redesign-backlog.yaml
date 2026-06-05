@@ -818,3 +818,38 @@ tasks:
       - '[dashboard] surface flag is ignored; dashboard version selection is removed'
       - CHANGELOG records the removal with a pointer to the redesign doc
       - no regressions on /tasks, /epics, /events, /actions/*
+
+  # --- Phase 10: Release and distribution -----------------------------------
+
+  - id: FW-170
+    title: Configure Homebrew tap release publishing for fairway-run
+    kind: task
+    role: ops
+    profile: dashboard-v2
+    owning_domain: fairway
+    owning_layer: release-distribution
+    source_paths:
+      - .goreleaser.yaml
+      - .github/workflows
+      - docs/governance/release.md
+      - docs/quickstart.md
+      - docs/product.md
+    target_paths:
+      - .goreleaser.yaml
+      - .github/workflows
+      - docs/governance/release.md
+      - docs/quickstart.md
+      - docs/product.md
+    review_domains:
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: release-distribution
+    depends_on:
+      - FWRD-160
+    acceptance_checks:
+      - fairway-run/homebrew-tap exists and is documented as the release tap.
+      - GoReleaser is configured to publish the `fairway` formula to fairway-run/homebrew-tap after tagged releases.
+      - Release artifacts include checksums and supported darwin/linux amd64/arm64 binaries.
+      - Quickstart documents `brew tap fairway-run/tap && brew install fairway` as the primary macOS install path once releases are cut.
+      - Manual `make install` remains documented for local development.
