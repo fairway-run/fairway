@@ -30,7 +30,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const version = "0.1.0-dev"
+var version = "0.1.0-dev"
 
 type globalOptions struct {
 	ConfigPath string

@@ -20,6 +20,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
+      - -X main.version={{ .Version }}
     hooks:
       post:
         - ./scripts/release/macos_sign_notarize_binary.sh "{{ .Path }}" "{{ .Os }}" "{{ .Arch }}"
