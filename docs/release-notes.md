@@ -59,7 +59,7 @@ Homebrew cask publish cleanly.
 ### Release Checklist
 
 - `go test ./...` passes.
-- `go run ./cmd/fairway workflow check --mode release --require-clean --require-pushed`
+- `go run ./cmd/fairway workflow check --mode deploy --require-clean --require-pushed`
   reports no blocking findings.
 - Docusaurus portal builds with `npm run build` from `website/`.
 - GitHub Actions CI and Docs Portal workflows pass on the pushed commit.
