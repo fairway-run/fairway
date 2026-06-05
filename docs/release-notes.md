@@ -59,10 +59,18 @@ Homebrew cask publish cleanly.
 ### Release Checklist
 
 - `go test ./...` passes.
+- `go vet ./...` passes.
+- `goreleaser check` passes.
 - `go run ./cmd/fairway workflow check --mode deploy --require-clean --require-pushed`
   reports no blocking findings.
 - Docusaurus portal builds with `npm run build` from `website/`.
 - GitHub Actions CI and Docs Portal workflows pass on the pushed commit.
 - macOS signing and notarization credentials are available only through local or
   CI secret stores.
+- Homebrew tap repository has an initialized `main` branch.
+- Required release secrets are configured on `fairway-run/fairway`:
+  `GORELEASER_KEY`, `HOMEBREW_TAP_GITHUB_TOKEN`, `MACOS_SIGN_P12`,
+  `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`, and
+  `MACOS_NOTARY_ISSUER_ID`.
+- Local signing/notarization smoke has passed with ignored certificate artifacts.
 - Homebrew cask update is verified after the tagged release publishes.

@@ -48,6 +48,28 @@ The tap repository is separate from the source repository. The release workflow
 must use a dedicated tap token; the default `GITHUB_TOKEN` is not enough for
 cross-repository tap updates.
 
+Before the first release, initialize the tap repository with a `main` branch so
+GoReleaser can push the first generated cask:
+
+```bash
+tmpdir=$(mktemp -d /tmp/fairway-homebrew-tap.XXXXXX)
+cd "$tmpdir"
+git init
+git branch -M main
+mkdir -p Casks
+touch Casks/.gitkeep
+cat > README.md <<'EOF'
+# Homebrew Tap for Fairway
+
+    brew tap fairway-run/tap
+    brew install --cask fairway
+EOF
+git add README.md Casks/.gitkeep
+git commit -m "Initialize Homebrew tap"
+git remote add origin git@github.com:fairway-run/homebrew-tap.git
+git push -u origin main
+```
+
 ## Required release secrets
 
 Set these GitHub Actions secrets on `fairway-run/fairway` before cutting a
@@ -67,6 +89,146 @@ For local/manual signing experiments, `.apple-app-specific.env` may hold local
 Apple credential material. It is ignored by git and must never be committed,
 printed in logs, pasted into task evidence, or shared with GPUaaS/Core42 domain
 secrets. CI should use the App Store Connect API key secrets above.
+
+## macOS signing and notarization baseline
+
+Fairway uses Developer ID signing for macOS CLI artifacts. The current local
+baseline is:
+
+- Certificate type: `Developer ID Application`.
+- Certificate chain: `Developer ID Application -> Developer ID Certification
+  Authority -> Apple Root CA`.
+- Team identifier: Apple Developer team id for the Fairway release account.
+- Hardened runtime: enabled through GoReleaser notarization/signing config.
+- Notarization auth: App Store Connect API key, not Apple ID password auth.
+
+For the first `v0.1.0` release, use the working Developer ID certificate from
+the previous Sub-CA if the G2 chain is not trusted locally. Previous Sub-CA
+certificates created after February 1, 2022 expire on February 1, 2027; revisit
+G2 signing before that date.
+
+Local release material lives under ignored paths only:
+
+| Local path | Purpose |
+|---|---|
+| `dist/certs/developerID_application_previous-subCA.p12` | Developer ID Application certificate and private key. |
+| `dist/certs/developerID_application_previous-subCA.p12.base64` | Value source for `MACOS_SIGN_P12`. |
+| `dist/certs/macos-sign-p12-password.local` | Value source for `MACOS_SIGN_PASSWORD`. |
+| `dist/certs/AuthKey_<KEY_ID>.p8` | App Store Connect notary API key. |
+| `dist/certs/AuthKey_<KEY_ID>.p8.base64` | Value source for `MACOS_NOTARY_KEY`. |
+| `.apple-app-specific.env` | Local-only Apple release environment values. |
+
+Back up these files outside git, for example under the operator's private
+iCloud project folder. Do not place certificate passwords, private keys, API
+keys, issuer ids, or key ids in public docs or task evidence.
+
+Set release secrets without echoing values:
+
+```bash
+gh secret set MACOS_SIGN_P12 \
+  --repo fairway-run/fairway \
+  < dist/certs/developerID_application_previous-subCA.p12.base64
+
+gh secret set MACOS_SIGN_PASSWORD \
+  --repo fairway-run/fairway \
+  < dist/certs/macos-sign-p12-password.local
+
+gh secret set MACOS_NOTARY_KEY \
+  --repo fairway-run/fairway \
+  < dist/certs/AuthKey_<KEY_ID>.p8.base64
+
+gh secret set MACOS_NOTARY_KEY_ID \
+  --repo fairway-run/fairway \
+  --body "$MACOS_NOTARY_KEY_ID"
+
+gh secret set MACOS_NOTARY_ISSUER_ID \
+  --repo fairway-run/fairway \
+  --body "$MACOS_NOTARY_ISSUER_ID"
+
+gh secret set GORELEASER_KEY \
+  --repo fairway-run/fairway
+
+gh secret set HOMEBREW_TAP_GITHUB_TOKEN \
+  --repo fairway-run/fairway
+```
+
+Local signing smoke:
+
+```bash
+tmpdir=$(mktemp -d /tmp/fairway-sign-test.XXXXXX)
+go build -o "$tmpdir/fairway" ./cmd/fairway
+codesign --force --timestamp --options runtime \
+  --sign "<Developer ID Application identity>" \
+  "$tmpdir/fairway"
+codesign --verify --strict --verbose=4 "$tmpdir/fairway"
+codesign -dv --verbose=4 "$tmpdir/fairway"
+```
+
+For archive notarization smoke tests, sign the binary, zip the artifact, then
+submit the zip to `notarytool` with the App Store Connect API key:
+
+```bash
+xcrun notarytool submit fairway.zip \
+  --key dist/certs/AuthKey_<KEY_ID>.p8 \
+  --key-id "$MACOS_NOTARY_KEY_ID" \
+  --issuer "$MACOS_NOTARY_ISSUER_ID" \
+  --wait
+```
+
+`stapler` cannot staple a zip archive. For the current tar/zip CLI
+distribution, an accepted notarization result is the expected release signal.
+Use a `.pkg` or `.dmg` if Fairway later needs stapled offline verification.
+
+## First Homebrew publish
+
+Run these checks before tagging:
+
+```bash
+git status --short
+go test ./...
+go vet ./...
+goreleaser check
+(cd website && npm run build)
+go run ./cmd/fairway workflow check \
+  --mode deploy \
+  --require-clean \
+  --require-pushed
+```
+
+Cut the first tag from a clean, pushed `main`:
+
+```bash
+git fetch --all --tags
+git status --short --branch
+git tag -a v0.1.0 -m "v0.1.0"
+git push fairway-run v0.1.0
+```
+
+Watch the release workflow:
+
+```bash
+gh run list --repo fairway-run/fairway --workflow release.yml --limit 5
+gh run watch --repo fairway-run/fairway
+```
+
+The GitHub Release is intentionally created as a draft. Review artifacts,
+checksums, signing/notarization logs, and the generated Homebrew cask before
+publishing the draft.
+
+Verify Homebrew after the cask update lands:
+
+```bash
+brew untap fairway-run/tap || true
+brew tap fairway-run/tap
+brew install --cask fairway
+fairway help
+brew uninstall --cask fairway
+```
+
+If the cask publish fails, fix the tap or release config and rerun the release
+workflow only when the generated cask will point to the same immutable tag and
+checksums. If the released artifact itself is wrong, yank and cut a new version;
+never reuse a version number.
 
 ## Docs portal deployment
 

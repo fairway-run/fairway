@@ -19,6 +19,8 @@ and uses semantic versioning.
   deploy-run guidance, and active-work reconciliation into one operator guard.
 - Draft release notes for the first `v0.1.0` release candidate and a public
   archive index for historical decision/adoption notes.
+- Homebrew release runbook covering tap initialization, signed macOS artifacts,
+  notarization credentials, first-tag workflow, and post-publish verification.
 
 ### Changed
 
@@ -27,3 +29,4 @@ and uses semantic versioning.
 - Docusaurus navigation now prioritizes current product docs, release notes,
   and governance; historical GPUaaS adoption and dashboard redesign material
   moved to archive/provenance.
+- GoReleaser cask metadata now uses the repository's Apache-2.0 license.

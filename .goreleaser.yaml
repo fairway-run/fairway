@@ -83,4 +83,4 @@ homebrew_casks:
     directory: Casks
     homepage: "https://fairway.run"
     description: "Traffic control for coding agents"
-    license: "MIT"
+    license: "Apache-2.0"
