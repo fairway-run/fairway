@@ -52,10 +52,11 @@ Every agent must read:
 10. **Active work requires a session record.** Marking a task `in_progress` is not enough to make live provider work visible. When a provider starts or switches tasks, update `fairway session upsert --task-id <task-id> --status running` and record an `active` checkpoint or `started` provider event before editing. Otherwise the wall may show claimed work without an active session, which is operationally ambiguous.
 11. **Short direct coordinator work is the only exception.** A coordinator/orchestrator may briefly leave a task `in_progress` without a session only for one-burst work with a fresh checkpoint and an end-of-burst close/reset/block/handoff. Longer, delegated, UAT, production-readiness, tmux/Claude/Codex external, or high-risk work must register a provider session.
 12. **Approval-sensitive steps notify the coordinator.** If a delegated provider session is blocked on an approval-sensitive operation such as staging, committing, pushing, installing dependencies, changing remotes, or running a privileged command, it must record an `awaiting_input` checkpoint and notify the coordinator session with the exact command, verification already completed, and whether the coordinator should perform the step or grant permission. Do not wait silently in provider chat.
-13. **Update docs with code.** Any code change that changes commands, config,
+13. **Use a second provider for current external behavior.** If work stalls on current vendor, platform, or provider behavior after one serious local evidence pass, consult another current-info source such as Gemini, web search, vendor docs, or another agent. Validate the finding locally, then record the original symptom, consulted source, confirmed interpretation, and next action as Fairway evidence or a checkpoint. The second source is advisory; local verification and Fairway evidence remain authoritative.
+14. **Update docs with code.** Any code change that changes commands, config,
    schema, dashboard behavior, reports, packets, gates, examples, or agent
    workflow must update the matching docs in the same PR/commit.
-14. **Run workflow guards at boundaries.** Use `fairway workflow check` before
+15. **Run workflow guards at boundaries.** Use `fairway workflow check` before
    closing or handing off task slices. Use
    `fairway workflow check --mode deploy --require-clean --require-pushed`
    before deploy, smoke, or UAT evidence so dirty trees, unpushed commits,

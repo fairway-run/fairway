@@ -169,6 +169,21 @@ provider watcher, transcript bridge, or manual checkpoint plus the team’s
 chosen coordinator channel. In all cases, the Fairway checkpoint is the durable
 signal; provider chat is only the transport.
 
+When a task stalls on current vendor, platform, or provider behavior, do not
+burn hours inside one provider session. After one serious local evidence pass,
+consult a second current-info source such as Gemini, web search, vendor docs, or
+another agent with relevant context. This is especially useful for Apple
+signing/notarization, Cloudflare, Pomerium, GitHub/GitLab runners, Homebrew
+policy changes, Kubernetes/kind, container registries, MAAS/LXD, OpenClaw,
+Keycloak, and provider-specific network or deployment behavior.
+
+The second source is advisory, not task authority. Validate the finding locally
+or against the target environment, then record a Fairway checkpoint or evidence
+row with the original symptom, the source consulted, the confirmed
+interpretation or rejected hypothesis, and the next action. If the finding is a
+real platform prerequisite, block the exact task only when no safe progress
+remains; otherwise create a scoped follow-up and continue the next ready task.
+
 Provider-specific watchers, such as a Codex thread monitor, should live outside
 Fairway core. Their job is to read provider runtime state and translate it into
 provider-neutral Fairway facts:
