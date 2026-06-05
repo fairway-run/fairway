@@ -1,6 +1,7 @@
 # Dashboard Redesign Decision Log
 
-Status: superseded by the single dashboard described in [dashboard.md](dashboard.md).
+Status: superseded by the single dashboard described in
+[dashboard.md](../design/dashboard.md).
 
 This document is retained as the decision log for the redesign that introduced
 the wall, board, diagnostics, and v2-style task detail flows. The redesign
@@ -229,8 +230,8 @@ v1 features preserved verbatim: `/tasks/<id>`, `/epics/<id>`, CSRF on mutations,
 - Mockups:
   - [fairway-wall-mockup.html](https://fairway.run/mockups/fairway-wall-mockup.html)
   - [fairway-board-mockup.html](https://fairway.run/mockups/fairway-board-mockup.html)
-- v1 design doc: [dashboard.md](dashboard.md)
-- v1 multi-project: [multi-project.md](multi-project.md)
-- v1 hierarchy: [hierarchy.md](hierarchy.md)
+- v1 design doc: [dashboard.md](../design/dashboard.md)
+- v1 multi-project: [multi-project.md](../design/multi-project.md)
+- v1 hierarchy: [hierarchy.md](../design/hierarchy.md)
 - Architecture change protocol: [AGENTS.md](https://github.com/fairway-run/fairway/blob/main/AGENTS.md) (operating principle 10, "Update docs with code")
 - Backlog: [dashboard-redesign-backlog.yaml](dashboard-redesign-backlog.yaml)

@@ -167,7 +167,7 @@ against a copied GPUaaS queue DB and task file for:
 - JSON/YAML snapshot export.
 
 The concrete switch-over procedure lives in
-[../assessment/gpuaas-parity-runbook.md](../assessment/gpuaas-parity-runbook.md).
+[gpuaas-parity-runbook.md](gpuaas-parity-runbook.md).
 Use [../../examples/gpuaas-a-b-c-d-e-config.toml](../../examples/gpuaas-a-b-c-d-e-config.toml)
 for exact GPUaaS A/B/C/D/E lane names during parity runs. The shorter
 `backend/ui/ops/arch/governance` example remains a generic Fairway starter

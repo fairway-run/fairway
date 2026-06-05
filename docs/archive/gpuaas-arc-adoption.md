@@ -1,7 +1,7 @@
 # GPUaaS / ARC Adoption Track
 
 This track captures GPUaaS and ARC adoption needs as concrete instances of
-Fairway's generic [workstream profiles](workstream-profiles.md), without turning
+Fairway's generic [workstream profiles](../design/workstream-profiles.md), without turning
 Fairway into a CI/CD system, scanner, deployment tool, docs portal, or agent
 runner.
 
@@ -137,7 +137,7 @@ platform-foundation track:
 
 The generic follow-up should build on the initial profile config and task
 metadata with template-driven packet rendering, structured guard evidence, and
-dashboard grouping by task kind. See [workstream-profiles.md](workstream-profiles.md).
+dashboard grouping by task kind. See [workstream-profiles.md](../design/workstream-profiles.md).
 
 ## 3. Release Readiness Gates
 

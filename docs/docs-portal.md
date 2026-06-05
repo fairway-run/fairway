@@ -13,15 +13,15 @@ Use these paths when organizing the Docusaurus portal:
 | Agent/operator | agent guide, dashboard, checkpoints, context packets, review lanes |
 | Maintainer | architecture, coding standards, testing, release |
 | Evaluator | scope, product, workstream profile guide, adoption artifact flow |
-| Case-study reader | GPUaaS adoption, extraction, parity runbook |
+| Provenance reader | archive index |
 
 ## Public Content Rules
 
 - Keep Fairway's generic product path first.
-- Keep GPUaaS material under adoption/case-study navigation, not the main
-  getting-started path.
+- Keep repo-specific adoption material under archive/provenance navigation, not
+  the main getting-started path.
 - Do not publish secrets, local env values, customer names, private deployment
-  hostnames, or GPUaaS-private operational details.
+  hostnames, or private operational details.
 - Document secret names and required permissions, never values.
 - Prefer examples under `examples/` over copied private task data.
 
@@ -33,7 +33,9 @@ The Docusaurus portal should expose:
 - docs: quickstart, concepts, agent guide, workstream profiles, dashboard
 - reference: config reference, CLI surface, schema, state machine
 - governance: release, testing, coding standards, review guards
-- adoption: GPUaaS as a public case study and parity process
+- release notes: current release candidate scope, known limits, and release
+  checklist
+- archive: historical decision logs and adoption notes only
 
 ## Cloudflare Requirements
 

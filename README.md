@@ -111,6 +111,7 @@ Start here:
 - [Architecture](docs/architecture.md) — components, data flow, package layout
 - [Product](docs/product.md) — vision, principles, roadmap, anti-goals
 - [Workstream profile guide](docs/workstream-profile-guide.md) — user-facing guide for profile config, gates, and adoption artifacts
+- [Release notes](docs/release-notes.md) — current release candidate scope and known limits
 
 Core Design:
 
@@ -135,14 +136,10 @@ Core Design:
 - [Dashboard](docs/design/dashboard.md)
 - [Multi-project mode](docs/design/multi-project.md)
 - [CLI surface](docs/design/cli.md)
-- [Open questions](docs/design/open-questions.md)
 
-Adoption Case Studies:
+Archive:
 
-- [GPUaaS / ARC adoption](docs/design/gpuaas-arc-adoption.md)
-- [GPUaaS extraction](docs/design/gpuaas-extraction.md)
-- [GPUaaS parity runbook](docs/assessment/gpuaas-parity-runbook.md)
-- [GPUaaS parity assessment](docs/assessment/gpuaas-parity-and-gap-assessment-2026-05-29.md)
+- [Archived decision logs and adoption notes](docs/archive/README.md)
 
 Governance:
 

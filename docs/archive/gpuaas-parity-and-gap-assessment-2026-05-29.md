@@ -45,7 +45,7 @@ Fairway:
 
 - `README.md`
 - `AGENTS.md`
-- `docs/design/gpuaas-extraction.md`
+- `docs/archive/gpuaas-extraction.md`
 - `docs/design/implementation-roadmap.md`
 - `docs/design/release-cuts.md`
 - `docs/design/cli.md`

@@ -6,7 +6,14 @@ const sidebars = {
     {
       type: 'category',
       label: 'Start Here',
-      items: ['quickstart', 'product', 'design/scope', 'design/concepts', 'docs-portal']
+      items: [
+        'quickstart',
+        'product',
+        'design/scope',
+        'design/concepts',
+        'release-notes',
+        'docs-portal'
+      ]
     },
     {
       type: 'category',
@@ -57,19 +64,14 @@ const sidebars = {
         'design/implementation-roadmap',
         'design/regression-packets',
         'design/postgres-adapter',
-        'design/issue-tracker-integrations',
-        'design/dashboard-redesign',
-        'design/open-questions'
+        'design/issue-tracker-integrations'
       ]
     },
     {
       type: 'category',
-      label: 'Adoption Case Studies',
+      label: 'Archive',
       items: [
-        'design/gpuaas-arc-adoption',
-        'design/gpuaas-extraction',
-        'assessment/gpuaas-parity-runbook',
-        'assessment/gpuaas-parity-and-gap-assessment-2026-05-29'
+        'archive/README'
       ]
     }
   ]

@@ -1,6 +1,6 @@
 # Dashboard v2 redesign backlog.
 #
-# Importable with: fairway import docs/design/dashboard-redesign-backlog.yaml
+# Importable with: fairway import docs/archive/dashboard-redesign-backlog.yaml
 #
 # This is the work plan for the redesign described in dashboard-redesign.md.
 # Phases are sequenced via depends_on; within a phase, tasks can be picked up
@@ -31,7 +31,7 @@ tasks:
       - internal/dashboard/assets/templates
       - internal/dashboard/assets/css
       - internal/dashboard/assets/js
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     review_domains:
       - arch
     risk_level: medium
@@ -52,7 +52,7 @@ tasks:
     owning_layer: dashboard
     source_paths:
       - internal/dashboard/assets/css
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     target_paths:
       - internal/dashboard/assets/css/tokens.css
     review_domains:
@@ -106,7 +106,7 @@ tasks:
       - internal/dashboard/server.go
       - internal/dashboard/sse_events.go
       - internal/store
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     review_domains:
       - arch
       - governance
@@ -130,7 +130,7 @@ tasks:
     owning_layer: dashboard
     source_paths:
       - internal/dashboard/assets/templates
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     target_paths:
       - internal/dashboard/assets/templates/wall.html
       - internal/dashboard/assets/templates/layout.html
@@ -264,7 +264,7 @@ tasks:
     owning_layer: dashboard
     source_paths:
       - internal/dashboard/assets/templates
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     target_paths:
       - internal/dashboard/assets/templates/board.html
     review_domains:
@@ -387,7 +387,7 @@ tasks:
       - internal/dashboard/views.go
       - internal/dashboard/views_test.go
       - internal/dashboard/assets/js/board.js
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     review_domains:
       - arch
       - governance
@@ -517,7 +517,7 @@ tasks:
     source_paths:
       - internal/config
       - docs/config-reference.md
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     target_paths:
       - internal/config
       - docs/config-reference.md
@@ -700,7 +700,7 @@ tasks:
       - internal/dashboard
     target_paths:
       - internal/dashboard
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     review_domains:
       - arch
     risk_level: low
@@ -713,7 +713,7 @@ tasks:
       - p95 sort under 100ms on the 1000-task case
       - activity feed SSE latency under 1.5s (or note the trade-off if upgraded to update-hook)
       - memory footprint under 50MB for the dashboard process
-      - measurements committed under docs/assessment/
+      - measurements committed under docs/archive/
 
   - id: FWRD-152
     title: Update dashboard.md and supporting docs
@@ -724,7 +724,7 @@ tasks:
     owning_layer: dashboard
     source_paths:
       - docs/design/dashboard.md
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
       - docs/design/multi-project.md
       - docs/design/hierarchy.md
     target_paths:
@@ -751,7 +751,7 @@ tasks:
     owning_layer: dashboard
     source_paths:
       - CHANGELOG.md
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     target_paths:
       - CHANGELOG.md
     review_domains:
@@ -773,9 +773,9 @@ tasks:
     owning_domain: fairway
     owning_layer: dashboard
     source_paths:
-      - docs/design/dashboard-redesign.md
+      - docs/archive/dashboard-redesign.md
     target_paths:
-      - docs/assessment/dashboard-v2-walkthrough.md
+      - docs/archive/dashboard-v2-walkthrough.md
     review_domains:
       - governance
     risk_level: low
@@ -785,7 +785,7 @@ tasks:
       - FWRD-150
     acceptance_checks:
       - walkthrough done with a GPUaaS operator using a real .fairway project
-      - feedback captured in docs/assessment/dashboard-v2-walkthrough.md
+      - feedback captured in docs/archive/dashboard-v2-walkthrough.md
       - blocking gaps filed as follow-up tasks before the default flips to v2
       - go/no-go decision logged with owner and date
 

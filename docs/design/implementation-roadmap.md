@@ -97,7 +97,7 @@ to a useful v1.
 ## Remaining Work
 
 1. Expand platform-foundation orchestration support from the
-   [GPUaaS / ARC adoption track](gpuaas-arc-adoption.md). Architecture-map,
+   [GPUaaS / ARC adoption track](../archive/gpuaas-arc-adoption.md). Architecture-map,
    boundary-guard, and vertical-slice packets exist, and task metadata now
    covers profile, owning domain/layer, source/target paths, review domains,
    risk, and migration type. The dashboard now surfaces an initial workstream

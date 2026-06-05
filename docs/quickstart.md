@@ -249,16 +249,18 @@ the workstream or omit `--catalog` and treat the regression-pack section as
 future coverage. The adoption artifact is still useful for profile gates,
 review routes, evidence gaps, and worktree health.
 
-## Adoption Case Studies
+## Adoption References
 
 Fairway is generic, but it was hardened against real multi-agent stabilization
-work. The GPUaaS adoption material is useful when you want a larger reference
+work. The example configs remain useful when you want a larger reference
 configuration with architecture, ops, frontend, backend, and governance lanes.
 
-Start from [gpuaas-parity-runbook.md](assessment/gpuaas-parity-runbook.md) if
-you are comparing Fairway against an existing GPUaaS-style queue. Use
+Use
 [`examples/gpuaas-a-b-c-d-e-config.toml`](../examples/gpuaas-a-b-c-d-e-config.toml)
 for the exact A/B/C/D/E lane mapping, platform-foundation workstream profile,
 named advisory gates, packet templates, and
 [`examples/gpuaas-regression-packs.yaml`](../examples/gpuaas-regression-packs.yaml)
 to verify Fairway accepts GPUaaS-style per-environment regression blocking.
+
+Historical adoption notes are kept in [archive/](archive/README.md), not the
+main getting-started path.
