@@ -851,5 +851,7 @@ tasks:
       - fairway-run/homebrew-tap exists and is documented as the release tap.
       - GoReleaser is configured to publish the `fairway` formula to fairway-run/homebrew-tap after tagged releases.
       - Release artifacts include checksums and supported darwin/linux amd64/arm64 binaries.
+      - macOS release binaries are signed and notarized before Homebrew publishing.
+      - Release docs describe required Apple signing/notarization inputs and keep `.apple-app-specific.env` as local-only credential material.
       - Quickstart documents `brew tap fairway-run/tap && brew install fairway` as the primary macOS install path once releases are cut.
       - Manual `make install` remains documented for local development.

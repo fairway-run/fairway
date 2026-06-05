@@ -16,6 +16,9 @@ fairway.exe
 .fairway/dashboard-multi.log
 .fairway/transcripts/
 
+# Local release credentials
+.apple-app-specific.env
+
 # OS
 .DS_Store
 Thumbs.db
