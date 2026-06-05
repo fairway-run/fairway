@@ -55,6 +55,12 @@ Every agent must read:
 13. **Update docs with code.** Any code change that changes commands, config,
    schema, dashboard behavior, reports, packets, gates, examples, or agent
    workflow must update the matching docs in the same PR/commit.
+14. **Run workflow guards at boundaries.** Use `fairway workflow check` before
+   closing or handing off task slices. Use
+   `fairway workflow check --mode deploy --require-clean --require-pushed`
+   before deploy, smoke, or UAT evidence so dirty trees, unpushed commits,
+   stale sessions, and missing deploy-run tracking are caught by tooling rather
+   than remembered from chat.
 
 ## Architecture
 

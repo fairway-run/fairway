@@ -29,6 +29,7 @@ fairway status-report | health-report | timing-report
 fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
+fairway workflow check [--mode <task|close|deploy>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
@@ -106,6 +107,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   broader: it reports unattended `in_progress` tasks, evidence without a status
   decision, stale checkpoints, and parent tasks left active without direct
   rollup work.
+- `workflow check` composes git and active-work checks into the operating-model
+  guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
+  active reconciliation findings. Use `--mode deploy` before deploy/UAT work;
+  it requires a clean committed SHA and pushed commits so CI can run. Use
+  `--require-clean` or `--require-pushed` when the current boundary should fail
+  instead of warn.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
 - `adoption artifact` is the generic readiness report. It uses configured

@@ -1,10 +1,14 @@
 # Quickstart
 
-This is a runnable local flow for the current Fairway prototype.
+This is a runnable local flow for trying Fairway in a repository with a small
+set of agent lanes.
+
+Public docs: [fairway.run](https://fairway.run).
 
 ## Install
 
-Once release binaries ship:
+Tagged releases publish signed/notarized macOS artifacts and update the
+Homebrew cask:
 
 ```bash
 brew tap fairway-run/tap
@@ -12,10 +16,12 @@ brew install --cask fairway            # macOS
 # or download from the releases page
 ```
 
-For now:
+Until the first tagged release is cut, install from source:
 
 ```bash
 go install github.com/fairway-run/fairway/cmd/fairway@latest
+# or, from a checkout:
+make install
 ```
 
 ## Bootstrap a repo
@@ -80,6 +86,17 @@ Validate after changing config:
 fairway config validate
 ```
 
+Before closing a task, handoff, deploy, or UAT run, use the workflow guard:
+
+```bash
+fairway workflow check
+fairway workflow check --mode deploy --require-clean --require-pushed
+```
+
+The first command warns about dirty docs/code, unpushed commits, and active
+Fairway reconciliation findings. The deploy mode requires clean pushed source
+so CI has a chance to run before deploy evidence is recorded.
+
 ## Set up lanes
 
 ```bash
@@ -125,13 +142,8 @@ fairway import tasks.yaml
 
 ## Run the dashboard
 
-Install or refresh the local development binary:
-
-```bash
-make install
-```
-
-This writes `~/.local/bin/fairway` by default. Override with
+If you are installing from a local checkout, `make install` writes
+`~/.local/bin/fairway` by default. Override with
 `make install PREFIX=/opt/homebrew` or `make install BINDIR=/some/bin` when
 needed.
 
@@ -237,11 +249,14 @@ the workstream or omit `--catalog` and treat the regression-pack section as
 future coverage. The adoption artifact is still useful for profile gates,
 review routes, evidence gaps, and worktree health.
 
-## GPUaaS Parity
+## Adoption Case Studies
 
-GPUaaS migration work should start from
-[gpuaas-parity-runbook.md](assessment/gpuaas-parity-runbook.md), not from a live
-queue cut-over. Use
+Fairway is generic, but it was hardened against real multi-agent stabilization
+work. The GPUaaS adoption material is useful when you want a larger reference
+configuration with architecture, ops, frontend, backend, and governance lanes.
+
+Start from [gpuaas-parity-runbook.md](assessment/gpuaas-parity-runbook.md) if
+you are comparing Fairway against an existing GPUaaS-style queue. Use
 [`examples/gpuaas-a-b-c-d-e-config.toml`](../examples/gpuaas-a-b-c-d-e-config.toml)
 for the exact A/B/C/D/E lane mapping, platform-foundation workstream profile,
 named advisory gates, packet templates, and

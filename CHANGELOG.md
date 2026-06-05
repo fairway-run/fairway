@@ -15,6 +15,8 @@ and uses semantic versioning.
 - Workstream profiles with profile gates, profile-aware task metadata,
   readiness reports, dashboard grouping/filtering, configurable packet
   templates, structured guard evidence, and review-domain merge readiness.
+- Workflow checks that combine git cleanliness, unpushed commit detection,
+  deploy-run guidance, and active-work reconciliation into one operator guard.
 
 ### Changed
 

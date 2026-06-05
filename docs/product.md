@@ -22,6 +22,10 @@ The benchmark: a solo developer with three Claude lanes and one Codex lane open 
 8. **Profiles over project-specific workflow.** Workstream profiles can define
    task kinds, packet templates, review domains, evidence expectations, and
    dashboard grouping without baking one product's process into core.
+9. **Automate the repeated checks.** The operating model should stay short.
+   Repeated rules such as commit boundaries, push/CI signal, deploy-run
+   tracking, and active-session reconciliation should become CLI guards and
+   dashboard findings.
 
 ## What "done" looks like for v1.0
 
@@ -65,8 +69,10 @@ each version ships.
   dashboard filters over profile metadata; configured packet templates can
   render packets, guard reports can be recorded as typed evidence, and
   readiness reports summarize profile gates. Merge readiness also honors
-  task-level review domains. GPUaaS / ARC remains the adoption example, not the
-  core product shape.
+  task-level review domains. Workflow checks now flag dirty docs/code,
+  unpushed commits, deploy-run prerequisites, and active reconciliation
+  findings. GPUaaS / ARC remains the adoption example, not the core product
+  shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

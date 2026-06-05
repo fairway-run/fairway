@@ -78,6 +78,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|review"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
+		{[]string{"workflow", "--help"}, "fairway workflow check"},
 	} {
 		out := runCapture(t, tc.args...)
 		assertContains(t, out, tc.want)
@@ -271,6 +272,53 @@ func TestCLI_Preflight(t *testing.T) {
 	runOK(t, "add", "T-001", "--title", "Merge", "--role", "backend")
 	runOK(t, "merge-ready", "T-001")
 	runOK(t, "--json", "merge-ready", "T-001")
+}
+
+func TestCLI_WorkflowCheckWarnsOnDirtyDocsAndUnpushedCommits(t *testing.T) {
+	repo := t.TempDir()
+	remote := filepath.Join(t.TempDir(), "origin.git")
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	if err := os.MkdirAll(remote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, remote, "init", "--bare")
+	git(t, repo, "remote", "add", "origin", remote)
+	runOK(t, "init")
+	writeFile(t, "README.md", "hello\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	git(t, repo, "push", "-u", "origin", "main")
+
+	runOK(t, "workflow", "check")
+	runOK(t, "--json", "workflow", "check")
+
+	appendFile(t, "README.md", "docs update\n")
+	dirty := runCapture(t, "workflow", "check")
+	assertContains(t, dirty, "worktree has uncommitted changes")
+	assertContains(t, dirty, "commit completed documentation updates")
+
+	git(t, repo, "add", "README.md")
+	git(t, repo, "commit", "-m", "docs: update readme")
+	unpushed := runCapture(t, "workflow", "check")
+	assertContains(t, unpushed, "branch has 1 unpushed commit(s)")
+	assertContains(t, unpushed, "push integration-ready commits so CI can run")
+	if err := run(context.Background(), []string{"workflow", "check", "--require-pushed"}); err == nil {
+		t.Fatal("expected require-pushed to fail")
+	}
+	deploy := runCaptureAllowError(t, "workflow", "check", "--mode", "deploy")
+	assertContains(t, deploy, "deploy mode requires pushed commits so CI can run")
+	assertContains(t, deploy, "create one deploy-run task")
 }
 
 func TestCLI_MergeReadyEvaluatesBlockingProfileGates(t *testing.T) {

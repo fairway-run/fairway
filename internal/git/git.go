@@ -12,11 +12,15 @@ type Status struct {
 	Root         string   `json:"root"`
 	Branch       string   `json:"branch"`
 	Base         string   `json:"base"`
+	Upstream     string   `json:"upstream,omitempty"`
 	Dirty        bool     `json:"dirty"`
 	Staged       bool     `json:"staged"`
 	Untracked    bool     `json:"untracked"`
 	Ahead        int      `json:"ahead"`
 	Behind       int      `json:"behind"`
+	Unpushed     int      `json:"unpushed"`
+	Unpulled     int      `json:"unpulled"`
+	HasUpstream  bool     `json:"has_upstream"`
 	BaseAncestor bool     `json:"base_ancestor"`
 	ChangedFiles []string `json:"changed_files"`
 }
@@ -154,6 +158,7 @@ func Check(root, base string) (Status, error) {
 		}
 	}
 	if base == "" {
+		fillUpstreamStatus(repoRoot, &status)
 		return status, nil
 	}
 	if err := run(repoRoot, "rev-parse", "--verify", base); err != nil {
@@ -177,7 +182,35 @@ func Check(root, base string) (Status, error) {
 		status.Behind = behind
 		status.Ahead = ahead
 	}
+	fillUpstreamStatus(repoRoot, &status)
 	return status, nil
+}
+
+func fillUpstreamStatus(root string, status *Status) {
+	upstream, err := output(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	if err != nil || upstream == "" {
+		return
+	}
+	status.Upstream = upstream
+	status.HasUpstream = true
+	counts, err := output(root, "rev-list", "--left-right", "--count", upstream+"...HEAD")
+	if err != nil {
+		return
+	}
+	fields := strings.Fields(counts)
+	if len(fields) != 2 {
+		return
+	}
+	unpulled, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return
+	}
+	unpushed, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return
+	}
+	status.Unpulled = unpulled
+	status.Unpushed = unpushed
 }
 
 func ChangedFiles(root, base string) ([]string, error) {

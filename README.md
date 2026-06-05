@@ -2,13 +2,18 @@
   <img src="assets/logo-lockup.svg" alt="fairway" width="240">
 </p>
 
-# fairway
+# Fairway
 
-**traffic control for coding agents**
+**Traffic control for coding agents.**
 
-Fairway coordinates multiple coding agents working in parallel on a single repository: task queue, state machine, lane / worktree management, handoff / evidence / review chain, session tracking, and a live local dashboard.
+Fairway is a local-first coordination tool for teams running multiple coding
+agents in parallel on one repository. It gives each lane a task queue, state
+machine, worktree, evidence trail, handoff/review flow, session record, and live
+dashboard.
 
-The name comes from maritime traffic control — fairways are navigable channels for vessels under VTS coordination. Agents transit worktree lanes under fairway's coordination.
+Use it when the problem is not "can an agent write code?" but "can several
+agents work at once without losing ownership, context, review state, or proof of
+what changed?"
 
 ## Status
 
@@ -17,24 +22,36 @@ packets, checkpoints, regression-pack helpers, tracker links, workstream profile
 config, dashboard, and release packaging are implemented and covered by smoke
 tests.
 
-Current focus: make Fairway a generic coordination layer with configurable
-workstream profiles, while proving GPUaaS as the first adoption example. See
-[workstream profiles](docs/design/workstream-profiles.md), the
-[GPUaaS adoption track](docs/design/gpuaas-arc-adoption.md), and the
-[parity runbook](docs/assessment/gpuaas-parity-runbook.md).
+Current focus: make Fairway easy to adopt outside this repository: public docs,
+Homebrew distribution, Docusaurus portal, workflow guards that reduce manual
+process, and clearer agent operating guidance. The GPUaaS work remains the
+first real adoption case study, but Fairway is not GPUaaS-specific.
 
 Still maturing: provider-specific session launchers, richer dashboard
-mutations, real Jira/Linear API adapters, Homebrew tap publishing after the
-first release tag, and a future Postgres runtime adapter.
+mutations, real Jira/Linear API adapters, first tagged release execution through
+the configured Homebrew cask pipeline, and a future Postgres runtime adapter.
 
-## What it is
+## Why It Exists
+
+Multi-agent engineering breaks down when coordination lives in chat threads:
+
+- two agents unknowingly touch the same boundary,
+- a task is marked active but no provider is actually running,
+- evidence exists but the task never gets closed,
+- a reviewer cannot tell which domain still needs approval,
+- long UAT or deployment work leaves stale state behind.
+
+Fairway keeps those facts in a local execution store instead of depending on
+provider memory.
+
+## What It Is
 
 - A single Go binary (`fairway`) plus an embedded SQLite store.
 - A CLI for claiming tasks, recording handoffs / evidence / reviews, managing sessions.
 - A local web dashboard with wall, board, diagnostics, and task-detail flows.
 - Config-driven: roles, branches, worktree paths, review routing, workstream profiles, packet templates, and the state machine are all defined in `.fairway/config.toml`.
 
-## What it is not
+## What It Is Not
 
 - Not a workflow engine (Temporal, Cadence).
 - Not an IAM tool.
@@ -43,10 +60,20 @@ first release tag, and a future Postgres runtime adapter.
 
 ## Quickstart
 
-Install the local development binary:
+Install from source while the first tagged binary release is being prepared:
 
 ```bash
+go install github.com/fairway-run/fairway/cmd/fairway@latest
+# or, from a checkout:
 make install                  # writes ~/.local/bin/fairway by default
+```
+
+Tagged releases publish signed/notarized macOS artifacts and update the
+Homebrew cask:
+
+```bash
+brew tap fairway-run/tap
+brew install --cask fairway
 ```
 
 ```bash
@@ -60,6 +87,7 @@ fairway import tasks.yaml     # or fairway add T-001 --title ... --role ...
 fairway ready                 # list tasks ready for your role to claim
 fairway claim T-001
 fairway record evidence T-001 --command-text "go test ./..." --result pass
+fairway workflow check          # docs/code/commit/push/session guard
 fairway set-status T-001 done
 fairway adoption artifact     # summarize routes, gate evaluation, health, and evidence gaps
 ```
@@ -73,25 +101,26 @@ coordination, `/board` is the sortable/filterable operator board,
 
 ## Documentation
 
+Public docs are available at [fairway.run](https://fairway.run).
+
 Start here:
 
 - [AGENTS.md](AGENTS.md) — orientation for any agent (Claude, Codex, Gemini, human) working in this repo
 - [Agent guide](docs/agent-guide.md) — practical command flow for agents using fairway
+- [Quickstart](docs/quickstart.md) — first local project setup
 - [Architecture](docs/architecture.md) — components, data flow, package layout
 - [Product](docs/product.md) — vision, principles, roadmap, anti-goals
 - [Workstream profile guide](docs/workstream-profile-guide.md) — user-facing guide for profile config, gates, and adoption artifacts
 
-Design:
+Core Design:
 
 - [Scope and non-goals](docs/design/scope.md)
 - [Concepts](docs/design/concepts.md)
 - [Release cuts](docs/design/release-cuts.md)
 - [Implementation roadmap](docs/design/implementation-roadmap.md)
-- [GPUaaS / ARC adoption](docs/design/gpuaas-arc-adoption.md)
 - [Workstream profiles](docs/design/workstream-profiles.md)
 - [Schema](docs/design/schema.md)
 - [State machine](docs/design/state-machine.md)
-- [GPUaaS extraction](docs/design/gpuaas-extraction.md)
 - [Hierarchy (epics, stories, spawn)](docs/design/hierarchy.md)
 - [Coordinator loop](docs/design/coordinator-loop.md)
 - [Context packets](docs/design/context-packets.md)
@@ -107,6 +136,13 @@ Design:
 - [Multi-project mode](docs/design/multi-project.md)
 - [CLI surface](docs/design/cli.md)
 - [Open questions](docs/design/open-questions.md)
+
+Adoption Case Studies:
+
+- [GPUaaS / ARC adoption](docs/design/gpuaas-arc-adoption.md)
+- [GPUaaS extraction](docs/design/gpuaas-extraction.md)
+- [GPUaaS parity runbook](docs/assessment/gpuaas-parity-runbook.md)
+- [GPUaaS parity assessment](docs/assessment/gpuaas-parity-and-gap-assessment-2026-05-29.md)
 
 Governance:
 

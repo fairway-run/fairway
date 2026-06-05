@@ -235,6 +235,7 @@ If you need machine-readable output, put global flags before the subcommand:
 ```bash
 fairway --json ready
 fairway --json task-detail T-001
+fairway --json workflow check --mode deploy
 ```
 
 Use `FAIRWAY_ROLE=<role>` or `--as <role>` when the current worktree cannot be
@@ -274,6 +275,36 @@ fairway add T-010 \
 When you spawn follow-up work, Fairway inherits the parent task metadata unless
 you override a metadata flag explicitly. Keep those fields accurate; they drive
 review routing, readiness reports, and dashboard workstream grouping.
+
+## Workflow Guard
+
+Use `workflow check` at task, review, and deploy boundaries. It keeps the
+operating model short by turning the repeated manual checks into one command.
+
+```bash
+# Normal task boundary: warns on dirty files and unpushed commits.
+fairway workflow check
+
+# Close/review boundary: fail if the task slice is not committed.
+fairway workflow check --mode close --require-clean
+
+# Deploy/UAT boundary: require clean pushed source and active-work
+# reconciliation before creating deploy evidence.
+fairway workflow check --mode deploy --require-clean --require-pushed
+```
+
+The command reports:
+
+- dirty docs/code and the right next action;
+- commits that have not been pushed, so CI has not run;
+- missing upstream tracking;
+- active reconciliation findings such as `in_progress` work without a session
+  or evidence without a status decision;
+- deploy-run guidance for CI/CD/UAT attempts.
+
+For deploy work, create one deploy-run task for the attempt and create
+`CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or
+`DOC-FIX-*` follow-ups only for actionable findings.
 
 ## Claim Work
 

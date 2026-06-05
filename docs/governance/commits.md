@@ -59,6 +59,28 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 - A follow-up `docs:` commit is fine for purely editorial cleanup, but not for
   documenting behavior that reviewers need to evaluate the code safely.
 - If a change deliberately leaves docs untouched, say why in the PR or handoff.
+- Documentation-only changes should still be committed at the boundary where
+  they become true and sanity-checked. Do not leave completed docs as ambient
+  worktree changes.
+
+## Push and CI signal
+
+- Push integration-ready commits promptly so push-triggered CI can run.
+- CI itself usually does not need a Fairway task; record/link the result as
+  task evidence or deploy-run evidence.
+- Create `CI-FIX-*` only when CI exposes an actionable build, test, lint,
+  generated contract, or runner failure.
+- Use `fairway workflow check --require-pushed` before handing off work that
+  depends on CI having run.
+
+## Deploy and UAT boundaries
+
+- Use `fairway workflow check --mode deploy --require-clean --require-pushed`
+  before deploy, smoke, or UAT work.
+- Create one deploy-run task per meaningful release/deploy attempt.
+- Create scoped finding tasks only for actionable failures:
+  `CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or
+  `DOC-FIX-*`.
 
 ## Amending vs new commits
 

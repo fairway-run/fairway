@@ -104,6 +104,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdGitCheck(opts, args[1:])
 	case "preflight":
 		return cmdPreflight(opts, args[1:])
+	case "workflow":
+		return cmdWorkflow(ctx, opts, args[1:])
 	case "merge-ready":
 		return cmdMergeReady(ctx, opts, args[1:])
 	case "route":
@@ -607,6 +609,16 @@ type preflightConfigRef struct {
 	Root string `json:"root"`
 }
 
+type workflowCheckReport struct {
+	OK              bool                   `json:"ok"`
+	Mode            string                 `json:"mode"`
+	Git             fairwaygit.Status      `json:"git"`
+	Reconcile       reconcile.ActiveReport `json:"reconcile"`
+	Issues          []string               `json:"issues"`
+	Warnings        []string               `json:"warnings,omitempty"`
+	Recommendations []string               `json:"recommendations,omitempty"`
+}
+
 func cmdPreflight(opts globalOptions, args []string) error {
 	fs := flag.NewFlagSet("preflight", flag.ContinueOnError)
 	roleFlag := fs.String("role", "", "role name")
@@ -679,6 +691,138 @@ func cmdPreflight(opts globalOptions, args []string) error {
 		return errors.New("preflight failed")
 	}
 	return nil
+}
+
+func cmdWorkflow(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("workflow", "check")
+		return nil
+	}
+	switch args[0] {
+	case "check":
+		return cmdWorkflowCheck(ctx, opts, args[1:])
+	default:
+		return errors.New("workflow requires subcommand: check")
+	}
+}
+
+func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("workflow check", flag.ContinueOnError)
+	base := fs.String("base", "", "base ref")
+	mode := fs.String("mode", "task", "workflow mode: task, deploy, close")
+	requireClean := fs.Bool("require-clean", false, "fail if the worktree is dirty")
+	requirePushed := fs.Bool("require-pushed", false, "fail if HEAD has unpushed commits")
+	staleAfter := fs.Duration("stale-checkpoint-after", 0, "warn on active checkpoints older than duration")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected workflow check arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		if *base == "" {
+			*base = cfg.Fairway.MainBranch
+		}
+		gitStatus, err := fairwaygit.Check(root, *base)
+		if err != nil {
+			return err
+		}
+		reconcileReport, err := reconcile.Active(ctx, s, reconcile.ActiveOptions{
+			Terminal:             cfg.States.Terminal,
+			StaleCheckpointAfter: *staleAfter,
+		})
+		if err != nil {
+			return err
+		}
+		report := workflowCheckReport{
+			OK:        true,
+			Mode:      *mode,
+			Git:       gitStatus,
+			Reconcile: reconcileReport,
+		}
+		if gitStatus.Dirty {
+			message := "worktree has uncommitted changes"
+			if *requireClean {
+				report.Issues = append(report.Issues, message)
+			} else {
+				report.Warnings = append(report.Warnings, message)
+			}
+			if changedDocs(gitStatus.ChangedFiles) {
+				report.Recommendations = append(report.Recommendations, "commit completed documentation updates as their own coherent slice")
+			}
+			if changedCode(gitStatus.ChangedFiles) {
+				report.Recommendations = append(report.Recommendations, "run focused tests before committing changed code")
+			}
+		}
+		if !gitStatus.HasUpstream {
+			report.Warnings = append(report.Warnings, "branch has no upstream; push tracking cannot be evaluated")
+		} else if gitStatus.Unpushed > 0 {
+			message := fmt.Sprintf("branch has %d unpushed commit(s)", gitStatus.Unpushed)
+			if *requirePushed {
+				report.Issues = append(report.Issues, message)
+			} else {
+				report.Warnings = append(report.Warnings, message)
+			}
+			report.Recommendations = append(report.Recommendations, "push integration-ready commits so CI can run")
+		}
+		if gitStatus.Unpulled > 0 {
+			report.Warnings = append(report.Warnings, fmt.Sprintf("branch is %d commit(s) behind upstream", gitStatus.Unpulled))
+		}
+		if *base != "" && !gitStatus.BaseAncestor {
+			report.Issues = append(report.Issues, fmt.Sprintf("HEAD is not based on %q", *base))
+		}
+		if !reconcileReport.OK {
+			report.Issues = append(report.Issues, fmt.Sprintf("active reconciliation has %d finding(s)", len(reconcileReport.Findings)))
+			report.Recommendations = append(report.Recommendations, "run fairway reconcile active --dry-run and resolve stale/unattended work")
+		}
+		switch *mode {
+		case "deploy":
+			report.Recommendations = append(report.Recommendations, "create one deploy-run task for the release/deploy attempt")
+			report.Recommendations = append(report.Recommendations, "create CI-FIX/CD-FIX/UAT-BUG/OPS-FIX/HARNESS-FIX/DOC-FIX follow-ups only for actionable findings")
+			if gitStatus.Dirty {
+				report.Issues = append(report.Issues, "deploy mode requires a clean committed source SHA")
+			}
+			if gitStatus.HasUpstream && gitStatus.Unpushed > 0 {
+				report.Issues = append(report.Issues, "deploy mode requires pushed commits so CI can run")
+			}
+		case "task", "close":
+		default:
+			report.Warnings = append(report.Warnings, fmt.Sprintf("unknown workflow mode %q; expected task, close, or deploy", *mode))
+		}
+		report.OK = len(report.Issues) == 0
+		if opts.JSON {
+			if err := printJSON(report); err != nil {
+				return err
+			}
+		} else {
+			fmt.Printf("workflow_check: %t\nmode: %s\nbranch: %s\nbase: %s\n", report.OK, report.Mode, report.Git.Branch, report.Git.Base)
+			if report.Git.HasUpstream {
+				fmt.Printf("upstream: %s\nunpushed: %d\nunpulled: %d\n", report.Git.Upstream, report.Git.Unpushed, report.Git.Unpulled)
+			}
+			if len(report.Issues) > 0 {
+				fmt.Println("issues:")
+				for _, issue := range report.Issues {
+					fmt.Printf("- %s\n", issue)
+				}
+			}
+			if len(report.Warnings) > 0 {
+				fmt.Println("warnings:")
+				for _, warning := range report.Warnings {
+					fmt.Printf("- %s\n", warning)
+				}
+			}
+			if len(report.Recommendations) > 0 {
+				fmt.Println("recommendations:")
+				for _, recommendation := range uniqueStrings(report.Recommendations) {
+					fmt.Printf("- %s\n", recommendation)
+				}
+			}
+		}
+		if !report.OK {
+			return errors.New("workflow check failed")
+		}
+		return nil
+	})
 }
 
 type mergeReadyReport struct {
@@ -4027,6 +4171,49 @@ func splitCSV(value string) []string {
 	return out
 }
 
+func changedDocs(paths []string) bool {
+	for _, path := range paths {
+		if strings.HasPrefix(path, "docs/") ||
+			strings.HasPrefix(path, "website/") ||
+			strings.HasPrefix(path, "agents/") ||
+			path == "README.md" ||
+			path == "AGENTS.md" ||
+			path == "CLAUDE.md" ||
+			path == "CHANGELOG.md" ||
+			strings.HasSuffix(path, ".md") {
+			return true
+		}
+	}
+	return false
+}
+
+func changedCode(paths []string) bool {
+	for _, path := range paths {
+		switch {
+		case strings.HasPrefix(path, "cmd/"),
+			strings.HasPrefix(path, "internal/"),
+			strings.HasPrefix(path, "examples/session-adapters/"),
+			strings.HasSuffix(path, ".go"),
+			strings.HasSuffix(path, ".sh"):
+			return true
+		}
+	}
+	return false
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range values {
+		if seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
 func visitedFlags(fs *flag.FlagSet) map[string]bool {
 	visited := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) {
@@ -5254,7 +5441,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {
