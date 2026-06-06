@@ -12,6 +12,9 @@ and uses semantic versioning.
 - Active-work reconciliation now detects monitor sessions without backing proof,
   so CI/deploy/UAT/provider monitors cannot leave fake active work behind when
   no automation, process, external poller, or bounded manual checkpoint exists.
+- Active-work reconciliation and dashboard diagnostics now report
+  `monitor_completion_resume_needed` when monitors finish cleanly but ready work
+  remains and no active session/watcher has resumed the coordinator loop.
 - Release-run packets and `fairway release verify` now coordinate release
   attempts, including release notes, changelog state, CI/docs/signing/notary
   evidence, GitHub release state, asset URL checks, Homebrew cask version, and

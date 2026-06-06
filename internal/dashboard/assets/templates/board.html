@@ -53,6 +53,7 @@
 <span>active watchers: {{len .Watchers}}</span>
 <span>sessions: {{len .Sessions}}</span>
 <span>monitor proof: {{.ActiveReport.Summary.MonitorSessionsNoProof}}</span>
+<span>monitor resume: {{.ActiveReport.Summary.MonitorResumeNeeded}}</span>
 </section>
 {{if eq .Filters.Tab "diagnostics"}}
 <section class="diagnostics-grid">

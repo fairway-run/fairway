@@ -94,6 +94,7 @@ The coordinator commands compose lower-level commands:
 - `fairway release verify`,
 - `fairway session status`,
 - `fairway session reconcile --dry-run`,
+- `fairway reconcile active --dry-run`,
 - `fairway watcher status`,
 - `fairway checkpoint status`.
 

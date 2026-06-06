@@ -11,6 +11,7 @@
 {{if .ActiveReport.Summary.ActiveParentWithoutRollup}}<span>{{.ActiveReport.Summary.ActiveParentWithoutRollup}} parent rollup warning(s)</span>{{end}}
 {{if .ActiveReport.Summary.StaleCheckpoints}}<span>{{.ActiveReport.Summary.StaleCheckpoints}} stale checkpoint(s)</span>{{end}}
 {{if .ActiveReport.Summary.MonitorSessionsNoProof}}<span>{{.ActiveReport.Summary.MonitorSessionsNoProof}} monitor proof warning(s)</span>{{end}}
+{{if .ActiveReport.Summary.MonitorResumeNeeded}}<span>{{.ActiveReport.Summary.MonitorResumeNeeded}} monitor resume needed</span>{{end}}
 </section>
 {{end}}
 {{if .Audit.HighRiskCount}}

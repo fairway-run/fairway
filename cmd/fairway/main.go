@@ -1911,13 +1911,14 @@ func cmdReconcileActive(ctx context.Context, opts globalOptions, args []string) 
 			return nil
 		}
 		fmt.Printf("ok: %t\n", report.OK)
-		fmt.Printf("summary: stale_sessions=%d unattended_in_progress=%d status_decision_required=%d active_parent_without_rollup=%d stale_checkpoints=%d monitor_sessions_no_proof=%d\n",
+		fmt.Printf("summary: stale_sessions=%d unattended_in_progress=%d status_decision_required=%d active_parent_without_rollup=%d stale_checkpoints=%d monitor_sessions_no_proof=%d monitor_resume_needed=%d\n",
 			report.Summary.StaleSessions,
 			report.Summary.UnattendedInProgress,
 			report.Summary.StatusDecisionRequired,
 			report.Summary.ActiveParentWithoutRollup,
 			report.Summary.StaleCheckpoints,
-			report.Summary.MonitorSessionsNoProof)
+			report.Summary.MonitorSessionsNoProof,
+			report.Summary.MonitorResumeNeeded)
 		for _, finding := range report.Findings {
 			mode := "reported"
 			if !*dryRun && finding.Action == "mark_session_stale" && finding.SessionID != "" {

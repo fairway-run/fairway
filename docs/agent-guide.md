@@ -504,7 +504,10 @@ checkpoint explaining the selected next action.
 If the monitor cannot send that provider prompt, record a `resume_needed`
 checkpoint or finding with the coordinator session id and the next ready task
 summary. Clean Fairway state plus ready work is not enough; the execution lane
-also needs a continuation signal.
+also needs a continuation signal. `fairway reconcile active` reports the
+fallback condition as `monitor_completion_resume_needed` when all monitors are
+closed, no active sessions/watchers remain, and ready work is still queued. The
+dashboard diagnostics tab shows the same finding.
 
 Use provider-neutral session fields for monitor proof:
 

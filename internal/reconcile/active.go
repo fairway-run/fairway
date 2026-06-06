@@ -12,6 +12,7 @@ import (
 type ActiveOptions struct {
 	Terminal             []string
 	StaleCheckpointAfter time.Duration
+	MonitorHandbackAfter time.Duration
 }
 
 type ActiveReport struct {
@@ -27,6 +28,7 @@ type ActiveSummary struct {
 	ActiveParentWithoutRollup int `json:"active_parent_without_rollup"`
 	StaleCheckpoints          int `json:"stale_checkpoints"`
 	MonitorSessionsNoProof    int `json:"monitor_sessions_no_proof"`
+	MonitorResumeNeeded       int `json:"monitor_resume_needed"`
 }
 
 type ActiveFinding struct {
@@ -44,6 +46,8 @@ type ActiveFinding struct {
 	LatestEvidenceAt     string `json:"latest_evidence_at,omitempty"`
 	LatestCheckpoint     string `json:"latest_checkpoint,omitempty"`
 	LatestCheckpointAt   string `json:"latest_checkpoint_at,omitempty"`
+	CompletedMonitorID   string `json:"completed_monitor_id,omitempty"`
+	ReadyTaskCount       int    `json:"ready_task_count,omitempty"`
 }
 
 func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveReport, error) {
@@ -55,7 +59,23 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 	if err != nil {
 		return ActiveReport{}, err
 	}
+	allSessions, err := s.Sessions(ctx, true)
+	if err != nil {
+		return ActiveReport{}, err
+	}
+	activeWatchers, err := s.Watchers(ctx, false)
+	if err != nil {
+		return ActiveReport{}, err
+	}
+	allWatchers, err := s.Watchers(ctx, true)
+	if err != nil {
+		return ActiveReport{}, err
+	}
 	checkpoints, err := s.Checkpoints(ctx, "", true)
+	if err != nil {
+		return ActiveReport{}, err
+	}
+	readyTasks, err := s.Ready(ctx, "", opts.Terminal)
 	if err != nil {
 		return ActiveReport{}, err
 	}
@@ -155,6 +175,22 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 			findings = append(findings, findingForTask("stale_checkpoint", "warning", "refresh_checkpoint_or_reset_status", "latest active checkpoint is stale", task, latestEvidence, checkpoint))
 		}
 	}
+	if len(sessions) == 0 && len(activeWatchers) == 0 && len(readyTasks) > 0 {
+		if monitorID, ok := recentMonitorCompletion(allWatchers, allSessions, opts.MonitorHandbackAfter); ok {
+			nextTask := readyTasks[0]
+			findings = append(findings, ActiveFinding{
+				Kind:               "monitor_completion_resume_needed",
+				Severity:           "warning",
+				Action:             "record_resume_checkpoint_or_continue_ready_work",
+				Reason:             "all monitors are complete and ready work remains; record or send a coordinator continuation prompt instead of treating the lane as idle",
+				Role:               nextTask.Definition.Role,
+				TaskID:             nextTask.Definition.ID,
+				TaskStatus:         nextTask.Status,
+				CompletedMonitorID: monitorID,
+				ReadyTaskCount:     len(readyTasks),
+			})
+		}
+	}
 
 	sort.SliceStable(findings, func(i, j int) bool {
 		if findings[i].Kind != findings[j].Kind {
@@ -172,6 +208,8 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 			report.Summary.StaleSessions++
 		case "monitor_session_without_backing_proof":
 			report.Summary.MonitorSessionsNoProof++
+		case "monitor_completion_resume_needed":
+			report.Summary.MonitorResumeNeeded++
 		case "unattended_in_progress":
 			report.Summary.UnattendedInProgress++
 		case "status_decision_required":
@@ -214,6 +252,76 @@ func monitorSessionHasBackingProof(session store.Session, checkpoint store.Check
 		return true
 	}
 	return freshBoundedCheckpoint(checkpoint, staleCheckpointAfter)
+}
+
+func recentMonitorCompletion(watchers []store.Watcher, sessions []store.Session, window time.Duration) (string, bool) {
+	if window <= 0 {
+		window = 24 * time.Hour
+	}
+	var bestID string
+	var bestAt time.Time
+	for _, watcher := range watchers {
+		if watcher.Status != "done" && watcher.Status != "blocked" {
+			continue
+		}
+		if !watcherLooksMonitor(watcher) {
+			continue
+		}
+		finishedAt, ok := parseRecentTime(watcher.FinishedAt, window)
+		if !ok {
+			continue
+		}
+		if bestID == "" || finishedAt.After(bestAt) {
+			bestID = watcher.ID
+			bestAt = finishedAt
+		}
+	}
+	for _, session := range sessions {
+		if session.EndedAt == "" {
+			continue
+		}
+		if !isMonitorSession(session) {
+			continue
+		}
+		endedAt, ok := parseRecentTime(session.EndedAt, window)
+		if !ok {
+			continue
+		}
+		if bestID == "" || endedAt.After(bestAt) {
+			bestID = session.ID
+			bestAt = endedAt
+		}
+	}
+	return bestID, bestID != ""
+}
+
+func watcherLooksMonitor(watcher store.Watcher) bool {
+	text := strings.ToLower(strings.Join([]string{
+		watcher.ID,
+		watcher.Owner,
+		watcher.Process,
+		watcher.Command,
+		watcher.Success,
+		watcher.Failure,
+		watcher.Notes,
+	}, " "))
+	for _, keyword := range []string{"watch", "monitor", "ci", "deploy", "smoke", "uat"} {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseRecentTime(raw string, window time.Duration) (time.Time, bool) {
+	if raw == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, time.Since(parsed) <= window
 }
 
 func freshBoundedCheckpoint(checkpoint store.Checkpoint, staleCheckpointAfter time.Duration) bool {

@@ -111,7 +111,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   broader: it reports unattended `in_progress` tasks, evidence without a status
   decision, stale checkpoints, parent tasks left active without direct rollup
   work, and monitor sessions without backing automation/process/external-run
-  proof or a fresh bounded manual checkpoint.
+  proof or a fresh bounded manual checkpoint. It also reports
+  `monitor_completion_resume_needed` when monitors are complete, no active
+  sessions/watchers remain, and ready work is waiting for the coordinator loop.
 - `workflow check` composes git and active-work checks into the operating-model
   guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
   active reconciliation findings. Use `--mode deploy` before deploy/UAT work;

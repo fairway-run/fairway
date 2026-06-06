@@ -99,6 +99,9 @@ finished. Record a checkpoint explaining the selected next action.
 If ready work exists and the watcher cannot send the continuation prompt to the
 owning coordinator session, it must record that as a resume-needed finding so
 the dashboard and reconciliation output show that the lane is not truly idle.
+`fairway reconcile active` reports this condition as
+`monitor_completion_resume_needed` when all watcher/monitor sessions are closed,
+a recent monitor completion exists, and one or more ready tasks remain.
 
 ## Packet Shape
 

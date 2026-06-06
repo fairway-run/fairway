@@ -1004,8 +1004,11 @@ func TestBoardTemplateRendersDiagnosticsTab(t *testing.T) {
 		Checkpoints:      []store.Checkpoint{{TaskID: "T-001", State: "active", Owner: "backend", TargetCloseBy: "today", Summary: "working"}},
 		StaleCheckpoints: []store.Checkpoint{{TaskID: "T-002", State: "active", Owner: "ui", Summary: "stale"}},
 		ActiveReport: reconcile.ActiveReport{
-			Findings: []reconcile.ActiveFinding{{Kind: "monitor_session_without_backing_proof", TaskID: "T-001", SessionID: "s-1", Action: "mark_session_stale", Reason: "monitor session has no backing automation, process proof, external polling proof, or fresh bounded manual checkpoint"}},
-			Summary:  reconcile.ActiveSummary{MonitorSessionsNoProof: 1},
+			Findings: []reconcile.ActiveFinding{
+				{Kind: "monitor_session_without_backing_proof", TaskID: "T-001", SessionID: "s-1", Action: "mark_session_stale", Reason: "monitor session has no backing automation, process proof, external polling proof, or fresh bounded manual checkpoint"},
+				{Kind: "monitor_completion_resume_needed", TaskID: "T-002", Action: "record_resume_checkpoint_or_continue_ready_work", Reason: "all monitors are complete and ready work remains"},
+			},
+			Summary: reconcile.ActiveSummary{MonitorSessionsNoProof: 1, MonitorResumeNeeded: 1},
 		},
 		FilterOptions: FilterOptions{ActivityKinds: []string{"checkpoint", "evidence"}},
 		Activity:      []store.Activity{{Kind: "checkpoint", TaskID: "T-001", Summary: "working", CreatedAt: "2026-06-04T00:00:00Z"}},
@@ -1021,7 +1024,9 @@ func TestBoardTemplateRendersDiagnosticsTab(t *testing.T) {
 		"Sessions",
 		"Active Reconciliation",
 		"monitor proof: 1",
+		"monitor resume: 1",
 		"monitor_session_without_backing_proof",
+		"monitor_completion_resume_needed",
 		"mark_session_stale",
 		"Worktrees",
 		"Watchers",
