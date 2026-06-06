@@ -9,6 +9,9 @@ and uses semantic versioning.
 
 ### Added
 
+- Active-work reconciliation now detects monitor sessions without backing proof,
+  so CI/deploy/UAT/provider monitors cannot leave fake active work behind when
+  no automation, process, external poller, or bounded manual checkpoint exists.
 - Local-first task queue, SQLite store, migrations, role lanes, worktrees,
   sessions, evidence, handoffs, reviews, checkpoints, packets, watchers,
   regression packs, tracker links, dashboard, TUI, and release packaging.

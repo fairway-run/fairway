@@ -4,6 +4,22 @@ Fairway `v0.1.1` is the first public release with signed/notarized macOS
 artifacts and a Homebrew cask. The initial `v0.1.0` release artifact was yanked
 because its CLI version metadata still reported the development version.
 
+## v0.1.2
+
+### What Changed
+
+- Active-work reconciliation now reports
+  `monitor_session_without_backing_proof` when a CI/deploy/UAT/provider monitor
+  session is active but has no backing automation id, PID/tmux pane, external
+  run plus polling command, or fresh bounded manual checkpoint.
+- Dashboard wall, board diagnostics, and task detail surfaces now show monitor
+  proof warnings so stale monitor bookkeeping is not mistaken for live work.
+- Session metadata now records provider-neutral monitor proof fields for
+  automation-backed, process-backed, external-run-backed, and manually bounded
+  monitor sessions.
+- Watcher and agent docs now require backing monitor proof before leaving
+  monitor tasks `in_progress`.
+
 ## v0.1.1
 
 ### What Is Included
