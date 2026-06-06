@@ -754,6 +754,51 @@ func TestCLI_ReconcileActiveReportsTaskEvidenceAndParentFindings(t *testing.T) {
 	assertContains(t, jsonReport, `"kind": "active_parent_without_rollup"`)
 }
 
+func TestCLI_ReconcileActiveReportsMonitorSessionsWithoutBackingProof(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "CI monitor without proof", "--role", "ops")
+	runOK(t, "add", "T-002", "--title", "CI monitor with automation", "--role", "ops")
+	t.Setenv("FAIRWAY_ROLE", "ops")
+	runOK(t, "claim", "T-001")
+	runOK(t, "claim", "T-002")
+	runOK(t, "session", "upsert",
+		"--id", "ci-missing",
+		"--role", "ops/watch",
+		"--backend", "ci-monitor",
+		"--task-id", "T-001",
+		"--monitor-kind", "ci",
+	)
+	runOK(t, "session", "upsert",
+		"--id", "ci-backed",
+		"--role", "ops/watch",
+		"--backend", "ci-monitor",
+		"--task-id", "T-002",
+		"--monitor-kind", "ci",
+		"--automation-id", "heartbeat-ci-backed",
+	)
+
+	report := runCapture(t, "reconcile", "active", "--dry-run")
+	assertContains(t, report, "monitor_session_without_backing_proof")
+	assertContains(t, report, "monitor_sessions_no_proof=1")
+	assertContains(t, report, "ci-missing")
+	assertNotContains(t, report, "ci-backed")
+
+	jsonReport := runCapture(t, "--json", "reconcile", "active", "--dry-run")
+	assertContains(t, jsonReport, `"monitor_sessions_no_proof": 1`)
+	assertContains(t, jsonReport, `"session_id": "ci-missing"`)
+	assertNotContains(t, jsonReport, `"session_id": "ci-backed"`)
+}
+
 func TestCLI_AuditWorkCoverage(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -1270,6 +1315,13 @@ func assertContains(t *testing.T, got, want string) {
 	t.Helper()
 	if !strings.Contains(got, want) {
 		t.Fatalf("expected output to contain %q; got:\n%s", want, got)
+	}
+}
+
+func assertNotContains(t *testing.T, got, want string) {
+	t.Helper()
+	if strings.Contains(got, want) {
+		t.Fatalf("expected output not to contain %q; got:\n%s", want, got)
 	}
 }
 

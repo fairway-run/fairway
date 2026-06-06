@@ -1003,9 +1003,13 @@ func TestBoardTemplateRendersDiagnosticsTab(t *testing.T) {
 		Watchers:         []store.Watcher{{ID: "W-001", TaskID: "T-001", Status: "active", Owner: "ops", Process: "smoke", Command: "make test"}},
 		Checkpoints:      []store.Checkpoint{{TaskID: "T-001", State: "active", Owner: "backend", TargetCloseBy: "today", Summary: "working"}},
 		StaleCheckpoints: []store.Checkpoint{{TaskID: "T-002", State: "active", Owner: "ui", Summary: "stale"}},
-		FilterOptions:    FilterOptions{ActivityKinds: []string{"checkpoint", "evidence"}},
-		Activity:         []store.Activity{{Kind: "checkpoint", TaskID: "T-001", Summary: "working", CreatedAt: "2026-06-04T00:00:00Z"}},
-		ActivityTotal:    1,
+		ActiveReport: reconcile.ActiveReport{
+			Findings: []reconcile.ActiveFinding{{Kind: "monitor_session_without_backing_proof", TaskID: "T-001", SessionID: "s-1", Action: "mark_session_stale", Reason: "monitor session has no backing automation, process proof, external polling proof, or fresh bounded manual checkpoint"}},
+			Summary:  reconcile.ActiveSummary{MonitorSessionsNoProof: 1},
+		},
+		FilterOptions: FilterOptions{ActivityKinds: []string{"checkpoint", "evidence"}},
+		Activity:      []store.Activity{{Kind: "checkpoint", TaskID: "T-001", Summary: "working", CreatedAt: "2026-06-04T00:00:00Z"}},
+		ActivityTotal: 1,
 	}
 	var out strings.Builder
 	if err := boardTemplate.ExecuteTemplate(&out, "layout", data); err != nil {
@@ -1015,6 +1019,10 @@ func TestBoardTemplateRendersDiagnosticsTab(t *testing.T) {
 	for _, want := range []string{
 		`href="/board?tab=diagnostics"`,
 		"Sessions",
+		"Active Reconciliation",
+		"monitor proof: 1",
+		"monitor_session_without_backing_proof",
+		"mark_session_stale",
 		"Worktrees",
 		"Watchers",
 		"Checkpoints",

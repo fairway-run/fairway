@@ -113,6 +113,11 @@ type Session struct {
 	PID             *int   `json:"pid,omitempty"`
 	TmuxPane        string `json:"tmux_pane"`
 	TranscriptPath  string `json:"transcript_path"`
+	MonitorKind     string `json:"monitor_kind"`
+	AutomationID    string `json:"automation_id"`
+	ExternalRunID   string `json:"external_run_id"`
+	PollCommand     string `json:"poll_command"`
+	ManualUntil     string `json:"manual_until"`
 	Status          string `json:"status"`
 	StartedAt       string `json:"started_at"`
 	LastHeartbeatAt string `json:"last_heartbeat_at"`
@@ -1010,8 +1015,8 @@ func (s *Store) UpsertSession(ctx context.Context, session Session) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO agent_sessions
-  (project_id, id, role, lane, worktree_path, branch, session_backend, provider, session_name, task_id, pid, tmux_pane, transcript_path, status, started_at, last_heartbeat_at, ended_at, exit_code, end_reason)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, nullif(?, ''), ?, ?, ?, ?, ?, nullif(?, ''), nullif(?, ''), ?, nullif(?, ''))
+  (project_id, id, role, lane, worktree_path, branch, session_backend, provider, session_name, task_id, pid, tmux_pane, transcript_path, monitor_kind, automation_id, external_run_id, poll_command, manual_until, status, started_at, last_heartbeat_at, ended_at, exit_code, end_reason)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, nullif(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, nullif(?, ''), nullif(?, ''), ?, nullif(?, ''))
 ON CONFLICT(project_id, id) DO UPDATE SET
   role=excluded.role,
   lane=excluded.lane,
@@ -1024,12 +1029,17 @@ ON CONFLICT(project_id, id) DO UPDATE SET
   pid=excluded.pid,
   tmux_pane=excluded.tmux_pane,
   transcript_path=excluded.transcript_path,
+  monitor_kind=excluded.monitor_kind,
+  automation_id=excluded.automation_id,
+  external_run_id=excluded.external_run_id,
+  poll_command=excluded.poll_command,
+  manual_until=excluded.manual_until,
   status=excluded.status,
   last_heartbeat_at=excluded.last_heartbeat_at,
   ended_at=excluded.ended_at,
   exit_code=excluded.exit_code,
   end_reason=excluded.end_reason`,
-		s.projectID, session.ID, session.Role, session.Lane, session.WorktreePath, session.Branch, session.SessionBackend, session.Provider, session.SessionName, session.TaskID, session.PID, session.TmuxPane, session.TranscriptPath, session.Status, session.StartedAt, session.LastHeartbeatAt, session.EndedAt, session.ExitCode, session.EndReason)
+		s.projectID, session.ID, session.Role, session.Lane, session.WorktreePath, session.Branch, session.SessionBackend, session.Provider, session.SessionName, session.TaskID, session.PID, session.TmuxPane, session.TranscriptPath, session.MonitorKind, session.AutomationID, session.ExternalRunID, session.PollCommand, session.ManualUntil, session.Status, session.StartedAt, session.LastHeartbeatAt, session.EndedAt, session.ExitCode, session.EndReason)
 	return err
 }
 
@@ -1055,6 +1065,7 @@ func (s *Store) Sessions(ctx context.Context, includeEnded bool) ([]Session, err
 SELECT id, role, COALESCE(lane, ''), COALESCE(worktree_path, ''), COALESCE(branch, ''),
        COALESCE(session_backend, ''), COALESCE(provider, ''), COALESCE(session_name, ''),
        COALESCE(task_id, ''), pid, COALESCE(tmux_pane, ''), COALESCE(transcript_path, ''),
+       COALESCE(monitor_kind, ''), COALESCE(automation_id, ''), COALESCE(external_run_id, ''), COALESCE(poll_command, ''), COALESCE(manual_until, ''),
        status, started_at, COALESCE(last_heartbeat_at, ''), COALESCE(ended_at, ''), exit_code, COALESCE(end_reason, '')
 FROM agent_sessions
 WHERE project_id=?`
@@ -1071,7 +1082,7 @@ WHERE project_id=?`
 	for rows.Next() {
 		var session Session
 		var pid, exitCode sql.NullInt64
-		if err := rows.Scan(&session.ID, &session.Role, &session.Lane, &session.WorktreePath, &session.Branch, &session.SessionBackend, &session.Provider, &session.SessionName, &session.TaskID, &pid, &session.TmuxPane, &session.TranscriptPath, &session.Status, &session.StartedAt, &session.LastHeartbeatAt, &session.EndedAt, &exitCode, &session.EndReason); err != nil {
+		if err := rows.Scan(&session.ID, &session.Role, &session.Lane, &session.WorktreePath, &session.Branch, &session.SessionBackend, &session.Provider, &session.SessionName, &session.TaskID, &pid, &session.TmuxPane, &session.TranscriptPath, &session.MonitorKind, &session.AutomationID, &session.ExternalRunID, &session.PollCommand, &session.ManualUntil, &session.Status, &session.StartedAt, &session.LastHeartbeatAt, &session.EndedAt, &exitCode, &session.EndReason); err != nil {
 			return nil, err
 		}
 		if pid.Valid {

@@ -458,6 +458,35 @@ monitor task only creates Fairway session/task rows and no backing heartbeat or
 bounded checkpoint exists, reset or close it before ending the work burst. That
 state is stale bookkeeping, not live monitoring.
 
+Use provider-neutral session fields for monitor proof:
+
+```bash
+fairway session upsert \
+  --id ci-monitor-T-001 \
+  --role ops/watch \
+  --backend ci-monitor \
+  --task-id T-001 \
+  --status running \
+  --monitor-kind ci \
+  --automation-id gha-heartbeat-T-001
+
+fairway session upsert \
+  --id deploy-run-T-002 \
+  --role ops/watch \
+  --backend deploy-monitor \
+  --task-id T-002 \
+  --status running \
+  --monitor-kind deploy \
+  --external-run-id deploy-123 \
+  --poll-command "gh run view deploy-123"
+```
+
+For a short manual monitor, record an active checkpoint with
+`--target-close-by <date>`. After that date, `fairway reconcile active` reports
+the monitor as `monitor_session_without_backing_proof` unless another backing
+proof is attached. The dashboard diagnostics tab shows the same active
+reconciliation finding.
+
 Platform-foundation work should use the narrower packet type that matches the
 task. If a repo defines `[[packet_templates]]`, use those fields as the packet
 contract. Generic templates render with `fairway packet template <name>`:

@@ -98,6 +98,7 @@ switching between task and diagnostics tabs.
 
 `/board?tab=diagnostics` shows operational tables for:
 
+- active reconciliation findings,
 - work coverage and CI/deploy learning findings,
 - sessions,
 - worktrees,
@@ -111,6 +112,11 @@ without required evidence, missing review domains, and failed CI/deploy evidence
 without follow-up tasks. Findings link to task detail when a task is known and
 show the relevant commit, file, evidence artifact, reproduction command, or
 suggested follow-up task command when available.
+
+The active reconciliation section includes monitor lifecycle findings such as
+`monitor_session_without_backing_proof`, which means a CI/deploy/UAT/watch
+session is recorded as active but has no backing automation id, PID/tmux pane,
+external run plus poll command, or fresh bounded manual checkpoint.
 
 Diagnostics tables are sortable. The task-table export action is hidden on the
 diagnostics tab because there is no task table there.

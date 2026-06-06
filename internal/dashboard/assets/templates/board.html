@@ -52,9 +52,16 @@
 <span>stale checkpoints: {{len .StaleCheckpoints}}</span>
 <span>active watchers: {{len .Watchers}}</span>
 <span>sessions: {{len .Sessions}}</span>
+<span>monitor proof: {{.ActiveReport.Summary.MonitorSessionsNoProof}}</span>
 </section>
 {{if eq .Filters.Tab "diagnostics"}}
 <section class="diagnostics-grid">
+<article class="diagnostic-panel">
+<h2>Active Reconciliation</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Session</button></th><th><button type="button" data-sort="text">Action</button></th><th><button type="button" data-sort="text">Reason</button></th></tr></thead><tbody>
+{{range .ActiveReport.Findings}}<tr><td>{{.Kind}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionID}}</td><td>{{.Action}}</td><td>{{.Reason}}</td></tr>{{else}}<tr><td colspan="5">no active reconciliation findings</td></tr>{{end}}
+</tbody></table>
+</article>
 <article class="diagnostic-panel wide">
 <h2>Coverage Diagnostics</h2>
 <section class="summary-strip" aria-label="Coverage summary">
@@ -78,8 +85,8 @@
 </article>
 <article class="diagnostic-panel">
 <h2>Sessions</h2>
-<table data-sortable><thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Backend</button></th></tr></thead><tbody>
-{{range .Sessions}}<tr><td>{{.ID}}</td><td>{{.Role}}</td><td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td><td>{{.Branch}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionBackend}} {{.Provider}}</td></tr>{{else}}<tr><td colspan="6">no live sessions</td></tr>{{end}}
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Backend</button></th><th><button type="button" data-sort="text">Monitor proof</button></th></tr></thead><tbody>
+{{range .Sessions}}<tr><td>{{.ID}}</td><td>{{.Role}}</td><td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td><td>{{.Branch}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionBackend}} {{.Provider}}</td><td>{{if .MonitorKind}}{{.MonitorKind}} {{end}}{{if .AutomationID}}automation {{.AutomationID}} {{end}}{{if .ExternalRunID}}run {{.ExternalRunID}} {{end}}{{if .PollCommand}}poll <code>{{.PollCommand}}</code> {{end}}{{if .ManualUntil}}manual until {{.ManualUntil}}{{end}}</td></tr>{{else}}<tr><td colspan="7">no live sessions</td></tr>{{end}}
 </tbody></table>
 </article>
 <article class="diagnostic-panel">

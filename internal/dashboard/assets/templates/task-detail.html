@@ -93,8 +93,8 @@
 </article>
 <article class="detail-panel wide">
 <h2>Sessions</h2>
-<table class="detail-table"><thead><tr><th>ID</th><th>Backend</th><th>Provider</th><th>Status</th><th>Pane</th><th>Transcript</th></tr></thead><tbody>
-{{range .TaskSessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td></tr>{{else}}<tr><td colspan="6">none</td></tr>{{end}}
+<table class="detail-table"><thead><tr><th>ID</th><th>Backend</th><th>Provider</th><th>Status</th><th>Pane</th><th>Transcript</th><th>Monitor proof</th></tr></thead><tbody>
+{{range .TaskSessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td><td>{{if .MonitorKind}}{{.MonitorKind}} {{end}}{{if .AutomationID}}automation {{.AutomationID}} {{end}}{{if .ExternalRunID}}run {{.ExternalRunID}} {{end}}{{if .PollCommand}}poll <code>{{.PollCommand}}</code> {{end}}{{if .ManualUntil}}manual until {{.ManualUntil}}{{end}}</td></tr>{{else}}<tr><td colspan="7">none</td></tr>{{end}}
 </tbody></table>
 </article>
 <article class="detail-panel">

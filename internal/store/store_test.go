@@ -222,7 +222,7 @@ func TestSessionLifecycle(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
 	pid := 123
-	if err := s.UpsertSession(ctx, Session{ID: "backend-123", Role: "backend", Branch: "agent/backend", Status: "running", PID: &pid}); err != nil {
+	if err := s.UpsertSession(ctx, Session{ID: "backend-123", Role: "backend", Branch: "agent/backend", Status: "running", PID: &pid, MonitorKind: "ci", AutomationID: "auto-123", ExternalRunID: "run-123", PollCommand: "gh run view", ManualUntil: "2099-01-01"}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := s.Sessions(ctx, false)
@@ -231,6 +231,9 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	if len(sessions) != 1 || sessions[0].ID != "backend-123" || sessions[0].PID == nil || *sessions[0].PID != pid {
 		t.Fatalf("sessions=%+v, want live backend session", sessions)
+	}
+	if sessions[0].MonitorKind != "ci" || sessions[0].AutomationID != "auto-123" || sessions[0].ExternalRunID != "run-123" || sessions[0].PollCommand != "gh run view" || sessions[0].ManualUntil != "2099-01-01" {
+		t.Fatalf("session monitor metadata=%+v, want round trip", sessions[0])
 	}
 	if err := s.EndSession(ctx, "backend-123", "ended", "normal", nil); err != nil {
 		t.Fatal(err)

@@ -1377,6 +1377,11 @@ func cmdSessionUpsert(ctx context.Context, opts globalOptions, args []string) er
 	branch := fs.String("branch", "", "branch")
 	tmuxPane := fs.String("tmux-pane", "", "tmux pane")
 	transcript := fs.String("transcript", "", "transcript path")
+	monitorKind := fs.String("monitor-kind", "", "monitor kind for watcher/CI/deploy/smoke sessions")
+	automationID := fs.String("automation-id", "", "backing automation id for monitor sessions")
+	externalRunID := fs.String("external-run-id", "", "external run id for monitor sessions")
+	pollCommand := fs.String("poll-command", "", "poll command that proves or refreshes external monitor state")
+	manualUntil := fs.String("manual-until", "", "manual monitor checkpoint expiry in YYYY-MM-DD or RFC3339")
 	status := fs.String("status", "running", "session status")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -1429,6 +1434,11 @@ func cmdSessionUpsert(ctx context.Context, opts globalOptions, args []string) er
 			TaskID:         *taskID,
 			TmuxPane:       *tmuxPane,
 			TranscriptPath: *transcript,
+			MonitorKind:    *monitorKind,
+			AutomationID:   *automationID,
+			ExternalRunID:  *externalRunID,
+			PollCommand:    *pollCommand,
+			ManualUntil:    *manualUntil,
 			Status:         *status,
 		}
 		if *pid >= 0 {
@@ -1631,12 +1641,13 @@ func cmdReconcileActive(ctx context.Context, opts globalOptions, args []string) 
 			return nil
 		}
 		fmt.Printf("ok: %t\n", report.OK)
-		fmt.Printf("summary: stale_sessions=%d unattended_in_progress=%d status_decision_required=%d active_parent_without_rollup=%d stale_checkpoints=%d\n",
+		fmt.Printf("summary: stale_sessions=%d unattended_in_progress=%d status_decision_required=%d active_parent_without_rollup=%d stale_checkpoints=%d monitor_sessions_no_proof=%d\n",
 			report.Summary.StaleSessions,
 			report.Summary.UnattendedInProgress,
 			report.Summary.StatusDecisionRequired,
 			report.Summary.ActiveParentWithoutRollup,
-			report.Summary.StaleCheckpoints)
+			report.Summary.StaleCheckpoints,
+			report.Summary.MonitorSessionsNoProof)
 		for _, finding := range report.Findings {
 			mode := "reported"
 			if !*dryRun && finding.Action == "mark_session_stale" && finding.SessionID != "" {

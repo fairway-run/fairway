@@ -22,7 +22,7 @@ normal fairway evidence and checkpoint rows; they do not run the watched command
 unless a future runner adapter is configured.
 
 Starting a watcher is not enough to prove that something is actually watching.
-For CI, deploy, smoke, UAT, or provider-session monitors, the watcher record
+For CI, deploy, smoke, UAT, or provider-session monitors, the session record
 must include one of:
 
 - a backing automation id,
@@ -30,10 +30,38 @@ must include one of:
 - an external run id plus a polling command,
 - or an explicit manual checkpoint window with an expiry.
 
+Use `session upsert` to record that provider-neutral proof:
+
+```bash
+fairway session upsert \
+  --id ci-monitor-T-001 \
+  --role ops/watch \
+  --backend ci-monitor \
+  --task-id T-001 \
+  --monitor-kind ci \
+  --automation-id gha-heartbeat-T-001
+
+fairway session upsert \
+  --id deploy-run-T-002 \
+  --role ops/watch \
+  --backend deploy-monitor \
+  --task-id T-002 \
+  --monitor-kind deploy \
+  --external-run-id deploy-123 \
+  --poll-command "gh run view deploy-123"
+
+fairway checkpoint record T-003 \
+  --state active \
+  --owner ops/watch \
+  --target-close-by 2026-06-07 \
+  --summary "Manual smoke watch bounded until 2026-06-07"
+```
+
 If none of those exists, do not leave the task `in_progress` as a monitor.
 Record a bounded checkpoint and close, reset, or block the task before ending
 the work burst. `fairway reconcile active` should flag monitor sessions that
-have no backing process/automation proof and no fresh bounded checkpoint.
+have no backing process/automation proof and no fresh bounded checkpoint as
+`monitor_session_without_backing_proof`.
 
 ## Packet Shape
 
@@ -108,3 +136,6 @@ The dashboard should show active watchers separately from implementation tasks:
 - success/failure condition,
 - latest evidence,
 - stale flag when no checkpoint/evidence appears within the expected interval.
+- monitor backing proof and active reconciliation findings when a monitor
+  session has no automation, PID/tmux, external polling proof, or fresh manual
+  checkpoint window.

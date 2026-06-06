@@ -208,12 +208,14 @@ while Fairway improvements are assigned as their own bounded workstream.
      checkpoint.
 
 8. Monitor backing-process readiness guard
-   - Current state: watcher and CI monitor tasks can be represented as Fairway
-     sessions/checkpoints, but Fairway does not yet require proof that a real
-     heartbeat, automation, PID, tmux pane, or external polling process exists.
-   - Next pressure point: extend active reconciliation and dashboard diagnostics
-     so monitor sessions without backing process/automation proof are reported
-     as stale bookkeeping, not live work.
+   - Current state: `session upsert` can record provider-neutral monitor proof
+     (`monitor_kind`, backing automation id, PID/tmux pane, external run id
+     plus poll command, or bounded manual expiry). `reconcile active` reports
+     monitor sessions without proof as `monitor_session_without_backing_proof`,
+     and dashboard diagnostics surfaces the finding.
+   - Next pressure point: connect external watcher adapters to these fields so
+     CI/deploy monitor sessions update proof automatically rather than relying
+     on manual `session upsert` discipline.
    - Trigger: GPUaaS CI monitor deploy-runs for completed pipelines stayed
      `in_progress` because no heartbeat automation existed to close them.
 

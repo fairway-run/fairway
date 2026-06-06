@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/subashram/fairway/internal/store"
@@ -25,6 +26,7 @@ type ActiveSummary struct {
 	StatusDecisionRequired    int `json:"status_decision_required"`
 	ActiveParentWithoutRollup int `json:"active_parent_without_rollup"`
 	StaleCheckpoints          int `json:"stale_checkpoints"`
+	MonitorSessionsNoProof    int `json:"monitor_sessions_no_proof"`
 }
 
 type ActiveFinding struct {
@@ -113,6 +115,20 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 				TaskStatus: task.Status,
 			})
 		}
+		if isMonitorSession(session) && !monitorSessionHasBackingProof(session, latestCheckpoint[session.TaskID], opts.StaleCheckpointAfter) {
+			findings = append(findings, ActiveFinding{
+				Kind:       "monitor_session_without_backing_proof",
+				Severity:   "warning",
+				Action:     "mark_session_stale",
+				Reason:     "monitor session has no backing automation, process proof, external polling proof, or fresh bounded manual checkpoint",
+				SessionID:  session.ID,
+				Provider:   session.Provider,
+				Backend:    session.SessionBackend,
+				Role:       session.Role,
+				TaskID:     session.TaskID,
+				TaskStatus: task.Status,
+			})
+		}
 	}
 
 	for _, task := range tasks {
@@ -154,6 +170,8 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 		switch finding.Kind {
 		case "running_session_terminal_task", "running_session_missing_task":
 			report.Summary.StaleSessions++
+		case "monitor_session_without_backing_proof":
+			report.Summary.MonitorSessionsNoProof++
 		case "unattended_in_progress":
 			report.Summary.UnattendedInProgress++
 		case "status_decision_required":
@@ -165,6 +183,68 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 		}
 	}
 	return report, nil
+}
+
+func isMonitorSession(session store.Session) bool {
+	if strings.TrimSpace(session.MonitorKind) != "" {
+		return true
+	}
+	text := strings.ToLower(strings.Join([]string{
+		session.Lane,
+		session.SessionBackend,
+		session.Provider,
+		session.SessionName,
+	}, " "))
+	for _, keyword := range []string{"watch", "monitor", "ci", "deploy", "smoke", "uat"} {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func monitorSessionHasBackingProof(session store.Session, checkpoint store.Checkpoint, staleCheckpointAfter time.Duration) bool {
+	if session.PID != nil || strings.TrimSpace(session.TmuxPane) != "" || strings.TrimSpace(session.AutomationID) != "" {
+		return true
+	}
+	if strings.TrimSpace(session.ExternalRunID) != "" && strings.TrimSpace(session.PollCommand) != "" {
+		return true
+	}
+	if manualWindowOpen(session.ManualUntil) {
+		return true
+	}
+	return freshBoundedCheckpoint(checkpoint, staleCheckpointAfter)
+}
+
+func freshBoundedCheckpoint(checkpoint store.Checkpoint, staleCheckpointAfter time.Duration) bool {
+	switch checkpoint.State {
+	case "active", "awaiting_input":
+	default:
+		return false
+	}
+	if !manualWindowOpen(checkpoint.TargetCloseBy) {
+		return false
+	}
+	if staleCheckpointAfter > 0 && checkpoint.CreatedAt != "" && checkpointOlderThan(checkpoint.CreatedAt, staleCheckpointAfter) {
+		return false
+	}
+	return true
+}
+
+func manualWindowOpen(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	now := time.Now().UTC()
+	if parsed, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return !parsed.Before(now)
+	}
+	if parsed, err := time.Parse("2006-01-02", raw); err == nil {
+		endOfDay := parsed.Add(24*time.Hour - time.Nanosecond)
+		return !endOfDay.Before(now)
+	}
+	return false
 }
 
 func findingForTask(kind, severity, action, reason string, task store.Task, evidence store.Evidence, checkpoint store.Checkpoint) ActiveFinding {
