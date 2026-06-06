@@ -50,7 +50,7 @@ issues:
     domain: tracker
     kind: epic
     module: Planning Mirror
-    labels: [role:ops, domain:tracker, kind:epic, review:arch]
+    labels: ["role:ops", "domain:tracker", "kind:epic", "review:arch"]
     description: >
       Parent planning issue for evaluating Plane as a Fairway external tracker.
       Plane may own planning discussion; Fairway owns execution state.
@@ -68,7 +68,7 @@ issues:
     kind: task
     module: Planning Mirror
     cycle: FW-120 Local Evaluation
-    labels: [role:ops, domain:tracker, kind:task, review:ops, review:governance]
+    labels: ["role:ops", "domain:tracker", "kind:task", "review:ops", "review:governance"]
     description: >
       Document local Plane setup, create representative evaluation data, and
       record mappings without committing credentials or local runtime files.
@@ -89,7 +89,7 @@ issues:
     domain: tracker
     kind: task
     module: Execution Boundary
-    labels: [role:backend, domain:tracker, kind:task, review:arch, review:backend]
+    labels: ["role:backend", "domain:tracker", "kind:task", "review:arch", "review:backend"]
     description: >
       Define generic configure, dry-run import, link, export-status/comment,
       reconcile, and reference-resolution operations for Plane, Jira, Linear,
@@ -103,7 +103,7 @@ issues:
     domain: ci
     kind: follow-up
     module: Follow-up Taxonomy
-    labels: [CI-FIX, role:backend, domain:ci, kind:follow-up]
+    labels: ["CI-FIX", "role:backend", "domain:ci", "kind:follow-up"]
     description: >
       Representative CI follow-up created from failed pipeline evidence. Plane
       can make the work visible, but Fairway records the evidence and state.
@@ -116,7 +116,7 @@ issues:
     domain: release
     kind: follow-up
     module: Release Readiness
-    labels: [CD-FIX, role:ops, domain:release, kind:follow-up]
+    labels: ["CD-FIX", "role:ops", "domain:release", "kind:follow-up"]
     description: >
       Representative deploy/release follow-up linked from a Fairway release-run
       guard finding.
@@ -129,7 +129,7 @@ issues:
     domain: dashboard
     kind: follow-up
     module: Follow-up Taxonomy
-    labels: [UAT-BUG, role:ui, domain:dashboard, kind:follow-up]
+    labels: ["UAT-BUG", "role:ui", "domain:dashboard", "kind:follow-up"]
     description: >
       Representative externally visible UAT issue. Plane can own discussion and
       screenshots; Fairway owns implementation evidence and review gates.
@@ -142,7 +142,7 @@ issues:
     domain: tracker
     kind: follow-up
     module: Planning Mirror
-    labels: [OPS-FIX, role:ops, domain:tracker, kind:follow-up]
+    labels: ["OPS-FIX", "role:ops", "domain:tracker", "kind:follow-up"]
     description: >
       Representative operations follow-up for setup or credential handling.
 
@@ -154,7 +154,7 @@ issues:
     domain: tracker
     kind: follow-up
     module: Execution Boundary
-    labels: [HARNESS-FIX, role:backend, domain:tracker, kind:follow-up]
+    labels: ["HARNESS-FIX", "role:backend", "domain:tracker", "kind:follow-up"]
     description: >
       Representative harness task to validate mapping without remote writes.
 
@@ -166,7 +166,7 @@ issues:
     domain: tracker
     kind: follow-up
     module: Planning Mirror
-    labels: [DOC-FIX, role:governance, domain:tracker, kind:follow-up]
+    labels: ["DOC-FIX", "role:governance", "domain:tracker", "kind:follow-up"]
     description: >
       Representative documentation follow-up for stakeholder-facing tracker
       behavior.
