@@ -1,7 +1,14 @@
 .reports-layout {
+  box-sizing: border-box;
   display: grid;
   gap: var(--space-5);
   padding: 0 var(--space-6) var(--space-6);
+}
+
+.reports-layout *,
+.reports-layout *::before,
+.reports-layout *::after {
+  box-sizing: border-box;
 }
 
 .report-head,
@@ -9,6 +16,7 @@
 .report-summary,
 .report-section {
   max-width: 1480px;
+  min-width: 0;
   width: 100%;
   margin-inline: auto;
 }
@@ -94,7 +102,7 @@
 .mini-stats,
 .taxonomy-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
   gap: var(--space-3);
 }
 
@@ -128,6 +136,7 @@
 }
 
 .report-section {
+  overflow-x: auto;
   padding: var(--space-4);
   background: var(--panel);
   border: var(--border-width) solid var(--line);
