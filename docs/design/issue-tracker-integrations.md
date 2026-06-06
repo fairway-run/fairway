@@ -92,7 +92,37 @@ for example:
 Reconcile should show proposed changes first. It should not mutate local
 execution state or remote tracker state without an explicit operator action.
 
-## Planned Commands
+## Provider-Neutral Adapter Contract
+
+Tracker adapters implement a planning mirror contract. The contract is shared
+by Plane, Jira, Linear, and future providers; provider-specific packages may
+translate fields, but Fairway core only deals in provider-neutral operations and
+links.
+
+Required operations:
+
+| Operation | Purpose | Mutation boundary |
+|---|---|---|
+| `configure` | Validate provider URL/workspace/project/team settings and credential source. | No Fairway state or remote writes in dry-run. |
+| `dry_run_import` | Preview external issues as Fairway task definitions. | No Fairway task writes until an explicit apply path exists. |
+| `link` | Store a Fairway task ID to external issue reference. | Mutates only `tracker_links`. |
+| `export_status` | Render a completion/blocker/status summary for a linked external issue. | Remote comment/status only when an adapter apply command exists; never mutates Fairway execution state. |
+| `export_comment` | Render an evidence/review/handoff summary for a linked external issue. | Remote comment only when explicitly applied. |
+| `reconcile` | Report drift between linked Fairway tasks and external tracker state. | Advisory by default; no local or remote mutation. |
+| `resolve` | Normalize an external id or URL into a provider reference. | No mutation. |
+
+The initial Go contract lives in `internal/tracker`. It defines:
+
+- provider registry for `plane`, `jira`, and `linear`,
+- provider-neutral task, issue, reference, mapping, and reconcile result types,
+- default field mappings that distinguish planning mirror fields from Fairway
+  execution truth,
+- dry-run reconcile actions that report drift checks without mutating anything.
+
+Provider-specific adapters should live under `internal/tracker/<provider>` only
+after the generic contract is sufficient.
+
+## Commands
 
 ```bash
 fairway tracker configure plane --url <url> --workspace <slug> --project <id-or-slug>
@@ -101,8 +131,9 @@ fairway tracker configure jira --url <url> --project <key>
 fairway tracker import jira --query <jql> [--parent <task-id>] [--dry-run]
 fairway tracker configure linear --workspace <name> --team <key>
 fairway tracker import linear --filter <text> [--parent <task-id>] [--dry-run]
-fairway tracker link <task-id> --external <tracker-key-or-url>
-fairway tracker export-status <task-id> [--dry-run]
+fairway tracker link <task-id> --provider <plane|jira|linear> --external-id <id> [--url <url>]
+fairway tracker export-status <task-id> [--provider <plane|jira|linear>] [--external-id <id>] [--dry-run]
+fairway tracker resolve --provider <plane|jira|linear> [--external-id <id>] [--url <url>]
 fairway tracker reconcile [--dry-run]
 ```
 

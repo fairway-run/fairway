@@ -1172,9 +1172,17 @@ func TestCLI_TrackerLinks(t *testing.T) {
 
 	runOK(t, "init")
 	runOK(t, "add", "T-001", "--title", "Tracked", "--role", "backend")
+	runOK(t, "tracker", "providers")
+	runOK(t, "--json", "tracker", "providers")
+	runOK(t, "tracker", "configure", "plane", "--url", "http://localhost:8088", "--workspace", "fairway-eval", "--project", "FWPLANE", "--dry-run")
+	runOK(t, "--json", "tracker", "import", "plane", "--query", "label:CI-FIX", "--parent", "T-001", "--dry-run")
 	runOK(t, "tracker", "link", "T-001", "--provider", "linear", "--external-id", "LIN-1", "--url", "https://linear.app/example/issue/LIN-1")
+	runOK(t, "tracker", "link", "T-001", "--provider", "plane", "--external-id", "FWPLANE-1", "--url", "http://localhost:8088/fairway-eval/FWPLANE-1")
 	runOK(t, "tracker", "links")
+	runOK(t, "tracker", "export-status", "T-001", "--provider", "plane", "--external-id", "FWPLANE-1", "--dry-run")
+	runOK(t, "--json", "tracker", "resolve", "--provider", "plane", "--external-id", "FWPLANE-1", "--url", "http://localhost:8088/fairway-eval/FWPLANE-1")
 	runOK(t, "--json", "tracker", "reconcile", "--dry-run")
+	runCaptureAllowError(t, "tracker", "link", "T-001", "--provider", "notion", "--external-id", "N-1")
 }
 
 func TestDefaultAdoptionRouteSamplesUsesProfiles(t *testing.T) {

@@ -22,6 +22,10 @@ and uses semantic versioning.
 - Plane local evaluation docs and fixtures now define the repeatable workspace
   setup, seed issues, field mapping questions, and planning-only boundary for
   future tracker adapter work.
+- Provider-neutral tracker contract support now covers Plane, Jira, and Linear
+  registry entries, dry-run configure/import/export/resolve/reconcile command
+  surfaces, and Plane/Jira/Linear link persistence without allowing tracker
+  state to mutate Fairway execution state.
 - Release-run packets and `fairway release verify` now coordinate release
   attempts, including release notes, changelog state, CI/docs/signing/notary
   evidence, GitHub release state, asset URL checks, Homebrew cask version, and

@@ -29,6 +29,7 @@ import (
 	"github.com/subashram/fairway/internal/registry"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
+	"github.com/subashram/fairway/internal/tracker"
 	"gopkg.in/yaml.v3"
 )
 
@@ -4070,22 +4071,129 @@ func cmdProjects(opts globalOptions, args []string) error {
 
 func cmdTracker(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("tracker requires subcommand: link, links, reconcile")
+		return errors.New("tracker requires subcommand: providers, configure, import, link, links, export-status, resolve, reconcile")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("tracker", "link|links|reconcile")
+		subcommandUsage("tracker", "providers|configure|import|link|links|export-status|resolve|reconcile")
 		return nil
 	}
 	switch args[0] {
+	case "providers":
+		return cmdTrackerProviders(ctx, opts, args[1:])
+	case "configure":
+		return cmdTrackerConfigure(ctx, opts, args[1:])
+	case "import":
+		return cmdTrackerImport(ctx, opts, args[1:])
 	case "link":
 		return cmdTrackerLink(ctx, opts, args[1:])
 	case "links":
 		return cmdTrackerLinks(ctx, opts, args[1:])
+	case "export-status", "export-comment":
+		return cmdTrackerExportStatus(ctx, opts, args[0], args[1:])
+	case "resolve":
+		return cmdTrackerResolve(ctx, opts, args[1:])
 	case "reconcile":
 		return cmdTrackerReconcile(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown tracker subcommand %q", args[0])
 	}
+}
+
+func cmdTrackerProviders(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected tracker providers arguments: %s", strings.Join(args, " "))
+	}
+	providers := tracker.SupportedProviders()
+	if opts.JSON {
+		return printJSON(providers)
+	}
+	for _, provider := range providers {
+		var ops []string
+		for _, op := range provider.Operations {
+			ops = append(ops, string(op))
+		}
+		fmt.Printf("%s\t%s\t%s\n", provider.Name, provider.Kind, strings.Join(ops, ","))
+	}
+	return nil
+}
+
+func cmdTrackerConfigure(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("tracker configure requires provider")
+	}
+	provider := args[0]
+	fs := flag.NewFlagSet("tracker configure", flag.ContinueOnError)
+	urlValue := fs.String("url", "", "tracker base URL")
+	workspace := fs.String("workspace", "", "tracker workspace")
+	project := fs.String("project", "", "tracker project")
+	team := fs.String("team", "", "tracker team")
+	dryRun := fs.Bool("dry-run", true, "show configuration without writing")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker configure arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	spec, err := tracker.Provider(provider)
+	if err != nil {
+		return err
+	}
+	report := struct {
+		Provider     tracker.ProviderSpec `json:"provider"`
+		DryRun       bool                 `json:"dry_run"`
+		URL          string               `json:"url,omitempty"`
+		Workspace    string               `json:"workspace,omitempty"`
+		Project      string               `json:"project,omitempty"`
+		Team         string               `json:"team,omitempty"`
+		PlanningOnly bool                 `json:"planning_only"`
+		Note         string               `json:"note"`
+	}{spec, *dryRun, *urlValue, *workspace, *project, *team, true, "configuration is an adapter contract preview; credentials must come from environment or OS credential store"}
+	if opts.JSON {
+		return printJSON(report)
+	}
+	fmt.Printf("tracker configure provider=%s dry_run=%t url=%s workspace=%s project=%s team=%s\n", spec.Name, report.DryRun, report.URL, report.Workspace, report.Project, report.Team)
+	fmt.Println(report.Note)
+	return nil
+}
+
+func cmdTrackerImport(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("tracker import requires provider")
+	}
+	provider := args[0]
+	fs := flag.NewFlagSet("tracker import", flag.ContinueOnError)
+	query := fs.String("query", "", "provider query or filter")
+	parent := fs.String("parent", "", "parent Fairway task id")
+	dryRun := fs.Bool("dry-run", true, "preview import without writing Fairway tasks")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker import arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	spec, err := tracker.Provider(provider)
+	if err != nil {
+		return err
+	}
+	mappings, err := tracker.DefaultMappings(spec.Name)
+	if err != nil {
+		return err
+	}
+	report := struct {
+		Provider     tracker.ProviderSpec `json:"provider"`
+		DryRun       bool                 `json:"dry_run"`
+		Query        string               `json:"query,omitempty"`
+		Parent       string               `json:"parent,omitempty"`
+		Mappings     []tracker.Mapping    `json:"mappings"`
+		PlanningOnly bool                 `json:"planning_only"`
+		Note         string               `json:"note"`
+	}{spec, *dryRun, *query, *parent, mappings, true, "dry-run import defines mapping only; no Fairway tasks or remote tracker issues are changed"}
+	if opts.JSON {
+		return printJSON(report)
+	}
+	fmt.Printf("tracker import provider=%s dry_run=%t query=%q parent=%s\n", spec.Name, report.DryRun, report.Query, report.Parent)
+	fmt.Println(report.Note)
+	return nil
 }
 
 func cmdTrackerLink(ctx context.Context, opts globalOptions, args []string) error {
@@ -4103,6 +4211,9 @@ func cmdTrackerLink(ctx context.Context, opts globalOptions, args []string) erro
 		return fmt.Errorf("unexpected tracker link arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if err := tracker.ValidateProvider(*provider); err != nil {
+			return err
+		}
 		link := store.TrackerLink{TaskID: args[0], Provider: *provider, ExternalID: *externalID, URL: *url}
 		if err := s.UpsertTrackerLink(ctx, link); err != nil {
 			return err
@@ -4110,6 +4221,74 @@ func cmdTrackerLink(ctx context.Context, opts globalOptions, args []string) erro
 		fmt.Printf("linked %s to %s:%s\n", args[0], *provider, *externalID)
 		return nil
 	})
+}
+
+func cmdTrackerExportStatus(ctx context.Context, opts globalOptions, command string, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("tracker %s requires task id", command)
+	}
+	fs := flag.NewFlagSet("tracker "+command, flag.ContinueOnError)
+	provider := fs.String("provider", "", "tracker provider")
+	externalID := fs.String("external-id", "", "external issue id")
+	dryRun := fs.Bool("dry-run", true, "preview exported status/comment without remote write")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker %s arguments: %s", command, strings.Join(fs.Args(), " "))
+	}
+	if *provider != "" {
+		if err := tracker.ValidateProvider(*provider); err != nil {
+			return err
+		}
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, transitions, evidence, _, reviews, err := s.TaskDetail(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		report := struct {
+			Operation    string             `json:"operation"`
+			DryRun       bool               `json:"dry_run"`
+			Provider     string             `json:"provider,omitempty"`
+			ExternalID   string             `json:"external_id,omitempty"`
+			Task         store.Task         `json:"task"`
+			EvidenceRows int                `json:"evidence_rows"`
+			Reviews      int                `json:"reviews"`
+			Transitions  []store.Transition `json:"transitions"`
+			PlanningOnly bool               `json:"planning_only"`
+			Mutates      string             `json:"mutates"`
+			Note         string             `json:"note"`
+		}{command, *dryRun, *provider, *externalID, task, len(evidence), len(reviews), transitions, true, "remote tracker comment/status only when an adapter apply command exists", "Fairway execution state is not changed by tracker export"}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("tracker %s task=%s dry_run=%t provider=%s external_id=%s evidence=%d reviews=%d\n", command, args[0], report.DryRun, report.Provider, report.ExternalID, report.EvidenceRows, report.Reviews)
+		fmt.Println(report.Note)
+		return nil
+	})
+}
+
+func cmdTrackerResolve(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("tracker resolve", flag.ContinueOnError)
+	provider := fs.String("provider", "", "tracker provider")
+	externalID := fs.String("external-id", "", "external issue id")
+	urlValue := fs.String("url", "", "external issue URL")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker resolve arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	ref, err := tracker.ResolveReference(*provider, *externalID, *urlValue)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(ref)
+	}
+	fmt.Printf("%s\t%s\t%s\n", ref.Provider, ref.ExternalID, ref.URL)
+	return nil
 }
 
 func cmdTrackerLinks(ctx context.Context, opts globalOptions, args []string) error {
@@ -4145,16 +4324,15 @@ func cmdTrackerReconcile(ctx context.Context, opts globalOptions, args []string)
 		if err != nil {
 			return err
 		}
-		report := struct {
-			DryRun bool                `json:"dry_run"`
-			Links  []store.TrackerLink `json:"links"`
-			Note   string              `json:"note"`
-		}{*dryRun, links, "external Jira/Linear API sync is intentionally not performed by the local-first prototype"}
+		report := tracker.BuildReconcileReport(links, *dryRun)
 		if opts.JSON {
 			return printJSON(report)
 		}
 		fmt.Printf("tracker reconcile dry_run=%t links=%d\n", report.DryRun, len(report.Links))
 		fmt.Println(report.Note)
+		for _, action := range report.Actions {
+			fmt.Printf("would %s\tprovider=%s\ttask=%s\texternal=%s\treason=%s\n", action.Action, action.Provider, action.TaskID, action.ExternalID, action.Reason)
+		}
 		return nil
 	})
 }

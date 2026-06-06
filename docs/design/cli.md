@@ -66,8 +66,13 @@ fairway dashboard stop [--pid-file <path>] [--log-file <path>]
 fairway dashboard restart [--listen <addr>] [--multi] [--open] [--pid-file <path>] [--log-file <path>]
 fairway dashboard status [--listen <addr>] [--multi] [--pid-file <path>] [--log-file <path>]
 fairway tui [--once]                                    # interactive ready/claim/status/detail/status-update/evidence/readiness loop
-fairway tracker link <task-id> --provider <jira|linear> --external-id <id> [--url <url>]
+fairway tracker providers
+fairway tracker configure <plane|jira|linear> [--url <url>] [--workspace <slug>] [--project <id-or-slug>] [--team <key>] [--dry-run]
+fairway tracker import <plane|jira|linear> [--query <filter>] [--parent <task-id>] [--dry-run]
+fairway tracker link <task-id> --provider <plane|jira|linear> --external-id <id> [--url <url>]
 fairway tracker links
+fairway tracker export-status <task-id> [--provider <plane|jira|linear>] [--external-id <id>] [--dry-run]
+fairway tracker resolve --provider <plane|jira|linear> [--external-id <id>] [--url <url>]
 fairway tracker reconcile [--dry-run]
 fairway register [--name <n>]                           # add current project to ~/.fairway/registry.toml
 fairway unregister [<name>]                             # remove from registry
@@ -120,6 +125,11 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   it requires a clean committed SHA and pushed commits so CI can run. Use
   `--require-clean` or `--require-pushed` when the current boundary should fail
   instead of warn.
+- `tracker` commands are provider-neutral adapter contract surfaces. `configure`,
+  `import`, `export-status`, `resolve`, and `reconcile` are dry-run/advisory
+  until a provider adapter explicitly adds an apply path. Tracker planning
+  mirrors must not mutate Fairway execution state, sessions, evidence, reviews,
+  or merge gates.
 - `audit work-coverage` is advisory by default. It compares commits since a
   base ref or duration window against Fairway task IDs, task `source_paths` /
   `target_paths`, evidence rows, and required review domains. Use it before

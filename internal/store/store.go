@@ -1223,7 +1223,7 @@ func (s *Store) UpsertTrackerLink(ctx context.Context, link TrackerLink) error {
 		return errors.New("tracker links require task id, provider, and external id")
 	}
 	switch link.Provider {
-	case "jira", "linear":
+	case "plane", "jira", "linear":
 	default:
 		return fmt.Errorf("unsupported tracker provider %q", link.Provider)
 	}
