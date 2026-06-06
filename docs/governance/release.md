@@ -229,6 +229,17 @@ The GitHub Release is intentionally created as a draft. Review artifacts,
 checksums, signing/notarization logs, and the generated Homebrew cask before
 publishing the draft.
 
+Do not treat the release as Homebrew-ready while the GitHub Release is still a
+draft. GoReleaser can update `fairway-run/homebrew-tap` before the draft is
+published, but cask URLs point at `releases/download/vX.Y.Z/...` and return 404
+until the release is public. The release-run checklist should classify this as
+failed verification:
+
+```text
+Homebrew cask version == tag, but GitHub release is draft or asset URL is 404.
+Action: publish the reviewed release draft, then verify asset URLs and brew fetch.
+```
+
 Verify Homebrew after the cask update lands:
 
 ```bash
@@ -238,6 +249,25 @@ brew install --cask fairway
 fairway help
 brew uninstall --cask fairway
 ```
+
+For a lower-impact verification that does not install Fairway, update the tap
+cache and fetch the cask:
+
+```bash
+tapdir=$(brew --repository fairway-run/tap)
+git -C "$tapdir" fetch origin main --prune
+git -C "$tapdir" reset --hard origin/main
+brew info --cask fairway-run/tap/fairway
+brew fetch --cask --force fairway-run/tap/fairway
+```
+
+The expected result is:
+
+- GitHub release is not draft.
+- Release assets include checksums and all target archives.
+- Asset URLs return 200 after redirects.
+- Homebrew cask reports the new version.
+- `brew fetch --cask --force fairway-run/tap/fairway` succeeds.
 
 If the cask publish fails, fix the tap or release config and rerun the release
 workflow only when the generated cask will point to the same immutable tag and

@@ -488,3 +488,45 @@ tasks:
       - dashboard diagnostics distinguishes real active monitor work from stale monitor bookkeeping that only left a task in progress
       - "watcher start or deploy-run monitor creation docs require proving the heartbeat/automation exists before leaving the task `in_progress`"
       - tests cover a monitor with a valid backing automation, a monitor with no backing automation, and a manually bounded checkpoint that expires
+
+  - id: FW-117
+    title: Add release-run packet and release verification guard
+    kind: readiness-guard
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - docs/governance/release.md
+      - docs/release-notes.md
+      - CHANGELOG.md
+      - .github/workflows/release.yml
+      - .goreleaser.yaml
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/reconcile
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/reconcile
+      - docs/governance/release.md
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: release-run-readiness-guard
+    depends_on:
+      - FW-113
+      - FW-114
+      - FW-116
+    acceptance_checks:
+      - release-run packet captures version, tag, source SHA, release notes, changelog state, CI status, docs status, signing/notary status, release URL, Homebrew tap commit, and verification commands
+      - release-run workflow requires one Fairway task/checkpoint per release attempt and evidence for local checks, pushed main checks, tag push, release workflow result, public release state, asset access, and Homebrew fetch
+      - guard reports a failure when the Homebrew cask points to a version whose GitHub release is still draft or whose asset URLs return 404
+      - guard reports missing release notes or changelog updates before tag creation
+      - docs include exact v0.1.2 lessons learned, including publishing the draft release before treating the Homebrew cask as usable
+      - tests cover clean release-run, draft-release-with-public-cask, missing-release-notes, and failed-asset-url cases
