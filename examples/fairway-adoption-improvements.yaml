@@ -563,7 +563,9 @@ tasks:
       - FW-116
     acceptance_checks:
       - When a watcher or heartbeat closes the final monitored CI/deploy/UAT task, Fairway records an explicit handback checkpoint or next-action recommendation.
+      - Watcher completion produces a reusable coordinator continuation prompt when ready work remains, including working-memory path, queue config, completed monitor summary, and "continue unless stop condition applies" instruction.
+      - Provider-backed monitor integrations can send the continuation prompt to the owning coordinator/orchestrator session after all monitored items are reconciled.
       - Coordinator/readiness output distinguishes "all monitors complete, no active sessions, ready work exists" from a genuinely idle/complete state.
       - Dashboard diagnostics shows a resume-needed finding when monitors finish and the task queue has ready non-conflicting work.
-      - Agent guide documents that monitor completion is not terminal unless the operator explicitly marked the whole work block complete.
+      - Agent guide documents that monitor completion is not terminal unless the operator explicitly marked the whole work block complete, and that CI/deploy monitor tooling must either send a continuation prompt or record why no continuation is safe.
       - Tests cover all monitored tasks complete with ready work available, all monitored tasks complete with no ready work, and monitor completion followed by next branch push.

@@ -488,6 +488,24 @@ next action: push held branches, start the next ready task, request review, or
 state that no ready work remains. A monitor heartbeat finishing successfully is
 not the same thing as the overall track being complete.
 
+For Codex/Claude/tmux/provider-backed coordinators, this handback should be a
+real continuation prompt to the owning coordinator session whenever ready work
+remains. The monitor should not only delete its heartbeat and exit. Include the
+working-memory path, Fairway config path, completed monitor summary, and this
+instruction:
+
+```text
+The monitored CI/deploy/UAT window is complete. Read the current working memory
+file, check Fairway status and ready tasks, and continue with the next
+non-conflicting task unless a documented stop condition applies. Record a
+checkpoint explaining the selected next action.
+```
+
+If the monitor cannot send that provider prompt, record a `resume_needed`
+checkpoint or finding with the coordinator session id and the next ready task
+summary. Clean Fairway state plus ready work is not enough; the execution lane
+also needs a continuation signal.
+
 Use provider-neutral session fields for monitor proof:
 
 ```bash

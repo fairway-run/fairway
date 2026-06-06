@@ -75,6 +75,31 @@ Deleting the heartbeat or ending the monitor session is not enough when ready
 work remains. Otherwise Fairway state becomes clean but the execution lane can
 go idle with local branches or queued tasks waiting.
 
+For provider-backed coordinators, the handback should be an explicit
+continuation prompt, not only a Fairway checkpoint. The prompt should include:
+
+- the completed monitor ids, task ids, source SHAs, and final result;
+- the working-memory path and Fairway config path to reread;
+- the instruction to check Fairway status/ready work and continue with the next
+  non-conflicting task unless a documented stop condition applies;
+- the required next checkpoint, such as selected next task, no ready work, or
+  waiting on review/approval.
+
+Recommended continuation prompt:
+
+```text
+The monitored CI/deploy/UAT window is complete.
+
+Read the current working memory file and Fairway config, then check Fairway
+status and ready tasks. If no stop condition applies, continue with the next
+non-conflicting task. Do not wait for user input only because the monitor
+finished. Record a checkpoint explaining the selected next action.
+```
+
+If ready work exists and the watcher cannot send the continuation prompt to the
+owning coordinator session, it must record that as a resume-needed finding so
+the dashboard and reconciliation output show that the lane is not truly idle.
+
 ## Packet Shape
 
 ```yaml
