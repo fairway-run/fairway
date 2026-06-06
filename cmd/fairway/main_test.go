@@ -79,6 +79,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check"},
+		{[]string{"audit", "--help"}, "fairway audit work-coverage"},
 	} {
 		out := runCapture(t, tc.args...)
 		assertContains(t, out, tc.want)
@@ -753,6 +754,65 @@ func TestCLI_ReconcileActiveReportsTaskEvidenceAndParentFindings(t *testing.T) {
 	assertContains(t, jsonReport, `"kind": "active_parent_without_rollup"`)
 }
 
+func TestCLI_AuditWorkCoverage(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	gitInit(t, repo)
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Covered API", "--role", "backend", "--source-paths", "cmd/api")
+	runOK(t, "add", "T-002", "--title", "Needs evidence", "--role", "backend", "--review-domains", "architecture")
+	runOK(t, "add", "T-003", "--title", "Evidence open", "--role", "backend")
+	runOK(t, "set-status", "T-002", "done")
+	replaceInFile(t, ".fairway/config.toml", "require_evidence_before_done = false", "require_evidence_before_done = true")
+	runOK(t, "record", "evidence", "T-003", "--command-text", "go test ./...", "--result", "pass")
+
+	writeFile(t, "README.md", "base\n")
+	gitAddCommit(t, repo, "base")
+	baseRef := gitRevParse(t, repo, "HEAD")
+	writeFile(t, "cmd/api/routes.go", "package main\n")
+	gitAddCommit(t, repo, "T-001 route update")
+	writeFile(t, "docs/plan.md", "plan\n")
+	gitAddCommit(t, repo, "misc docs update")
+
+	report := runCapture(t, "audit", "work-coverage", "--since-ref", baseRef, "--dry-run")
+	for _, want := range []string{
+		"dry-run: advisory audit only",
+		"commit_without_task_coverage",
+		"changed_file_uncovered",
+		"done_without_required_evidence",
+		"evidence_without_status_decision",
+		"missing_required_review_domains",
+		"docs/plan.md",
+		"T-002",
+		"T-003",
+	} {
+		assertContains(t, report, want)
+	}
+
+	jsonReport := runCapture(t, "--json", "audit", "work-coverage", "--since-ref", baseRef)
+	assertContains(t, jsonReport, `"kind": "commit_without_task_coverage"`)
+	assertContains(t, jsonReport, `"done_without_required_evidence": 1`)
+	assertContains(t, jsonReport, `"missing": [`)
+	assertContains(t, jsonReport, `"architecture"`)
+
+	taskReport := runCapture(t, "audit", "work-coverage", "--since-ref", baseRef, "--task-id", "T-001")
+	assertContains(t, taskReport, "task_id: T-001")
+	if strings.Contains(taskReport, "T-002") || strings.Contains(taskReport, "T-003") {
+		t.Fatalf("task-scoped audit included unrelated task findings:\n%s", taskReport)
+	}
+
+	durationReport := runCapture(t, "--json", "audit", "work-coverage", "--since-duration", "24h")
+	assertContains(t, durationReport, `"since_duration": "24h0m0s"`)
+}
+
 func TestCLI_PacketTemplate(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -1176,9 +1236,37 @@ func git(t *testing.T, dir string, args ...string) {
 	}
 }
 
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	git(t, dir, "init", "-b", "main")
+	git(t, dir, "config", "user.name", "Fairway Test")
+	git(t, dir, "config", "user.email", "fairway@example.test")
+}
+
+func gitAddCommit(t *testing.T, dir, message string) {
+	t.Helper()
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-m", message)
+}
+
+func gitRevParse(t *testing.T, dir, ref string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", ref)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse %s: %v\n%s", ref, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Clean(path), []byte(content), 0o644); err != nil {
+	clean := filepath.Clean(path)
+	if err := os.MkdirAll(filepath.Dir(clean), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(clean, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -106,6 +107,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdPreflight(opts, args[1:])
 	case "workflow":
 		return cmdWorkflow(ctx, opts, args[1:])
+	case "audit":
+		return cmdAudit(ctx, opts, args[1:])
 	case "merge-ready":
 		return cmdMergeReady(ctx, opts, args[1:])
 	case "route":
@@ -823,6 +826,376 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 		}
 		return nil
 	})
+}
+
+func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("audit", "work-coverage")
+		return nil
+	}
+	switch args[0] {
+	case "work-coverage":
+		return cmdAuditWorkCoverage(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown audit subcommand %q", args[0])
+	}
+}
+
+type workCoverageReport struct {
+	OK            bool                  `json:"ok"`
+	SinceRef      string                `json:"since_ref,omitempty"`
+	SinceDuration string                `json:"since_duration,omitempty"`
+	TaskID        string                `json:"task_id,omitempty"`
+	CommitCount   int                   `json:"commit_count"`
+	Findings      []workCoverageFinding `json:"findings"`
+	Summary       workCoverageSummary   `json:"summary"`
+}
+
+type workCoverageSummary struct {
+	CommitsWithoutTaskID        int `json:"commits_without_task_id"`
+	ChangedFilesUncovered       int `json:"changed_files_uncovered"`
+	EvidenceStatusDecisions     int `json:"evidence_status_decisions"`
+	DoneWithoutRequiredEvidence int `json:"done_without_required_evidence"`
+	MissingRequiredReviews      int `json:"missing_required_reviews"`
+}
+
+type workCoverageFinding struct {
+	Kind        string   `json:"kind"`
+	Severity    string   `json:"severity"`
+	Reason      string   `json:"reason"`
+	TaskID      string   `json:"task_id,omitempty"`
+	Commit      string   `json:"commit,omitempty"`
+	Subject     string   `json:"subject,omitempty"`
+	Files       []string `json:"files,omitempty"`
+	Missing     []string `json:"missing,omitempty"`
+	Recommended string   `json:"recommended_action,omitempty"`
+}
+
+func cmdAuditWorkCoverage(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("audit work-coverage", flag.ContinueOnError)
+	sinceRef := fs.String("since-ref", "", "base ref for commit coverage")
+	sinceDuration := fs.Duration("since-duration", 0, "duration window for commit coverage")
+	taskID := fs.String("task-id", "", "limit task-level checks to one task")
+	dryRun := fs.Bool("dry-run", false, "report only; no mutation is performed")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected audit work-coverage arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *sinceRef != "" && *sinceDuration > 0 {
+		return errors.New("use --since-ref or --since-duration, not both")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		report, err := buildWorkCoverageReport(ctx, cfg, root, s, *sinceRef, *sinceDuration, *taskID)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		if *dryRun {
+			fmt.Println("dry-run: advisory audit only; no Fairway state mutated")
+		}
+		fmt.Printf("work_coverage_ok: %t\n", report.OK)
+		if report.SinceRef != "" {
+			fmt.Printf("since_ref: %s\n", report.SinceRef)
+		}
+		if report.SinceDuration != "" {
+			fmt.Printf("since_duration: %s\n", report.SinceDuration)
+		}
+		if report.TaskID != "" {
+			fmt.Printf("task_id: %s\n", report.TaskID)
+		}
+		fmt.Printf("commits: %d\n", report.CommitCount)
+		fmt.Printf("summary: commits_without_task_id=%d changed_files_uncovered=%d evidence_status_decisions=%d done_without_required_evidence=%d missing_required_reviews=%d\n",
+			report.Summary.CommitsWithoutTaskID,
+			report.Summary.ChangedFilesUncovered,
+			report.Summary.EvidenceStatusDecisions,
+			report.Summary.DoneWithoutRequiredEvidence,
+			report.Summary.MissingRequiredReviews)
+		if len(report.Findings) == 0 {
+			fmt.Println("no work coverage findings")
+			return nil
+		}
+		for _, finding := range report.Findings {
+			fmt.Printf("%s\t%s\ttask=%s\tcommit=%s\treason=%s\n", finding.Severity, finding.Kind, finding.TaskID, finding.Commit, finding.Reason)
+			if len(finding.Files) > 0 {
+				fmt.Printf("  files: %s\n", strings.Join(finding.Files, ", "))
+			}
+			if len(finding.Missing) > 0 {
+				fmt.Printf("  missing: %s\n", strings.Join(finding.Missing, ", "))
+			}
+			if finding.Recommended != "" {
+				fmt.Printf("  next: %s\n", finding.Recommended)
+			}
+		}
+		return nil
+	})
+}
+
+func buildWorkCoverageReport(ctx context.Context, cfg config.Config, root string, s *store.Store, sinceRef string, sinceDuration time.Duration, taskID string) (workCoverageReport, error) {
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return workCoverageReport{}, err
+	}
+	if taskID != "" {
+		var filtered []store.Task
+		for _, task := range tasks {
+			if task.Definition.ID == taskID {
+				filtered = append(filtered, task)
+				break
+			}
+		}
+		if len(filtered) == 0 {
+			return workCoverageReport{}, store.ErrNotFound
+		}
+		tasks = filtered
+	}
+	report := workCoverageReport{OK: true, TaskID: taskID}
+	var commits []fairwaygit.Commit
+	switch {
+	case sinceDuration > 0:
+		commits, err = fairwaygit.CommitsSince(root, time.Now().UTC().Add(-sinceDuration))
+		report.SinceDuration = sinceDuration.String()
+	default:
+		if sinceRef == "" {
+			sinceRef = cfg.Fairway.MainBranch
+		}
+		commits, err = fairwaygit.CommitsSinceRef(root, sinceRef)
+		report.SinceRef = sinceRef
+	}
+	if err != nil {
+		return workCoverageReport{}, err
+	}
+	report.CommitCount = len(commits)
+	taskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.Definition.ID)
+	}
+	taskPattern := taskIDPattern(taskIDs)
+	pathCoverage := buildTaskPathCoverage(tasks)
+	for _, commit := range commits {
+		mentioned := mentionedTaskIDs(commit.Subject+"\n"+commit.Body, taskPattern, tasks)
+		coveredTasks := tasksCoveringFiles(commit.ChangedFiles, pathCoverage)
+		if len(mentioned) == 0 && len(coveredTasks) == 0 {
+			report.Findings = append(report.Findings, workCoverageFinding{
+				Kind:        "commit_without_task_coverage",
+				Severity:    "warning",
+				Reason:      "commit does not mention a Fairway task id and changed files do not map to task source_paths/target_paths",
+				Commit:      commit.ShortSHA,
+				Subject:     commit.Subject,
+				Files:       commit.ChangedFiles,
+				Recommended: "link the work to an existing task, add task path metadata, or create a follow-up task",
+			})
+			report.Summary.CommitsWithoutTaskID++
+		}
+		for _, file := range commit.ChangedFiles {
+			if len(tasksCoveringFile(file, pathCoverage)) == 0 {
+				report.Findings = append(report.Findings, workCoverageFinding{
+					Kind:        "changed_file_uncovered",
+					Severity:    "warning",
+					Reason:      "changed file is not covered by any task source_paths or target_paths",
+					Commit:      commit.ShortSHA,
+					Subject:     commit.Subject,
+					Files:       []string{file},
+					Recommended: "add source_paths/target_paths metadata to the responsible task",
+				})
+				report.Summary.ChangedFilesUncovered++
+			}
+		}
+	}
+	for _, task := range tasks {
+		_, _, evidence, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return workCoverageReport{}, err
+		}
+		if len(evidence) > 0 && !isTerminalStatus(task.Status, cfg.States.Terminal) {
+			report.Findings = append(report.Findings, workCoverageFinding{
+				Kind:        "evidence_without_status_decision",
+				Severity:    "warning",
+				Reason:      "task has evidence but is not in a terminal state",
+				TaskID:      task.Definition.ID,
+				Recommended: "mark done, block/reset with a reason, or create explicit follow-up work",
+			})
+			report.Summary.EvidenceStatusDecisions++
+		}
+		if task.Status == "done" && len(evidence) == 0 && evidenceRequiredForTask(cfg, task) {
+			report.Findings = append(report.Findings, workCoverageFinding{
+				Kind:        "done_without_required_evidence",
+				Severity:    "warning",
+				Reason:      "task is done but required evidence is missing",
+				TaskID:      task.Definition.ID,
+				Recommended: "record evidence or document an explicit exception",
+			})
+			report.Summary.DoneWithoutRequiredEvidence++
+		}
+		missingDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+		if task.Status == "done" && len(missingDomains) > 0 {
+			report.Findings = append(report.Findings, workCoverageFinding{
+				Kind:        "missing_required_review_domains",
+				Severity:    "warning",
+				Reason:      "task is done but configured review domains are not approved",
+				TaskID:      task.Definition.ID,
+				Missing:     missingDomains,
+				Recommended: "record approvals for missing review domains or document why they are not required",
+			})
+			report.Summary.MissingRequiredReviews++
+		}
+	}
+	sort.SliceStable(report.Findings, func(i, j int) bool {
+		if report.Findings[i].Kind != report.Findings[j].Kind {
+			return report.Findings[i].Kind < report.Findings[j].Kind
+		}
+		if report.Findings[i].TaskID != report.Findings[j].TaskID {
+			return report.Findings[i].TaskID < report.Findings[j].TaskID
+		}
+		if report.Findings[i].Commit != report.Findings[j].Commit {
+			return report.Findings[i].Commit < report.Findings[j].Commit
+		}
+		return strings.Join(report.Findings[i].Files, ",") < strings.Join(report.Findings[j].Files, ",")
+	})
+	report.OK = len(report.Findings) == 0
+	return report, nil
+}
+
+type taskPathCoverage struct {
+	TaskID   string
+	Patterns []string
+}
+
+func buildTaskPathCoverage(tasks []store.Task) []taskPathCoverage {
+	var coverage []taskPathCoverage
+	for _, task := range tasks {
+		patterns := append([]string{}, task.Definition.SourcePaths...)
+		patterns = append(patterns, task.Definition.TargetPaths...)
+		var cleaned []string
+		for _, pattern := range patterns {
+			pattern = strings.TrimSpace(filepath.ToSlash(pattern))
+			if pattern != "" {
+				cleaned = append(cleaned, pattern)
+			}
+		}
+		if len(cleaned) > 0 {
+			coverage = append(coverage, taskPathCoverage{TaskID: task.Definition.ID, Patterns: cleaned})
+		}
+	}
+	return coverage
+}
+
+func tasksCoveringFiles(files []string, coverage []taskPathCoverage) []string {
+	seen := map[string]bool{}
+	for _, file := range files {
+		for _, taskID := range tasksCoveringFile(file, coverage) {
+			seen[taskID] = true
+		}
+	}
+	var out []string
+	for taskID := range seen {
+		out = append(out, taskID)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func tasksCoveringFile(file string, coverage []taskPathCoverage) []string {
+	file = strings.TrimSpace(filepath.ToSlash(file))
+	var out []string
+	for _, item := range coverage {
+		for _, pattern := range item.Patterns {
+			if pathPatternMatches(pattern, file) {
+				out = append(out, item.TaskID)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func pathPatternMatches(pattern, file string) bool {
+	pattern = strings.TrimPrefix(strings.TrimSpace(filepath.ToSlash(pattern)), "./")
+	file = strings.TrimPrefix(strings.TrimSpace(filepath.ToSlash(file)), "./")
+	if pattern == "" || file == "" {
+		return false
+	}
+	if strings.HasSuffix(pattern, "/**") {
+		prefix := strings.TrimSuffix(pattern, "/**")
+		return file == prefix || strings.HasPrefix(file, prefix+"/")
+	}
+	if ok, err := path.Match(pattern, file); err == nil && ok {
+		return true
+	}
+	if file == pattern {
+		return true
+	}
+	return strings.HasPrefix(file, strings.TrimSuffix(pattern, "/")+"/")
+}
+
+func taskIDPattern(taskIDs []string) *regexp.Regexp {
+	if len(taskIDs) == 0 {
+		return regexp.MustCompile(`a^`)
+	}
+	sort.SliceStable(taskIDs, func(i, j int) bool {
+		return len(taskIDs[i]) > len(taskIDs[j])
+	})
+	parts := make([]string, 0, len(taskIDs))
+	for _, id := range taskIDs {
+		parts = append(parts, regexp.QuoteMeta(id))
+	}
+	return regexp.MustCompile(`\b(?:` + strings.Join(parts, "|") + `)\b`)
+}
+
+func mentionedTaskIDs(text string, pattern *regexp.Regexp, tasks []store.Task) []string {
+	matches := pattern.FindAllString(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	known := map[string]bool{}
+	for _, task := range tasks {
+		known[task.Definition.ID] = true
+	}
+	seen := map[string]bool{}
+	for _, match := range matches {
+		if known[match] {
+			seen[match] = true
+		}
+	}
+	var out []string
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func evidenceRequiredForTask(cfg config.Config, task store.Task) bool {
+	if cfg.Gates.RequireEvidenceBeforeDone {
+		return true
+	}
+	for _, profile := range cfg.WorkstreamProfiles {
+		if !profileAppliesToTask(profile, task) {
+			continue
+		}
+		for _, gate := range profile.Gates {
+			if !gateAppliesToTask(gate, task) {
+				continue
+			}
+			if gate.EvidenceType != "" || gate.RequiredEvidenceCount > 0 || len(gate.AcceptedResults) > 0 || gate.ArtifactRequired || gate.ExpiresAfter != "" || gate.OwnerSignoffRequired {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isTerminalStatus(status string, terminal []string) bool {
+	for _, value := range terminal {
+		if status == value {
+			return true
+		}
+	}
+	return false
 }
 
 type mergeReadyReport struct {
@@ -5441,7 +5814,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|audit work-coverage|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

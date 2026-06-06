@@ -30,6 +30,7 @@ fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
 fairway workflow check [--mode <task|close|deploy>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
+fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
@@ -113,6 +114,11 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   it requires a clean committed SHA and pushed commits so CI can run. Use
   `--require-clean` or `--require-pushed` when the current boundary should fail
   instead of warn.
+- `audit work-coverage` is advisory by default. It compares commits since a
+  base ref or duration window against Fairway task IDs, task `source_paths` /
+  `target_paths`, evidence rows, and required review domains. Use it before
+  review, deploy, and release boundaries to catch real work that happened
+  outside task/evidence/review coverage.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
 - `adoption artifact` is the generic readiness report. It uses configured

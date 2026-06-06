@@ -286,6 +286,9 @@ Tasks may carry profile-aware metadata in YAML/JSON imports and through
 
 This metadata is intentionally generic. It powers architecture-aware
 coordination without making Fairway specific to GPUaaS, ARC, or any one repo.
+It also drives `fairway audit work-coverage`: changed files are matched against
+task `source_paths` and `target_paths`, and done tasks with `review_domains`
+are checked for matching approved review rows.
 
 ## Validation
 

@@ -306,6 +306,10 @@ fairway workflow check --mode close --require-clean
 # Deploy/UAT boundary: require clean pushed source and active-work
 # reconciliation before creating deploy evidence.
 fairway workflow check --mode deploy --require-clean --require-pushed
+
+# Coverage boundary: check whether commits, files, evidence, and reviews map
+# back to Fairway task metadata.
+fairway audit work-coverage --since-ref main --dry-run
 ```
 
 The command reports:
@@ -316,6 +320,12 @@ The command reports:
 - active reconciliation findings such as `in_progress` work without a session
   or evidence without a status decision;
 - deploy-run guidance for CI/CD/UAT attempts.
+
+`audit work-coverage` is advisory. It catches commits that do not mention or
+map to a task, changed files outside task `source_paths` / `target_paths`,
+evidence that still needs a status decision, done tasks without required
+evidence, and missing review-domain approvals. Run it before review handoff,
+deploy/UAT attempts, and release readiness checks.
 
 For deploy work, create one deploy-run task for the attempt and create
 `CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Status struct {
@@ -29,6 +30,15 @@ type Worktree struct {
 	Path   string `json:"path"`
 	Branch string `json:"branch"`
 	Head   string `json:"head"`
+}
+
+type Commit struct {
+	SHA          string   `json:"sha"`
+	ShortSHA     string   `json:"short_sha"`
+	Subject      string   `json:"subject"`
+	Body         string   `json:"body"`
+	AuthorDate   string   `json:"author_date"`
+	ChangedFiles []string `json:"changed_files"`
 }
 
 func CurrentBranch(root string) string {
@@ -225,6 +235,69 @@ func ChangedFiles(root, base string) ([]string, error) {
 		return nil, err
 	}
 	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+func CommitsSinceRef(root, sinceRef string) ([]Commit, error) {
+	if strings.TrimSpace(sinceRef) == "" {
+		return nil, fmt.Errorf("since ref is required")
+	}
+	if err := run(root, "rev-parse", "--verify", sinceRef); err != nil {
+		return nil, fmt.Errorf("since ref %q not found: %w", sinceRef, err)
+	}
+	return commits(root, sinceRef+"..HEAD")
+}
+
+func CommitsSince(root string, since time.Time) ([]Commit, error) {
+	if since.IsZero() {
+		return nil, fmt.Errorf("since time is required")
+	}
+	return commits(root, "--since="+since.Format(time.RFC3339))
+}
+
+func commits(root string, rangeArg string) ([]Commit, error) {
+	format := "%H%x1f%h%x1f%aI%x1f%s%x1f%b%x1e"
+	out, err := output(root, "log", "--reverse", "--format="+format, rangeArg)
+	if err != nil {
+		return nil, err
+	}
+	out = strings.TrimSuffix(out, "\x1e")
+	if strings.TrimSpace(out) == "" {
+		return nil, nil
+	}
+	var result []Commit
+	for _, raw := range strings.Split(out, "\x1e") {
+		raw = strings.TrimPrefix(raw, "\n")
+		raw = strings.TrimSuffix(raw, "\n")
+		parts := strings.SplitN(raw, "\x1f", 5)
+		if len(parts) != 5 {
+			continue
+		}
+		commit := Commit{
+			SHA:        parts[0],
+			ShortSHA:   parts[1],
+			AuthorDate: parts[2],
+			Subject:    parts[3],
+			Body:       strings.TrimSpace(parts[4]),
+		}
+		files, err := changedFilesForCommit(root, commit.SHA)
+		if err != nil {
+			return nil, err
+		}
+		commit.ChangedFiles = files
+		result = append(result, commit)
+	}
+	return result, nil
+}
+
+func changedFilesForCommit(root, sha string) ([]string, error) {
+	out, err := output(root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(out) == "" {
 		return nil, nil
 	}
 	return strings.Split(out, "\n"), nil
