@@ -163,6 +163,53 @@ type TrackerLink struct {
 	UpdatedAt  string `json:"updated_at"`
 }
 
+type ProviderUsage struct {
+	ID                     int64  `json:"id"`
+	Provider               string `json:"provider"`
+	ExternalSessionID      string `json:"external_session_id,omitempty"`
+	SessionID              string `json:"session_id,omitempty"`
+	TaskID                 string `json:"task_id,omitempty"`
+	Role                   string `json:"role,omitempty"`
+	Phase                  string `json:"phase,omitempty"`
+	Source                 string `json:"source"`
+	Confidence             string `json:"confidence"`
+	StartedAt              string `json:"started_at,omitempty"`
+	CompletedAt            string `json:"completed_at,omitempty"`
+	StartedTokenSnapshot   *int   `json:"started_token_snapshot,omitempty"`
+	CompletedTokenSnapshot *int   `json:"completed_token_snapshot,omitempty"`
+	InputTokens            *int   `json:"input_tokens,omitempty"`
+	CachedInputTokens      *int   `json:"cached_input_tokens,omitempty"`
+	UncachedInputTokens    *int   `json:"uncached_input_tokens,omitempty"`
+	OutputTokens           *int   `json:"output_tokens,omitempty"`
+	ReasoningTokens        *int   `json:"reasoning_tokens,omitempty"`
+	TotalTokens            *int   `json:"total_tokens,omitempty"`
+	ElapsedSeconds         *int   `json:"elapsed_seconds,omitempty"`
+	Model                  string `json:"model,omitempty"`
+	MetadataJSON           string `json:"metadata_json,omitempty"`
+	CreatedAt              string `json:"created_at"`
+}
+
+type UsageRollupOptions struct {
+	GroupBy string
+	TaskID  string
+	Since   string
+	Until   string
+}
+
+type UsageRollup struct {
+	Group               string `json:"group"`
+	Key                 string `json:"key"`
+	Events              int    `json:"events"`
+	KnownTotalEvents    int    `json:"known_total_events"`
+	TotalTokens         *int   `json:"total_tokens,omitempty"`
+	InputTokens         *int   `json:"input_tokens,omitempty"`
+	CachedInputTokens   *int   `json:"cached_input_tokens,omitempty"`
+	UncachedInputTokens *int   `json:"uncached_input_tokens,omitempty"`
+	OutputTokens        *int   `json:"output_tokens,omitempty"`
+	ReasoningTokens     *int   `json:"reasoning_tokens,omitempty"`
+	ElapsedSeconds      *int   `json:"elapsed_seconds,omitempty"`
+}
+
 type AuditEvent struct {
 	Actor  string
 	Action string
@@ -1418,6 +1465,222 @@ WHERE d.project_id=? AND d.id=?`, s.projectID, taskID)
 	return task, transitions, evidence, handoffs, reviews, nil
 }
 
+func (s *Store) RecordProviderUsage(ctx context.Context, usage ProviderUsage) (ProviderUsage, error) {
+	usage.Provider = strings.TrimSpace(usage.Provider)
+	usage.TaskID = strings.TrimSpace(usage.TaskID)
+	if usage.Provider == "" {
+		return ProviderUsage{}, errors.New("provider is required")
+	}
+	if usage.Source == "" {
+		usage.Source = "unknown"
+	}
+	if usage.Confidence == "" {
+		usage.Confidence = "unknown"
+	}
+	if err := validateUsageSource(usage.Source); err != nil {
+		return ProviderUsage{}, err
+	}
+	if err := validateUsageConfidence(usage.Confidence); err != nil {
+		return ProviderUsage{}, err
+	}
+	if usage.TotalTokens == nil && usage.StartedTokenSnapshot != nil && usage.CompletedTokenSnapshot != nil && *usage.CompletedTokenSnapshot >= *usage.StartedTokenSnapshot {
+		v := *usage.CompletedTokenSnapshot - *usage.StartedTokenSnapshot
+		usage.TotalTokens = &v
+		if usage.Source == "unknown" {
+			usage.Source = "derived_snapshot"
+		}
+	}
+	if usage.UncachedInputTokens == nil && usage.InputTokens != nil && usage.CachedInputTokens != nil && *usage.InputTokens >= *usage.CachedInputTokens {
+		v := *usage.InputTokens - *usage.CachedInputTokens
+		usage.UncachedInputTokens = &v
+	}
+	if usage.CreatedAt == "" {
+		usage.CreatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	res, err := s.db.ExecContext(ctx, `
+INSERT INTO provider_usage_events
+  (project_id, provider, external_session_id, session_id, task_id, role, phase, source, confidence,
+   started_at, completed_at, started_token_snapshot, completed_token_snapshot,
+   input_tokens, cached_input_tokens, uncached_input_tokens, output_tokens, reasoning_tokens,
+   total_tokens, elapsed_seconds, model, metadata_json, created_at)
+VALUES (?, ?, nullif(?, ''), nullif(?, ''), nullif(?, ''), nullif(?, ''), nullif(?, ''), ?, ?,
+        nullif(?, ''), nullif(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, nullif(?, ''), nullif(?, ''), ?)`,
+		s.projectID, usage.Provider, usage.ExternalSessionID, usage.SessionID, usage.TaskID, usage.Role, usage.Phase, usage.Source, usage.Confidence,
+		usage.StartedAt, usage.CompletedAt, usage.StartedTokenSnapshot, usage.CompletedTokenSnapshot,
+		usage.InputTokens, usage.CachedInputTokens, usage.UncachedInputTokens, usage.OutputTokens, usage.ReasoningTokens,
+		usage.TotalTokens, usage.ElapsedSeconds, usage.Model, usage.MetadataJSON, usage.CreatedAt)
+	if err != nil {
+		return ProviderUsage{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return ProviderUsage{}, err
+	}
+	usage.ID = id
+	return usage, nil
+}
+
+func validateUsageSource(source string) error {
+	switch source {
+	case "provider_reported", "derived_snapshot", "manual", "unknown":
+		return nil
+	default:
+		return fmt.Errorf("invalid usage source %q", source)
+	}
+}
+
+func validateUsageConfidence(confidence string) error {
+	switch confidence {
+	case "exact", "estimated", "unknown":
+		return nil
+	default:
+		return fmt.Errorf("invalid usage confidence %q", confidence)
+	}
+}
+
+func (s *Store) ProviderUsageForTask(ctx context.Context, taskID string) ([]ProviderUsage, error) {
+	rows, err := s.db.QueryContext(ctx, providerUsageSelectSQL(`WHERE project_id=? AND task_id=? ORDER BY created_at, id`), s.projectID, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanProviderUsageRows(rows)
+}
+
+func (s *Store) ProviderUsageEvents(ctx context.Context, opts UsageRollupOptions) ([]ProviderUsage, error) {
+	where := []string{"project_id=?"}
+	args := []any{s.projectID}
+	if opts.TaskID != "" {
+		where = append(where, "task_id=?")
+		args = append(args, opts.TaskID)
+	}
+	if opts.Since != "" {
+		where = append(where, "created_at>=?")
+		args = append(args, opts.Since)
+	}
+	if opts.Until != "" {
+		where = append(where, "created_at<?")
+		args = append(args, opts.Until)
+	}
+	rows, err := s.db.QueryContext(ctx, providerUsageSelectSQL("WHERE "+strings.Join(where, " AND ")+" ORDER BY created_at, id"), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanProviderUsageRows(rows)
+}
+
+func (s *Store) UsageRollups(ctx context.Context, opts UsageRollupOptions) ([]UsageRollup, error) {
+	events, err := s.ProviderUsageEvents(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	groupBy := opts.GroupBy
+	if groupBy == "" {
+		groupBy = "provider"
+	}
+	knownTasks := map[string]Task{}
+	var tasks []Task
+	if groupBy == "kind" || groupBy == "epic" {
+		tasks, err = s.AllTasks(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, task := range tasks {
+			knownTasks[task.Definition.ID] = task
+		}
+	}
+	byKey := map[string]*UsageRollup{}
+	for _, ev := range events {
+		key := usageRollupKey(ev, groupBy, knownTasks)
+		roll := byKey[key]
+		if roll == nil {
+			roll = &UsageRollup{Group: groupBy, Key: key}
+			byKey[key] = roll
+		}
+		roll.Events++
+		addUsageInt(&roll.TotalTokens, ev.TotalTokens)
+		if ev.TotalTokens != nil {
+			roll.KnownTotalEvents++
+		}
+		addUsageInt(&roll.InputTokens, ev.InputTokens)
+		addUsageInt(&roll.CachedInputTokens, ev.CachedInputTokens)
+		addUsageInt(&roll.UncachedInputTokens, ev.UncachedInputTokens)
+		addUsageInt(&roll.OutputTokens, ev.OutputTokens)
+		addUsageInt(&roll.ReasoningTokens, ev.ReasoningTokens)
+		addUsageInt(&roll.ElapsedSeconds, ev.ElapsedSeconds)
+	}
+	out := make([]UsageRollup, 0, len(byKey))
+	for _, roll := range byKey {
+		out = append(out, *roll)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		left, right := 0, 0
+		if out[i].TotalTokens != nil {
+			left = *out[i].TotalTokens
+		}
+		if out[j].TotalTokens != nil {
+			right = *out[j].TotalTokens
+		}
+		if left != right {
+			return left > right
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out, nil
+}
+
+func usageRollupKey(ev ProviderUsage, groupBy string, tasks map[string]Task) string {
+	switch groupBy {
+	case "task":
+		return firstNonEmpty(ev.TaskID, "unassigned")
+	case "epic":
+		if task, ok := tasks[ev.TaskID]; ok {
+			return firstNonEmpty(task.Definition.ParentID, task.Definition.ID, "unassigned")
+		}
+		return "unassigned"
+	case "role":
+		return firstNonEmpty(ev.Role, "unknown")
+	case "day":
+		if len(ev.CreatedAt) >= len("2006-01-02") {
+			return ev.CreatedAt[:len("2006-01-02")]
+		}
+		return "unknown"
+	case "kind":
+		if task, ok := tasks[ev.TaskID]; ok {
+			return firstNonEmpty(task.Definition.Kind, "unknown")
+		}
+		return "unknown"
+	case "phase":
+		return firstNonEmpty(ev.Phase, "unknown")
+	case "provider":
+		fallthrough
+	default:
+		return firstNonEmpty(ev.Provider, "unknown")
+	}
+}
+
+func addUsageInt(total **int, value *int) {
+	if value == nil {
+		return
+	}
+	if *total == nil {
+		v := *value
+		*total = &v
+		return
+	}
+	**total += *value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (s *Store) AllTasks(ctx context.Context) ([]Task, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
@@ -1698,6 +1961,67 @@ func scanTasks(rows *sql.Rows) ([]Task, error) {
 		tasks = append(tasks, task)
 	}
 	return tasks, rows.Err()
+}
+
+func providerUsageSelectSQL(suffix string) string {
+	return `
+SELECT id, provider, external_session_id, session_id, task_id, role, phase, source, confidence,
+       started_at, completed_at, started_token_snapshot, completed_token_snapshot,
+       input_tokens, cached_input_tokens, uncached_input_tokens, output_tokens, reasoning_tokens,
+       total_tokens, elapsed_seconds, model, metadata_json, created_at
+FROM provider_usage_events ` + suffix
+}
+
+func scanProviderUsageRows(rows *sql.Rows) ([]ProviderUsage, error) {
+	var out []ProviderUsage
+	for rows.Next() {
+		item, err := scanProviderUsage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func scanProviderUsage(row rowScanner) (ProviderUsage, error) {
+	var item ProviderUsage
+	var externalSessionID, sessionID, taskID, role, phase, startedAt, completedAt, model, metadataJSON sql.NullString
+	var startedSnapshot, completedSnapshot, inputTokens, cachedInputTokens, uncachedInputTokens, outputTokens, reasoningTokens, totalTokens, elapsedSeconds sql.NullInt64
+	err := row.Scan(&item.ID, &item.Provider, &externalSessionID, &sessionID, &taskID, &role, &phase, &item.Source, &item.Confidence,
+		&startedAt, &completedAt, &startedSnapshot, &completedSnapshot,
+		&inputTokens, &cachedInputTokens, &uncachedInputTokens, &outputTokens, &reasoningTokens,
+		&totalTokens, &elapsedSeconds, &model, &metadataJSON, &item.CreatedAt)
+	if err != nil {
+		return ProviderUsage{}, err
+	}
+	item.ExternalSessionID = externalSessionID.String
+	item.SessionID = sessionID.String
+	item.TaskID = taskID.String
+	item.Role = role.String
+	item.Phase = phase.String
+	item.StartedAt = startedAt.String
+	item.CompletedAt = completedAt.String
+	item.StartedTokenSnapshot = nullableIntPtr(startedSnapshot)
+	item.CompletedTokenSnapshot = nullableIntPtr(completedSnapshot)
+	item.InputTokens = nullableIntPtr(inputTokens)
+	item.CachedInputTokens = nullableIntPtr(cachedInputTokens)
+	item.UncachedInputTokens = nullableIntPtr(uncachedInputTokens)
+	item.OutputTokens = nullableIntPtr(outputTokens)
+	item.ReasoningTokens = nullableIntPtr(reasoningTokens)
+	item.TotalTokens = nullableIntPtr(totalTokens)
+	item.ElapsedSeconds = nullableIntPtr(elapsedSeconds)
+	item.Model = model.String
+	item.MetadataJSON = metadataJSON.String
+	return item, nil
+}
+
+func nullableIntPtr(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+	v := int(value.Int64)
+	return &v
 }
 
 func (s *Store) evidence(ctx context.Context, taskID string) ([]Evidence, error) {

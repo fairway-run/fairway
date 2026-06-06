@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -29,6 +30,7 @@ type ReportViewData struct {
 	Timeline      []ReportRun      `json:"timeline"`
 	FollowUps     []ReportBucket   `json:"follow_ups"`
 	ReviewSummary ReportReview     `json:"review_summary"`
+	Usage         ReportUsage      `json:"usage"`
 	Rows          []ReportTaskRow  `json:"rows"`
 	TableRows     []ReportTaskRow  `json:"-"`
 	Pagination    TablePagination  `json:"pagination"`
@@ -118,6 +120,16 @@ type ReportReview struct {
 	MissingDomains  []ReportMissingReview `json:"missing_domains"`
 }
 
+type ReportUsage struct {
+	Events      int                 `json:"events"`
+	TotalTokens *int                `json:"total_tokens,omitempty"`
+	ByProvider  []store.UsageRollup `json:"by_provider"`
+	ByRole      []store.UsageRollup `json:"by_role"`
+	ByKind      []store.UsageRollup `json:"by_kind"`
+	ByPhase     []store.UsageRollup `json:"by_phase"`
+	ByDay       []store.UsageRollup `json:"by_day"`
+}
+
 type ReportMissingReview struct {
 	TaskID  string   `json:"task_id"`
 	Title   string   `json:"title"`
@@ -180,6 +192,10 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
+	usage, err := s.reportUsage(r.Context(), start, end)
+	if err != nil {
+		return ReportViewData{}, err
+	}
 	reviewActivityByTask := reportReviewActivityByTask(activity, start, end)
 	facts := make([]reportTaskFacts, 0, len(tasks))
 	for _, task := range tasks {
@@ -214,6 +230,7 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		Timeline:      reportTimeline(facts, watchers, rows, start, end),
 		FollowUps:     reportFollowUps(rows),
 		ReviewSummary: reportReviewSummary(facts, rows),
+		Usage:         usage,
 		Rows:          rows,
 		TableRows:     tableRows,
 		Pagination:    pagination,
@@ -223,6 +240,49 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		TaskRoles:     taskRoleMap(tasks),
 		ExportBase:    reportExportBase(r.URL.Query()),
 	}, nil
+}
+
+func (s *Server) reportUsage(ctx context.Context, start, end time.Time) (ReportUsage, error) {
+	since := start.UTC().Format(time.RFC3339Nano)
+	until := end.UTC().Format(time.RFC3339Nano)
+	byProvider, err := s.store.UsageRollups(ctx, store.UsageRollupOptions{GroupBy: "provider", Since: since, Until: until})
+	if err != nil {
+		return ReportUsage{}, err
+	}
+	byRole, err := s.store.UsageRollups(ctx, store.UsageRollupOptions{GroupBy: "role", Since: since, Until: until})
+	if err != nil {
+		return ReportUsage{}, err
+	}
+	byKind, err := s.store.UsageRollups(ctx, store.UsageRollupOptions{GroupBy: "kind", Since: since, Until: until})
+	if err != nil {
+		return ReportUsage{}, err
+	}
+	byPhase, err := s.store.UsageRollups(ctx, store.UsageRollupOptions{GroupBy: "phase", Since: since, Until: until})
+	if err != nil {
+		return ReportUsage{}, err
+	}
+	byDay, err := s.store.UsageRollups(ctx, store.UsageRollupOptions{GroupBy: "day", Since: since, Until: until})
+	if err != nil {
+		return ReportUsage{}, err
+	}
+	usage := ReportUsage{ByProvider: byProvider, ByRole: byRole, ByKind: byKind, ByPhase: byPhase, ByDay: byDay}
+	for _, roll := range byProvider {
+		usage.Events += roll.Events
+		addReportUsageInt(&usage.TotalTokens, roll.TotalTokens)
+	}
+	return usage, nil
+}
+
+func addReportUsageInt(total **int, value *int) {
+	if value == nil {
+		return
+	}
+	if *total == nil {
+		v := *value
+		*total = &v
+		return
+	}
+	**total += *value
 }
 
 func reportWindowFromQuery(query url.Values, now time.Time, loc *time.Location) (ReportWindow, time.Time, time.Time) {

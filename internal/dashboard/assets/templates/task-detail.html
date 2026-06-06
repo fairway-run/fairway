@@ -97,6 +97,19 @@
 {{range .TaskSessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td><td>{{if .MonitorKind}}{{.MonitorKind}} {{end}}{{if .AutomationID}}automation {{.AutomationID}} {{end}}{{if .ExternalRunID}}run {{.ExternalRunID}} {{end}}{{if .PollCommand}}poll <code>{{.PollCommand}}</code> {{end}}{{if .ManualUntil}}manual until {{.ManualUntil}}{{end}}</td></tr>{{else}}<tr><td colspan="7">none</td></tr>{{end}}
 </tbody></table>
 </article>
+<article class="detail-panel wide">
+<h2>Provider Usage</h2>
+{{if .UsageRollups}}
+<table class="detail-table"><thead><tr><th>Provider</th><th>Events</th><th>Total</th><th>Input</th><th>Cached</th><th>Output</th><th>Elapsed</th></tr></thead><tbody>
+{{range .UsageRollups}}<tr><td>{{.Key}}</td><td>{{.Events}}</td><td>{{usageInt .TotalTokens}}</td><td>{{usageInt .InputTokens}}</td><td>{{usageInt .CachedInputTokens}}</td><td>{{usageInt .OutputTokens}}</td><td>{{usageInt .ElapsedSeconds}}</td></tr>{{end}}
+</tbody></table>
+{{else}}<p class="muted">usage unknown; no provider usage events recorded for this task</p>{{end}}
+{{if .Usage}}
+<table class="detail-table"><thead><tr><th>Provider</th><th>Session</th><th>Phase</th><th>Source</th><th>Confidence</th><th>Total</th><th>Cached</th><th>Recorded</th></tr></thead><tbody>
+{{range .Usage}}<tr><td>{{.Provider}}</td><td>{{if .SessionID}}{{.SessionID}}{{else}}{{.ExternalSessionID}}{{end}}</td><td>{{if .Phase}}{{.Phase}}{{else}}unknown{{end}}</td><td>{{.Source}}</td><td>{{.Confidence}}</td><td>{{usageInt .TotalTokens}}</td><td>{{usageInt .CachedInputTokens}}</td><td>{{.CreatedAt}}</td></tr>{{end}}
+</tbody></table>
+{{end}}
+</article>
 <article class="detail-panel">
 <h2>Handoffs</h2>
 <div class="detail-stack">{{range .Handoffs}}<p>to <b>{{.ToRole}}</b>: {{.Payload}}</p>{{else}}<p>none</p>{{end}}</div>

@@ -38,6 +38,7 @@
 <article><b>{{.Summary.FollowUpsCreated}}</b><span>Follow-ups created</span></article>
 <article><b>{{.Summary.EvidenceRows}}</b><span>Evidence rows</span></article>
 <article><b>{{.Summary.ReviewsRecorded}}</b><span>Reviews</span></article>
+<article><b>{{usageInt .Usage.TotalTokens}}</b><span>Known usage tokens</span></article>
 <article><b>{{.Summary.CIDeployUATPassed}} / {{.Summary.CIDeployUATFailed}}</b><span>CI/deploy/UAT pass / fail</span></article>
 <article><b>{{.Summary.MissingReviews}}</b><span>Done missing review</span></article>
 </section>
@@ -103,6 +104,20 @@
 {{range .ReviewSummary.MissingDomains}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Title}} <span>{{range .Domains}}{{.}} {{end}}</span></li>{{else}}<li>no done tasks missing required review domains in this scope</li>{{end}}
 </ul>
 </article>
+</section>
+
+<section class="report-section">
+<header class="section-head"><h2>Provider Usage Attribution</h2><span>planning telemetry; not a completion gate</span></header>
+<div class="taxonomy-grid">
+{{range .Usage.ByProvider}}
+<section><b>{{usageInt .TotalTokens}}</b><span>{{.Key}} · {{.Events}} event(s)</span><small>input {{usageInt .InputTokens}} · cached {{usageInt .CachedInputTokens}} · output {{usageInt .OutputTokens}}</small></section>
+{{else}}<section><b>unknown</b><span>no provider usage events recorded</span></section>{{end}}
+</div>
+<div class="taxonomy-grid">
+{{range .Usage.ByRole}}<section><b>{{usageInt .TotalTokens}}</b><span>role {{.Key}}</span></section>{{end}}
+{{range .Usage.ByKind}}<section><b>{{usageInt .TotalTokens}}</b><span>kind {{.Key}}</span></section>{{end}}
+{{range .Usage.ByPhase}}<section><b>{{usageInt .TotalTokens}}</b><span>phase {{.Key}}</span></section>{{end}}
+</div>
 </section>
 
 <section class="report-section">

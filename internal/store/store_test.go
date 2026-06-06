@@ -293,6 +293,59 @@ func TestReady_UsesConfiguredTerminalStates(t *testing.T) {
 	}
 }
 
+func TestProviderUsage_NullCountsAndDerivedSnapshots(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Usage", Role: "backend", Kind: "feature"}}); err != nil {
+		t.Fatal(err)
+	}
+	started := 100
+	completed := 175
+	input := 120
+	cached := 40
+	recorded, err := s.RecordProviderUsage(ctx, ProviderUsage{
+		Provider:               "codex",
+		TaskID:                 "T-001",
+		Role:                   "backend",
+		Phase:                  "implementation",
+		Source:                 "provider_reported",
+		Confidence:             "exact",
+		StartedTokenSnapshot:   &started,
+		CompletedTokenSnapshot: &completed,
+		InputTokens:            &input,
+		CachedInputTokens:      &cached,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorded.TotalTokens == nil || *recorded.TotalTokens != 75 {
+		t.Fatalf("expected derived total 75, got %#v", recorded.TotalTokens)
+	}
+	if recorded.UncachedInputTokens == nil || *recorded.UncachedInputTokens != 80 {
+		t.Fatalf("expected derived uncached input 80, got %#v", recorded.UncachedInputTokens)
+	}
+	if _, err := s.RecordProviderUsage(ctx, ProviderUsage{Provider: "unknown-provider", TaskID: "T-001"}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := s.ProviderUsageForTask(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 usage events, got %d", len(events))
+	}
+	if events[1].TotalTokens != nil || events[1].InputTokens != nil || events[1].CachedInputTokens != nil {
+		t.Fatalf("unknown usage should remain nil, got %#v", events[1])
+	}
+	rollups, err := s.UsageRollups(ctx, UsageRollupOptions{GroupBy: "provider"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rollups) != 2 {
+		t.Fatalf("expected 2 provider rollups, got %d", len(rollups))
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), "test")

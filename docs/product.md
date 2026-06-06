@@ -72,8 +72,10 @@ each version ships.
   task-level review domains. Workflow checks now flag dirty docs/code,
   unpushed commits, deploy-run prerequisites, and active reconciliation
   findings, while release-run packets and release verification guard public
-  release, asset, and Homebrew readiness. GPUaaS / ARC remains the adoption
-  example, not the core product shape.
+  release, asset, and Homebrew readiness. Provider usage attribution records
+  normalized counts from adapters and rolls them up by task/lane/provider for
+  retrospective planning, without pricing or provider API polling. GPUaaS / ARC
+  remains the adoption example, not the core product shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

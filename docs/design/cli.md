@@ -14,6 +14,7 @@ fairway record evidence <task-id> --command-text <text> --result <pass|fail|part
 fairway record guard-report <task-id> --guard <name> [--mode <report_only|warning|blocking>] [--finding <text>]... [--false-positive <text>]... [--allowed-debt <text>]... [--graduation-criteria <text>] [--artifact <path>] [--result <result>]
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
 fairway record review <task-id> --reviewer <role-or-user> --verdict <approve|changes|reject> [--reason <text>] [--commit <sha>]
+fairway record usage <task-id> --provider <name> [--session-id <id>] [--external-session-id <id>] [--role <role>] [--phase <phase>] [--source <provider_reported|derived_snapshot|manual|unknown>] [--confidence <exact|estimated|unknown>] [--input-tokens <n>] [--cached-input-tokens <n>] [--output-tokens <n>] [--total-tokens <n>]
 fairway route review <task-id> [--reviewer <role>] [--path <path>]... [--reason <text>] # mark pending review
 fairway merge-ready <task-id> [--base <ref>]          # verify evidence/review/handoff/git/profile gates
 fairway review checkout <task-id> [--source-role <role>] # create/reset named review branch
@@ -26,6 +27,7 @@ fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider
 fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>                          # includes missing required review domains before merge-ready
 fairway status-report | health-report | timing-report
+fairway usage report [--by <provider|task|epic|role|day|kind|phase>] [--task-id <id>] [--since-duration <duration>]
 fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim

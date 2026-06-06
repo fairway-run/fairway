@@ -245,6 +245,71 @@ Do not make Fairway depend on Codex, Claude, Gemini, or any provider API.
 Fairway should expose the session/checkpoint/evidence surfaces; provider
 watchers should feed those surfaces.
 
+## Provider Usage Accounting
+
+Provider usage is attribution and planning telemetry, not a completion gate.
+Record counts and metadata only. Do not store prompts, transcripts, secrets,
+model inputs, generated content, messages, cookies, or provider API tokens as
+usage metadata. Unknown values stay unknown; do not report unavailable token
+counts as `0`.
+
+Adapters should emit usage through the generic Fairway command path:
+
+```bash
+fairway record usage <task-id> \
+  --provider codex \
+  --session-id <fairway-session-id> \
+  --external-session-id <codex-thread-id> \
+  --role <role> \
+  --phase implementation \
+  --source provider_reported \
+  --confidence exact \
+  --input-tokens <n> \
+  --cached-input-tokens <n> \
+  --output-tokens <n> \
+  --total-tokens <n>
+```
+
+If the provider only exposes running totals, record start/end snapshots:
+
+```bash
+fairway record usage <task-id> \
+  --provider codex \
+  --source derived_snapshot \
+  --confidence estimated \
+  --started-token-snapshot <n> \
+  --completed-token-snapshot <n>
+```
+
+If usage is unavailable but the session should still be attributed, record the
+provider and session identity with `--source unknown --confidence unknown` and
+omit numeric fields.
+
+`examples/session-adapters/provider-event.sh` accepts the same usage fields,
+for example:
+
+```bash
+examples/session-adapters/provider-event.sh \
+  --provider codex \
+  --backend codex-thread \
+  --external-session-id <codex-thread-id> \
+  --role <role> \
+  --task-id <task-id> \
+  --state completed \
+  --summary "implemented requested slice" \
+  --usage-source provider_reported \
+  --usage-confidence exact \
+  --usage-phase implementation \
+  --input-tokens <n> \
+  --cached-input-tokens <n> \
+  --output-tokens <n> \
+  --total-tokens <n>
+```
+
+Use `fairway task-detail <task-id>` or `fairway usage report --by provider` to
+inspect recorded usage. Rollups are available by `provider`, `task`, `epic`,
+`role`, `day`, `kind`, and `phase`.
+
 If you need machine-readable output, put global flags before the subcommand:
 
 ```bash

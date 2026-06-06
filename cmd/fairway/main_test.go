@@ -75,7 +75,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"session", "help"}, "fairway session upsert|status|end|reconcile|launch"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
-		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|review"},
+		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|review|usage"},
+		{[]string{"usage", "--help"}, "fairway usage report"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check"},
@@ -568,6 +569,41 @@ provider = "codex"
 	runOK(t, "session", "reconcile", "--dry-run")
 	runOK(t, "session", "reconcile")
 	runOK(t, "session", "launch", "--role", "backend")
+}
+
+func TestCLI_ProviderUsageAccounting(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: Usage
+  role: backend
+  kind: feature
+`)
+	runOK(t, "import", "tasks.yaml")
+	runOK(t, "session", "upsert", "--id", "codex-usage-1", "--role", "backend", "--provider", "codex", "--backend", "codex", "--task-id", "T-001", "--status", "running")
+	runOK(t, "record", "usage", "T-001", "--provider", "codex", "--session-id", "codex-usage-1", "--external-session-id", "usage-1", "--role", "backend", "--phase", "implementation", "--source", "provider_reported", "--confidence", "exact", "--input-tokens", "120", "--cached-input-tokens", "40", "--output-tokens", "30", "--total-tokens", "150", "--model", "gpt-5-codex")
+	runOK(t, "record", "usage", "T-001", "--provider", "unknown-provider", "--session-id", "unknown-1", "--role", "backend", "--source", "unknown", "--confidence", "unknown")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "codex provider_reported/exact total=150 input=120 cached=40 output=30")
+	assertContains(t, detail, "unknown-provider unknown/unknown total=unknown input=unknown cached=unknown output=unknown")
+	report := runCapture(t, "usage", "report", "--by", "provider")
+	assertContains(t, report, "codex events=1 total=150 input=120 cached=40 output=30")
+	assertContains(t, report, "unknown-provider events=1 total=unknown")
+	if err := run(context.Background(), []string{"record", "usage", "T-001", "--provider", "codex", "--metadata", "prompt=do not store"}); err == nil {
+		t.Fatal("expected prompt-like usage metadata key to be rejected")
+	}
+	if err := run(context.Background(), []string{"record", "usage", "T-001", "--provider", "codex", "--metadata", "access_token=do not store"}); err == nil {
+		t.Fatal("expected token-like usage metadata key to be rejected")
+	}
 }
 
 func TestCLI_CoordinatorStatus(t *testing.T) {

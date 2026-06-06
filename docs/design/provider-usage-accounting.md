@@ -1,6 +1,6 @@
 # Provider Usage Accounting
 
-Status: backlog design note
+Status: first slice implemented in `FW-123`
 
 Fairway should be able to report how much provider capacity was used per task,
 session, epic, day, role, and provider when that data is available. This is an
@@ -49,15 +49,18 @@ derived_delta = completed_snapshot - started_snapshot
 The record must include a confidence/source field so reports can distinguish
 provider-reported totals from locally derived estimates.
 
-## Proposed Fields
+## Implemented Fields
 
 Provider usage records should be provider-neutral:
 
 | Field | Meaning |
 |---|---|
 | `provider` | Provider label such as `codex`, `claude`, `gemini`, or `shell`. |
-| `session_id` | Fairway session id or external provider session id. |
+| `external_session_id` | Provider-side session/thread/run id, when known. |
+| `session_id` | Fairway session id, when known. |
 | `task_id` | Fairway task id receiving attribution. |
+| `role` | Fairway role/lane receiving attribution. |
+| `phase` | Optional work phase such as `implementation`, `review`, `ci`, `deploy`, or `uat`. |
 | `started_at` | Start timestamp for the measured window. |
 | `completed_at` | End timestamp for the measured window. |
 | `started_token_snapshot` | Optional provider running total at start. |
@@ -68,8 +71,11 @@ Provider usage records should be provider-neutral:
 | `output_tokens` | Optional provider-reported output tokens. |
 | `reasoning_tokens` | Optional provider-reported reasoning tokens. |
 | `total_tokens` | Optional provider-reported or derived total tokens. |
-| `usage_source` | `provider_reported`, `derived_snapshot`, `manual`, or `unknown`. |
+| `source` | `provider_reported`, `derived_snapshot`, `manual`, or `unknown`. |
 | `confidence` | `exact`, `estimated`, or `unknown`. |
+| `elapsed_seconds` | Optional measured elapsed seconds. |
+| `model` | Optional provider model label. |
+| `metadata_json` | Optional small key/value metadata. Must not contain prompts, transcripts, secrets, inputs, outputs, messages, or generated content. |
 
 ## Adapter Boundary
 
@@ -90,8 +96,60 @@ Adapters may emit partial records. Unknown fields should remain null or
 
 Codex should be the first concrete adapter because it can expose detailed token
 usage, including cached input tokens. Cached tokens are important for cost
-analysis: a task with high input tokens and a high cache ratio has different
+planning: a task with high input tokens and a high cache ratio has different
 optimization needs than a task with the same input volume and no cache benefit.
+
+## CLI Contract
+
+Provider adapters record usage through Fairway commands. The smallest direct
+path is:
+
+```bash
+fairway record usage <task-id> \
+  --provider codex \
+  --session-id <fairway-session-id> \
+  --external-session-id <provider-session-id> \
+  --role backend \
+  --phase implementation \
+  --source provider_reported \
+  --confidence exact \
+  --input-tokens 12000 \
+  --cached-input-tokens 9000 \
+  --output-tokens 2200 \
+  --reasoning-tokens 600 \
+  --total-tokens 14800 \
+  --elapsed-seconds 420 \
+  --model gpt-5-codex
+```
+
+When only running totals are available:
+
+```bash
+fairway record usage <task-id> \
+  --provider codex \
+  --source derived_snapshot \
+  --confidence estimated \
+  --started-token-snapshot 100000 \
+  --completed-token-snapshot 108500
+```
+
+When usage is unavailable, adapters may still record attribution with unknown
+counts:
+
+```bash
+fairway record usage <task-id> \
+  --provider shell \
+  --session-id <session-id> \
+  --source unknown \
+  --confidence unknown
+```
+
+Unknown numeric fields are stored as `NULL`, not `0`.
+
+`examples/session-adapters/provider-event.sh` accepts the same usage fields and
+forwards them to `fairway record usage` after refreshing the session record.
+This keeps Fairway core provider-neutral while giving Codex, Claude, Gemini,
+tmux, and shell adapters a stable ingestion point.
 
 ## Reporting
 
@@ -112,6 +170,18 @@ Useful rollups:
 Usage should help retrospectives and planning. It should not by itself mark a
 task pass/fail, block completion, or imply quality.
 
+Implemented visibility:
+
+- `fairway task-detail <task-id>` shows usage events and provider rollups.
+- `fairway usage report --by provider|task|epic|role|day|kind|phase` shows
+  attribution rollups.
+- `/tasks/<task-id>` shows provider usage for the task when present.
+- `/reports` shows provider, role, kind, phase, and day usage rollups for the
+  selected report window.
+
+Pricing, budget enforcement, and cost accounting are intentionally out of scope
+for this slice.
+
 Useful questions:
 
 - Which task classes consume the most provider tokens?
@@ -123,6 +193,8 @@ Useful questions:
 - Which expensive tasks should become scripts, checks, runbooks, dashboards, or
   reusable Fairway/agent tooling?
 
-## Future Task
+## Compatibility
 
-Tracked by `FW-123`.
+`provider_usage_events` is append-only telemetry. Existing task, evidence,
+review, session, and checkpoint rows do not require backfill. Missing usage
+means unknown usage, not zero usage.

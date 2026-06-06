@@ -241,6 +241,8 @@ type TaskDetailViewData struct {
 	Reviews              []store.Review
 	MissingReviewDomains []string
 	TaskSessions         []store.Session
+	Usage                []store.ProviderUsage
+	UsageRollups         []store.UsageRollup
 	Rollup               Rollup
 	CSRFToken            string
 	States               []string
@@ -1149,6 +1151,16 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	usageEvents, err := s.store.ProviderUsageForTask(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	usageRollups, err := s.store.UsageRollups(r.Context(), store.UsageRollupOptions{GroupBy: "provider", TaskID: id})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -1162,6 +1174,8 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Reviews:              reviews,
 		MissingReviewDomains: dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews),
 		TaskSessions:         sessionsForDashboardTask(sessions, id),
+		Usage:                usageEvents,
+		UsageRollups:         usageRollups,
 		Rollup:               rollups[task.Definition.ID],
 		CSRFToken:            s.csrfToken,
 		States:               dashboardMutableStates(s.cfg),
@@ -1518,6 +1532,12 @@ func dashboardTemplateFuncs() template.FuncMap {
 				return findings
 			}
 			return findings[:limit]
+		},
+		"usageInt": func(value *int) string {
+			if value == nil {
+				return "unknown"
+			}
+			return strconv.Itoa(*value)
 		},
 		"moreTasks": func(tasks []store.Task, limit int) int {
 			if limit <= 0 || len(tasks) <= limit {

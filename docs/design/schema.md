@@ -2,7 +2,11 @@
 
 Fairway uses SQLite via `modernc.org/sqlite` (pure Go, no CGO). The database lives at the path configured by `[fairway] db_path` (default `.fairway/state.db`).
 
-Eight tables, plus `schema_migrations` for migration tracking. Task hierarchy (epics, stories, subtasks) lives in `task_definitions` via a self-referential `parent_id` — see [hierarchy.md](hierarchy.md). Checkpoints attach append-only operating notes to tasks; see [checkpoints.md](checkpoints.md).
+Fairway uses migration-managed tables plus `schema_migrations` for migration
+tracking. Task hierarchy (epics, stories, subtasks) lives in
+`task_definitions` via a self-referential `parent_id` — see
+[hierarchy.md](hierarchy.md). Checkpoints attach append-only operating notes to
+tasks; see [checkpoints.md](checkpoints.md).
 
 ## Project scope
 
@@ -236,6 +240,48 @@ work.
 FK: `(project_id, task_id) → task_definitions(project_id, id)`.
 Index: `(project_id, task_id, created_at)`.
 Index: `(project_id, state, target_close_by)`.
+
+### `provider_usage_events`
+
+Append-only provider usage attribution. This table stores normalized counts and
+metadata only. It must not store prompts, transcripts, secrets, provider inputs,
+provider outputs, messages, or generated content. Missing numeric values stay
+`NULL`; Fairway treats them as unknown rather than zero.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `project_id` | TEXT NOT NULL | |
+| `provider` | TEXT NOT NULL | Provider label such as `codex`, `claude`, `gemini`, `tmux`, or `shell`. |
+| `external_session_id` | TEXT | Provider-side session/thread/run id, when known. |
+| `session_id` | TEXT | Fairway `agent_sessions.id`, when known. |
+| `task_id` | TEXT | Fairway task receiving attribution. Nullable for provider runs not yet mapped to a task. |
+| `role` | TEXT | Role or lane receiving attribution. |
+| `phase` | TEXT | Optional work phase such as `implementation`, `review`, `ci`, `deploy`, or `uat`. |
+| `source` | TEXT NOT NULL | `provider_reported`, `derived_snapshot`, `manual`, or `unknown`. |
+| `confidence` | TEXT NOT NULL | `exact`, `estimated`, or `unknown`. |
+| `started_at` | DATETIME | Measured usage window start. |
+| `completed_at` | DATETIME | Measured usage window end. |
+| `started_token_snapshot` | INTEGER | Optional provider running total at start. |
+| `completed_token_snapshot` | INTEGER | Optional provider running total at completion. |
+| `input_tokens` | INTEGER | Optional provider-reported input tokens. |
+| `cached_input_tokens` | INTEGER | Optional provider-reported cached input tokens. |
+| `uncached_input_tokens` | INTEGER | Optional provider-reported or derived uncached input tokens. |
+| `output_tokens` | INTEGER | Optional provider-reported output tokens. |
+| `reasoning_tokens` | INTEGER | Optional provider-reported reasoning tokens. |
+| `total_tokens` | INTEGER | Optional provider-reported or snapshot-derived total tokens. |
+| `elapsed_seconds` | INTEGER | Optional elapsed time. |
+| `model` | TEXT | Optional provider model label. |
+| `metadata_json` | TEXT | Optional small JSON object for non-sensitive metadata. |
+| `created_at` | DATETIME NOT NULL | |
+
+FK: `(project_id, task_id) → task_definitions(project_id, id)`.
+
+Indices:
+- `(project_id, task_id, created_at)` — task detail usage timeline.
+- `(project_id, provider, created_at)` — provider rollups.
+- `(project_id, role, created_at)` — lane rollups.
+- `(project_id, created_at)` — daily reports.
 
 ## Migration strategy
 

@@ -86,6 +86,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdSetStatus(ctx, opts, args[1:])
 	case "record":
 		return cmdRecord(ctx, opts, args[1:])
+	case "usage":
+		return cmdUsage(ctx, opts, args[1:])
 	case "task-detail":
 		if len(args) < 2 {
 			return errors.New("task-detail requires task id")
@@ -5275,13 +5277,13 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, s *store.Store,
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		if isHelpOnly(args) {
-			subcommandUsage("record", "evidence|guard-report|handoff|review")
+			subcommandUsage("record", "evidence|guard-report|handoff|review|usage")
 			return nil
 		}
 		return errors.New("record requires type and task id")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("record", "evidence|guard-report|handoff|review")
+		subcommandUsage("record", "evidence|guard-report|handoff|review|usage")
 		return nil
 	}
 	switch args[0] {
@@ -5293,6 +5295,8 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 		return recordHandoff(ctx, opts, args[1:])
 	case "review":
 		return recordReview(ctx, opts, args[1:])
+	case "usage":
+		return recordUsage(ctx, opts, args[1:])
 	}
 	return fmt.Errorf("unknown record type %q", args[0])
 }
@@ -5413,6 +5417,156 @@ func recordGuardReport(ctx context.Context, opts globalOptions, args []string) e
 	})
 }
 
+func recordUsage(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("record usage requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("usage", flag.ContinueOnError)
+	provider := fs.String("provider", "", "provider name")
+	externalSessionID := fs.String("external-session-id", "", "external provider session id")
+	sessionID := fs.String("session-id", "", "fairway session id")
+	role := fs.String("role", "", "role/lane")
+	phase := fs.String("phase", "", "work phase")
+	source := fs.String("source", "unknown", "usage source: provider_reported, derived_snapshot, manual, unknown")
+	confidence := fs.String("confidence", "unknown", "usage confidence: exact, estimated, unknown")
+	startedAt := fs.String("started-at", "", "usage window start timestamp")
+	completedAt := fs.String("completed-at", "", "usage window end timestamp")
+	startedSnapshot := fs.String("started-token-snapshot", "", "starting provider token snapshot")
+	completedSnapshot := fs.String("completed-token-snapshot", "", "completed provider token snapshot")
+	inputTokens := fs.String("input-tokens", "", "input token count")
+	cachedInputTokens := fs.String("cached-input-tokens", "", "cached input token count")
+	uncachedInputTokens := fs.String("uncached-input-tokens", "", "uncached input token count")
+	outputTokens := fs.String("output-tokens", "", "output token count")
+	reasoningTokens := fs.String("reasoning-tokens", "", "reasoning token count")
+	totalTokens := fs.String("total-tokens", "", "total token count")
+	elapsedSeconds := fs.String("elapsed-seconds", "", "elapsed seconds")
+	model := fs.String("model", "", "provider model label")
+	var metadata multiFlag
+	fs.Var(&metadata, "metadata", "usage metadata key=value; may repeat; no prompts, transcripts, secrets, or generated content")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected usage arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *provider == "" {
+		return errors.New("--provider is required")
+	}
+	metadataJSON, err := usageMetadataJSON(metadata)
+	if err != nil {
+		return err
+	}
+	usage := store.ProviderUsage{
+		Provider:               *provider,
+		ExternalSessionID:      *externalSessionID,
+		SessionID:              *sessionID,
+		TaskID:                 taskID,
+		Role:                   *role,
+		Phase:                  *phase,
+		Source:                 *source,
+		Confidence:             *confidence,
+		StartedAt:              *startedAt,
+		CompletedAt:            *completedAt,
+		StartedTokenSnapshot:   optionalNonNegativeInt(*startedSnapshot),
+		CompletedTokenSnapshot: optionalNonNegativeInt(*completedSnapshot),
+		InputTokens:            optionalNonNegativeInt(*inputTokens),
+		CachedInputTokens:      optionalNonNegativeInt(*cachedInputTokens),
+		UncachedInputTokens:    optionalNonNegativeInt(*uncachedInputTokens),
+		OutputTokens:           optionalNonNegativeInt(*outputTokens),
+		ReasoningTokens:        optionalNonNegativeInt(*reasoningTokens),
+		TotalTokens:            optionalNonNegativeInt(*totalTokens),
+		ElapsedSeconds:         optionalNonNegativeInt(*elapsedSeconds),
+		Model:                  *model,
+		MetadataJSON:           metadataJSON,
+	}
+	if usage.StartedTokenSnapshot == nil && *startedSnapshot != "" {
+		return fmt.Errorf("invalid --started-token-snapshot %q", *startedSnapshot)
+	}
+	if usage.CompletedTokenSnapshot == nil && *completedSnapshot != "" {
+		return fmt.Errorf("invalid --completed-token-snapshot %q", *completedSnapshot)
+	}
+	if usage.InputTokens == nil && *inputTokens != "" {
+		return fmt.Errorf("invalid --input-tokens %q", *inputTokens)
+	}
+	if usage.CachedInputTokens == nil && *cachedInputTokens != "" {
+		return fmt.Errorf("invalid --cached-input-tokens %q", *cachedInputTokens)
+	}
+	if usage.UncachedInputTokens == nil && *uncachedInputTokens != "" {
+		return fmt.Errorf("invalid --uncached-input-tokens %q", *uncachedInputTokens)
+	}
+	if usage.OutputTokens == nil && *outputTokens != "" {
+		return fmt.Errorf("invalid --output-tokens %q", *outputTokens)
+	}
+	if usage.ReasoningTokens == nil && *reasoningTokens != "" {
+		return fmt.Errorf("invalid --reasoning-tokens %q", *reasoningTokens)
+	}
+	if usage.TotalTokens == nil && *totalTokens != "" {
+		return fmt.Errorf("invalid --total-tokens %q", *totalTokens)
+	}
+	if usage.ElapsedSeconds == nil && *elapsedSeconds != "" {
+		return fmt.Errorf("invalid --elapsed-seconds %q", *elapsedSeconds)
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		recorded, err := s.RecordProviderUsage(ctx, usage)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(recorded)
+		}
+		fmt.Printf("usage recorded %s provider=%s total=%s confidence=%s source=%s\n", taskID, recorded.Provider, formatUsageInt(recorded.TotalTokens), recorded.Confidence, recorded.Source)
+		return nil
+	})
+}
+
+func optionalNonNegativeInt(raw string) *int {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return nil
+	}
+	return &value
+}
+
+func usageMetadataJSON(values []string) (string, error) {
+	if len(values) == 0 {
+		return "", nil
+	}
+	metadata := map[string]string{}
+	for _, raw := range values {
+		key, value, ok := strings.Cut(raw, "=")
+		key = strings.TrimSpace(key)
+		if !ok || key == "" {
+			return "", fmt.Errorf("usage metadata must be key=value: %q", raw)
+		}
+		if usageMetadataKeyForbidden(key) {
+			return "", fmt.Errorf("usage metadata key %q is not allowed; usage metadata must not contain prompts, transcripts, secrets, inputs, outputs, messages, or generated content", key)
+		}
+		if len(value) > 512 {
+			return "", fmt.Errorf("usage metadata value for %q is too long", key)
+		}
+		metadata[key] = value
+	}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func usageMetadataKeyForbidden(key string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+	for _, blocked := range []string{"prompt", "transcript", "secret", "password", "cookie", "api_key", "token", "bearer", "authorization", "input", "output", "content", "completion", "message"} {
+		if strings.Contains(normalized, blocked) {
+			return true
+		}
+	}
+	return false
+}
+
 type guardEvidenceReport struct {
 	Guard              string   `json:"guard"`
 	Mode               string   `json:"mode"`
@@ -5425,6 +5579,69 @@ type guardEvidenceReport struct {
 func validGuardMode(mode string) bool {
 	switch mode {
 	case "report_only", "warning", "blocking":
+		return true
+	default:
+		return false
+	}
+}
+
+func cmdUsage(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("usage", "report")
+		return nil
+	}
+	switch args[0] {
+	case "report":
+		return cmdUsageReport(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown usage subcommand %q", args[0])
+	}
+}
+
+func cmdUsageReport(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("usage report", flag.ContinueOnError)
+	groupBy := fs.String("by", "provider", "group by provider, task, epic, role, day, kind, or phase")
+	taskID := fs.String("task-id", "", "limit to task id")
+	sinceDuration := fs.String("since-duration", "", "limit to usage recorded within duration")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected usage report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if !validUsageRollupGroup(*groupBy) {
+		return fmt.Errorf("invalid usage report group %q", *groupBy)
+	}
+	since := ""
+	if *sinceDuration != "" {
+		duration, err := time.ParseDuration(*sinceDuration)
+		if err != nil {
+			return err
+		}
+		since = time.Now().UTC().Add(-duration).Format(time.RFC3339Nano)
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		rollups, err := s.UsageRollups(ctx, store.UsageRollupOptions{GroupBy: *groupBy, TaskID: *taskID, Since: since})
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(rollups)
+		}
+		fmt.Printf("usage report by %s\n", *groupBy)
+		for _, roll := range rollups {
+			fmt.Printf("- %s events=%d total=%s input=%s cached=%s output=%s elapsed=%s\n", roll.Key, roll.Events, formatUsageInt(roll.TotalTokens), formatUsageInt(roll.InputTokens), formatUsageInt(roll.CachedInputTokens), formatUsageInt(roll.OutputTokens), formatUsageInt(roll.ElapsedSeconds))
+		}
+		if len(rollups) == 0 {
+			fmt.Println("- no usage recorded")
+		}
+		return nil
+	})
+}
+
+func validUsageRollupGroup(group string) bool {
+	switch group {
+	case "provider", "task", "epic", "role", "day", "kind", "phase":
 		return true
 	default:
 		return false
@@ -6171,17 +6388,27 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	if err != nil {
 		return err
 	}
+	usageEvents, err := s.ProviderUsageForTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	usageRollups, err := s.UsageRollups(ctx, store.UsageRollupOptions{GroupBy: "provider", TaskID: taskID})
+	if err != nil {
+		return err
+	}
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		return printJSON(struct {
-			Task                 store.Task         `json:"task"`
-			Transitions          []store.Transition `json:"transitions"`
-			Evidence             []store.Evidence   `json:"evidence"`
-			Handoffs             []store.Handoff    `json:"handoffs"`
-			Reviews              []store.Review     `json:"reviews"`
-			MissingReviewDomains []string           `json:"missing_review_domains,omitempty"`
-			Sessions             []store.Session    `json:"sessions"`
-		}{task, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions})
+			Task                 store.Task            `json:"task"`
+			Transitions          []store.Transition    `json:"transitions"`
+			Evidence             []store.Evidence      `json:"evidence"`
+			Handoffs             []store.Handoff       `json:"handoffs"`
+			Reviews              []store.Review        `json:"reviews"`
+			MissingReviewDomains []string              `json:"missing_review_domains,omitempty"`
+			Sessions             []store.Session       `json:"sessions"`
+			Usage                []store.ProviderUsage `json:"usage"`
+			UsageRollups         []store.UsageRollup   `json:"usage_rollups"`
+		}{task, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions, usageEvents, usageRollups})
 	}
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
@@ -6224,7 +6451,30 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	for _, session := range sessions {
 		fmt.Printf("- %s %s/%s %s pane=%s transcript=%s\n", session.ID, session.SessionBackend, session.Provider, session.Status, session.TmuxPane, session.TranscriptPath)
 	}
+	fmt.Println("\nusage:")
+	if len(usageEvents) == 0 {
+		fmt.Println("- unknown")
+	}
+	for _, ev := range usageEvents {
+		fmt.Printf("- %s %s/%s total=%s input=%s cached=%s output=%s phase=%s session=%s\n", ev.Provider, ev.Source, ev.Confidence, formatUsageInt(ev.TotalTokens), formatUsageInt(ev.InputTokens), formatUsageInt(ev.CachedInputTokens), formatUsageInt(ev.OutputTokens), firstNonEmpty(ev.Phase, "unknown"), firstNonEmpty(ev.SessionID, ev.ExternalSessionID, "unknown"))
+	}
 	return nil
+}
+
+func formatUsageInt(value *int) string {
+	if value == nil {
+		return "unknown"
+	}
+	return strconv.Itoa(*value)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func sessionsForTask(ctx context.Context, s *store.Store, taskID string) ([]store.Session, error) {
@@ -6289,7 +6539,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

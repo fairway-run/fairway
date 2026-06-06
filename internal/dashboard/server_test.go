@@ -155,6 +155,11 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	if err := s.RecordReview(ctx, "T-001", store.Review{Reviewer: "governance", Verdict: "approve", Reason: "ok"}); err != nil {
 		t.Fatal(err)
 	}
+	total := 150
+	cached := 40
+	if _, err := s.RecordProviderUsage(ctx, store.ProviderUsage{Provider: "codex", TaskID: "T-001", Role: "backend", Phase: "implementation", Source: "provider_reported", Confidence: "exact", TotalTokens: &total, CachedInputTokens: &cached}); err != nil {
+		t.Fatal(err)
+	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"backend", "ops/watch"}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/reports", nil)
 	rec := httptest.NewRecorder()
@@ -170,6 +175,9 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 		"watch-ci",
 		"CI-FIX",
 		"Missing Required Review Domains",
+		"Provider Usage Attribution",
+		"codex",
+		"150",
 		"Markdown",
 		"JSON",
 		"CSV",

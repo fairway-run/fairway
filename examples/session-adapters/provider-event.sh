@@ -22,6 +22,19 @@ Options:
   --transcript <path>     Transcript path or URL stored on the session
   --artifact <path>       Evidence/checkpoint artifact path or URL
   --handoff-to <role>     For completed work, record a handoff instead of evidence
+  --usage-source <source> Usage source: provider_reported, derived_snapshot, manual, unknown
+  --usage-confidence <c>  Usage confidence: exact, estimated, unknown
+  --usage-phase <phase>   Usage attribution phase
+  --usage-model <model>   Provider model label
+  --started-token-snapshot <n>
+  --completed-token-snapshot <n>
+  --input-tokens <n>
+  --cached-input-tokens <n>
+  --uncached-input-tokens <n>
+  --output-tokens <n>
+  --reasoning-tokens <n>
+  --total-tokens <n>
+  --elapsed-seconds <n>
   --dry-run               Print Fairway commands without executing them
 USAGE
 }
@@ -38,6 +51,19 @@ worktree="$(pwd)"
 transcript=""
 artifact=""
 handoff_to=""
+usage_source=""
+usage_confidence=""
+usage_phase=""
+usage_model=""
+started_token_snapshot=""
+completed_token_snapshot=""
+input_tokens=""
+cached_input_tokens=""
+uncached_input_tokens=""
+output_tokens=""
+reasoning_tokens=""
+total_tokens=""
+elapsed_seconds=""
 dry_run=false
 
 while [[ $# -gt 0 ]]; do
@@ -54,6 +80,19 @@ while [[ $# -gt 0 ]]; do
     --transcript) transcript="${2:?--transcript requires a value}"; shift 2 ;;
     --artifact) artifact="${2:?--artifact requires a value}"; shift 2 ;;
     --handoff-to) handoff_to="${2:?--handoff-to requires a value}"; shift 2 ;;
+    --usage-source) usage_source="${2:?--usage-source requires a value}"; shift 2 ;;
+    --usage-confidence) usage_confidence="${2:?--usage-confidence requires a value}"; shift 2 ;;
+    --usage-phase) usage_phase="${2:?--usage-phase requires a value}"; shift 2 ;;
+    --usage-model) usage_model="${2:?--usage-model requires a value}"; shift 2 ;;
+    --started-token-snapshot) started_token_snapshot="${2:?--started-token-snapshot requires a value}"; shift 2 ;;
+    --completed-token-snapshot) completed_token_snapshot="${2:?--completed-token-snapshot requires a value}"; shift 2 ;;
+    --input-tokens) input_tokens="${2:?--input-tokens requires a value}"; shift 2 ;;
+    --cached-input-tokens) cached_input_tokens="${2:?--cached-input-tokens requires a value}"; shift 2 ;;
+    --uncached-input-tokens) uncached_input_tokens="${2:?--uncached-input-tokens requires a value}"; shift 2 ;;
+    --output-tokens) output_tokens="${2:?--output-tokens requires a value}"; shift 2 ;;
+    --reasoning-tokens) reasoning_tokens="${2:?--reasoning-tokens requires a value}"; shift 2 ;;
+    --total-tokens) total_tokens="${2:?--total-tokens requires a value}"; shift 2 ;;
+    --elapsed-seconds) elapsed_seconds="${2:?--elapsed-seconds requires a value}"; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage; exit 2 ;;
@@ -87,6 +126,31 @@ if [[ -n "$transcript" ]]; then
   upsert_args+=(--transcript "$transcript")
 fi
 run_cmd "${upsert_args[@]}"
+
+usage_present=false
+for usage_value in "$usage_source" "$usage_confidence" "$usage_phase" "$usage_model" "$started_token_snapshot" "$completed_token_snapshot" "$input_tokens" "$cached_input_tokens" "$uncached_input_tokens" "$output_tokens" "$reasoning_tokens" "$total_tokens" "$elapsed_seconds"; do
+  if [[ -n "$usage_value" ]]; then
+    usage_present=true
+    break
+  fi
+done
+if [[ "$usage_present" == true ]]; then
+  usage_args=(fairway record usage "$task_id" --provider "$provider" --external-session-id "$external_session_id" --session-id "$session_id" --role "$role")
+  if [[ -n "$usage_source" ]]; then usage_args+=(--source "$usage_source"); fi
+  if [[ -n "$usage_confidence" ]]; then usage_args+=(--confidence "$usage_confidence"); fi
+  if [[ -n "$usage_phase" ]]; then usage_args+=(--phase "$usage_phase"); fi
+  if [[ -n "$usage_model" ]]; then usage_args+=(--model "$usage_model"); fi
+  if [[ -n "$started_token_snapshot" ]]; then usage_args+=(--started-token-snapshot "$started_token_snapshot"); fi
+  if [[ -n "$completed_token_snapshot" ]]; then usage_args+=(--completed-token-snapshot "$completed_token_snapshot"); fi
+  if [[ -n "$input_tokens" ]]; then usage_args+=(--input-tokens "$input_tokens"); fi
+  if [[ -n "$cached_input_tokens" ]]; then usage_args+=(--cached-input-tokens "$cached_input_tokens"); fi
+  if [[ -n "$uncached_input_tokens" ]]; then usage_args+=(--uncached-input-tokens "$uncached_input_tokens"); fi
+  if [[ -n "$output_tokens" ]]; then usage_args+=(--output-tokens "$output_tokens"); fi
+  if [[ -n "$reasoning_tokens" ]]; then usage_args+=(--reasoning-tokens "$reasoning_tokens"); fi
+  if [[ -n "$total_tokens" ]]; then usage_args+=(--total-tokens "$total_tokens"); fi
+  if [[ -n "$elapsed_seconds" ]]; then usage_args+=(--elapsed-seconds "$elapsed_seconds"); fi
+  run_cmd "${usage_args[@]}"
+fi
 
 case "$runtime_state" in
   started)
