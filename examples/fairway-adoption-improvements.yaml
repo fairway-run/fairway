@@ -450,3 +450,41 @@ tasks:
       - Wall or diagnostics banner highlights high-risk coverage findings without obscuring normal ready/active/done task flow.
       - Findings link to the relevant commit, task, evidence artifact, review record, or suggested follow-up command.
       - Dashboard tests cover a clean repo, an uncovered commit, orphan evidence, and a failed CI evidence row without follow-up task.
+
+  - id: FW-116
+    title: Require backing monitor process for watcher and CI sessions
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: watchers
+    source_paths:
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/dashboard
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: watcher-lifecycle-readiness-guard
+    depends_on:
+      - FW-111
+      - FW-114
+    acceptance_checks:
+      - watcher and CI monitor sessions can record a backing process kind, automation id, pid, tmux pane, external run id, or explicit manual checkpoint window
+      - "`fairway reconcile active` reports monitor sessions that have no backing process/automation proof and no fresh bounded checkpoint"
+      - dashboard diagnostics distinguishes real active monitor work from stale monitor bookkeeping that only left a task in progress
+      - "watcher start or deploy-run monitor creation docs require proving the heartbeat/automation exists before leaving the task `in_progress`"
+      - tests cover a monitor with a valid backing automation, a monitor with no backing automation, and a manually bounded checkpoint that expires

@@ -207,7 +207,17 @@ while Fairway improvements are assigned as their own bounded workstream.
      readiness if the coordinator forgets to emit the initial provider-event
      checkpoint.
 
-8. Guard report mode vocabulary
+8. Monitor backing-process readiness guard
+   - Current state: watcher and CI monitor tasks can be represented as Fairway
+     sessions/checkpoints, but Fairway does not yet require proof that a real
+     heartbeat, automation, PID, tmux pane, or external polling process exists.
+   - Next pressure point: extend active reconciliation and dashboard diagnostics
+     so monitor sessions without backing process/automation proof are reported
+     as stale bookkeeping, not live work.
+   - Trigger: GPUaaS CI monitor deploy-runs for completed pipelines stayed
+     `in_progress` because no heartbeat automation existed to close them.
+
+9. Guard report mode vocabulary
    - Current state: `record guard-report` accepts `report_only`, `warning`,
      and `blocking`, while GPUaaS platform-foundation guards now distinguish
      `blocking_new` from `blocking_all`.

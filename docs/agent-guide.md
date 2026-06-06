@@ -451,6 +451,13 @@ fairway watcher start W-001 --task T-001 --owner C-ops/watch --process ci
 fairway watcher finish W-001 --result pass --artifact dist/ci.log
 ```
 
+Before leaving a CI/deploy/UAT/provider monitor active, prove that a real
+watcher exists. Record the automation id, PID, tmux pane, external run id plus
+polling command, or a manual checkpoint window with an explicit expiry. If a
+monitor task only creates Fairway session/task rows and no backing heartbeat or
+bounded checkpoint exists, reset or close it before ending the work burst. That
+state is stale bookkeeping, not live monitoring.
+
 Platform-foundation work should use the narrower packet type that matches the
 task. If a repo defines `[[packet_templates]]`, use those fields as the packet
 contract. Generic templates render with `fairway packet template <name>`:

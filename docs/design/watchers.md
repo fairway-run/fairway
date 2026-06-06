@@ -21,6 +21,20 @@ fairway watcher status [--include-done]
 normal fairway evidence and checkpoint rows; they do not run the watched command
 unless a future runner adapter is configured.
 
+Starting a watcher is not enough to prove that something is actually watching.
+For CI, deploy, smoke, UAT, or provider-session monitors, the watcher record
+must include one of:
+
+- a backing automation id,
+- a local PID or tmux pane,
+- an external run id plus a polling command,
+- or an explicit manual checkpoint window with an expiry.
+
+If none of those exists, do not leave the task `in_progress` as a monitor.
+Record a bounded checkpoint and close, reset, or block the task before ending
+the work burst. `fairway reconcile active` should flag monitor sessions that
+have no backing process/automation proof and no fresh bounded checkpoint.
+
 ## Packet Shape
 
 ```yaml
