@@ -742,9 +742,12 @@ tasks:
     depends_on:
       - FW-118
     acceptance_checks:
+      - provider usage accounting uses provider-specific adapters that emit normalized Fairway usage events; Fairway core does not parse every provider transcript or poll provider APIs directly.
       - usage model defines provider-neutral fields for provider, external session id, task id, started token snapshot, completed token snapshot, derived delta, provider-reported total, elapsed time, and confidence/source.
+      - Codex is treated as the first concrete adapter and captures cached input tokens when available so reports can show cache ratio and distinguish cached-heavy tasks from fully uncached work.
       - model supports providers that expose explicit per-run usage and providers that only expose a running total by recording start/end snapshots without requiring Fairway to call provider APIs.
       - session adapters can record usage checkpoints or evidence without storing prompts, transcripts, secrets, model inputs, or other sensitive content.
-      - task detail, reports, and dashboard summaries can show token usage per task/session when data exists and show unknown when it does not.
-      - design explains how usage can later roll up by epic, role, provider, day, and external tracker issue without making token usage a completion gate.
+      - task detail, reports, and dashboard summaries can show token usage per task/session when data exists and show unknown when it does not; unavailable values are not reported as zero.
+      - design explains how usage can later roll up by epic, role, provider, day, task kind, validation phase, and external tracker issue without making token usage a completion gate.
+      - reports can identify expensive task classes and guide follow-up improvements such as scripts, runbooks, prompts, adapters, dashboards, or workflow changes.
       - implementation, if included, has schema migration/backward compatibility tests and does not break existing agent_sessions or task_evidence rows.
