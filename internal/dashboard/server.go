@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/audit"
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/state"
@@ -24,6 +25,7 @@ import (
 type Server struct {
 	store     *store.Store
 	cfg       config.Config
+	root      string
 	roles     []string
 	worktrees []WorktreeStatus
 	csrfToken string
@@ -51,7 +53,11 @@ type ProjectStore struct {
 }
 
 func New(s *store.Store, cfg config.Config, roles []string, worktrees []WorktreeStatus) *Server {
-	return &Server{store: s, cfg: cfg, roles: roles, worktrees: worktrees, csrfToken: newCSRFToken()}
+	return NewWithRoot(s, cfg, roles, worktrees, "")
+}
+
+func NewWithRoot(s *store.Store, cfg config.Config, roles []string, worktrees []WorktreeStatus, root string) *Server {
+	return &Server{store: s, cfg: cfg, root: root, roles: roles, worktrees: worktrees, csrfToken: newCSRFToken()}
 }
 
 func NewMulti(projects []ProjectStore) http.Handler {
@@ -219,6 +225,7 @@ type DashboardViewData struct {
 	Rollups              map[string]Rollup
 	TaskRoles            map[string]string
 	ActiveReport         reconcile.ActiveReport
+	Audit                AuditDiagnostics
 }
 
 type TaskDetailViewData struct {
@@ -237,6 +244,26 @@ type TaskDetailViewData struct {
 	Rollup               Rollup
 	CSRFToken            string
 	States               []string
+	Audit                AuditDiagnostics
+}
+
+type AuditDiagnostics struct {
+	WorkCoverage          audit.WorkCoverageReport
+	WorkCoverageAvailable bool
+	WorkCoverageError     string
+	CILearning            audit.CILearningReport
+	CILearningError       string
+}
+
+func (d AuditDiagnostics) HighRiskCount() int {
+	count := d.WorkCoverage.Summary.CommitsWithoutTaskID
+	count += d.WorkCoverage.Summary.ChangedFilesUncovered
+	count += d.WorkCoverage.Summary.OrphanEvidence
+	count += d.WorkCoverage.Summary.DoneWithoutRequiredEvidence
+	count += d.WorkCoverage.Summary.MissingRequiredReviews
+	count += d.CILearning.Summary.MissingFollowUps
+	count += d.CILearning.Summary.ApprovalGatedBlocker
+	return count
 }
 
 func (s *Server) ListenAndServe(addr string) error {
@@ -332,6 +359,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	if err != nil {
 		return DashboardViewData{}, err
 	}
+	auditDiagnostics := s.auditDiagnostics(r.Context(), "")
 	return DashboardViewData{
 		View:                 view,
 		Summary:              dashboardSummary(tasks, displayTasks, workstreams, readySet),
@@ -355,6 +383,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		Rollups:              rollups,
 		TaskRoles:            taskRoleMap(tasks),
 		ActiveReport:         activeReport,
+		Audit:                auditDiagnostics,
 	}, nil
 }
 
@@ -1115,8 +1144,31 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Rollup:               rollups[task.Definition.ID],
 		CSRFToken:            s.csrfToken,
 		States:               dashboardMutableStates(s.cfg),
+		Audit:                s.auditDiagnostics(r.Context(), id),
 	}
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
+}
+
+func (s *Server) auditDiagnostics(ctx context.Context, taskID string) AuditDiagnostics {
+	diagnostics := AuditDiagnostics{}
+	if s.root == "" {
+		diagnostics.WorkCoverageError = "repo root unavailable; start dashboard through fairway dashboard for commit coverage"
+	} else {
+		report, err := audit.BuildWorkCoverageReport(ctx, s.cfg, s.root, s.store, audit.WorkCoverageOptions{SinceDuration: 24 * time.Hour, TaskID: taskID})
+		if err != nil {
+			diagnostics.WorkCoverageError = err.Error()
+		} else {
+			diagnostics.WorkCoverage = report
+			diagnostics.WorkCoverageAvailable = true
+		}
+	}
+	report, err := audit.BuildCILearningReport(ctx, s.cfg, s.store, audit.CILearningOptions{TaskID: taskID})
+	if err != nil {
+		diagnostics.CILearningError = err.Error()
+	} else {
+		diagnostics.CILearning = report
+	}
+	return diagnostics
 }
 
 func dashboardMissingApprovedReviewDomains(domains []string, reviews []store.Review) []string {
@@ -1427,6 +1479,18 @@ func dashboardTemplateFuncs() template.FuncMap {
 				return tasks
 			}
 			return tasks[:limit]
+		},
+		"takeWorkCoverageFindings": func(findings []audit.WorkCoverageFinding, limit int) []audit.WorkCoverageFinding {
+			if limit <= 0 || len(findings) <= limit {
+				return findings
+			}
+			return findings[:limit]
+		},
+		"takeCILearningFindings": func(findings []audit.CILearningFinding, limit int) []audit.CILearningFinding {
+			if limit <= 0 || len(findings) <= limit {
+				return findings
+			}
+			return findings[:limit]
 		},
 		"moreTasks": func(tasks []store.Task, limit int) int {
 			if limit <= 0 || len(tasks) <= limit {

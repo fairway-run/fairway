@@ -12,6 +12,18 @@
 {{if .ActiveReport.Summary.StaleCheckpoints}}<span>{{.ActiveReport.Summary.StaleCheckpoints}} stale checkpoint(s)</span>{{end}}
 </section>
 {{end}}
+{{if .Audit.HighRiskCount}}
+<section class="active-reconcile-banner" aria-label="Coverage and learning diagnostics">
+<strong>Coverage diagnostics need review</strong>
+<span>{{.Audit.HighRiskCount}} high-risk finding(s)</span>
+{{if .Audit.WorkCoverage.Summary.CommitsWithoutTaskID}}<span>{{.Audit.WorkCoverage.Summary.CommitsWithoutTaskID}} uncovered commit(s)</span>{{end}}
+{{if .Audit.WorkCoverage.Summary.ChangedFilesUncovered}}<span>{{.Audit.WorkCoverage.Summary.ChangedFilesUncovered}} uncovered changed file(s)</span>{{end}}
+{{if .Audit.WorkCoverage.Summary.DoneWithoutRequiredEvidence}}<span>{{.Audit.WorkCoverage.Summary.DoneWithoutRequiredEvidence}} done without evidence</span>{{end}}
+{{if .Audit.WorkCoverage.Summary.MissingRequiredReviews}}<span>{{.Audit.WorkCoverage.Summary.MissingRequiredReviews}} missing review</span>{{end}}
+{{if .Audit.CILearning.Summary.MissingFollowUps}}<span>{{.Audit.CILearning.Summary.MissingFollowUps}} failed CI follow-up(s)</span>{{end}}
+<a href="/board?tab=diagnostics">Open diagnostics</a>
+</section>
+{{end}}
 <div class="lane-states" aria-hidden="true">
 <span>lane</span><span>backlog</span><span>in progress / no session</span><span>active session</span><span>review</span><span>done</span>
 </div>

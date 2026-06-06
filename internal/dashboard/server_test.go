@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -322,6 +324,137 @@ func TestBoardRendersProfileGateReadiness(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("gate dashboard body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestBoardDiagnosticsRendersCleanCoverageAndLearningCounts(t *testing.T) {
+	ctx := context.Background()
+	root := initDashboardGitRepo(t)
+	writeDashboardGitFile(t, root, "cmd/api/routes.go", "package api\n")
+	runDashboardGit(t, root, "add", ".")
+	runDashboardGit(t, root, "commit", "-m", "T-001 cover api")
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "API task", Role: "backend", Kind: "task", SourcePaths: []string{"cmd/api/**"}}}); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithRoot(s, config.Defaults(root), []string{"backend"}, nil, root)
+	req := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Coverage Diagnostics",
+		"Uncovered commits",
+		"Uncovered changed files",
+		"Orphan evidence",
+		"Failed CI follow-ups",
+		"no work coverage findings",
+		"no CI/deploy learning findings",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("clean diagnostics missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "commit_without_task_coverage") || strings.Contains(body, "changed_file_uncovered") {
+		t.Fatalf("clean diagnostics contained coverage findings:\n%s", body)
+	}
+}
+
+func TestBoardDiagnosticsRendersUncoveredCommitAndChangedFile(t *testing.T) {
+	ctx := context.Background()
+	root := initDashboardGitRepo(t)
+	writeDashboardGitFile(t, root, "docs/plan.md", "# plan\n")
+	runDashboardGit(t, root, "add", ".")
+	runDashboardGit(t, root, "commit", "-m", "untracked docs")
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "API task", Role: "backend", Kind: "task", SourcePaths: []string{"cmd/api/**"}}}); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithRoot(s, config.Defaults(root), []string{"backend"}, nil, root)
+	req := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"commit_without_task_coverage",
+		"changed_file_uncovered",
+		"docs/plan.md",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("uncovered diagnostics missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestBoardDiagnosticsRendersFailedCILearningWithoutFollowUp(t *testing.T) {
+	ctx := context.Background()
+	root := initDashboardGitRepo(t)
+	writeDashboardGitFile(t, root, "cmd/api/routes.go", "package api\n")
+	runDashboardGit(t, root, "add", ".")
+	runDashboardGit(t, root, "commit", "-m", "T-001 cover api")
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "API task", Role: "backend", Kind: "task", SourcePaths: []string{"cmd/api/**"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "fail", ArtifactType: "ci", ArtifactPath: "https://ci.example/jobs/1"}); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithRoot(s, config.Defaults(root), []string{"backend"}, nil, root)
+	req := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"CI Learning Findings",
+		"missed_local_gate",
+		"fairway add CI-FIX-T-001",
+		"go test ./...",
+		"Failed CI follow-ups",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("ci learning diagnostics missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestTaskDetailRendersTaskScopedCoverage(t *testing.T) {
+	ctx := context.Background()
+	root := initDashboardGitRepo(t)
+	writeDashboardGitFile(t, root, "cmd/api/routes.go", "package api\n")
+	runDashboardGit(t, root, "add", ".")
+	runDashboardGit(t, root, "commit", "-m", "T-001 cover api")
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "API task", Role: "backend", Kind: "task", SourcePaths: []string{"cmd/api/**"}}}); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithRoot(s, config.Defaults(root), []string{"backend"}, nil, root)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Coverage Diagnostics",
+		"Recent changed files are covered by this task's source_paths or target_paths.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task coverage detail missing %q:\n%s", want, body)
 		}
 	}
 }
@@ -650,6 +783,7 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		Activity             []store.Activity
 		TaskRoles            map[string]string
 		ActiveReport         reconcile.ActiveReport
+		Audit                AuditDiagnostics
 	}{
 		View: "wall",
 		Groups: []RoleGroup{
@@ -945,5 +1079,38 @@ func TestDashboardAssetsServeSurfaceStyles(t *testing.T) {
 				t.Fatalf("%s missing %q:\n%s", tt.path, want, body)
 			}
 		}
+	}
+}
+
+func initDashboardGitRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	runDashboardGit(t, root, "init")
+	runDashboardGit(t, root, "config", "user.email", "fairway@example.test")
+	runDashboardGit(t, root, "config", "user.name", "Fairway Test")
+	writeDashboardGitFile(t, root, "cmd/api/base.go", "package api\n")
+	runDashboardGit(t, root, "add", ".")
+	runDashboardGit(t, root, "commit", "-m", "T-001 base")
+	return root
+}
+
+func writeDashboardGitFile(t *testing.T, root, name, contents string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runDashboardGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
 	}
 }

@@ -63,6 +63,13 @@ emit a `started` provider event so the wall can show who is actually attached.
 The right rail shows gate readiness and recent activity for quick situational
 awareness.
 
+When recent work-coverage or CI/deploy learning audits find high-risk advisory
+issues, the wall shows a compact diagnostics banner with a link to the board
+diagnostics tab. The banner does not change task state or merge gates; it is a
+visibility surface for operators to triage uncovered commits, uncovered files,
+missing evidence/review coverage, or failed CI/deploy evidence without follow-up
+work.
+
 ## Board
 
 The board is the working surface for operators.
@@ -91,10 +98,19 @@ switching between task and diagnostics tabs.
 
 `/board?tab=diagnostics` shows operational tables for:
 
+- work coverage and CI/deploy learning findings,
 - sessions,
 - worktrees,
 - watchers,
 - checkpoints.
+
+The coverage section is backed by the same advisory audit read models as
+`fairway audit work-coverage` and `fairway audit ci-learning`. It summarizes
+uncovered commits, uncovered changed files, orphan evidence count, done tasks
+without required evidence, missing review domains, and failed CI/deploy evidence
+without follow-up tasks. Findings link to task detail when a task is known and
+show the relevant commit, file, evidence artifact, reproduction command, or
+suggested follow-up task command when available.
 
 Diagnostics tables are sortable. The task-table export action is hidden on the
 diagnostics tab because there is no task table there.
@@ -112,6 +128,7 @@ shows:
 - notes, dependencies, and acceptance checks,
 - transition history,
 - evidence,
+- task-scoped work coverage and CI/deploy learning diagnostics,
 - task-bound sessions,
 - handoffs and reviews,
 - missing required review domains before merge-ready.

@@ -55,6 +55,23 @@
 </dl>
 </article>
 <article class="detail-panel wide">
+<h2>Coverage Diagnostics</h2>
+{{if .Audit.WorkCoverageError}}<p class="muted">work coverage audit unavailable: {{.Audit.WorkCoverageError}}</p>{{else}}
+{{if .Audit.WorkCoverage.Findings}}
+<p>{{.Audit.WorkCoverage.Summary.ChangedFilesUncovered}} recent changed file(s) are not covered by this task's source_paths or target_paths.</p>
+<table class="detail-table"><thead><tr><th>Kind</th><th>Commit</th><th>Files</th><th>Next</th></tr></thead><tbody>
+{{range takeWorkCoverageFindings .Audit.WorkCoverage.Findings 6}}<tr><td>{{.Kind}}</td><td>{{if .Commit}}<code>{{.Commit}}</code>{{end}}</td><td>{{range .Files}}<code>{{.}}</code> {{end}}</td><td>{{.Recommended}}</td></tr>{{end}}
+</tbody></table>
+{{else}}<p>Recent changed files are covered by this task's source_paths or target_paths.</p>{{end}}
+{{end}}
+{{if .Audit.CILearning.Findings}}
+<h3>CI Learning</h3>
+<table class="detail-table"><thead><tr><th>Class</th><th>Evidence</th><th>Follow-up</th><th>Reproduce</th></tr></thead><tbody>
+{{range takeCILearningFindings .Audit.CILearning.Findings 6}}<tr><td>{{.FailureClass}}</td><td>{{.EvidenceType}} {{if .ArtifactPath}}<code>{{.ArtifactPath}}</code>{{end}}</td><td>{{if .FollowUpTask}}<a href="/tasks/{{.FollowUpTask}}">{{.FollowUpTask}}</a>{{else}}<code>fairway add {{.RecommendedFollowUpTaskID}}</code>{{end}}</td><td>{{.ExpectedLocalReproduction}}</td></tr>{{end}}
+</tbody></table>
+{{end}}
+</article>
+<article class="detail-panel wide">
 <h2>Notes</h2>
 <pre>{{.Task.Definition.Notes}}</pre>
 </article>
