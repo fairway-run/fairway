@@ -712,3 +712,39 @@ tasks:
       - Plane adapter can import explicitly selected Plane issues into Fairway tasks only through an operator-driven dry-run/apply flow.
       - adapter configuration and credentials come from environment or OS credential store, not committed config.
       - spike report states what should generalize to Jira/Linear and what remains Plane-specific.
+
+  - id: FW-123
+    title: Add provider usage accounting telemetry model
+    kind: telemetry
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-usage
+    source_paths:
+      - docs/design/session-launch.md
+      - docs/design/schema.md
+      - docs/agent-guide.md
+      - examples/session-adapters
+    target_paths:
+      - docs/design/provider-usage-accounting.md
+      - docs/design/schema.md
+      - docs/agent-guide.md
+      - examples/session-adapters/provider-event.sh
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: provider-usage-accounting
+    depends_on:
+      - FW-118
+    acceptance_checks:
+      - usage model defines provider-neutral fields for provider, external session id, task id, started token snapshot, completed token snapshot, derived delta, provider-reported total, elapsed time, and confidence/source.
+      - model supports providers that expose explicit per-run usage and providers that only expose a running total by recording start/end snapshots without requiring Fairway to call provider APIs.
+      - session adapters can record usage checkpoints or evidence without storing prompts, transcripts, secrets, model inputs, or other sensitive content.
+      - task detail, reports, and dashboard summaries can show token usage per task/session when data exists and show unknown when it does not.
+      - design explains how usage can later roll up by epic, role, provider, day, and external tracker issue without making token usage a completion gate.
+      - implementation, if included, has schema migration/backward compatibility tests and does not break existing agent_sessions or task_evidence rows.
