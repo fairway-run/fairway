@@ -23,7 +23,9 @@ fairway coordinator tick
 6. evidence and review gate health,
 7. dirty or stale role worktree checks,
 8. advisory work-coverage audit for commits, task path metadata, evidence, and
-   required review domains.
+   required review domains,
+9. advisory CI/deploy learning audit for failed pipeline, deploy, smoke, and
+   UAT evidence without follow-up work.
 
 `status` prints the current operating board:
 
@@ -86,6 +88,7 @@ The coordinator commands compose lower-level commands:
 - `fairway dispatch-plan`,
 - `fairway git-check`,
 - `fairway audit work-coverage --dry-run`,
+- `fairway audit ci-learning`,
 - `fairway session status`,
 - `fairway session reconcile --dry-run`,
 - `fairway watcher status`,

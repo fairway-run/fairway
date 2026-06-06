@@ -31,6 +31,7 @@ fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
 fairway workflow check [--mode <task|close|deploy>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
 fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
+fairway audit ci-learning [--task-id <id>] [--template] # classify failed CI/deploy/smoke/UAT evidence and follow-up coverage
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
@@ -119,6 +120,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `target_paths`, evidence rows, and required review domains. Use it before
   review, deploy, and release boundaries to catch real work that happened
   outside task/evidence/review coverage.
+- `audit ci-learning` is advisory by default. It classifies failed CI, deploy,
+  smoke, and UAT evidence as missed local gate, missed review gate,
+  CI-environment-only, flaky runner/cache, or approval-gated blocker, then
+  checks for matching `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`, `HARNESS-FIX-*`,
+  `UAT-BUG-*`, or `DOC-FIX-*` follow-up tasks. Use `--template` to render a
+  learning artifact for review or release notes.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
 - `adoption artifact` is the generic readiness report. It uses configured

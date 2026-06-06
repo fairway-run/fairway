@@ -79,7 +79,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check"},
-		{[]string{"audit", "--help"}, "fairway audit work-coverage"},
+		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning"},
 	} {
 		out := runCapture(t, tc.args...)
 		assertContains(t, out, tc.want)
@@ -811,6 +811,52 @@ func TestCLI_AuditWorkCoverage(t *testing.T) {
 
 	durationReport := runCapture(t, "--json", "audit", "work-coverage", "--since-duration", "24h")
 	assertContains(t, durationReport, `"since_duration": "24h0m0s"`)
+}
+
+func TestCLI_AuditCILearning(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `task_id_pattern = "^[A-Z]+-[0-9]+$"`, `task_id_pattern = "^[A-Z][A-Z0-9-]*$"`)
+	runOK(t, "add", "T-001", "--title", "CI failure", "--role", "backend")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "fail", "--artifact-type", "ci")
+
+	report := runCapture(t, "audit", "ci-learning", "--template")
+	for _, want := range []string{
+		"ci_learning_ok: false",
+		"missed_local_gate",
+		"missing follow-up: create CI-FIX-* task",
+		"# CI/Deploy Learning: T-001",
+		"Expected local reproduction: go test ./...",
+	} {
+		assertContains(t, report, want)
+	}
+
+	jsonReport := runCapture(t, "--json", "audit", "ci-learning")
+	assertContains(t, jsonReport, `"failure_class": "missed_local_gate"`)
+	assertContains(t, jsonReport, `"recommended_follow_up_task_id": "CI-FIX-T-001"`)
+
+	runOK(t, "add", "T-002", "--title", "CI environment only", "--role", "ops")
+	runOK(t, "record", "evidence", "T-002", "--command-text", "github actions deploy smoke", "--result", "fail", "--artifact-type", "deploy", "--notes", "CI only environment variable differs")
+	runOK(t, "add", "CD-FIX-T-002", "--title", "Follow up T-002 deploy env", "--role", "ops")
+	envReport := runCapture(t, "--json", "audit", "ci-learning", "--task-id", "T-002", "--template")
+	assertContains(t, envReport, `"failure_class": "ci_environment_only"`)
+	assertContains(t, envReport, `"follow_up_task": "CD-FIX-T-002"`)
+	assertContains(t, envReport, `"missing_follow_ups": 0`)
+
+	runOK(t, "add", "T-003", "--title", "Clean pipeline", "--role", "ops")
+	runOK(t, "record", "evidence", "T-003", "--command-text", "ci pipeline", "--result", "pass", "--artifact-type", "ci")
+	cleanReport := runCapture(t, "audit", "ci-learning", "--task-id", "T-003")
+	assertContains(t, cleanReport, "ci_learning_ok: true")
+	assertContains(t, cleanReport, "no CI/deploy learning findings")
 }
 
 func TestCLI_PacketTemplate(t *testing.T) {

@@ -310,6 +310,10 @@ fairway workflow check --mode deploy --require-clean --require-pushed
 # Coverage boundary: check whether commits, files, evidence, and reviews map
 # back to Fairway task metadata.
 fairway audit work-coverage --since-ref main --dry-run
+
+# Learning boundary: classify failed CI/deploy/smoke/UAT evidence and confirm
+# actionable failures have follow-up tasks.
+fairway audit ci-learning --template
 ```
 
 The command reports:
@@ -326,6 +330,12 @@ map to a task, changed files outside task `source_paths` / `target_paths`,
 evidence that still needs a status decision, done tasks without required
 evidence, and missing review-domain approvals. Run it before review handoff,
 deploy/UAT attempts, and release readiness checks.
+
+`audit ci-learning` is advisory. It turns failed CI, deploy, smoke, and UAT
+evidence into a learning record: failure class, root cause, missed gate,
+expected local reproduction command, owner, and follow-up task. It also checks
+that actionable failures have a `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`,
+`HARNESS-FIX-*`, `UAT-BUG-*`, or `DOC-FIX-*` task.
 
 For deploy work, create one deploy-run task for the attempt and create
 `CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or

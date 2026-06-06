@@ -830,12 +830,14 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 
 func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("audit", "work-coverage")
+		subcommandUsage("audit", "work-coverage|ci-learning")
 		return nil
 	}
 	switch args[0] {
 	case "work-coverage":
 		return cmdAuditWorkCoverage(ctx, opts, args[1:])
+	case "ci-learning":
+		return cmdAuditCILearning(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown audit subcommand %q", args[0])
 	}
@@ -1196,6 +1198,336 @@ func isTerminalStatus(status string, terminal []string) bool {
 		}
 	}
 	return false
+}
+
+type ciLearningReport struct {
+	OK        bool                `json:"ok"`
+	TaskID    string              `json:"task_id,omitempty"`
+	Findings  []ciLearningFinding `json:"findings"`
+	Summary   ciLearningSummary   `json:"summary"`
+	Templates []learningArtifact  `json:"learning_artifacts,omitempty"`
+}
+
+type ciLearningSummary struct {
+	FailedEvidence       int `json:"failed_evidence"`
+	MissingFollowUps     int `json:"missing_follow_ups"`
+	MissedLocalGates     int `json:"missed_local_gates"`
+	MissedReviewGates    int `json:"missed_review_gates"`
+	CIEnvironmentOnly    int `json:"ci_environment_only"`
+	FlakyRunnerOrCache   int `json:"flaky_runner_or_cache"`
+	ApprovalGatedBlocker int `json:"approval_gated_blocker"`
+}
+
+type ciLearningFinding struct {
+	TaskID                      string `json:"task_id"`
+	TaskTitle                   string `json:"task_title"`
+	EvidenceType                string `json:"evidence_type"`
+	Result                      string `json:"result"`
+	CommandText                 string `json:"command_text"`
+	FailureClass                string `json:"failure_class"`
+	RootCause                   string `json:"root_cause"`
+	MissedGate                  string `json:"missed_gate,omitempty"`
+	ExpectedLocalReproduction   string `json:"expected_local_reproduction,omitempty"`
+	Owner                       string `json:"owner,omitempty"`
+	FollowUpTask                string `json:"follow_up_task,omitempty"`
+	FollowUpMissing             bool   `json:"follow_up_missing"`
+	RecommendedFollowUpPrefix   string `json:"recommended_follow_up_prefix,omitempty"`
+	RecommendedFollowUpTaskID   string `json:"recommended_follow_up_task_id,omitempty"`
+	RecommendedFollowUpTaskKind string `json:"recommended_follow_up_task_kind,omitempty"`
+}
+
+type learningArtifact struct {
+	TaskID                    string `json:"task_id"`
+	FailureClass              string `json:"failure_class"`
+	RootCause                 string `json:"root_cause"`
+	MissedGate                string `json:"missed_gate,omitempty"`
+	ExpectedLocalReproduction string `json:"expected_local_reproduction,omitempty"`
+	Owner                     string `json:"owner,omitempty"`
+	FollowUpTask              string `json:"follow_up_task,omitempty"`
+	Markdown                  string `json:"markdown"`
+}
+
+func cmdAuditCILearning(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("audit ci-learning", flag.ContinueOnError)
+	taskID := fs.String("task-id", "", "limit audit to one task")
+	template := fs.Bool("template", false, "render learning artifact templates")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected audit ci-learning arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		report, err := buildCILearningReport(ctx, cfg, s, *taskID, *template)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("ci_learning_ok: %t\n", report.OK)
+		if report.TaskID != "" {
+			fmt.Printf("task_id: %s\n", report.TaskID)
+		}
+		fmt.Printf("summary: failed_evidence=%d missing_follow_ups=%d missed_local_gates=%d missed_review_gates=%d ci_environment_only=%d flaky_runner_or_cache=%d approval_gated_blocker=%d\n",
+			report.Summary.FailedEvidence,
+			report.Summary.MissingFollowUps,
+			report.Summary.MissedLocalGates,
+			report.Summary.MissedReviewGates,
+			report.Summary.CIEnvironmentOnly,
+			report.Summary.FlakyRunnerOrCache,
+			report.Summary.ApprovalGatedBlocker)
+		if len(report.Findings) == 0 {
+			fmt.Println("no CI/deploy learning findings")
+			return nil
+		}
+		for _, finding := range report.Findings {
+			fmt.Printf("warning\t%s\ttask=%s\tfollow_up=%s\tcommand=%s\n", finding.FailureClass, finding.TaskID, finding.FollowUpTask, finding.CommandText)
+			if finding.FollowUpMissing {
+				fmt.Printf("  missing follow-up: create %s-* task, suggested %s\n", finding.RecommendedFollowUpPrefix, finding.RecommendedFollowUpTaskID)
+			}
+			if finding.ExpectedLocalReproduction != "" {
+				fmt.Printf("  reproduce: %s\n", finding.ExpectedLocalReproduction)
+			}
+			if finding.MissedGate != "" {
+				fmt.Printf("  missed_gate: %s\n", finding.MissedGate)
+			}
+			fmt.Printf("  root_cause: %s\n", finding.RootCause)
+		}
+		for _, artifact := range report.Templates {
+			fmt.Println()
+			fmt.Println(artifact.Markdown)
+		}
+		return nil
+	})
+}
+
+func buildCILearningReport(ctx context.Context, cfg config.Config, s *store.Store, taskID string, renderTemplates bool) (ciLearningReport, error) {
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return ciLearningReport{}, err
+	}
+	taskByID := map[string]store.Task{}
+	for _, task := range tasks {
+		taskByID[task.Definition.ID] = task
+	}
+	if taskID != "" {
+		task, ok := taskByID[taskID]
+		if !ok {
+			return ciLearningReport{}, store.ErrNotFound
+		}
+		tasks = []store.Task{task}
+	}
+	allFollowUps := findLearningFollowUps(taskByID)
+	report := ciLearningReport{OK: true, TaskID: taskID}
+	for _, task := range tasks {
+		_, _, evidence, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return ciLearningReport{}, err
+		}
+		for _, ev := range evidence {
+			if !isFailedPipelineEvidence(ev) {
+				continue
+			}
+			finding := classifyLearningFailure(cfg, task, ev, reviews, allFollowUps)
+			report.Findings = append(report.Findings, finding)
+			report.Summary.FailedEvidence++
+			if finding.FollowUpMissing {
+				report.Summary.MissingFollowUps++
+			}
+			switch finding.FailureClass {
+			case "missed_local_gate":
+				report.Summary.MissedLocalGates++
+			case "missed_review_gate":
+				report.Summary.MissedReviewGates++
+			case "ci_environment_only":
+				report.Summary.CIEnvironmentOnly++
+			case "flaky_runner_cache":
+				report.Summary.FlakyRunnerOrCache++
+			case "approval_gated_blocker":
+				report.Summary.ApprovalGatedBlocker++
+			}
+			if renderTemplates {
+				report.Templates = append(report.Templates, learningArtifactForFinding(finding))
+			}
+		}
+	}
+	sort.SliceStable(report.Findings, func(i, j int) bool {
+		if report.Findings[i].TaskID != report.Findings[j].TaskID {
+			return report.Findings[i].TaskID < report.Findings[j].TaskID
+		}
+		return report.Findings[i].CommandText < report.Findings[j].CommandText
+	})
+	report.OK = report.Summary.MissingFollowUps == 0 && report.Summary.MissedLocalGates == 0 && report.Summary.MissedReviewGates == 0 && report.Summary.ApprovalGatedBlocker == 0
+	return report, nil
+}
+
+func isFailedPipelineEvidence(ev store.Evidence) bool {
+	switch ev.Result {
+	case "fail", "blocked":
+	default:
+		return false
+	}
+	text := strings.ToLower(strings.Join([]string{ev.ArtifactType, ev.CommandText, ev.ArtifactPath, ev.Notes}, " "))
+	keywords := []string{"ci", "pipeline", "deploy", "deployment", "smoke", "uat", "release", "workflow", "github actions", "gitlab"}
+	for _, keyword := range keywords {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func classifyLearningFailure(cfg config.Config, task store.Task, ev store.Evidence, reviews []store.Review, followUps map[string]string) ciLearningFinding {
+	text := strings.ToLower(strings.Join([]string{ev.CommandText, ev.ArtifactPath, ev.ArtifactType, ev.Notes}, " "))
+	finding := ciLearningFinding{
+		TaskID:                    task.Definition.ID,
+		TaskTitle:                 task.Definition.Title,
+		EvidenceType:              ev.ArtifactType,
+		Result:                    ev.Result,
+		CommandText:               ev.CommandText,
+		Owner:                     firstNonEmpty(task.Owner, task.Definition.Role),
+		RecommendedFollowUpPrefix: learningFollowUpPrefix(text, ev.ArtifactType),
+	}
+	missingReviews := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+	switch {
+	case ev.Result == "blocked" || containsAny(text, "approval", "manual gate", "permission", "forbidden", "unauthorized", "secret", "credential"):
+		finding.FailureClass = "approval_gated_blocker"
+		finding.RootCause = "execution was blocked by approval, permission, secret, or credential state"
+		finding.MissedGate = "approval or secret readiness gate"
+	case containsAny(text, "flaky", "flake", "runner", "cache", "timeout", "rate limit", "network", "connection reset"):
+		finding.FailureClass = "flaky_runner_cache"
+		finding.RootCause = "failure appears tied to runner, cache, network, or intermittent infrastructure behavior"
+		finding.MissedGate = "runner/cache reliability check"
+	case containsAny(text, "ci only", "ci-only", "github actions", "gitlab", "container", "linux", "environment", "env var"):
+		finding.FailureClass = "ci_environment_only"
+		finding.RootCause = "failure appears specific to CI/deploy environment differences"
+		finding.MissedGate = "environment parity check"
+	case len(missingReviews) > 0 || (cfg.Gates.RequireReviewBeforeDone && task.ReviewStatus != "approved"):
+		finding.FailureClass = "missed_review_gate"
+		finding.RootCause = "failure happened while required review coverage was missing"
+		finding.MissedGate = "review domains: " + strings.Join(missingReviews, ", ")
+	default:
+		finding.FailureClass = "missed_local_gate"
+		finding.RootCause = "failure should have been caught by a local verification command before CI/deploy"
+		finding.MissedGate = "local verification gate"
+	}
+	finding.ExpectedLocalReproduction = expectedLocalReproduction(ev)
+	if followUp, ok := followUps[finding.TaskID]; ok {
+		finding.FollowUpTask = followUp
+	} else {
+		finding.FollowUpMissing = true
+		finding.RecommendedFollowUpTaskID = finding.RecommendedFollowUpPrefix + "-" + sanitizeFollowUpSuffix(finding.TaskID)
+		finding.RecommendedFollowUpTaskKind = "bug"
+	}
+	return finding
+}
+
+func findLearningFollowUps(tasks map[string]store.Task) map[string]string {
+	prefixes := []string{"CI-FIX-", "CD-FIX-", "OPS-FIX-", "HARNESS-FIX-", "UAT-BUG-", "DOC-FIX-"}
+	out := map[string]string{}
+	for _, task := range tasks {
+		if !hasAnyPrefix(task.Definition.ID, prefixes) {
+			continue
+		}
+		text := strings.ToLower(strings.Join([]string{task.Definition.ID, task.Definition.Title, task.Definition.Notes}, " "))
+		for sourceID := range tasks {
+			if strings.Contains(text, strings.ToLower(sourceID)) {
+				out[sourceID] = task.Definition.ID
+			}
+		}
+	}
+	return out
+}
+
+func learningFollowUpPrefix(text, evidenceType string) string {
+	joined := strings.ToLower(text + " " + evidenceType)
+	switch {
+	case strings.Contains(joined, "uat"):
+		return "UAT-BUG"
+	case strings.Contains(joined, "doc") || strings.Contains(joined, "docusaurus"):
+		return "DOC-FIX"
+	case strings.Contains(joined, "deploy") || strings.Contains(joined, "release"):
+		return "CD-FIX"
+	case containsAny(joined, "runner", "cache", "harness", "workflow"):
+		return "HARNESS-FIX"
+	case containsAny(joined, "ops", "secret", "credential", "permission", "approval"):
+		return "OPS-FIX"
+	default:
+		return "CI-FIX"
+	}
+}
+
+func expectedLocalReproduction(ev store.Evidence) string {
+	if strings.TrimSpace(ev.CommandText) != "" {
+		return ev.CommandText
+	}
+	switch {
+	case strings.Contains(strings.ToLower(ev.ArtifactType), "deploy"):
+		return "run the documented deploy dry-run or smoke command"
+	case strings.Contains(strings.ToLower(ev.ArtifactType), "uat"):
+		return "run the documented UAT smoke command"
+	default:
+		return "run the local command that should reproduce this CI failure"
+	}
+}
+
+func learningArtifactForFinding(finding ciLearningFinding) learningArtifact {
+	followUp := finding.FollowUpTask
+	if followUp == "" {
+		followUp = finding.RecommendedFollowUpTaskID
+	}
+	artifact := learningArtifact{
+		TaskID:                    finding.TaskID,
+		FailureClass:              finding.FailureClass,
+		RootCause:                 finding.RootCause,
+		MissedGate:                finding.MissedGate,
+		ExpectedLocalReproduction: finding.ExpectedLocalReproduction,
+		Owner:                     finding.Owner,
+		FollowUpTask:              followUp,
+	}
+	artifact.Markdown = fmt.Sprintf(`# CI/Deploy Learning: %s
+
+- Failure class: %s
+- Root cause: %s
+- Missed gate: %s
+- Expected local reproduction: %s
+- Owner: %s
+- Follow-up task: %s
+`, artifact.TaskID, artifact.FailureClass, artifact.RootCause, artifact.MissedGate, artifact.ExpectedLocalReproduction, artifact.Owner, artifact.FollowUpTask)
+	return artifact
+}
+
+func containsAny(text string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(text, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAnyPrefix(text string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(text, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizeFollowUpSuffix(taskID string) string {
+	replacer := strings.NewReplacer("_", "-", ".", "-", "/", "-")
+	return strings.ToUpper(replacer.Replace(taskID))
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 type mergeReadyReport struct {
@@ -5814,7 +6146,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|audit work-coverage|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|audit work-coverage|ci-learning|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

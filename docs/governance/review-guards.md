@@ -105,5 +105,9 @@ A reviewer:
 - Reads the diff and the task definition.
 - Runs the acceptance checks locally when reasonable.
 - Verifies the [pre-merge checks](#pre-merge-checks-automated) actually ran (not just claimed).
+- Requires exact verification command evidence for CI scripts, release gates,
+  workflow YAML/JSON, generated artifacts, deploy/promotion wiring, and docs
+  publishing changes. The evidence should name the command that was run and
+  attach the relevant artifact or log when available.
 - Notes any [coding standards](coding-standards.md) violations.
 - Approves, requests changes, or rejects — does not silently leave a PR open.
