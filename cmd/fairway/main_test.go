@@ -1185,6 +1185,67 @@ func TestCLI_TrackerLinks(t *testing.T) {
 	runCaptureAllowError(t, "tracker", "link", "T-001", "--provider", "notion", "--external-id", "N-1")
 }
 
+func TestCLI_PlaneTrackerDryRunSpike(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	t.Setenv("PLANE_BASE_URL", "http://localhost:8088")
+	t.Setenv("PLANE_WORKSPACE", "fairway-eval")
+	t.Setenv("PLANE_PROJECT", "FWPLANE")
+	t.Setenv("PLANE_API_TOKEN", "test-secret")
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Tracked", "--role", "backend", "--owning-domain", "tracker", "--review-domains", "arch,backend")
+	runOK(t, "claim", "T-001")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass", "--artifact-type", "test", "--artifact", "dist/test.log")
+	before := runCapture(t, "--json", "task-detail", "T-001")
+	exported := runCapture(t, "--json", "tracker", "plane", "export", "--task-id", "T-001")
+	for _, want := range []string{`"provider": "plane"`, `"dry_run": true`, `"source_task_id": "T-001"`, `"token_present": true`} {
+		if !strings.Contains(exported, want) {
+			t.Fatalf("plane export missing %q:\n%s", want, exported)
+		}
+	}
+	comment := runCapture(t, "--json", "tracker", "plane", "comment", "--task-id", "T-001", "--external-id", "FWPLANE-1")
+	if !strings.Contains(comment, "Fairway execution summary") || !strings.Contains(comment, `"external_id": "FWPLANE-1"`) {
+		t.Fatalf("plane comment output unexpected:\n%s", comment)
+	}
+	fixture := filepath.Clean(filepath.Join(oldwd, "..", "..", "examples", "tracker-adapters", "plane", "evaluation-workspace.yaml"))
+	preview := runCapture(t, "--json", "tracker", "plane", "import", "--fixture", fixture)
+	if !strings.Contains(preview, `"dry_run": true`) || !strings.Contains(preview, `"id": "FW-122"`) {
+		t.Fatalf("plane import preview unexpected:\n%s", preview)
+	}
+	after := runCapture(t, "--json", "task-detail", "T-001")
+	if before != after {
+		t.Fatalf("dry-run plane commands mutated task detail\nbefore=%s\nafter=%s", before, after)
+	}
+	runCaptureAllowError(t, "tracker", "plane", "export", "--task-id", "T-001", "--apply")
+}
+
+func TestCLI_PlaneTrackerMissingConfig(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	t.Setenv("PLANE_BASE_URL", "")
+	t.Setenv("PLANE_WORKSPACE", "")
+	t.Setenv("PLANE_PROJECT", "")
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Tracked", "--role", "backend")
+	runCaptureAllowError(t, "tracker", "plane", "export", "--task-id", "T-001")
+}
+
 func TestDefaultAdoptionRouteSamplesUsesProfiles(t *testing.T) {
 	cfg := config.Defaults("/tmp/repo")
 	cfg.WorkstreamProfiles = []config.WorkstreamProfile{

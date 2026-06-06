@@ -623,6 +623,29 @@ fairway merge-ready T-001
 If gates fail, fix the missing evidence/review/handoff or record why the task is
 not ready. Do not force a green story into the DB.
 
+## External Tracker Mirrors
+
+Plane, Jira, Linear, and similar tools are planning mirrors, not execution
+stores. Use tracker commands to render or link planning context, but do not let
+external issue state drive Fairway task status, sessions, evidence, reviews, or
+merge gates.
+
+For the Plane spike, set local environment variables and run dry-run commands:
+
+```bash
+export PLANE_BASE_URL=http://localhost:8088
+export PLANE_WORKSPACE=fairway-eval
+export PLANE_PROJECT=FWPLANE
+
+fairway tracker plane export --task-id FW-122
+fairway tracker plane import --fixture examples/tracker-adapters/plane/evaluation-workspace.yaml
+fairway tracker plane comment --task-id FW-122 --external-id FWPLANE-122
+```
+
+`fairway tracker plane --apply` paths are intentionally unsupported in the
+spike. Plane tokens must come from environment or OS credential storage and must
+not be committed.
+
 End your session when the runtime exits:
 
 ```bash

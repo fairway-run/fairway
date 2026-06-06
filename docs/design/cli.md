@@ -74,6 +74,9 @@ fairway tracker links
 fairway tracker export-status <task-id> [--provider <plane|jira|linear>] [--external-id <id>] [--dry-run]
 fairway tracker resolve --provider <plane|jira|linear> [--external-id <id>] [--url <url>]
 fairway tracker reconcile [--dry-run]
+fairway tracker plane export [--task-id <task-id>] [--limit <n>]
+fairway tracker plane import --fixture examples/tracker-adapters/plane/evaluation-workspace.yaml
+fairway tracker plane comment --task-id <task-id> [--external-id <plane-issue-id>]
 fairway register [--name <n>]                           # add current project to ~/.fairway/registry.toml
 fairway unregister [<name>]                             # remove from registry
 fairway projects                                        # list registered projects
@@ -130,6 +133,11 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   until a provider adapter explicitly adds an apply path. Tracker planning
   mirrors must not mutate Fairway execution state, sessions, evidence, reviews,
   or merge gates.
+- `tracker plane` is the first provider-specific adapter spike. It renders
+  Plane issue payloads, fixture import previews, and execution-summary comments
+  from local Fairway state. `--apply` is intentionally rejected in the spike;
+  Plane credentials come from `PLANE_BASE_URL`, `PLANE_WORKSPACE`,
+  `PLANE_PROJECT`, and eventually `PLANE_API_TOKEN`.
 - `audit work-coverage` is advisory by default. It compares commits since a
   base ref or duration window against Fairway task IDs, task `source_paths` /
   `target_paths`, evidence rows, and required review domains. Use it before

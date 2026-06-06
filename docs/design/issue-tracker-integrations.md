@@ -135,6 +135,9 @@ fairway tracker link <task-id> --provider <plane|jira|linear> --external-id <id>
 fairway tracker export-status <task-id> [--provider <plane|jira|linear>] [--external-id <id>] [--dry-run]
 fairway tracker resolve --provider <plane|jira|linear> [--external-id <id>] [--url <url>]
 fairway tracker reconcile [--dry-run]
+fairway tracker plane export --task-id <task-id>
+fairway tracker plane import --fixture examples/tracker-adapters/plane/evaluation-workspace.yaml
+fairway tracker plane comment --task-id <task-id> --external-id <plane-issue-id>
 ```
 
 The initial adapter can live behind a generic tracker interface:
@@ -189,6 +192,27 @@ After that evaluation, Plane adapter support should start with:
 
 Plane credentials should come from the environment or OS credential store, not
 from `.fairway/config.toml`.
+
+The first Plane adapter spike is dry-run only:
+
+```bash
+export PLANE_BASE_URL=http://localhost:8088
+export PLANE_WORKSPACE=fairway-eval
+export PLANE_PROJECT=FWPLANE
+# optional for future apply support; not printed or committed
+export PLANE_API_TOKEN=...
+
+fairway tracker plane export --task-id FW-122
+fairway tracker plane import --fixture examples/tracker-adapters/plane/evaluation-workspace.yaml
+fairway tracker plane comment --task-id FW-122 --external-id FWPLANE-122
+```
+
+These commands render Plane issue/comment/import payloads from local Fairway
+state and fixture data. They do not call Plane, do not create/update Plane
+issues, do not import Fairway tasks, and do not mutate Fairway execution state.
+Passing `--apply` currently fails with an explicit unsupported error; a future
+adapter may add apply operations only with dry-run parity tests and credential
+handling outside committed config.
 
 ## Jira Adapter
 

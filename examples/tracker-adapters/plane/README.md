@@ -19,3 +19,17 @@ Do not commit:
 
 Future adapter work should consume this fixture to prove field mapping before
 adding write operations.
+
+Dry-run the current spike:
+
+```bash
+export PLANE_BASE_URL=http://localhost:8088
+export PLANE_WORKSPACE=fairway-eval
+export PLANE_PROJECT=FWPLANE
+
+fairway tracker plane import --fixture examples/tracker-adapters/plane/evaluation-workspace.yaml
+fairway tracker plane export --task-id FW-122
+fairway tracker plane comment --task-id FW-122 --external-id FWPLANE-122
+```
+
+These commands do not call Plane and do not mutate Fairway execution state.

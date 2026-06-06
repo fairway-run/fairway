@@ -26,6 +26,9 @@ and uses semantic versioning.
   registry entries, dry-run configure/import/export/resolve/reconcile command
   surfaces, and Plane/Jira/Linear link persistence without allowing tracker
   state to mutate Fairway execution state.
+- Plane tracker adapter spike commands now render dry-run Plane issue payloads,
+  fixture import previews, and execution-summary comments from Fairway state
+  while explicitly rejecting apply/write paths.
 - Release-run packets and `fairway release verify` now coordinate release
   attempts, including release notes, changelog state, CI/docs/signing/notary
   evidence, GitHub release state, asset URL checks, Homebrew cask version, and

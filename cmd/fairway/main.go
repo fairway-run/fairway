@@ -30,6 +30,7 @@ import (
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 	"github.com/subashram/fairway/internal/tracker"
+	planetracker "github.com/subashram/fairway/internal/tracker/plane"
 	"gopkg.in/yaml.v3"
 )
 
@@ -4071,10 +4072,10 @@ func cmdProjects(opts globalOptions, args []string) error {
 
 func cmdTracker(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("tracker requires subcommand: providers, configure, import, link, links, export-status, resolve, reconcile")
+		return errors.New("tracker requires subcommand: providers, configure, import, link, links, export-status, resolve, reconcile, plane")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("tracker", "providers|configure|import|link|links|export-status|resolve|reconcile")
+		subcommandUsage("tracker", "providers|configure|import|link|links|export-status|resolve|reconcile|plane")
 		return nil
 	}
 	switch args[0] {
@@ -4094,9 +4095,179 @@ func cmdTracker(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdTrackerResolve(ctx, opts, args[1:])
 	case "reconcile":
 		return cmdTrackerReconcile(ctx, opts, args[1:])
+	case "plane":
+		return cmdTrackerPlane(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown tracker subcommand %q", args[0])
 	}
+}
+
+func cmdTrackerPlane(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("tracker plane requires subcommand: export, import, comment")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("tracker plane", "export|import|comment")
+		return nil
+	}
+	switch args[0] {
+	case "export":
+		return cmdTrackerPlaneExport(ctx, opts, args[1:])
+	case "import":
+		return cmdTrackerPlaneImport(ctx, opts, args[1:])
+	case "comment":
+		return cmdTrackerPlaneComment(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown tracker plane subcommand %q", args[0])
+	}
+}
+
+func cmdTrackerPlaneExport(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("tracker plane export", flag.ContinueOnError)
+	taskID := fs.String("task-id", "", "specific Fairway task id to export")
+	limit := fs.Int("limit", 10, "maximum tasks to include when task-id is omitted")
+	apply := fs.Bool("apply", false, "attempt remote apply; unsupported in this spike")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker plane export arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *apply {
+		return planetracker.ApplyUnsupported()
+	}
+	cfg, err := planetracker.ConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		var payloads []planetracker.IssuePayload
+		if *taskID != "" {
+			payload, err := planeIssuePayloadForTask(ctx, s, *taskID, cfg)
+			if err != nil {
+				return err
+			}
+			payloads = append(payloads, payload)
+		} else {
+			tasks, err := s.AllTasks(ctx)
+			if err != nil {
+				return err
+			}
+			if *limit <= 0 {
+				*limit = 10
+			}
+			for _, task := range tasks {
+				if len(payloads) >= *limit {
+					break
+				}
+				payload, err := planeIssuePayloadForTask(ctx, s, task.Definition.ID, cfg)
+				if err != nil {
+					return err
+				}
+				payloads = append(payloads, payload)
+			}
+		}
+		report := struct {
+			Provider      string                      `json:"provider"`
+			DryRun        bool                        `json:"dry_run"`
+			Config        planetracker.Config         `json:"config"`
+			Payloads      []planetracker.IssuePayload `json:"payloads"`
+			ApplyBoundary string                      `json:"apply_boundary"`
+		}{"plane", true, cfg, payloads, "dry-run only; remote Plane writes require an explicit future apply command and must not mutate Fairway execution state"}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("plane export dry_run=true payloads=%d workspace=%s project=%s\n", len(payloads), cfg.Workspace, cfg.Project)
+		for _, payload := range payloads {
+			fmt.Printf("%s\t%s\tlabels=%s\n", payload.SourceTaskID, payload.Name, strings.Join(payload.Labels, ","))
+		}
+		return nil
+	})
+}
+
+func cmdTrackerPlaneImport(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("tracker plane import", flag.ContinueOnError)
+	fixturePath := fs.String("fixture", "", "Plane evaluation fixture YAML")
+	apply := fs.Bool("apply", false, "attempt Fairway task import; unsupported in this spike")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker plane import arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *apply {
+		return planetracker.ApplyUnsupported()
+	}
+	if *fixturePath == "" {
+		return errors.New("tracker plane import requires --fixture")
+	}
+	cfg, err := planetracker.ConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(*fixturePath)
+	if err != nil {
+		return err
+	}
+	var fixture planetracker.Fixture
+	if err := yaml.Unmarshal(data, &fixture); err != nil {
+		return err
+	}
+	preview, err := planetracker.ImportFixture(fixture, cfg)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(preview)
+	}
+	fmt.Printf("plane import dry_run=true tasks=%d workspace=%s project=%s\n", len(preview.Tasks), preview.Workspace, preview.Project)
+	for _, task := range preview.Tasks {
+		fmt.Printf("%s\t%s\t%s\t%s\n", task.ID, task.Role, task.Kind, task.Title)
+	}
+	return nil
+}
+
+func cmdTrackerPlaneComment(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("tracker plane comment", flag.ContinueOnError)
+	taskID := fs.String("task-id", "", "Fairway task id")
+	externalID := fs.String("external-id", "", "Plane issue id")
+	apply := fs.Bool("apply", false, "attempt remote comment write; unsupported in this spike")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected tracker plane comment arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *apply {
+		return planetracker.ApplyUnsupported()
+	}
+	if *taskID == "" {
+		return errors.New("tracker plane comment requires --task-id")
+	}
+	cfg, err := planetracker.ConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, *taskID)
+		if err != nil {
+			return err
+		}
+		payload := planetracker.ExportComment(task, evidence, reviews, *externalID, cfg)
+		if opts.JSON {
+			return printJSON(payload)
+		}
+		fmt.Printf("plane comment dry_run=true task=%s external=%s\n%s", *taskID, *externalID, payload.Body)
+		return nil
+	})
+}
+
+func planeIssuePayloadForTask(ctx context.Context, s *store.Store, taskID string, cfg planetracker.Config) (planetracker.IssuePayload, error) {
+	task, _, evidence, _, reviews, err := s.TaskDetail(ctx, taskID)
+	if err != nil {
+		return planetracker.IssuePayload{}, err
+	}
+	return planetracker.ExportIssue(task, evidence, reviews, cfg), nil
 }
 
 func cmdTrackerProviders(ctx context.Context, opts globalOptions, args []string) error {

@@ -95,6 +95,24 @@ issues:
       reconcile, and reference-resolution operations for Plane, Jira, Linear,
       and similar trackers.
 
+  - fairway_id: FW-122
+    parent: FW-TRK-EPIC-001
+    title: Add Plane tracker adapter spike
+    type: task
+    role: backend
+    domain: tracker
+    kind: task
+    module: Execution Boundary
+    labels: ["role:backend", "domain:tracker", "kind:task", "review:arch", "review:backend", "review:governance"]
+    description: >
+      Add a Plane-specific dry-run adapter that can render export payloads,
+      import previews, and execution-summary comments without mutating Fairway
+      execution state or writing to Plane.
+    acceptance:
+      - Plane export payload maps Fairway task metadata, evidence, reviews, and labels.
+      - Plane import preview maps fixture issues to Fairway task definitions.
+      - Plane comment payload summarizes Fairway execution state without becoming source of truth.
+
   - fairway_id: CI-FIX-001
     parent: FW-TRK-EPIC-001
     title: Follow up failed CI evidence without mutating Fairway status
