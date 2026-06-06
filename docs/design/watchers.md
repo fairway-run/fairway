@@ -63,6 +63,18 @@ the work burst. `fairway reconcile active` should flag monitor sessions that
 have no backing process/automation proof and no fresh bounded checkpoint as
 `monitor_session_without_backing_proof`.
 
+Watcher completion must hand control back to the coordinator loop. When the
+last watched CI/deploy/UAT/provider task completes, the watcher should record
+one of:
+
+- the next ready task or branch action to resume,
+- an explicit "no ready work" checkpoint,
+- or a coordinator notification that a human decision is required.
+
+Deleting the heartbeat or ending the monitor session is not enough when ready
+work remains. Otherwise Fairway state becomes clean but the execution lane can
+go idle with local branches or queued tasks waiting.
+
 ## Packet Shape
 
 ```yaml

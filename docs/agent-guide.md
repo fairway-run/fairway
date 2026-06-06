@@ -482,6 +482,12 @@ monitor task only creates Fairway session/task rows and no backing heartbeat or
 bounded checkpoint exists, reset or close it before ending the work burst. That
 state is stale bookkeeping, not live monitoring.
 
+When the final monitored item completes, hand control back to the work loop.
+Close the deploy-run/watch tasks and monitor sessions, then record or send the
+next action: push held branches, start the next ready task, request review, or
+state that no ready work remains. A monitor heartbeat finishing successfully is
+not the same thing as the overall track being complete.
+
 Use provider-neutral session fields for monitor proof:
 
 ```bash

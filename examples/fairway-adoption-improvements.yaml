@@ -530,3 +530,40 @@ tasks:
       - guard reports missing release notes or changelog updates before tag creation
       - docs include exact v0.1.2 lessons learned, including publishing the draft release before treating the Homebrew cask as usable
       - tests cover clean release-run, draft-release-with-public-cask, missing-release-notes, and failed-asset-url cases
+
+  - id: FW-118
+    title: Add monitor completion handback and next-action resume guard
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: watchers
+    source_paths:
+      - docs/design/watchers.md
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+      - cmd/fairway/main.go
+      - internal/reconcile
+      - internal/dashboard
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/reconcile
+      - internal/dashboard
+      - docs/design/watchers.md
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: watcher-completion-handback
+    depends_on:
+      - FW-116
+    acceptance_checks:
+      - When a watcher or heartbeat closes the final monitored CI/deploy/UAT task, Fairway records an explicit handback checkpoint or next-action recommendation.
+      - Coordinator/readiness output distinguishes "all monitors complete, no active sessions, ready work exists" from a genuinely idle/complete state.
+      - Dashboard diagnostics shows a resume-needed finding when monitors finish and the task queue has ready non-conflicting work.
+      - Agent guide documents that monitor completion is not terminal unless the operator explicitly marked the whole work block complete.
+      - Tests cover all monitored tasks complete with ready work available, all monitored tasks complete with no ready work, and monitor completion followed by next branch push.
