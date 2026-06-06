@@ -19,6 +19,9 @@ and uses semantic versioning.
   delivery-vs-bookkeeping summaries, lane outcomes, CI/deploy/UAT timeline,
   follow-up taxonomy, review/evidence summaries, bounded drill-down rows, and
   Markdown/JSON/CSV exports for the selected filters.
+- Plane local evaluation docs and fixtures now define the repeatable workspace
+  setup, seed issues, field mapping questions, and planning-only boundary for
+  future tracker adapter work.
 - Release-run packets and `fairway release verify` now coordinate release
   attempts, including release notes, changelog state, CI/docs/signing/notary
   evidence, GitHub release state, asset URL checks, Homebrew cask version, and

@@ -1,0 +1,199 @@
+workspace:
+  slug: fairway-eval
+  name: Fairway Evaluation
+project:
+  identifier: FWPLANE
+  name: Fairway Tracker Adapter Evaluation
+  description: >
+    Local Plane project for evaluating Plane as a planning and external-team
+    collaboration surface while Fairway remains the execution source of truth.
+cycle:
+  name: FW-120 Local Evaluation
+modules:
+  - Planning Mirror
+  - Execution Boundary
+  - Follow-up Taxonomy
+  - Release Readiness
+labels:
+  roles:
+    - role:backend
+    - role:ui
+    - role:ops
+    - role:governance
+  domains:
+    - domain:tracker
+    - domain:dashboard
+    - domain:release
+    - domain:ci
+  kinds:
+    - kind:epic
+    - kind:task
+    - kind:monitor
+    - kind:follow-up
+  review_domains:
+    - review:arch
+    - review:backend
+    - review:ops
+    - review:governance
+  taxonomy:
+    - CI-FIX
+    - CD-FIX
+    - UAT-BUG
+    - OPS-FIX
+    - HARNESS-FIX
+    - DOC-FIX
+issues:
+  - fairway_id: FW-TRK-EPIC-001
+    title: Tracker integration evaluation
+    type: epic
+    role: ops
+    domain: tracker
+    kind: epic
+    module: Planning Mirror
+    labels: [role:ops, domain:tracker, kind:epic, review:arch]
+    description: >
+      Parent planning issue for evaluating Plane as a Fairway external tracker.
+      Plane may own planning discussion; Fairway owns execution state.
+    acceptance:
+      - Plane workspace and project exist locally.
+      - Mapping decisions are recorded.
+      - Planning-only boundaries are explicit.
+
+  - fairway_id: FW-120
+    parent: FW-TRK-EPIC-001
+    title: Set up local Plane evaluation workspace
+    type: task
+    role: ops
+    domain: tracker
+    kind: task
+    module: Planning Mirror
+    cycle: FW-120 Local Evaluation
+    labels: [role:ops, domain:tracker, kind:task, review:ops, review:governance]
+    description: >
+      Document local Plane setup, create representative evaluation data, and
+      record mappings without committing credentials or local runtime files.
+    acceptance:
+      - Setup uses official Plane Docker Compose release artifacts.
+      - Startup, shutdown, reset, and persistence behavior are documented.
+      - Evaluation mappings distinguish planning mirror from Fairway execution truth.
+    comments:
+      - >
+        Fairway execution summary: FW-120 is tracked locally in Fairway. Plane
+        mirrors planning and stakeholder context only.
+
+  - fairway_id: FW-121
+    parent: FW-TRK-EPIC-001
+    title: Define provider-neutral external tracker adapter contract
+    type: task
+    role: backend
+    domain: tracker
+    kind: task
+    module: Execution Boundary
+    labels: [role:backend, domain:tracker, kind:task, review:arch, review:backend]
+    description: >
+      Define generic configure, dry-run import, link, export-status/comment,
+      reconcile, and reference-resolution operations for Plane, Jira, Linear,
+      and similar trackers.
+
+  - fairway_id: CI-FIX-001
+    parent: FW-TRK-EPIC-001
+    title: Follow up failed CI evidence without mutating Fairway status
+    type: follow-up
+    role: backend
+    domain: ci
+    kind: follow-up
+    module: Follow-up Taxonomy
+    labels: [CI-FIX, role:backend, domain:ci, kind:follow-up]
+    description: >
+      Representative CI follow-up created from failed pipeline evidence. Plane
+      can make the work visible, but Fairway records the evidence and state.
+
+  - fairway_id: CD-FIX-001
+    parent: FW-TRK-EPIC-001
+    title: Follow up release deploy verification failure
+    type: follow-up
+    role: ops
+    domain: release
+    kind: follow-up
+    module: Release Readiness
+    labels: [CD-FIX, role:ops, domain:release, kind:follow-up]
+    description: >
+      Representative deploy/release follow-up linked from a Fairway release-run
+      guard finding.
+
+  - fairway_id: UAT-BUG-001
+    parent: FW-TRK-EPIC-001
+    title: Capture UAT blocker from external stakeholder test
+    type: bug
+    role: ui
+    domain: dashboard
+    kind: follow-up
+    module: Follow-up Taxonomy
+    labels: [UAT-BUG, role:ui, domain:dashboard, kind:follow-up]
+    description: >
+      Representative externally visible UAT issue. Plane can own discussion and
+      screenshots; Fairway owns implementation evidence and review gates.
+
+  - fairway_id: OPS-FIX-001
+    parent: FW-TRK-EPIC-001
+    title: Fix local tracker evaluation runbook drift
+    type: follow-up
+    role: ops
+    domain: tracker
+    kind: follow-up
+    module: Planning Mirror
+    labels: [OPS-FIX, role:ops, domain:tracker, kind:follow-up]
+    description: >
+      Representative operations follow-up for setup or credential handling.
+
+  - fairway_id: HARNESS-FIX-001
+    parent: FW-TRK-EPIC-001
+    title: Add adapter dry-run fixture coverage
+    type: follow-up
+    role: backend
+    domain: tracker
+    kind: follow-up
+    module: Execution Boundary
+    labels: [HARNESS-FIX, role:backend, domain:tracker, kind:follow-up]
+    description: >
+      Representative harness task to validate mapping without remote writes.
+
+  - fairway_id: DOC-FIX-001
+    parent: FW-TRK-EPIC-001
+    title: Clarify planning-only state boundary
+    type: follow-up
+    role: governance
+    domain: tracker
+    kind: follow-up
+    module: Planning Mirror
+    labels: [DOC-FIX, role:governance, domain:tracker, kind:follow-up]
+    description: >
+      Representative documentation follow-up for stakeholder-facing tracker
+      behavior.
+mapping_decisions:
+  clean_mappings:
+    task_id: Plane issue identifier, label, or future custom field
+    title: Plane issue name
+    notes: Plane issue description
+    parent: Plane parent issue or module, depending on project structure
+    priority: Plane priority with config mapping
+    role: Plane label or future custom field
+    domain: Plane label or module
+    kind: Plane label or issue type
+    acceptance_checks: Description checklist
+    evidence_links: Plane comment containing Fairway evidence URL/path summary
+    follow_up_taxonomy: Plane labels and Fairway-compatible issue prefixes
+  planning_only:
+    - Plane issue state
+    - Plane assignee
+    - Plane cycle scheduling
+    - Plane module membership
+    - Plane comments and reactions
+    - Plane estimates
+  must_not_mutate_fairway:
+    - task_state.status
+    - task_state.owner
+    - agent_sessions
+    - task_evidence.result
+    - task_reviews verdicts
+    - merge-ready or release-ready gates

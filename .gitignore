@@ -18,6 +18,7 @@ fairway.exe
 .fairway/dashboard-multi.pid
 .fairway/dashboard-multi.log
 .fairway/transcripts/
+plane-eval-local/
 
 # Local release credentials
 .apple-app-specific.env
@@ -25,6 +26,13 @@ fairway.exe
 .git-homebrw-tap.env
 .git-homebrew-tap.env
 .release-certs/
+
+# Local tracker evaluation credentials and runtime files
+plane.env
+.plane.env
+plane-local.env
+plane-token*
+plane-cookie*
 
 # OS
 .DS_Store

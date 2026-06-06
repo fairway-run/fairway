@@ -139,6 +139,12 @@ The first Plane task is not adapter code. It is a local setup and evaluation:
 - record which Plane concepts should remain planning-only and never mutate
   Fairway execution state.
 
+The repeatable local setup and seed fixture live in
+[plane-local-evaluation.md](../operations/plane-local-evaluation.md) and
+[`examples/tracker-adapters/plane`](../../examples/tracker-adapters/plane).
+That evaluation should be completed before FW-121 defines the provider-neutral
+adapter contract.
+
 After that evaluation, Plane adapter support should start with:
 
 - one-way export from Fairway tasks to Plane issues,

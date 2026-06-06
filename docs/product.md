@@ -81,7 +81,9 @@ each version ships.
 - Postgres adapter (likely), with compatibility harness first.
 - Issue tracker adapter design and import/link/export prototype, with Plane,
   Jira, and Linear as first targets. Plane is the local open-source evaluation
-  target for product/external-team collaboration and adapter semantics.
+  target for product/external-team collaboration and adapter semantics; its
+  local evaluation runbook comes before the provider-neutral tracker adapter
+  contract.
 
 ### Beyond v1
 - Multi-repo federation.
