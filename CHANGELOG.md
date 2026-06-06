@@ -15,6 +15,10 @@ and uses semantic versioning.
 - Active-work reconciliation and dashboard diagnostics now report
   `monitor_completion_resume_needed` when monitors finish cleanly but ready work
   remains and no active session/watcher has resumed the coordinator loop.
+- The dashboard now includes `/reports`, a daily retrospective view with
+  delivery-vs-bookkeeping summaries, lane outcomes, CI/deploy/UAT timeline,
+  follow-up taxonomy, review/evidence summaries, bounded drill-down rows, and
+  Markdown/JSON/CSV exports for the selected filters.
 - Release-run packets and `fairway release verify` now coordinate release
   attempts, including release notes, changelog state, CI/docs/signing/notary
   evidence, GitHub release state, asset URL checks, Homebrew cask version, and

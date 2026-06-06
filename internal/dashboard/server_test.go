@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,9 @@ func TestIndexRendersDashboardVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	if err := s.SetTaskIDPattern(`^[A-Z]+(?:-[A-Z]+)?-[0-9]+$`); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{
 		{ID: "E-001", Title: "Epic", Kind: "epic", Role: "backend"},
 		{
@@ -94,6 +98,14 @@ func TestDashboardRoutes(t *testing.T) {
 		t.Fatalf("/board did not render board surface:\n%s", boardBody)
 	}
 
+	reportsReq := httptest.NewRequest(http.MethodGet, "/reports", nil)
+	reportsRec := httptest.NewRecorder()
+	server.reports(reportsRec, reportsReq)
+	reportsBody := reportsRec.Body.String()
+	if !strings.Contains(reportsBody, "reports-layout") || !strings.Contains(reportsBody, `class="active" href="/reports"`) {
+		t.Fatalf("/reports did not render reports surface:\n%s", reportsBody)
+	}
+
 	wallReq := httptest.NewRequest(http.MethodGet, "/wall", nil)
 	wallRec := httptest.NewRecorder()
 	server.wallRedirect(wallRec, wallReq)
@@ -102,6 +114,131 @@ func TestDashboardRoutes(t *testing.T) {
 	}
 	if got := wallRec.Header().Get("Location"); got != "/" {
 		t.Fatalf("/wall Location=%q, want /", got)
+	}
+}
+
+func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SetTaskIDPattern(`^[A-Z]+(?:-[A-Z]+)?-[0-9]+$`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "Ship portal route", Kind: "feature", Role: "backend", OwningDomain: "portal", ReviewDomains: []string{"architecture"}},
+		{ID: "W-001", Title: "CI monitor bookkeeping", Kind: "ci-monitor", Role: "ops/watch", OwningDomain: "release"},
+		{ID: "CI-FIX-001", Title: "Fix generated client drift", Kind: "bugfix", Role: "backend", OwningDomain: "ci"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "done", "done today", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass", ArtifactType: "local-test", ArtifactPath: "dist/test.log"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "W-001", "done", "ci passed", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StartWatcher(ctx, store.Watcher{ID: "watch-ci", TaskID: "W-001", Owner: "ops/watch", Process: "ci", Command: "gh run watch"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishWatcher(ctx, "watch-ci", "pass", "gh-run-1", nil, "green"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "W-001", store.Evidence{CommandText: "gh run view 1", Result: "pass", ArtifactType: "ci_pipeline", ArtifactPath: "gh-run-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-001", store.Review{Reviewer: "governance", Verdict: "approve", Reason: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend", "ops/watch"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/reports", nil)
+	rec := httptest.NewRecorder()
+	server.reports(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Daily Report",
+		"Delivery done",
+		"Monitor/deploy bookkeeping",
+		"Ship portal route",
+		"portal / feature",
+		"CI, Deploy, And UAT Timeline",
+		"watch-ci",
+		"CI-FIX",
+		"Missing Required Review Domains",
+		"Markdown",
+		"JSON",
+		"CSV",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("reports body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "<td>W-001</td>") || strings.Contains(body, `href="/tasks/W-001">W-001</a></td>`) {
+		t.Fatalf("default report drill-down table included monitor bookkeeping:\n%s", body)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/reports?include_bookkeeping=1", nil)
+	rec = httptest.NewRecorder()
+	server.reports(rec, req)
+	if body = rec.Body.String(); !strings.Contains(body, "CI monitor bookkeeping") {
+		t.Fatalf("include_bookkeeping report did not include monitor row:\n%s", body)
+	}
+}
+
+func TestReportsExportsMatchFilteredScope(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SetTaskIDPattern(`^[A-Z]+(?:-[A-Z]+)?-[0-9]+$`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "DOC-FIX-001", Title: "Portal docs correction", Kind: "docs", Role: "governance", OwningDomain: "portal"},
+		{ID: "OPS-FIX-001", Title: "Release job correction", Kind: "ops", Role: "ops", OwningDomain: "release"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DOC-FIX-001", "done", "done", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "OPS-FIX-001", "done", "done", false); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"governance", "ops"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/reports?q=Portal&format=csv", nil)
+	rec := httptest.NewRecorder()
+	server.reports(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, "DOC-FIX-001") {
+		t.Fatalf("CSV export missing filtered report row:\n%s", body)
+	}
+	if strings.Contains(body, "OPS-FIX-001") {
+		t.Fatalf("CSV export included row outside filtered scope:\n%s", body)
+	}
+}
+
+func TestReportWindowLocalDayBoundaries(t *testing.T) {
+	loc := time.FixedZone("test", -6*60*60)
+	now := time.Date(2026, 6, 6, 0, 30, 0, 0, loc)
+	window, start, end := reportWindowFromQuery(nil, now, loc)
+	if window.StartDate != "2026-06-06" || window.EndDate != "2026-06-06" {
+		t.Fatalf("today window=%+v", window)
+	}
+	if got := end.Sub(start); got != 24*time.Hour {
+		t.Fatalf("today duration=%s, want 24h", got)
+	}
+	values := make(url.Values)
+	values.Set("range", "last7")
+	window, start, end = reportWindowFromQuery(values, now, loc)
+	if window.StartDate != "2026-05-31" || window.EndDate != "2026-06-06" || end.Sub(start) != 7*24*time.Hour {
+		t.Fatalf("last7 window=%+v duration=%s", window, end.Sub(start))
 	}
 }
 

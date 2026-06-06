@@ -270,6 +270,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", dashboardAssetHandler())
 	mux.HandleFunc("/board", s.board)
+	mux.HandleFunc("/reports", s.reports)
 	mux.HandleFunc("/wall", s.wallRedirect)
 	mux.HandleFunc("/tasks/", s.task)
 	mux.HandleFunc("/actions/claim", s.claim)
@@ -299,6 +300,26 @@ func (s *Server) wall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = wallTemplate.ExecuteTemplate(w, "layout", data)
+}
+
+func (s *Server) reports(w http.ResponseWriter, r *http.Request) {
+	data, err := s.reportViewData(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	switch strings.TrimSpace(r.URL.Query().Get("format")) {
+	case "json":
+		writeReportJSON(w, data)
+	case "csv":
+		writeReportCSV(w, data)
+	case "md", "markdown":
+		writeReportMarkdown(w, data)
+	default:
+		if err := reportsTemplate.ExecuteTemplate(w, "layout", data); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
 }
 
 func (s *Server) wallRedirect(w http.ResponseWriter, r *http.Request) {
@@ -1449,6 +1470,12 @@ var boardTemplate = mustEmbeddedTemplateSet("board", []string{
 	"assets/templates/layout.html",
 	"assets/templates/board.html",
 	"assets/templates/partials/gate-gauge.html",
+	"assets/templates/partials/provider-chip.html",
+}, dashboardTemplateFuncs())
+
+var reportsTemplate = mustEmbeddedTemplateSet("reports", []string{
+	"assets/templates/layout.html",
+	"assets/templates/reports.html",
 	"assets/templates/partials/provider-chip.html",
 }, dashboardTemplateFuncs())
 

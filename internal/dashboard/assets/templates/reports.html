@@ -1,0 +1,138 @@
+{{define "content"}}
+<main class="reports-layout">
+<header class="report-head">
+<div>
+<p class="eyebrow">Retrospective</p>
+<h1>Daily Report</h1>
+<p>{{.Window.Label}} · {{.Window.StartDate}} to {{.Window.EndDate}}</p>
+</div>
+<nav class="report-export" aria-label="Report exports">
+<a class="btn" href="{{.ExportBase}}md">Markdown</a>
+<a class="btn" href="{{.ExportBase}}json">JSON</a>
+<a class="btn" href="{{.ExportBase}}csv">CSV</a>
+</nav>
+</header>
+
+<form class="report-controls" method="get">
+<div class="range-shortcuts" aria-label="Date shortcuts">
+<a class="btn" href="/reports?range=today">Today</a>
+<a class="btn" href="/reports?range=yesterday">Yesterday</a>
+<a class="btn" href="/reports?range=last7">Last seven days</a>
+</div>
+<label>Start<input type="date" name="start" value="{{.Window.StartDate}}"></label>
+<label>End<input type="date" name="end" value="{{.Window.EndDate}}"></label>
+<label class="search">Search<input type="search" name="q" value="{{.Filters.Search}}" placeholder="Task, lane, domain"></label>
+<label>Role<select name="role"><option value="">all</option>{{range .Groups}}{{if .Role}}<option value="{{.Role}}" {{if eq $.Filters.Role .Role}}selected{{end}}>{{.Role}}</option>{{end}}{{end}}</select></label>
+<label>Profile<select name="profile"><option value="">all</option>{{range .FilterOptions.Profiles}}<option value="{{.}}" {{if eq $.Filters.Profile .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Kind<select name="kind"><option value="">all</option>{{range .FilterOptions.Kinds}}<option value="{{.}}" {{if eq $.Filters.Kind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Domain<select name="owning_domain"><option value="">all</option>{{range .FilterOptions.OwningDomains}}<option value="{{.}}" {{if eq $.Filters.OwningDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label class="check-row"><input type="checkbox" name="include_bookkeeping" value="1" {{if .Filters.IncludeBookkeeping}}checked{{end}}> include monitor/deploy-run bookkeeping</label>
+<label>Rows<select name="table_limit"><option value="25" {{if eq .Filters.TableLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.TableLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.TableLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.TableLimit 200}}selected{{end}}>200</option></select></label>
+<button class="btn" type="submit">Apply</button>
+</form>
+
+<section class="report-summary" aria-label="Outcome summary">
+<article><b>{{.Summary.DeliveryDone}}</b><span>Delivery done</span></article>
+<article><b>{{.Summary.BookkeepingDone}}</b><span>Monitor/deploy bookkeeping</span></article>
+<article><b>{{.Summary.MovingTasks}}</b><span>Tasks moved</span></article>
+<article><b>{{.Summary.FollowUpsCreated}}</b><span>Follow-ups created</span></article>
+<article><b>{{.Summary.EvidenceRows}}</b><span>Evidence rows</span></article>
+<article><b>{{.Summary.ReviewsRecorded}}</b><span>Reviews</span></article>
+<article><b>{{.Summary.CIDeployUATPassed}} / {{.Summary.CIDeployUATFailed}}</b><span>CI/deploy/UAT pass / fail</span></article>
+<article><b>{{.Summary.MissingReviews}}</b><span>Done missing review</span></article>
+</section>
+
+<section class="report-section">
+<header class="section-head"><h2>Lane Outcomes</h2><span>delivery grouped by role, domain, and kind</span></header>
+<div class="lane-report-grid">
+{{range .Lanes}}
+<article class="lane-report">
+<header><h3>{{.Role}}</h3><span>{{.Completed}} done · {{.Moving}} moved{{if .Bookkeeping}} · {{.Bookkeeping}} bookkeeping{{end}}</span></header>
+{{range .Groups}}
+<section class="lane-report-group">
+<h4>{{.Label}}</h4>
+<p>{{.Completed}} completed · {{.Moving}} moved</p>
+<div class="task-link-row">{{range .Tasks}}<a href="/tasks/{{.ID}}">{{.ID}}</a>{{end}}</div>
+</section>
+{{end}}
+{{if .LatestEvidence}}<p class="muted">latest evidence: <code>{{.LatestEvidence}}</code></p>{{end}}
+</article>
+{{else}}<p class="muted">no lane activity in this report window</p>{{end}}
+</div>
+</section>
+
+<section class="report-section split">
+<article>
+<header class="section-head"><h2>CI, Deploy, And UAT Timeline</h2><span>monitor bookkeeping separated from delivery outcomes</span></header>
+<div class="timeline-list">
+{{range .Timeline}}
+<article class="timeline-item {{statusClass .Result}}">
+<time>{{.At}}</time>
+<div><b>{{.Kind}}</b> <a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> <span>{{.TaskTitle}}</span></div>
+<p>{{.Result}}{{if .Identifier}} · <code>{{.Identifier}}</code>{{end}}{{if .Branch}} · {{.Branch}}{{end}}{{if .Environment}} · {{.Environment}}{{end}}{{if .ElapsedSeconds}} · {{.ElapsedSeconds}}s{{end}}</p>
+{{if .FollowUpTaskIDs}}<small>follow-up: {{.FollowUpTaskIDs}}</small>{{end}}
+</article>
+{{else}}<p class="muted">no CI/deploy/UAT run evidence in this window</p>{{end}}
+</div>
+</article>
+<article>
+<header class="section-head"><h2>Follow-Up Taxonomy</h2><span>created during the selected window</span></header>
+<div class="taxonomy-grid">
+{{range .FollowUps}}
+<section>
+<b>{{.Count}}</b><span>{{.Prefix}}</span>
+<div class="task-link-row">{{range .Tasks}}<a href="/tasks/{{.ID}}">{{.ID}}</a>{{end}}</div>
+</section>
+{{end}}
+</div>
+</article>
+</section>
+
+<section class="report-section split">
+<article>
+<header class="section-head"><h2>Reviews And Evidence</h2><span>merge-readiness signals from the report window</span></header>
+<section class="mini-stats">
+<div><b>{{.ReviewSummary.ReviewsRecorded}}</b><span>reviews recorded</span></div>
+<div><b>{{.ReviewSummary.EvidenceRows}}</b><span>evidence rows</span></div>
+<div><b>{{.ReviewSummary.FailedEvidence}}</b><span>failed or partial evidence</span></div>
+</section>
+</article>
+<article>
+<header class="section-head"><h2>Missing Required Review Domains</h2><span>done tasks that still need domain approval</span></header>
+<ul class="review-gap-list">
+{{range .ReviewSummary.MissingDomains}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Title}} <span>{{range .Domains}}{{.}} {{end}}</span></li>{{else}}<li>no done tasks missing required review domains in this scope</li>{{end}}
+</ul>
+</article>
+</section>
+
+<section class="report-section">
+<header class="section-head"><h2>Drill-Down Table</h2><span>bounded, filtered rows for the selected report scope</span></header>
+<table class="board-table report-table" data-sortable>
+<thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Title</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Class</button></th><th><button type="button" data-sort="text">Evidence</button></th><th><button type="button" data-sort="text">Reviews</button></th><th><button type="button" data-sort="text">Last activity</button></th></tr></thead>
+<tbody>
+{{range .TableRows}}
+<tr>
+<td><a href="/tasks/{{.ID}}">{{.ID}}</a></td>
+<td>{{.Title}}</td>
+<td>{{.Role}}</td>
+<td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td>
+<td>{{.Kind}}</td>
+<td><span class="status-pill {{safeClass .DeliveryClass}}">{{.DeliveryClass}}</span></td>
+<td>{{.EvidenceCount}}{{if .LatestEvidence}} · <code>{{.LatestEvidence}}</code>{{end}}</td>
+<td>{{.ReviewCount}}{{if .MissingReviews}} · missing {{range .MissingReviews}}{{.}} {{end}}{{end}}</td>
+<td>{{.LastActivityAt}}</td>
+</tr>
+{{else}}<tr><td colspan="9">no report rows match this scope</td></tr>{{end}}
+</tbody>
+</table>
+<footer class="board-footer">
+<span>showing {{.Pagination.Start}}-{{.Pagination.End}} of {{.Pagination.TotalRows}} filtered report rows</span>
+<nav class="pagination" aria-label="Report table pagination">
+{{if .Pagination.PrevHref}}<a class="btn" href="{{.Pagination.PrevHref}}">Previous</a>{{else}}<span class="btn disabled">Previous</span>{{end}}
+<span>page {{.Pagination.Page}} of {{.Pagination.TotalPages}}</span>
+{{if .Pagination.NextHref}}<a class="btn" href="{{.Pagination.NextHref}}">Next</a>{{else}}<span class="btn disabled">Next</span>{{end}}
+</nav>
+</footer>
+</section>
+</main>
+{{end}}

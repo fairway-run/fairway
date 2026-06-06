@@ -107,6 +107,9 @@ Reports support:
 - CSV for spreadsheet analysis.
 
 Exports must use the same filters and date range visible in the browser.
+The first implementation uses `format=md`, `format=json`, or `format=csv` on
+`/reports`; all other query parameters are preserved so exports match the
+browser scope exactly.
 
 ## Design Requirements
 
@@ -126,6 +129,10 @@ Use `task_state_history`, task definitions, evidence, reviews, checkpoints, and
 session tables as read models. The report should query by persisted timestamps
 and project timezone rules consistently with the dashboard's "done today"
 metric.
+
+The dashboard treats monitor/watch/deploy-run shaped tasks as bookkeeping for
+summary purposes. They remain visible in the CI/deploy/UAT timeline and can be
+included in the drill-down table with `include_bookkeeping=1`.
 
 Tests should include:
 

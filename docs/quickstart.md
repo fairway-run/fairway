@@ -153,6 +153,11 @@ fairway dashboard
 
 Opens `http://127.0.0.1:7878`. Leave it open on a second monitor.
 
+Open `/reports` when the question is retrospective rather than live: what
+finished today, what was only monitor/deploy bookkeeping, which lanes moved
+work, which CI/deploy/UAT runs need follow-up, and what export should go into a
+handoff.
+
 For an operator dashboard that should survive the launching terminal or agent
 thread, use the detached lifecycle commands:
 
@@ -205,6 +210,9 @@ fairway record handoff T-002 --to backend --payload "Need an example payload for
   handoff, with kind and row-count filters for busy tracks.
 - Task tables are bounded by a row limit so large queues stay usable; narrow
   filters or raise the table limit when you need more detail.
+- Reports default to the local current day, preserve filters in the URL, and
+  export Markdown, JSON, or CSV for the same date range and filters shown in the
+  browser.
 - Health badges flag the unacknowledged handoff to backend after one hour.
 
 Long-running side work should use packets and checkpoints:
