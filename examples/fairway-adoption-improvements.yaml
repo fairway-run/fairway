@@ -615,3 +615,100 @@ tasks:
       - navigation links Wall, Board, Reports, Diagnostics, and task detail using the same dashboard shell and visual system.
       - "page avoids raw data-dump presentation: stable summary cards, small status chips, clear section rhythm, no nested cards, and no oversized unbounded tables."
       - tests cover local-day boundary behavior, monitor/deploy-run inclusion filters, role/domain grouping, follow-up taxonomy grouping, and export matching filtered browser scope.
+
+  - id: FW-120
+    title: Set up local Plane evaluation workspace
+    kind: tracker
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: tracker
+    source_paths:
+      - docs/design/issue-tracker-integrations.md
+      - docs/product.md
+      - examples/fairway-adoption-improvements.yaml
+    target_paths:
+      - docs/design/issue-tracker-integrations.md
+      - docs/operations/plane-local-evaluation.md
+      - examples/tracker-adapters/plane
+    review_domains:
+      - arch
+      - ops
+      - governance
+    risk_level: medium
+    migration_type: tracker-plane-local-evaluation
+    acceptance_checks:
+      - local Plane setup is documented with exact Docker/compose command, version/source used, URL, startup verification, shutdown, reset, and data persistence notes.
+      - a Fairway evaluation workspace/project is created in Plane with representative epics, tasks, follow-up tasks, labels, modules/cycles where available, comments, and links.
+      - evaluation records which Plane concepts map cleanly to Fairway task id, title, notes, parent, status, priority, role, domain, kind, review domains, acceptance checks, evidence links, and follow-up taxonomy.
+      - evaluation records which Plane concepts are planning-only and must not mutate Fairway execution state.
+      - credentials, tokens, cookies, and local secrets are not committed; any env file names are added to ignore rules if needed.
+      - setup can be repeated from a clean local machine without relying on hidden manual browser steps except initial admin account creation if Plane requires it.
+
+  - id: FW-121
+    title: Define provider-neutral external tracker adapter contract
+    kind: tracker
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: tracker
+    source_paths:
+      - docs/design/issue-tracker-integrations.md
+      - cmd/fairway/main.go
+      - internal/store
+    target_paths:
+      - docs/design/issue-tracker-integrations.md
+      - docs/design/cli.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/tracker
+      - internal/store
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: tracker-adapter-contract
+    depends_on:
+      - FW-120
+    acceptance_checks:
+      - tracker adapter contract defines provider-neutral operations for configure, dry-run import, link, export-status/comment, reconcile, and resolve external references.
+      - contract explicitly separates planning mirror operations from Fairway execution-state mutations.
+      - provider mapping supports Plane, Jira, and Linear concepts without hardcoding Plane-specific fields into Fairway core.
+      - tracker reconcile reports drift without mutating Fairway DB or remote tracker state unless an explicit apply command is added.
+      - tests cover provider registry, unsupported provider error handling, dry-run reconcile, and link persistence.
+
+  - id: FW-122
+    title: Add Plane tracker adapter spike
+    kind: tracker
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: tracker
+    source_paths:
+      - docs/design/issue-tracker-integrations.md
+      - docs/operations/plane-local-evaluation.md
+      - internal/tracker
+      - cmd/fairway/main.go
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/tracker/plane
+      - examples/tracker-adapters/plane
+      - docs/design/issue-tracker-integrations.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - backend
+      - governance
+    risk_level: medium
+    migration_type: tracker-plane-adapter-spike
+    depends_on:
+      - FW-121
+    acceptance_checks:
+      - Plane adapter can dry-run export a bounded Fairway task set to Plane issue payloads with field mapping visible before write.
+      - Plane adapter can create or update Plane issues for a small evaluation set while storing Fairway tracker links for created external issue ids and URLs.
+      - Plane adapter can export a completion/blocker/evidence summary as a Plane comment or equivalent planning-surface update without changing Fairway execution state.
+      - Plane adapter can import explicitly selected Plane issues into Fairway tasks only through an operator-driven dry-run/apply flow.
+      - adapter configuration and credentials come from environment or OS credential store, not committed config.
+      - spike report states what should generalize to Jira/Linear and what remains Plane-specific.

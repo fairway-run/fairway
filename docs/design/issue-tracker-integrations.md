@@ -1,17 +1,20 @@
 # Issue Tracker Integrations
 
 Fairway should integrate with existing planning systems without making them the
-source of truth for agent execution. Jira and Linear are first-class targets:
-Jira because many teams already use it for epics, stories, bugs, and release
-tracking; Linear because its issues, projects, cycles, labels, and lightweight
-status model are a strong fit for fast agent-driven execution. The same
-boundary should also fit GitHub Issues and similar tools.
+source of truth for agent execution. Plane, Jira, and Linear are first-class
+targets: Plane because it is open source, self-hostable, and useful as an
+external team/product collaboration surface; Jira because many teams already use
+it for epics, stories, bugs, and release tracking; Linear because its issues,
+projects, cycles, labels, and lightweight status model are a strong fit for fast
+agent-driven execution. The same boundary should also fit GitHub Issues and
+similar tools.
 
 ## Principle
 
-External issue trackers own product planning and stakeholder visibility.
-Fairway owns local agent coordination: task state, owner, evidence, handoffs,
-reviews, sessions, checkpoints, and merge-readiness facts.
+External issue trackers own product planning, stakeholder visibility, external
+team collaboration, and roadmap discussion. Fairway owns local agent
+coordination: task state, owner, evidence, handoffs, reviews, sessions,
+checkpoints, and merge-readiness facts.
 
 Integration must be explicit and operator-driven by default. No background sync
 should overwrite DB-owned execution state.
@@ -43,8 +46,9 @@ helps humans.
 ## Storage And Tracking Model
 
 ```text
-Jira / Linear / GitHub Issues
-  product planning, stakeholder visibility, external roadmap, epics, cycles
+Plane / Jira / Linear / GitHub Issues
+  product planning, stakeholder visibility, external team collaboration,
+  external roadmap, epics, cycles
 
 Fairway
   local execution truth, agent coordination, evidence, handoffs, reviews
@@ -61,7 +65,7 @@ fairway's execution facts.
 
 | System | Owns | Fairway interaction |
 |---|---|---|
-| Jira / Linear | Product intent, roadmap grouping, issue discussion, stakeholder status. | Import task definitions, store external links, export summaries. |
+| Plane / Jira / Linear | Product intent, roadmap grouping, issue discussion, external team collaboration, stakeholder status. | Import task definitions, store external links, export summaries. |
 | Fairway DB | Local task state, lane ownership, sessions, evidence, handoffs, reviews, checkpoints. | Source of truth for coordination and merge-readiness. |
 | Git | File changes, branches, commits, PR refs. | Referenced by fairway tasks, evidence, reviews, and merge checks. |
 | CI | Automated verification results and artifacts. | Recorded as fairway evidence; not executed by fairway core. |
@@ -91,6 +95,8 @@ execution state or remote tracker state without an explicit operator action.
 ## Planned Commands
 
 ```bash
+fairway tracker configure plane --url <url> --workspace <slug> --project <id-or-slug>
+fairway tracker import plane --query <filter> [--parent <task-id>] [--dry-run]
 fairway tracker configure jira --url <url> --project <key>
 fairway tracker import jira --query <jql> [--parent <task-id>] [--dry-run]
 fairway tracker configure linear --workspace <name> --team <key>
@@ -115,6 +121,37 @@ The initial adapter can live behind a generic tracker interface:
 
 Mutable fairway state should not be mirrored blindly. A status export should
 write a concise comment or transition only when explicitly requested.
+
+## Plane Adapter
+
+Plane support should start before Jira/Linear adapter implementation because it
+can be self-hosted locally and used as a realistic open-source planning surface
+for product, external teams, and stakeholders.
+
+The first Plane task is not adapter code. It is a local setup and evaluation:
+
+- run Plane locally with documented Docker or compose steps,
+- create a Fairway evaluation workspace/project,
+- model representative GPUaaS/Fairway epics, tasks, follow-ups, cycles/modules,
+  labels, and comments,
+- evaluate which Plane concepts map cleanly to Fairway tasks, parents,
+  profiles, roles, review domains, evidence links, and follow-up taxonomy,
+- record which Plane concepts should remain planning-only and never mutate
+  Fairway execution state.
+
+After that evaluation, Plane adapter support should start with:
+
+- one-way export from Fairway tasks to Plane issues,
+- link storage between Fairway task IDs and Plane issue identifiers/URLs,
+- optional import of Plane issues explicitly selected for execution,
+- optional status/comment export for completion, blockers, evidence, review
+  outcomes, and daily report links,
+- config-driven mapping for workspace, project, issue states, labels, modules,
+  cycles, priorities, and custom fields where available,
+- dry-run output before any remote write.
+
+Plane credentials should come from the environment or OS credential store, not
+from `.fairway/config.toml`.
 
 ## Jira Adapter
 
@@ -157,9 +194,11 @@ from `.fairway/config.toml`.
 
 ## Non-Goals
 
+- Fairway does not become a replacement Plane UI.
 - Fairway does not become a replacement Jira UI.
 - Fairway does not become a replacement Linear UI.
 - Fairway does not continuously sync status in the background.
-- Fairway does not require Jira, Linear, or any tracker for core workflow.
+- Fairway does not require Plane, Jira, Linear, or any tracker for core
+  workflow.
 - Fairway does not treat tracker workflow states as the local state machine
   unless the operator intentionally maps them.
