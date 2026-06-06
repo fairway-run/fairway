@@ -241,7 +241,14 @@ while Fairway improvements are assigned as their own bounded workstream.
    - Add read-only dashboard pages for readiness report, adoption artifact, and
      merge-ready detail using the same evaluation logic as the CLI.
 
-3. Provider tracker follow-through
+3. Daily reports and retrospective view
+   - Add `/reports` as a polished daily/date-range dashboard page that
+     summarizes outcomes, CI/deploy/UAT activity, reviews, evidence, and
+     follow-up tasks before showing any drill-down table.
+   - Keep monitor/deploy-run bookkeeping distinguishable from implementation
+     outcomes so a high "done today" count is explainable.
+
+4. Provider tracker follow-through
    - Once Jira/Linear adapters are configured, export discovered Fairway
      follow-ups to the planning tool while keeping the Fairway DB authoritative
      for execution state.

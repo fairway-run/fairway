@@ -569,3 +569,49 @@ tasks:
       - Dashboard diagnostics shows a resume-needed finding when monitors finish and the task queue has ready non-conflicting work.
       - Agent guide documents that monitor completion is not terminal unless the operator explicitly marked the whole work block complete, and that CI/deploy monitor tooling must either send a continuation prompt or record why no continuation is safe.
       - Tests cover all monitored tasks complete with ready work available, all monitored tasks complete with no ready work, and monitor completion followed by next branch push.
+
+  - id: FW-119
+    title: Add daily reports and retrospective dashboard view
+    kind: dashboard
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - internal/dashboard
+      - internal/store
+      - cmd/fairway/main.go
+    target_paths:
+      - internal/dashboard
+      - internal/dashboard/server_test.go
+      - internal/store
+      - cmd/fairway/main.go
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - docs/quickstart.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+      - ui
+    risk_level: medium
+    migration_type: dashboard-reports
+    depends_on:
+      - FW-104
+      - FW-105
+      - FW-118
+    acceptance_checks:
+      - "`/reports` opens a polished daily report for the local current day with date picker, today/yesterday/last-seven-days shortcuts, and URL-preserved filters."
+      - report summary separates delivery outcomes from monitor/deploy-run/watch bookkeeping so a high "done today" count is explainable.
+      - report shows completed tasks, moving tasks, created follow-ups, blocked/resolved tasks, evidence rows, reviews, and CI/deploy/UAT result summaries before any large table.
+      - lane outcome section groups work by role and domain/kind with representative task links, latest evidence links, and pagination or expandable groups for large days.
+      - CI/deploy/UAT timeline shows pipeline/deploy identifiers, source SHA or branch, environment, result, elapsed wait window when available, and generated follow-up tasks.
+      - "follow-up taxonomy groups `CI-FIX`, `CD-FIX`, `UAT-BUG`, `OPS-FIX`, `HARNESS-FIX`, and `DOC-FIX` tasks created during the report window."
+      - review/evidence section shows newly satisfied gates, failed or partial evidence, and done tasks still missing required review domains.
+      - drill-down task table is bounded, filterable, sortable, paginated, and supports include/exclude monitor/deploy-run bookkeeping.
+      - report exports Markdown, JSON, and CSV for the exact selected date range and filters.
+      - navigation links Wall, Board, Reports, Diagnostics, and task detail using the same dashboard shell and visual system.
+      - "page avoids raw data-dump presentation: stable summary cards, small status chips, clear section rhythm, no nested cards, and no oversized unbounded tables."
+      - tests cover local-day boundary behavior, monitor/deploy-run inclusion filters, role/domain grouping, follow-up taxonomy grouping, and export matching filtered browser scope.

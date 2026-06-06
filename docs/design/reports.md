@@ -1,0 +1,136 @@
+# Reports
+
+Fairway reports are retrospective dashboard pages. Wall and Board answer live
+coordination questions; Reports answer what changed, what evidence was produced,
+and what follow-up work remains.
+
+## Primary Users
+
+| User | Question |
+|---|---|
+| Coordinator | What did every lane complete today, and what is the next safe queue? |
+| Operator | Which CI, deploy, UAT, and monitor runs passed or need follow-up? |
+| Reviewer | Which completed tasks still need required review domains or evidence? |
+| Project lead | What took time, what created new work, and what is ready to summarize? |
+
+## Default Daily Report
+
+`/reports` opens to the local current day. The top of the page shows:
+
+- date selector with today, yesterday, last seven days, and custom range,
+- completed task count split into implementation outcomes and monitor/deploy-run
+  closures,
+- moving task count,
+- CI/deploy/UAT result summary,
+- reviews recorded and missing required review domains,
+- follow-up tasks created by taxonomy.
+
+This section must be readable without opening a table. A coordinator should be
+able to answer "what happened today?" from the first viewport.
+
+## Report Sections
+
+### Outcome Summary
+
+Show counts and trend chips for:
+
+- tasks completed,
+- tasks moved,
+- tasks created,
+- blocked tasks opened or resolved,
+- reviews recorded,
+- evidence rows recorded,
+- CI/deploy/UAT runs passed, failed, retried, or still running.
+
+Separate real delivery outcomes from bookkeeping:
+
+- implementation, docs, ops, security, and UI tasks are delivery outcomes,
+- CI monitor tasks, deploy-run monitor tasks, watcher sessions, and heartbeat
+  closures are operational bookkeeping unless they produced a direct artifact or
+  follow-up.
+
+### Lane Outcomes
+
+Group completed and moved tasks by role, then domain/kind. Each group shows:
+
+- count completed,
+- representative task links,
+- important blocked or follow-up tasks,
+- latest evidence artifact link when present.
+
+Long groups are paginated or expandable. The default should show the most recent
+or highest-risk tasks first, not a complete wall of rows.
+
+### CI, Deploy, And UAT Timeline
+
+Render a chronological timeline for deploy-run and monitor-related activity:
+
+- pipeline or deploy identifier,
+- source SHA or branch when recorded,
+- target environment,
+- result,
+- elapsed wait window when available,
+- generated `CI-FIX`, `CD-FIX`, `UAT-BUG`, `OPS-FIX`, `HARNESS-FIX`, or
+  `DOC-FIX` follow-up tasks.
+
+This section is the main tool for learning why CI and deploy consumed time.
+
+### Reviews And Evidence
+
+Show:
+
+- reviews recorded during the period,
+- tasks marked done but still missing required review domains,
+- newly satisfied readiness gates,
+- failed, partial, or warning evidence rows that need follow-up.
+
+This should use the same review-domain and gate logic as the board and
+`merge-ready` checks.
+
+### Drill-Down Table
+
+The table is last, not first. It supports:
+
+- search,
+- role/status/profile/kind/domain/risk filters,
+- include/exclude monitor and deploy-run bookkeeping,
+- sortable columns,
+- pagination,
+- export for the selected filtered scope.
+
+## Export
+
+Reports support:
+
+- Markdown for handoff and daily summaries,
+- JSON for automation and audit,
+- CSV for spreadsheet analysis.
+
+Exports must use the same filters and date range visible in the browser.
+
+## Design Requirements
+
+Reports should use the same dashboard shell and visual language as Wall, Board,
+Diagnostics, and Task Detail:
+
+- clear navigation between Wall, Board, Reports, Diagnostics, and task detail,
+- compact summary cards with stable dimensions,
+- no nested cards,
+- bounded tables with pagination,
+- status chips and small labels instead of paragraphs of explanation,
+- no raw SQLite-shaped dumps as the default presentation.
+
+## Implementation Notes
+
+Use `task_state_history`, task definitions, evidence, reviews, checkpoints, and
+session tables as read models. The report should query by persisted timestamps
+and project timezone rules consistently with the dashboard's "done today"
+metric.
+
+Tests should include:
+
+- local-day boundary behavior,
+- monitor/deploy-run exclusion and inclusion,
+- role/domain grouping,
+- follow-up taxonomy grouping,
+- export matching the filtered browser scope.

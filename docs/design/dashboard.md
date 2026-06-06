@@ -11,6 +11,7 @@ detail.
 | `/` | Wall view. High-level role lanes for live coordination. |
 | `/board` | Operator board. Filterable/sortable task table, workstreams, gates, and activity. |
 | `/board?tab=diagnostics` | Diagnostics tab for sessions, worktrees, watchers, and checkpoints. |
+| `/reports` | Daily and date-range work reports for outcomes, CI/deploy activity, reviews, and follow-ups. |
 | `/tasks/<task-id>` | Task detail page with metadata, history, evidence, sessions, reviews, and status controls. |
 | `/wall` | Compatibility redirect to `/`. |
 
@@ -36,7 +37,9 @@ The dashboard is organized as a user flow, not independent pages:
 3. Sort, search, or filter the board table.
 4. Open a task from the table.
 5. Use `Back` on task detail to return to the filtered board view.
-6. Switch to diagnostics from the board when session/worktree/watcher state is
+6. Open Reports when the question is "what changed today, what finished, what
+   failed, and what needs follow-up?"
+7. Switch to diagnostics from the board when session/worktree/watcher state is
    the question.
 
 ## Wall
@@ -120,6 +123,45 @@ external run plus poll command, or fresh bounded manual checkpoint.
 
 Diagnostics tables are sortable. The task-table export action is hidden on the
 diagnostics tab because there is no task table there.
+
+## Reports
+
+`/reports` is the retrospective surface for coordinators and operators. It is
+not a raw task table. It answers:
+
+- what work moved during a day or date range,
+- what finished versus what only closed monitor/deploy-run bookkeeping,
+- which lanes produced product/code/docs/ops outcomes,
+- which CI/deploy/UAT runs passed, failed, retried, or still need follow-up,
+- which reviews, evidence rows, and handoffs changed merge readiness,
+- which tasks were created as findings from CI, deploy, UAT, ops, or security
+  work.
+
+The default report opens to the local current day. A date picker and date-range
+control allow yesterday, last seven days, and custom ranges. Reports preserve
+filters in the URL so a coordinator can share or reopen the same view.
+
+The page layout should be scannable:
+
+- a compact summary band for completed tasks, moving tasks, active lanes,
+  follow-ups created, CI/deploy results, and review outcomes,
+- a lane outcome section grouped by role/domain/kind with short task links,
+- a CI/deploy timeline that separates monitor closures from implementation
+  work,
+- a finding section grouped by `CI-FIX`, `CD-FIX`, `UAT-BUG`, `OPS-FIX`,
+  `HARNESS-FIX`, and `DOC-FIX`,
+- a review/evidence section showing newly satisfied gates and missing required
+  review domains,
+- a bounded task table for drill-down, with pagination and export.
+
+Visual density should match the board: restrained cards, clear section rhythm,
+small status chips, progress bars only when they summarize a real denominator,
+and no nested cards. The default view should show the highest-signal sections
+above the fold before any large table.
+
+Reports support Markdown, JSON, and CSV export for the selected date range.
+Markdown export is intended for daily summaries and handoffs. JSON and CSV are
+intended for audit, analysis, and external planning tools.
 
 ## Task Detail
 
