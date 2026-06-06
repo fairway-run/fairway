@@ -337,6 +337,30 @@ expected local reproduction command, owner, and follow-up task. It also checks
 that actionable failures have a `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`,
 `HARNESS-FIX-*`, `UAT-BUG-*`, or `DOC-FIX-*` task.
 
+For Fairway release attempts, create one release-run task/checkpoint and render
+a release-run packet before tagging:
+
+```bash
+fairway packet release-run <release-task-id> \
+  --version vX.Y.Z \
+  --tag vX.Y.Z \
+  --source-sha "$(git rev-parse HEAD)" \
+  --release-notes docs/release-notes.md \
+  --changelog-state "CHANGELOG.md updated" \
+  --ci-status pass \
+  --docs-status pass \
+  --signing-status pass \
+  --notary-status pass \
+  --release-url "https://github.com/fairway-run/fairway/releases/tag/vX.Y.Z" \
+  --homebrew-tap-commit <tap-commit-sha> \
+  --verification-command "brew fetch --cask --force fairway-run/tap/fairway"
+```
+
+After the GitHub release and Homebrew tap update are observable, run
+`fairway release verify`. Do not mark a release as Homebrew-usable while the
+GitHub release is still a draft; asset URLs can return 404 until the draft is
+published.
+
 For deploy work, create one deploy-run task for the attempt and create
 `CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or
 `DOC-FIX-*` follow-ups only for actionable findings.

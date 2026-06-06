@@ -19,6 +19,12 @@ because its CLI version metadata still reported the development version.
   monitor sessions.
 - Watcher and agent docs now require backing monitor proof before leaving
   monitor tasks `in_progress`.
+- Release attempts can now use `fairway packet release-run` and
+  `fairway release verify` to track version/tag/source SHA, release notes,
+  changelog state, CI/docs/signing/notary evidence, GitHub release state, asset
+  URL checks, Homebrew cask version, tap commit, and brew fetch verification.
+- The release guard explicitly fails the v0.1.2 failure mode where the Homebrew
+  cask points to the new version while the GitHub release is still a draft.
 
 ## v0.1.1
 

@@ -71,8 +71,9 @@ each version ships.
   readiness reports summarize profile gates. Merge readiness also honors
   task-level review domains. Workflow checks now flag dirty docs/code,
   unpushed commits, deploy-run prerequisites, and active reconciliation
-  findings. GPUaaS / ARC remains the adoption example, not the core product
-  shape.
+  findings, while release-run packets and release verification guard public
+  release, asset, and Homebrew readiness. GPUaaS / ARC remains the adoption
+  example, not the core product shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

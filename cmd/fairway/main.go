@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -141,6 +142,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdPacket(ctx, opts, args[1:])
 	case "watcher":
 		return cmdWatcher(ctx, opts, args[1:])
+	case "release":
+		return cmdRelease(ctx, opts, args[1:])
 	case "regression-pack":
 		return cmdRegressionPack(opts, args[1:])
 	case "prune-stale":
@@ -1505,6 +1508,273 @@ func cmdSessionEnd(ctx context.Context, opts globalOptions, args []string) error
 		fmt.Println("ended", args[0])
 		return nil
 	})
+}
+
+type releaseVerifyReport struct {
+	OK                 bool                 `json:"ok"`
+	Version            string               `json:"version"`
+	Tag                string               `json:"tag"`
+	SourceSHA          string               `json:"source_sha,omitempty"`
+	ReleaseState       string               `json:"release_state,omitempty"`
+	ReleaseURL         string               `json:"release_url,omitempty"`
+	HomebrewVersion    string               `json:"homebrew_version,omitempty"`
+	HomebrewTapCommit  string               `json:"homebrew_tap_commit,omitempty"`
+	Statuses           map[string]string    `json:"statuses,omitempty"`
+	AssetResults       []releaseAssetResult `json:"asset_results,omitempty"`
+	Issues             []string             `json:"issues,omitempty"`
+	Warnings           []string             `json:"warnings,omitempty"`
+	Recommendations    []string             `json:"recommendations,omitempty"`
+	VerificationInputs []string             `json:"verification_inputs,omitempty"`
+}
+
+type releaseAssetResult struct {
+	URL    string `json:"url"`
+	Status int    `json:"status"`
+	OK     bool   `json:"ok"`
+}
+
+func cmdRelease(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("release", "verify")
+		return nil
+	}
+	switch args[0] {
+	case "verify":
+		return cmdReleaseVerify(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown release subcommand %q", args[0])
+	}
+}
+
+func cmdReleaseVerify(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("release verify", flag.ContinueOnError)
+	version := fs.String("version", "", "release version, usually vX.Y.Z")
+	tag := fs.String("tag", "", "release tag")
+	sourceSHA := fs.String("source-sha", "", "source commit sha")
+	releaseNotes := fs.String("release-notes", "docs/release-notes.md", "release notes path")
+	changelog := fs.String("changelog", "CHANGELOG.md", "changelog path")
+	ciStatus := fs.String("ci-status", "", "CI status: pass, fail, skipped, or blocked")
+	docsStatus := fs.String("docs-status", "", "docs status: pass, fail, skipped, or blocked")
+	signingStatus := fs.String("signing-status", "", "signing status: pass, fail, skipped, or blocked")
+	notaryStatus := fs.String("notary-status", "", "notary status: pass, fail, skipped, or blocked")
+	releaseState := fs.String("release-state", "", "GitHub release state: public or draft")
+	releaseURL := fs.String("release-url", "", "GitHub release URL")
+	homebrewVersion := fs.String("homebrew-version", "", "Homebrew cask version")
+	homebrewTapCommit := fs.String("homebrew-tap-commit", "", "Homebrew tap commit sha")
+	brewFetchStatus := fs.String("brew-fetch-status", "", "brew fetch status: pass, fail, skipped, or blocked")
+	var assets multiFlag
+	var verification multiFlag
+	fs.Var(&assets, "asset", "asset check as URL=STATUS; may repeat")
+	fs.Var(&verification, "verification-command", "verification command; may repeat")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected release verify arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	report, err := buildReleaseVerifyReport(releaseVerifyInput{
+		Version:              *version,
+		Tag:                  *tag,
+		SourceSHA:            *sourceSHA,
+		ReleaseNotesPath:     *releaseNotes,
+		ChangelogPath:        *changelog,
+		CIStatus:             *ciStatus,
+		DocsStatus:           *docsStatus,
+		SigningStatus:        *signingStatus,
+		NotaryStatus:         *notaryStatus,
+		ReleaseState:         *releaseState,
+		ReleaseURL:           *releaseURL,
+		HomebrewVersion:      *homebrewVersion,
+		HomebrewTapCommit:    *homebrewTapCommit,
+		BrewFetchStatus:      *brewFetchStatus,
+		Assets:               assets,
+		VerificationCommands: verification,
+	})
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("release_verify: %t\nversion: %s\ntag: %s\n", report.OK, report.Version, report.Tag)
+		if report.ReleaseState != "" {
+			fmt.Printf("release_state: %s\n", report.ReleaseState)
+		}
+		if report.HomebrewVersion != "" {
+			fmt.Printf("homebrew_version: %s\n", report.HomebrewVersion)
+		}
+		if len(report.AssetResults) > 0 {
+			fmt.Println("assets:")
+			for _, asset := range report.AssetResults {
+				fmt.Printf("- %s status=%d ok=%t\n", asset.URL, asset.Status, asset.OK)
+			}
+		}
+		if len(report.Issues) > 0 {
+			fmt.Println("issues:")
+			for _, issue := range report.Issues {
+				fmt.Printf("- %s\n", issue)
+			}
+		}
+		if len(report.Warnings) > 0 {
+			fmt.Println("warnings:")
+			for _, warning := range report.Warnings {
+				fmt.Printf("- %s\n", warning)
+			}
+		}
+		if len(report.Recommendations) > 0 {
+			fmt.Println("recommendations:")
+			for _, recommendation := range uniqueStrings(report.Recommendations) {
+				fmt.Printf("- %s\n", recommendation)
+			}
+		}
+	}
+	if !report.OK {
+		return errors.New("release verification failed")
+	}
+	return nil
+}
+
+type releaseVerifyInput struct {
+	Version              string
+	Tag                  string
+	SourceSHA            string
+	ReleaseNotesPath     string
+	ChangelogPath        string
+	CIStatus             string
+	DocsStatus           string
+	SigningStatus        string
+	NotaryStatus         string
+	ReleaseState         string
+	ReleaseURL           string
+	HomebrewVersion      string
+	HomebrewTapCommit    string
+	BrewFetchStatus      string
+	Assets               []string
+	VerificationCommands []string
+}
+
+func buildReleaseVerifyReport(input releaseVerifyInput) (releaseVerifyReport, error) {
+	version := strings.TrimSpace(input.Version)
+	tag := strings.TrimSpace(input.Tag)
+	if version == "" && tag != "" {
+		version = tag
+	}
+	if tag == "" && version != "" {
+		tag = version
+	}
+	report := releaseVerifyReport{
+		OK:                 true,
+		Version:            version,
+		Tag:                tag,
+		SourceSHA:          strings.TrimSpace(input.SourceSHA),
+		ReleaseState:       strings.ToLower(strings.TrimSpace(input.ReleaseState)),
+		ReleaseURL:         strings.TrimSpace(input.ReleaseURL),
+		HomebrewVersion:    strings.TrimSpace(input.HomebrewVersion),
+		HomebrewTapCommit:  strings.TrimSpace(input.HomebrewTapCommit),
+		VerificationInputs: append([]string{}, input.VerificationCommands...),
+		Statuses: map[string]string{
+			"ci":         strings.ToLower(strings.TrimSpace(input.CIStatus)),
+			"docs":       strings.ToLower(strings.TrimSpace(input.DocsStatus)),
+			"signing":    strings.ToLower(strings.TrimSpace(input.SigningStatus)),
+			"notary":     strings.ToLower(strings.TrimSpace(input.NotaryStatus)),
+			"brew_fetch": strings.ToLower(strings.TrimSpace(input.BrewFetchStatus)),
+		},
+	}
+	if report.Version == "" {
+		report.Issues = append(report.Issues, "missing release version")
+	}
+	if report.Tag == "" {
+		report.Issues = append(report.Issues, "missing release tag")
+	} else if report.Version != "" && report.Tag != report.Version {
+		report.Issues = append(report.Issues, fmt.Sprintf("release tag %q does not match version %q", report.Tag, report.Version))
+	}
+	if report.SourceSHA == "" {
+		report.Warnings = append(report.Warnings, "missing source SHA")
+	}
+	checkReleaseDoc(&report, "release notes", input.ReleaseNotesPath, report.Version)
+	checkReleaseDoc(&report, "changelog", input.ChangelogPath, report.Version)
+	for name, status := range report.Statuses {
+		switch status {
+		case "pass":
+		case "":
+			report.Issues = append(report.Issues, fmt.Sprintf("missing %s status", strings.ReplaceAll(name, "_", " ")))
+		case "fail", "failed", "blocked":
+			report.Issues = append(report.Issues, fmt.Sprintf("%s status is %s", strings.ReplaceAll(name, "_", " "), status))
+		case "skipped":
+			report.Warnings = append(report.Warnings, fmt.Sprintf("%s status was skipped", strings.ReplaceAll(name, "_", " ")))
+		default:
+			report.Warnings = append(report.Warnings, fmt.Sprintf("%s status is unrecognized: %s", strings.ReplaceAll(name, "_", " "), status))
+		}
+	}
+	if report.ReleaseState == "" {
+		report.Issues = append(report.Issues, "missing GitHub release state")
+	} else if report.ReleaseState != "public" && report.ReleaseState != "draft" {
+		report.Warnings = append(report.Warnings, "release state should be public or draft")
+	}
+	for _, raw := range input.Assets {
+		asset, err := parseReleaseAsset(raw)
+		if err != nil {
+			return releaseVerifyReport{}, err
+		}
+		report.AssetResults = append(report.AssetResults, asset)
+		if !asset.OK {
+			report.Issues = append(report.Issues, fmt.Sprintf("asset URL failed: %s status=%d", asset.URL, asset.Status))
+		}
+	}
+	if len(report.AssetResults) == 0 {
+		report.Issues = append(report.Issues, "missing asset URL verification")
+	}
+	if report.HomebrewVersion == "" {
+		report.Issues = append(report.Issues, "missing Homebrew cask version")
+	} else if report.Version != "" && report.HomebrewVersion != report.Version {
+		report.Issues = append(report.Issues, fmt.Sprintf("Homebrew cask version %q does not match release version %q", report.HomebrewVersion, report.Version))
+	}
+	if report.HomebrewTapCommit == "" {
+		report.Issues = append(report.Issues, "missing Homebrew tap commit")
+	}
+	if report.ReleaseState == "draft" && report.HomebrewVersion != "" && report.HomebrewVersion == report.Version {
+		report.Issues = append(report.Issues, "Homebrew cask points to this version while GitHub release is still draft")
+		report.Recommendations = append(report.Recommendations, "publish the reviewed GitHub release draft before treating the Homebrew cask as usable")
+	}
+	if len(report.VerificationInputs) == 0 {
+		report.Warnings = append(report.Warnings, "missing verification command list")
+	}
+	report.OK = len(report.Issues) == 0
+	return report, nil
+}
+
+func checkReleaseDoc(report *releaseVerifyReport, label, path, version string) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		report.Issues = append(report.Issues, "missing "+label+" path")
+		return
+	}
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		report.Issues = append(report.Issues, fmt.Sprintf("missing %s at %s", label, path))
+		return
+	}
+	if version != "" && !strings.Contains(string(data), version) {
+		report.Issues = append(report.Issues, fmt.Sprintf("%s does not mention %s", label, version))
+	}
+}
+
+func parseReleaseAsset(raw string) (releaseAssetResult, error) {
+	parts := strings.SplitN(raw, "=", 2)
+	if len(parts) != 2 {
+		return releaseAssetResult{}, fmt.Errorf("release asset %q must use URL=STATUS", raw)
+	}
+	url := strings.TrimSpace(parts[0])
+	if url == "" {
+		return releaseAssetResult{}, errors.New("release asset URL is required")
+	}
+	status, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return releaseAssetResult{}, fmt.Errorf("release asset %q has invalid status: %w", raw, err)
+	}
+	return releaseAssetResult{URL: url, Status: status, OK: status >= 200 && status < 400}, nil
 }
 
 type reconcileAction struct {
@@ -2929,10 +3199,10 @@ func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string,
 
 func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("packet requires subcommand: context, bugfix, watcher, template, architecture-map, boundary-guard, vertical-slice")
+		return errors.New("packet requires subcommand: context, bugfix, watcher, release-run, template, architecture-map, boundary-guard, vertical-slice")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("packet", "context|bugfix|watcher|template|architecture-map|boundary-guard|vertical-slice")
+		subcommandUsage("packet", "context|bugfix|watcher|release-run|template|architecture-map|boundary-guard|vertical-slice")
 		return nil
 	}
 	switch args[0] {
@@ -2942,6 +3212,8 @@ func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdPacketBugfix(ctx, opts, args[1:])
 	case "watcher":
 		return cmdPacketWatcher(opts, args[1:])
+	case "release-run":
+		return cmdPacketReleaseRun(ctx, opts, args[1:])
 	case "template":
 		return cmdPacketTemplate(ctx, opts, args[1:])
 	case "architecture-map":
@@ -3166,6 +3438,84 @@ func cmdPacketWatcher(opts globalOptions, args []string) error {
 	fmt.Printf("\n## Success\n%s\n", *success)
 	fmt.Printf("\n## Failure\n%s\n", *failure)
 	return nil
+}
+
+func cmdPacketReleaseRun(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("packet release-run requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("packet release-run", flag.ContinueOnError)
+	version := fs.String("version", "", "release version")
+	tag := fs.String("tag", "", "release tag")
+	sourceSHA := fs.String("source-sha", "", "source sha")
+	releaseNotes := fs.String("release-notes", "", "release notes path or status")
+	changelogState := fs.String("changelog-state", "", "changelog state")
+	ciStatus := fs.String("ci-status", "", "CI status")
+	docsStatus := fs.String("docs-status", "", "docs status")
+	signingStatus := fs.String("signing-status", "", "signing status")
+	notaryStatus := fs.String("notary-status", "", "notary status")
+	releaseURL := fs.String("release-url", "", "release URL")
+	homebrewTapCommit := fs.String("homebrew-tap-commit", "", "Homebrew tap commit")
+	var commands multiFlag
+	fs.Var(&commands, "verification-command", "verification command; may repeat")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet release-run arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		packet := struct {
+			Task                store.Task       `json:"task"`
+			Version             string           `json:"version"`
+			Tag                 string           `json:"tag"`
+			SourceSHA           string           `json:"source_sha"`
+			ReleaseNotes        string           `json:"release_notes"`
+			ChangelogState      string           `json:"changelog_state"`
+			CIStatus            string           `json:"ci_status"`
+			DocsStatus          string           `json:"docs_status"`
+			SigningStatus       string           `json:"signing_status"`
+			NotaryStatus        string           `json:"notary_status"`
+			ReleaseURL          string           `json:"release_url"`
+			HomebrewTapCommit   string           `json:"homebrew_tap_commit"`
+			VerificationCommand []string         `json:"verification_commands"`
+			Evidence            []store.Evidence `json:"evidence"`
+			Reviews             []store.Review   `json:"reviews"`
+		}{task, *version, *tag, *sourceSHA, *releaseNotes, *changelogState, *ciStatus, *docsStatus, *signingStatus, *notaryStatus, *releaseURL, *homebrewTapCommit, commands, evidence, reviews}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		fmt.Printf("# Release Run Packet: %s\n\n", task.Definition.ID)
+		fmt.Printf("title: %s\nstatus: %s\nrole: %s\n", task.Definition.Title, task.Status, task.Definition.Role)
+		fmt.Printf("\n## Release Identity\nversion: %s\ntag: %s\nsource_sha: %s\n", *version, *tag, *sourceSHA)
+		fmt.Printf("\n## Documentation\nrelease_notes: %s\nchangelog_state: %s\n", *releaseNotes, *changelogState)
+		fmt.Printf("\n## Verification State\nci: %s\ndocs: %s\nsigning: %s\nnotary: %s\nrelease_url: %s\nhomebrew_tap_commit: %s\n", *ciStatus, *docsStatus, *signingStatus, *notaryStatus, *releaseURL, *homebrewTapCommit)
+		printPacketList("Verification Commands", commands)
+		fmt.Println("\n## Required Evidence")
+		for _, item := range []string{
+			"local checks pass",
+			"pushed main checks pass",
+			"tag push recorded",
+			"release workflow result recorded",
+			"GitHub release is public before Homebrew is treated as usable",
+			"asset URLs return success",
+			"Homebrew cask version matches tag",
+			"brew fetch succeeds",
+		} {
+			fmt.Printf("- %s\n", item)
+		}
+		printEvidenceSummary(evidence)
+		fmt.Println("\n## Reviews")
+		for _, review := range reviews {
+			fmt.Printf("- %s by %s: %s\n", review.Verdict, review.Reviewer, review.Reason)
+		}
+		return nil
+	})
 }
 
 func cmdPacketArchitectureMap(ctx context.Context, opts globalOptions, args []string) error {
@@ -5589,7 +5939,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|audit work-coverage|ci-learning|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

@@ -209,6 +209,27 @@ go run ./cmd/fairway workflow check \
   --require-pushed
 ```
 
+Create one release-run task and packet for each meaningful release attempt:
+
+```bash
+fairway packet release-run FW-REL-012 \
+  --version v0.1.2 \
+  --tag v0.1.2 \
+  --source-sha "$(git rev-parse HEAD)" \
+  --release-notes docs/release-notes.md \
+  --changelog-state "CHANGELOG.md has v0.1.2 section" \
+  --ci-status pass \
+  --docs-status pass \
+  --signing-status pass \
+  --notary-status pass \
+  --release-url "https://github.com/fairway-run/fairway/releases/tag/v0.1.2" \
+  --homebrew-tap-commit <tap-commit-sha> \
+  --verification-command "go test ./..." \
+  --verification-command "go vet ./..." \
+  --verification-command "goreleaser check" \
+  --verification-command "brew fetch --cask --force fairway-run/tap/fairway"
+```
+
 Cut the release tag from a clean, pushed `main`:
 
 ```bash
@@ -268,6 +289,33 @@ The expected result is:
 - Asset URLs return 200 after redirects.
 - Homebrew cask reports the new version.
 - `brew fetch --cask --force fairway-run/tap/fairway` succeeds.
+
+Record the observed release state with the release verification guard:
+
+```bash
+fairway release verify \
+  --version v0.1.2 \
+  --tag v0.1.2 \
+  --source-sha "$(git rev-parse HEAD)" \
+  --release-notes docs/release-notes.md \
+  --changelog CHANGELOG.md \
+  --ci-status pass \
+  --docs-status pass \
+  --signing-status pass \
+  --notary-status pass \
+  --release-state public \
+  --release-url "https://github.com/fairway-run/fairway/releases/tag/v0.1.2" \
+  --asset "https://github.com/fairway-run/fairway/releases/download/v0.1.2/fairway_v0.1.2_checksums.txt=200" \
+  --homebrew-version v0.1.2 \
+  --homebrew-tap-commit <tap-commit-sha> \
+  --brew-fetch-status pass \
+  --verification-command "brew fetch --cask --force fairway-run/tap/fairway"
+```
+
+The v0.1.2 lesson is explicit: if `--release-state draft` while
+`--homebrew-version` matches the release tag, `fairway release verify` fails.
+Publish the reviewed GitHub release draft first, then verify asset URLs and
+`brew fetch` before treating the Homebrew cask as usable.
 
 If the cask publish fails, fix the tap or release config and rerun the release
 workflow only when the generated cask will point to the same immutable tag and

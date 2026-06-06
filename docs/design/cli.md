@@ -32,6 +32,7 @@ fairway preflight [--role <role>] [--base <ref>]       # validate current worktr
 fairway workflow check [--mode <task|close|deploy>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
 fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
 fairway audit ci-learning [--task-id <id>] [--template] # classify failed CI/deploy/smoke/UAT evidence and follow-up coverage
+fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
@@ -39,6 +40,7 @@ fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> [--owning-layer <text>] --proof-command <cmd> --regression-coverage <text> [--residual-risk <text>]
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
+fairway packet release-run <task-id> --version <vX.Y.Z> --tag <vX.Y.Z> --source-sha <sha> --release-notes <path-or-status> --changelog-state <text> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-url <url> --homebrew-tap-commit <sha> [--verification-command <cmd>]...
 fairway packet template <name> <task-id> --field <key=value>...
 fairway packet architecture-map <task-id> --scope <text> --current-owner <role> --target-owner <role> --migration-risk <text> [--source-doc <path>]... --acceptance <text>
 fairway packet boundary-guard <task-id> --guard-intent <text> [--finding <text>]... [--false-positive <text>]... --graduation-criteria <text> [--proof-command <cmd>]...
@@ -127,6 +129,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   checks for matching `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`, `HARNESS-FIX-*`,
   `UAT-BUG-*`, or `DOC-FIX-*` follow-up tasks. Use `--template` to render a
   learning artifact for review or release notes.
+- `release verify` is an advisory release-readiness guard with a non-zero exit
+  on release issues. It consumes observed evidence from commands such as
+  `gh release view`, `curl`, `brew info`, and `brew fetch`; it does not call
+  provider APIs itself. It flags draft GitHub releases with matching Homebrew
+  casks, missing release notes/changelog entries, failed asset URL checks,
+  missing release status, and failed Homebrew fetch verification.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
 - `adoption artifact` is the generic readiness report. It uses configured

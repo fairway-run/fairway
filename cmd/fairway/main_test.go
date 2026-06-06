@@ -80,6 +80,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning"},
+		{[]string{"release", "--help"}, "fairway release verify"},
 	} {
 		out := runCapture(t, tc.args...)
 		assertContains(t, out, tc.want)
@@ -623,6 +624,9 @@ func TestCLI_CheckpointAndPacket(t *testing.T) {
 	runOK(t, "--json", "packet", "context", "T-001", "--goal", "finish")
 	runOK(t, "packet", "bugfix", "T-001", "--bug-summary", "broken", "--root-cause", "missing guard", "--proof-command", "go test ./...", "--regression-coverage", "unit")
 	runOK(t, "--json", "packet", "watcher", "W-001", "--owner", "ops/watch", "--process", "ci", "--command", "gh run watch", "--success", "green", "--failure", "red")
+	releasePacket := runCapture(t, "packet", "release-run", "T-001", "--version", "v0.1.2", "--tag", "v0.1.2", "--source-sha", "abc123", "--release-notes", "docs/release-notes.md", "--changelog-state", "updated", "--ci-status", "pass", "--docs-status", "pass", "--signing-status", "pass", "--notary-status", "pass", "--release-url", "https://github.com/fairway-run/fairway/releases/tag/v0.1.2", "--homebrew-tap-commit", "tap123", "--verification-command", "brew fetch --cask --force fairway-run/tap/fairway")
+	assertContains(t, releasePacket, "# Release Run Packet: T-001")
+	assertContains(t, releasePacket, "GitHub release is public before Homebrew is treated as usable")
 	runOK(t, "packet", "architecture-map", "T-001", "--scope", "package ownership", "--current-owner", "mixed", "--target-owner", "backend", "--migration-risk", "move-only churn", "--source-doc", "doc/architecture/platform-foundation/ownership.md", "--acceptance", "map reviewed")
 	runOK(t, "--json", "packet", "boundary-guard", "T-001", "--guard-intent", "report imports across package boundaries", "--finding", "cmd/api imports internal billing", "--false-positive", "generated code", "--graduation-criteria", "zero critical findings", "--proof-command", "go test ./...")
 	runOK(t, "packet", "vertical-slice", "T-001", "--target-seam", "platform evidence facade", "--old-path", "cmd/api/evidence.go", "--new-path", "packages/services/platform/evidence.go", "--adapter", "thin route adapter", "--proof-command", "go test ./cmd/api ./packages/services/platform", "--rollback-plan", "revert adapter wiring")
@@ -902,6 +906,58 @@ func TestCLI_AuditCILearning(t *testing.T) {
 	cleanReport := runCapture(t, "audit", "ci-learning", "--task-id", "T-003")
 	assertContains(t, cleanReport, "ci_learning_ok: true")
 	assertContains(t, cleanReport, "no CI/deploy learning findings")
+}
+
+func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	writeFile(t, "docs/release-notes.md", "## v0.1.2\n- release notes\n")
+	writeFile(t, "CHANGELOG.md", "## v0.1.2\n- changes\n")
+
+	cleanArgs := []string{
+		"release", "verify",
+		"--version", "v0.1.2",
+		"--tag", "v0.1.2",
+		"--source-sha", "abc123",
+		"--ci-status", "pass",
+		"--docs-status", "pass",
+		"--signing-status", "pass",
+		"--notary-status", "pass",
+		"--release-state", "public",
+		"--release-url", "https://github.com/fairway-run/fairway/releases/tag/v0.1.2",
+		"--asset", "https://github.com/fairway-run/fairway/releases/download/v0.1.2/fairway.tar.gz=200",
+		"--homebrew-version", "v0.1.2",
+		"--homebrew-tap-commit", "tap123",
+		"--brew-fetch-status", "pass",
+		"--verification-command", "brew fetch --cask --force fairway-run/tap/fairway",
+	}
+	runOK(t, cleanArgs...)
+	cleanJSON := runCapture(t, append([]string{"--json"}, cleanArgs...)...)
+	assertContains(t, cleanJSON, `"ok": true`)
+
+	draftArgs := append([]string{}, cleanArgs...)
+	for i := range draftArgs {
+		if draftArgs[i] == "public" {
+			draftArgs[i] = "draft"
+			break
+		}
+	}
+	draft := runCaptureAllowError(t, draftArgs...)
+	assertContains(t, draft, "Homebrew cask points to this version while GitHub release is still draft")
+
+	missingNotes := runCaptureAllowError(t, "release", "verify", "--version", "v0.1.2", "--tag", "v0.1.2", "--release-notes", "docs/missing.md", "--changelog", "CHANGELOG.md", "--ci-status", "pass", "--docs-status", "pass", "--signing-status", "pass", "--notary-status", "pass", "--release-state", "public", "--asset", "https://example.test/fairway.tar.gz=200", "--homebrew-version", "v0.1.2", "--homebrew-tap-commit", "tap123", "--brew-fetch-status", "pass")
+	assertContains(t, missingNotes, "missing release notes")
+
+	failedAsset := runCaptureAllowError(t, "release", "verify", "--version", "v0.1.2", "--tag", "v0.1.2", "--ci-status", "pass", "--docs-status", "pass", "--signing-status", "pass", "--notary-status", "pass", "--release-state", "public", "--asset", "https://github.com/fairway-run/fairway/releases/download/v0.1.2/fairway.tar.gz=404", "--homebrew-version", "v0.1.2", "--homebrew-tap-commit", "tap123", "--brew-fetch-status", "pass")
+	assertContains(t, failedAsset, "asset URL failed")
+	assertContains(t, failedAsset, "status=404")
 }
 
 func TestCLI_PacketTemplate(t *testing.T) {

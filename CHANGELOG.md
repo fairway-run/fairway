@@ -12,6 +12,10 @@ and uses semantic versioning.
 - Active-work reconciliation now detects monitor sessions without backing proof,
   so CI/deploy/UAT/provider monitors cannot leave fake active work behind when
   no automation, process, external poller, or bounded manual checkpoint exists.
+- Release-run packets and `fairway release verify` now coordinate release
+  attempts, including release notes, changelog state, CI/docs/signing/notary
+  evidence, GitHub release state, asset URL checks, Homebrew cask version, and
+  brew fetch verification.
 - Local-first task queue, SQLite store, migrations, role lanes, worktrees,
   sessions, evidence, handoffs, reviews, checkpoints, packets, watchers,
   regression packs, tracker links, dashboard, TUI, and release packaging.

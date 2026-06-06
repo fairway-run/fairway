@@ -25,7 +25,9 @@ fairway coordinator tick
 8. advisory work-coverage audit for commits, task path metadata, evidence, and
    required review domains,
 9. advisory CI/deploy learning audit for failed pipeline, deploy, smoke, and
-   UAT evidence without follow-up work.
+   UAT evidence without follow-up work,
+10. release-run verification for release attempts, including public release
+    state, asset URLs, and Homebrew fetch evidence.
 
 `status` prints the current operating board:
 
@@ -89,6 +91,7 @@ The coordinator commands compose lower-level commands:
 - `fairway git-check`,
 - `fairway audit work-coverage --dry-run`,
 - `fairway audit ci-learning`,
+- `fairway release verify`,
 - `fairway session status`,
 - `fairway session reconcile --dry-run`,
 - `fairway watcher status`,
