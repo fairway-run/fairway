@@ -91,35 +91,73 @@ meet the first-paint or sort budget because the server still computes and sends
 all 1000 board rows. The next performance task needs server-side/windowed data
 delivery or a leaner dashboard read model, not only client-side virtualization.
 
+## FWRD-161 Remeasurement
+
+After implementing server-side board windowed delivery, the same 1000-task
+fixture was regenerated at:
+
+```text
+/private/tmp/fairway-perf-v161-osAMYj
+```
+
+This pass also stopped running work-coverage and CI-learning diagnostics on
+normal wall/board requests; those audits now run when the board diagnostics tab
+is requested.
+
+The board rendered with:
+
+- `data-server-window="200"`,
+- 200 task rows in the HTML table for the first page,
+- URL-backed pagination for additional windows,
+- footer text `showing 1-200 of 1000 filtered tasks`,
+- full filtered JSON export still returning all matching tasks.
+
+Post-change measurements:
+
+| Check | Budget | Measured | Result |
+|---|---:|---:|---|
+| Wall first response/total proxy | < 200 ms | 116 ms total | Pass |
+| Board first response/total proxy | < 200 ms | 43 ms total | Pass |
+| Board sorted response/total proxy | p95 < 100 ms | 45 ms p95 total | Pass |
+| Diagnostics response/total proxy | Informational | 239 ms total | Watch |
+| JSON export response/total | Informational | 8 ms total | Pass |
+| Dashboard RSS | < 50 MB | 50,544 KB | Fail |
+
+Conclusion: server-side board windowing resolves the board first-response and
+sort budget failures. RSS remains slightly above the recorded budget and should
+be resolved or accepted with explicit release evidence before retiring the old
+dashboard surface.
+
 ## Interpretation
 
-The dashboard is usable for current Fairway dogfooding, but the 1000-task
-performance budget does not pass yet.
+The dashboard is usable for current Fairway dogfooding, and the board path now
+meets the 1000-task response/sort budget after FWRD-161.
 
-The failures appear to be server/read-model/rendering cost rather than export
-cost. Exporting the full filtered JSON view was fast, while wall, board, and
-sorted board page responses were all above budget.
+The remaining open budget question is process RSS. Exporting the full filtered
+JSON view remains fast, and diagnostics latency is acceptable as an explicit
+diagnostics-tab cost rather than a normal board render cost.
 
 The SSE budget passes with the current one-second polling model.
 
 ## Blocking Gaps
 
-Before using the 1000-task budget as release evidence, Fairway needs a focused
-performance optimization pass.
+Before using the 1000-task budget as complete release evidence, Fairway needs a
+focused RSS decision.
 
 Recommended follow-up:
 
-- add a follow-up for server-side/windowed board data delivery or dashboard
-  read-model/render latency;
-- re-run this fixture after virtualization/read-model changes and record exact
-  browser paint timing from a surface that exposes the Paint Timing API.
+- resolve the dashboard RSS overage or document an accepted exception with
+  target hardware/process assumptions;
+- record exact browser paint timing from a surface that exposes the Paint
+  Timing API before final dashboard-v2 release signoff.
 
 ## Decision
 
-Go/no-go: no-go for claiming the 1000-task performance budget is met.
+Go/no-go: no-go for claiming the complete 1000-task performance budget is met
+until RSS is resolved or explicitly accepted.
 
 Owner: ops.
 
-Next action: keep `FWRD-151` blocked on dashboard performance budget failures
-and prioritize a server-side/windowed data delivery follow-up before removing
-legacy dashboard compatibility.
+Next action: keep `FWRD-151` blocked on the remaining RSS budget decision and
+do not remove legacy dashboard compatibility until the RSS overage is resolved
+or accepted.

@@ -406,21 +406,28 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	readySet := taskIDSet(readyTasks)
 	gateGroups := groupGateStatuses(gates)
 	displayTasks := filterTasks(tasks, filters, s.cfg.Fairway.ProjectName)
-	missingReviewDomains, err := s.dashboardMissingReviewDomainsByTask(r.Context(), displayTasks)
-	if err != nil {
-		return DashboardViewData{}, err
-	}
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks, readySet)
 	groups := groupTasks(displayTasks, s.roles)
 	tableSource := append([]store.Task(nil), displayTasks...)
 	sortBoardRows(tableSource, filters)
 	tableRows, pagination := paginateBoardRows(tableSource, filters)
+	reviewDomainScope := displayTasks
+	if view == "board" {
+		reviewDomainScope = tableRows
+	}
+	missingReviewDomains, err := s.dashboardMissingReviewDomainsByTask(r.Context(), reviewDomainScope)
+	if err != nil {
+		return DashboardViewData{}, err
+	}
 	activeReport, err := reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
 	if err != nil {
 		return DashboardViewData{}, err
 	}
-	auditDiagnostics := s.auditDiagnostics(r.Context(), "")
+	var auditDiagnostics AuditDiagnostics
+	if view == "board" && filters.Tab == "diagnostics" {
+		auditDiagnostics = s.auditDiagnostics(r.Context(), "")
+	}
 	return DashboardViewData{
 		View:                 view,
 		Summary:              dashboardSummary(tasks, displayTasks, workstreams, readySet),
@@ -1337,18 +1344,6 @@ func filterActivity(activity []store.Activity, kind string, limit int) ([]store.
 
 func paginateBoardRows(rows []store.Task, filters TaskFilters) ([]store.Task, TablePagination) {
 	total := len(rows)
-	if total > maxTableLimit {
-		return rows, TablePagination{
-			Page:        1,
-			PageSize:    total,
-			TotalRows:   total,
-			TotalPages:  1,
-			Start:       1,
-			End:         total,
-			Virtualized: true,
-			WindowSize:  maxTableLimit,
-		}
-	}
 	pageSize := filters.TableLimit
 	if pageSize <= 0 {
 		pageSize = defaultTableLimit
@@ -1381,12 +1376,14 @@ func paginateBoardRows(rows []store.Task, filters TaskFilters) ([]store.Task, Ta
 		displayEnd = endIndex
 	}
 	pagination := TablePagination{
-		Page:       page,
-		PageSize:   pageSize,
-		TotalRows:  total,
-		TotalPages: totalPages,
-		Start:      displayStart,
-		End:        displayEnd,
+		Page:        page,
+		PageSize:    pageSize,
+		TotalRows:   total,
+		TotalPages:  totalPages,
+		Start:       displayStart,
+		End:         displayEnd,
+		Virtualized: total > maxTableLimit,
+		WindowSize:  pageSize,
 	}
 	if page > 1 {
 		pagination.PrevHref = boardPageHref(filters, page-1)

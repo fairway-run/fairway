@@ -676,18 +676,6 @@ a {
   font-size: 13px;
 }
 
-.board-table.virtualized {
-  display: block;
-  overflow: visible;
-}
-
-.board-table.virtualized thead,
-.board-table.virtualized tbody tr {
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-}
-
 .diagnostics-grid {
   display: grid;
   gap: var(--space-5);

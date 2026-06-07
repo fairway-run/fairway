@@ -79,44 +79,6 @@
     });
   });
 
-  document.querySelectorAll(".board-table[data-virtual-window]").forEach((table) => {
-    const tbody = table.querySelector("tbody");
-    const rows = Array.from(tbody?.querySelectorAll("tr") || []);
-    const windowSize = Number(table.getAttribute("data-virtual-window")) || 200;
-    const rowHeight = 42;
-    const summary = table.closest(".task-table-section")?.querySelector("[data-virtual-summary]");
-    if (!tbody || rows.length <= windowSize) return;
-    table.classList.add("virtualized");
-    tbody.style.position = "relative";
-    tbody.style.display = "block";
-    tbody.style.height = `${rows.length * rowHeight}px`;
-    rows.forEach((row) => {
-      row.style.position = "absolute";
-      row.style.left = "0";
-      row.style.right = "0";
-      row.style.height = `${rowHeight}px`;
-    });
-
-    function renderWindow() {
-      const tableRect = table.getBoundingClientRect();
-      const viewportTop = -tableRect.top;
-      const start = Math.max(0, Math.floor(viewportTop / rowHeight) - 10);
-      const end = Math.min(rows.length, start + windowSize);
-      rows.forEach((row, index) => {
-        const visible = index >= start && index < end;
-        row.hidden = !visible;
-        if (visible) row.style.transform = `translateY(${index * rowHeight}px)`;
-      });
-      if (summary) {
-        summary.textContent = `showing ${start + 1}-${end} of ${rows.length} filtered tasks`;
-      }
-    }
-
-    renderWindow();
-    window.addEventListener("scroll", renderWindow, { passive: true });
-    window.addEventListener("resize", renderWindow);
-  });
-
   document.querySelectorAll(".board-table").forEach((table) => {
     const selectAll = table.querySelector('thead input[type="checkbox"]');
     const rowChecks = Array.from(table.querySelectorAll('tbody input[type="checkbox"]'));

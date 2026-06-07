@@ -491,7 +491,7 @@ func TestBoardColumnChooserUsesURLState(t *testing.T) {
 	}
 }
 
-func TestBoardVirtualizesAboveThreshold(t *testing.T) {
+func TestBoardServerWindowsAboveThreshold(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
 	if err != nil {
@@ -506,22 +506,36 @@ func TestBoardVirtualizesAboveThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/board?table_limit=25", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?table_limit=200", nil)
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
 	for _, want := range []string{
-		`data-virtual-window="200"`,
-		"virtualized window",
-		"showing first 200 of 201 filtered tasks",
-		"Task 201",
+		`data-server-window="200"`,
+		"server window 1 of 2",
+		"showing 1-200 of 201 filtered tasks",
+		`href="/board?page=2&amp;table_limit=200"`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("virtual board missing %q:\n%s", want, body)
+			t.Fatalf("server-windowed board missing %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, "page 1 of") {
-		t.Fatalf("virtual board should not render page controls:\n%s", body)
+	if strings.Contains(body, "Task 201") {
+		t.Fatalf("first board window should not render rows outside the server slice:\n%s", body)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/board?table_limit=200&page=2", nil)
+	rec = httptest.NewRecorder()
+	server.board(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{
+		"Task 201",
+		"server window 2 of 2",
+		"showing 201-201 of 201 filtered tasks",
+		`href="/board?table_limit=200"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("second board window missing %q:\n%s", want, body)
+		}
 	}
 }
 
@@ -544,8 +558,8 @@ func TestBoardDoesNotVirtualizeAtThreshold(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	if strings.Contains(body, `data-virtual-window`) {
-		t.Fatalf("board should not virtualize at threshold:\n%s", body)
+	if strings.Contains(body, `data-server-window`) {
+		t.Fatalf("board should not server-window at threshold:\n%s", body)
 	}
 	if !strings.Contains(body, "showing 1-200 of 200 filtered tasks") {
 		t.Fatalf("board threshold footer wrong:\n%s", body)
