@@ -990,6 +990,40 @@ func TestTaskDetailRendersMetadata(t *testing.T) {
 	}
 }
 
+func TestTaskDetailRendersPartialApprovalWhenReviewDomainsMissing(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{
+		ID:            "T-001",
+		Title:         "Needs domain reviews",
+		Kind:          "dashboard",
+		Role:          "ui",
+		ReviewDomains: []string{"architecture", "governance"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-001", store.Review{Reviewer: "architecture", Verdict: "approve", Reason: "arch ok"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"review partial_approval", "Missing required domains", "governance"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail partial approval missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "review approved") {
+		t.Fatalf("dashboard summarized partial review as approved:\n%s", body)
+	}
+}
+
 func TestDashboardClaimRequiresCSRFAndAudits(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

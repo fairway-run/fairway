@@ -270,6 +270,7 @@ type TaskDetailViewData struct {
 	Handoffs             []store.Handoff
 	Reviews              []store.Review
 	MissingReviewDomains []string
+	ReviewStatus         string
 	TaskSessions         []store.Session
 	Usage                []store.ProviderUsage
 	UsageRollups         []store.UsageRollup
@@ -1716,6 +1717,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	missingReviewDomains := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -1727,7 +1729,8 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Evidence:             evidence,
 		Handoffs:             handoffs,
 		Reviews:              reviews,
-		MissingReviewDomains: dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews),
+		MissingReviewDomains: missingReviewDomains,
+		ReviewStatus:         dashboardEffectiveReviewStatus(task.ReviewStatus, missingReviewDomains),
 		TaskSessions:         sessionsForDashboardTask(sessions, id),
 		Usage:                usageEvents,
 		UsageRollups:         usageRollups,
@@ -1785,6 +1788,13 @@ func dashboardMissingApprovedReviewDomains(domains []string, reviews []store.Rev
 		}
 	}
 	return missing
+}
+
+func dashboardEffectiveReviewStatus(stored string, missingReviewDomains []string) string {
+	if stored == "approved" && len(missingReviewDomains) > 0 {
+		return "partial_approval"
+	}
+	return stored
 }
 
 func (s *Server) dashboardMissingReviewDomainsByTask(ctx context.Context, tasks []store.Task) (map[string][]string, error) {

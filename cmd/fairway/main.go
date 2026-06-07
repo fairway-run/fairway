@@ -6687,8 +6687,10 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	}
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 		return printJSON(struct {
 			Task                 store.Task            `json:"task"`
+			ReviewStatus         string                `json:"review_status"`
 			Transitions          []store.Transition    `json:"transitions"`
 			Evidence             []store.Evidence      `json:"evidence"`
 			Handoffs             []store.Handoff       `json:"handoffs"`
@@ -6698,9 +6700,11 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 			Usage                []store.ProviderUsage `json:"usage"`
 			UsageRollups         []store.UsageRollup   `json:"usage_rollups"`
 			Batches              []store.WorkBatch     `json:"batches"`
-		}{task, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions, usageEvents, usageRollups, batches})
+		}{task, reviewStatus, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions, usageEvents, usageRollups, batches})
 	}
-	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
+	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
+	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, reviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
 	fmt.Println("\ndependencies:")
 	for _, dep := range task.Definition.Dependencies {
@@ -6734,7 +6738,6 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	for _, r := range reviews {
 		fmt.Printf("- %s by %s: %s\n", r.Verdict, r.Reviewer, r.Reason)
 	}
-	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	if len(missingReviewDomains) > 0 {
 		fmt.Println("\nmissing review domains:")
 		for _, domain := range missingReviewDomains {
@@ -6767,6 +6770,13 @@ func formatUsageInt(value *int) string {
 		return "unknown"
 	}
 	return strconv.Itoa(*value)
+}
+
+func effectiveReviewStatus(stored string, missingReviewDomains []string) string {
+	if stored == "approved" && len(missingReviewDomains) > 0 {
+		return "partial_approval"
+	}
+	return stored
 }
 
 func firstNonEmpty(values ...string) string {

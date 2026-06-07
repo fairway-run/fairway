@@ -14,7 +14,7 @@
 <div class="detail-meta">
 <span class="status-pill {{statusClass .Task.Status}}">{{.Task.Status}}</span>
 {{if .Task.Owner}}<span>owner {{.Task.Owner}}</span>{{end}}
-{{if .Task.ReviewStatus}}<span>review {{.Task.ReviewStatus}}</span>{{end}}
+{{if .ReviewStatus}}<span>review {{.ReviewStatus}}</span>{{end}}
 {{if .Rollup.Total}}<span>descendants {{.Rollup.Done}}/{{.Rollup.Total}}</span>{{end}}
 </div>
 </div>

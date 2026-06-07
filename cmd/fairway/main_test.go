@@ -485,7 +485,16 @@ func TestCLI_MergeReadyRequiresReviewDomains(t *testing.T) {
 	runOK(t, "record", "review", "T-001", "--reviewer", "architecture", "--verdict", "approve", "--reason", "arch ok")
 	failed = runCaptureAllowError(t, "merge-ready", "T-001")
 	assertContains(t, failed, "missing approved review for domain security")
+	detail = runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "review: partial_approval")
+	if strings.Contains(detail, "review: approved") {
+		t.Fatalf("task detail summarized partial review as approved:\n%s", detail)
+	}
+	jsonDetail = runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, jsonDetail, `"review_status": "partial_approval"`)
 	runOK(t, "record", "review", "T-001", "--reviewer", "security", "--verdict", "approve", "--reason", "security ok")
+	detail = runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "review: approved")
 	runOK(t, "merge-ready", "T-001")
 }
 

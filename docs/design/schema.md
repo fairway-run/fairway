@@ -78,7 +78,7 @@ Mutable per-task execution state. One row per task.
 | `completed_at` | DATETIME | |
 | `commit_sha` | TEXT | Commit that satisfied the task, when done. |
 | `review_required` | BOOLEAN NOT NULL DEFAULT 0 | Set by `fairway route review`. |
-| `review_status` | TEXT | `not_required` / `pending` / `approved` / `changes_requested`. |
+| `review_status` | TEXT | Denormalized latest review status: `not_required` / `pending` / `approved` / `changes_requested`. CLI and dashboard detail views may display `partial_approval` when this value is `approved` but required `review_domains` are still missing. |
 | `reviewer` | TEXT | Latest routed or recorded reviewer. |
 | `reviewed_at` | DATETIME | Latest review timestamp, when any. |
 | `review_note` | TEXT | Latest review summary, when any. |
@@ -190,6 +190,12 @@ in the same transaction. Readers may use the denormalized columns for current
 state, but historical review questions must query `task_reviews`. Verdicts map
 to current review status as `approve` → `approved`; `changes` or `reject` →
 `changes_requested`.
+
+Required review-domain completeness is evaluated from `task_reviews` plus
+`task_definitions.review_domains`; it is not encoded directly in
+`task_state.review_status`. User-facing CLI/dashboard detail views should not
+summarize a latest `approved` review as domain-complete approval while required
+domains are missing; they render that case as `partial_approval`.
 
 ### `agent_sessions`
 
