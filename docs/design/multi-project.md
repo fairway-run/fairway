@@ -53,9 +53,10 @@ Names must be unique across the registry. `fairway register` refuses duplicates 
 - Opens the registry.
 - `ATTACH DATABASE` each registered DB into a single SQLite session.
 - Read views `UNION ALL` across attached DBs. Each row already carries `project_id` — no need to project it from config.
-- The lanes strip groups lanes under project headers.
+- The wall lanes strip groups lanes under project headers.
+- `/board` exposes the project selector as URL-backed project filter state and
+  an active project filter chip.
 - The activity feed prefixes entries with `[project] `.
-- Filter chips include a project filter.
 
 Single-project and multi-project queries share the same Go view layer; the multi-project path swaps the data source.
 

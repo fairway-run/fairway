@@ -9,6 +9,11 @@ and uses semantic versioning.
 
 ### Added
 
+- Dashboard v2 is now the unified dashboard system: `/` serves the wall,
+  `/board` serves the operator board with URL-backed sorting, search, filters,
+  columns, bulk actions, and CSV/JSON export, `/board?tab=diagnostics` serves
+  operational diagnostics, `/reports` serves retrospectives, and `/tasks/<id>`
+  remains task detail.
 - Active-work reconciliation now detects monitor sessions without backing proof,
   so CI/deploy/UAT/provider monitors cannot leave fake active work behind when
   no automation, process, external poller, or bounded manual checkpoint exists.
@@ -66,6 +71,14 @@ and uses semantic versioning.
 
 - GPUaaS remains the first adoption example, while Fairway core stays generic
   around profiles, evidence, reviews, readiness, and risk.
+- The legacy mixed dashboard is deprecated. This release ignores
+  `[dashboard] surface`; the next release will flip any remaining compatibility
+  flags to the v2 surfaces by default, and the following release will remove
+  v1-only dashboard compatibility paths.
+- Saved links that used `/?status=<state>` should migrate to
+  `/board?status=<state>`. Other board state is query-string based, so saved
+  `/board` links for filters, sort, columns, page, and project remain
+  shareable.
 - Docusaurus navigation now prioritizes current product docs, release notes,
   and governance; historical GPUaaS adoption and dashboard redesign material
   moved to archive/provenance.
