@@ -930,3 +930,49 @@ tasks:
       - Agent docs state the operating rule: agents do not poll CI; watcher utilities poll CI and emit Fairway handbacks; agents act on handbacks.
       - Work batch docs explain that batching related tasks plus utility monitoring is the preferred path for reducing CI churn and provider-token spend.
       - Tests cover pass, fail, timeout/stale, ready-work handback, no-ready-work completion, and missing monitor backing proof.
+
+  - id: FW-129
+    title: Add tool-first utility adapter contract
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: utilities
+    source_paths:
+      - docs/agent-guide.md
+      - docs/design/watchers.md
+      - docs/design/cli.md
+      - examples/session-adapters
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/reconcile
+      - internal/dashboard
+    target_paths:
+      - docs/agent-guide.md
+      - docs/design/watchers.md
+      - docs/design/cli.md
+      - examples/session-adapters/utility-event.sh
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/reconcile
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - backend
+    risk_level: medium
+    migration_type: tool-first-utility-adapter-contract
+    depends_on:
+      - FW-116
+      - FW-118
+      - FW-128
+    acceptance_checks:
+      - Fairway defines a provider-neutral utility adapter contract for deterministic, repetitive, or pollable work that should not consume provider-agent tokens.
+      - Utility events can record task id, batch id, role, utility name, command, external run id, started/heartbeat/completed/failed/timeout/stale state, evidence artifacts, and recommended next action.
+      - CLI or adapter example supports emitting utility handbacks into existing session, checkpoint, evidence, and reconcile surfaces without creating provider-specific dependencies.
+      - Dashboard and reconcile output distinguish utility work from active agent/provider work and show when a human or agent decision is required.
+      - Docs define the operating rule: use tools/scripts for deterministic or pollable work, reports/classifiers for repetitive summarization, agents for judgment, and high-context agents for architecture/release/risk.
+      - Examples cover at least CI monitoring, codegen drift check, release asset check, and registry/image freshness check as utility-shaped workflows.
+      - Tests cover utility pass, fail, timeout/stale, next-action handback, evidence attachment, and no active provider session required.

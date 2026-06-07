@@ -134,6 +134,21 @@ This prevents token-heavy provider sessions from sitting idle during 15-20
 minute CI windows, while still preserving a durable audit trail for what was
 watched and what happened next.
 
+CI monitor utilities are one example of the broader Fairway tool-first model.
+The same shape should apply to deterministic operational work such as deploy
+status checks, codegen drift checks, stale-branch scans, release asset checks,
+registry/image freshness checks, and dashboard/report audits. Fairway support
+needed for these utilities is:
+
+- a stable adapter contract for tool state and handback events;
+- session/checkpoint/evidence recording without an active provider chat;
+- dashboard and reconcile output that distinguishes utility work from agent
+  judgment work;
+- next-action recommendations that an agent can consume without parsing raw
+  logs;
+- usage reporting that attributes agent tokens only to judgment or execution
+  work, not to utility polling.
+
 ## Packet Shape
 
 ```yaml

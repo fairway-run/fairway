@@ -267,6 +267,31 @@ can be grouped into a work batch with one branch, one validation command set,
 one review path, and one CI/deploy-run. Use separate runs only when ownership,
 rollback, risk, sequencing, or failure diagnosis requires it.
 
+## Tool-First Operating Rule
+
+Do not route deterministic, repetitive, or pollable work through an agent just
+because an agent can do it. Prefer this order:
+
+1. utility or script for deterministic/pollable work,
+2. report or classifier for repetitive summarization,
+3. lightweight provider session for bounded implementation or docs,
+4. high-context agent/reviewer for judgment, architecture, release, or risk.
+
+Fairway should make tool output easy to consume. A utility should emit enough
+structured state for Fairway to record:
+
+- task id, batch id, role, and provider/tool name;
+- command or external run id;
+- started, heartbeat, completed, failed, timeout, or stale state;
+- evidence artifact paths or URLs;
+- recommended next action;
+- whether a human/agent decision is required.
+
+Agents should act on those recorded facts instead of re-running status checks
+or re-summarizing raw logs in conversation. If a repeated workflow cannot be
+captured by a utility yet, create a Fairway backlog task for the missing tool
+surface rather than adding more provider-routing rules.
+
 ## Provider Usage Accounting
 
 Provider usage is attribution and planning telemetry, not a completion gate.
