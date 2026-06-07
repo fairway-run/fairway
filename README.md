@@ -7,9 +7,12 @@
 **Coordination control plane for multi-agent engineering work.**
 
 Fairway is a local-first coordination tool for teams running multiple coding
-agents in parallel on one repository. It gives each lane a task queue, state
-machine, worktree, evidence trail, handoff/review flow, session record, and live
-dashboard.
+agents in parallel on one repository. Traffic-control lane coordination was the
+original primitive: each lane has a task queue, state machine, worktree,
+evidence trail, handoff/review flow, session record, and live dashboard. The
+product has grown from that primitive into a coordination control plane for
+ownership, evidence, reviews, readiness, risk, usage attribution, utility
+handbacks, and release posture.
 
 Use it when the problem is not "can an agent write code?" but "can several
 agents work at once without losing ownership, context, review state, or proof of
@@ -42,7 +45,8 @@ Multi-agent engineering breaks down when coordination lives in chat threads:
 - long UAT or deployment work leaves stale state behind.
 
 Fairway keeps those facts in a local execution store instead of depending on
-provider memory.
+provider memory, issue tracker comments, or CI logs as the coordination source
+of truth.
 
 ## What It Is
 
@@ -50,14 +54,23 @@ provider memory.
 - A CLI for claiming tasks, recording handoffs / evidence / reviews, managing sessions.
 - A local web dashboard with wall, board, diagnostics, and task-detail flows.
 - Config-driven: roles, branches, worktree paths, review routing, workstream profiles, packet templates, and the state machine are all defined in `.fairway/config.toml`.
+- Tracker-friendly: Plane, Jira, Linear, GitHub Issues, and similar tools can
+  mirror planning context, but Fairway remains authoritative for local execution
+  state, evidence, reviews, sessions, and merge readiness.
 
 ## What It Is Not
 
-- Not a workflow engine (Temporal, Cadence).
+- Not a workflow engine (Temporal, Cadence, Argo Workflows).
 - Not an IAM tool.
 - Not a CI runner.
-- Not an LLM provider abstraction — fairway dispatches to whatever agent you run inside a worktree; it does not spawn agents itself.
-- Not an autonomous approval, merge, deploy, or cleanup engine.
+- Not an issue tracker replacement for stakeholder planning.
+- Not an LLM provider abstraction. Fairway records provider-neutral sessions
+  and adapter-supplied usage metadata; providers remain external.
+- Not an autonomous approval, claim, merge, push, deploy, or cleanup engine.
+- Not a transcript, prompt, secret, provider-token, or credential store by
+  default.
+- Not a token-cost gate. Usage accounting is advisory planning telemetry, not a
+  task completion gate.
 
 ## Quickstart
 

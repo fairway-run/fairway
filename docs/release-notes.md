@@ -4,6 +4,12 @@ Fairway `v0.1.1` is the first public release with signed/notarized macOS
 artifacts and a Homebrew cask. The initial `v0.1.0` release artifact was yanked
 because its CLI version metadata still reported the development version.
 
+Product boundary reminder for current releases: Fairway is a coordination
+control plane, not an autonomous workflow engine, CI runner, issue tracker
+replacement, LLM provider abstraction, credential store, or provider-cost gate.
+Release and adapter work must preserve the rules in
+[Product boundaries](design/product-boundaries.md).
+
 ## v0.1.3
 
 ### What Changed

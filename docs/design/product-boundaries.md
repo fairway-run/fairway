@@ -23,6 +23,7 @@ accounting, and dashboard features do not drift into hidden decision-making.
 
 ## Fairway Will Not Do
 
+- Auto-claim ready tasks or silently transfer ownership between lanes.
 - Auto-approve reviews or waive required review domains.
 - Auto-merge branches or auto-push commits.
 - Auto-delete local branches, worktrees, or task state without an explicit
@@ -34,6 +35,9 @@ accounting, and dashboard features do not drift into hidden decision-making.
 - Become a workflow/DAG engine. Fairway coordinates human-paced engineering
   lanes; it does not replace Temporal, Cadence, Argo Workflows, or similar
   systems.
+- Replace external planning tools. Plane, Jira, Linear, and GitHub Issues can
+  mirror roadmap or stakeholder context; they do not own Fairway execution
+  state.
 - Become an LLM provider abstraction. Fairway records sessions and usage
   metadata supplied by adapters; providers remain external.
 - Store prompts, transcripts, secrets, provider credentials, or private auth

@@ -94,6 +94,13 @@ queue. In this repository that is
 from those files becomes active work, promote it into the active backlog and
 import/reconcile the DB before claiming it.
 
+Product boundaries are explicit: Fairway coordinates work; it does not
+auto-claim, auto-approve, auto-merge, auto-push, deploy, perform destructive
+cleanup, store provider credentials/transcripts/prompts by default, or gate
+completion on provider usage. See
+[design/product-boundaries.md](design/product-boundaries.md) before adding a
+new adapter, controller, tracker, usage, or release automation path.
+
 ## Active Work Visibility
 
 Dashboard wall visibility is driven by both task state and session state. A task

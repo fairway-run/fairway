@@ -2,19 +2,29 @@
 
 ## Vision
 
-Fairway is the smallest tool that makes running 2–6 coding agents in parallel feel coordinated rather than chaotic.
+Fairway is the smallest tool that makes running 2-6 coding agents in parallel
+feel coordinated rather than chaotic.
 
 Fairway is a local-first coordination control plane for multi-agent engineering
 work: tasks, ownership, evidence, reviews, handoffs, sessions, readiness, and
 risk.
 
-The benchmark: a solo developer with three Claude lanes and one Codex lane open should never lose track of which agent is doing what, why a task is stuck, or who is blocking whom.
+Traffic-control lanes were the first useful primitive: one lane, one role, one
+worktree, one visible task state. The product direction is broader but still
+bounded: Fairway coordinates the facts around multi-agent engineering work
+without becoming the system that performs or approves that work.
+
+The benchmark: a solo developer with three Claude lanes and one Codex lane open
+should never lose track of which agent is doing what, why a task is stuck, which
+evidence exists, or who is blocking whom.
 
 ## Principles
 
 1. **Local-first.** Single binary, SQLite, no network required for any core feature. The dashboard binds to localhost by default.
 2. **Config over code.** Roles, branches, states, review routing, and gates are TOML. Changing them does not require a rebuild.
-3. **The DB is the source of truth.** Imports are one-shot. No sync, no eventual consistency, no reconciliation worker.
+3. **The DB is the runtime source of truth.** Backlog files define task shape;
+   the DB owns claims, status, evidence, sessions, reviews, checkpoints, and
+   handbacks. No hidden sync loop.
 4. **The CLI is feature-complete.** Anything you can do in the dashboard, you can do from the CLI. The dashboard is a view, not a privileged surface.
 5. **Boringly portable.** Pure Go, no CGO, single binary, works the same on macOS / Linux / Windows.
 6. **Hospitable defaults.** A new user gets value from `fairway init` + `fairway dashboard` before they touch a config file.
@@ -102,13 +112,21 @@ each version ships.
 
 These will never be in fairway:
 
+- Auto-claiming or silently moving work between lanes.
+- Auto-approving reviews or waiving required review domains.
+- Auto-merging branches, auto-pushing commits, or auto-deploying releases.
+- Destructive branch, worktree, remote, or state cleanup without an explicit
+  operator command.
 - A workflow / DAG engine.
 - An IAM / permissions system.
 - An LLM provider abstraction.
 - A CI runner.
 - A SaaS hosted offering.
 - An autonomous approval, merge, deploy, or cleanup engine.
-- A transcript, prompt, secret, or provider-credential store by default.
+- A transcript, prompt, secret, generated-content, cookie, or
+  provider-credential store by default.
+- A cost gate for task completion, review, merge readiness, or release
+  promotion. Provider usage accounting is advisory planning telemetry.
 - A product-specific task taxonomy hardcoded into core.
 
 If a feature pushes toward any of those, it goes in a different tool.
