@@ -651,11 +651,20 @@ func TestProviderOTelIngestAdapter(t *testing.T) {
     ]},
     "scopeMetrics": [{"metrics": [{
       "name": "claude_code.token.usage",
+      "sum": {"dataPoints": [
+        {"asInt": "50", "attributes": [{"key":"token.type","value":{"stringValue":"input"}},{"key":"provider.session_id","value":{"stringValue":"claude-run-1"}}]},
+        {"asInt": "20", "attributes": [{"key":"token.type","value":{"stringValue":"cache_read"}},{"key":"provider.session_id","value":{"stringValue":"claude-run-1"}}]},
+        {"asInt": "8", "attributes": [{"key":"token.type","value":{"stringValue":"cache_creation"}},{"key":"provider.session_id","value":{"stringValue":"claude-run-1"}}]},
+        {"asInt": "30", "attributes": [{"key":"token.type","value":{"stringValue":"output"}},{"key":"provider.session_id","value":{"stringValue":"claude-run-1"}}]},
+        {"asInt": "88", "attributes": [{"key":"token.type","value":{"stringValue":"total"}},{"key":"provider.session_id","value":{"stringValue":"claude-run-1"}}]}
+      ]}
+    }, {
+      "name": "claude_code.cost.usage",
       "sum": {"dataPoints": [{
-        "asInt": "88",
+        "asDouble": 0.42,
         "attributes": [
-          {"key":"token.type","value":{"stringValue":"total"}},
-          {"key":"provider.session_id","value":{"stringValue":"claude-run-1"}}
+          {"key":"provider.session_id","value":{"stringValue":"claude-run-1"}},
+          {"key":"claude_code.query.source","value":{"stringValue":"cli"}}
         ]
       }]}
     }]}]
@@ -667,8 +676,54 @@ func TestProviderOTelIngestAdapter(t *testing.T) {
 	assertContains(t, out, "record usage T-002")
 	assertContains(t, out, "--provider claude")
 	assertContains(t, out, "--external-session-id claude-run-1")
+	assertContains(t, out, "--input-tokens 50")
+	assertContains(t, out, "--cached-input-tokens 20")
+	assertContains(t, out, "--output-tokens 30")
 	assertContains(t, out, "--total-tokens 88")
+	assertContains(t, out, "--metadata cache_creation=8")
+	assertContains(t, out, "--metadata cost=0.42")
+	assertContains(t, out, "--metadata query_source=cli")
 	assertNotContains(t, out, "--input-tokens 0")
+
+	claudeRequestOTel := filepath.Join(repo, "claude-request-otel.json")
+	if err := os.WriteFile(claudeRequestOTel, []byte(`{
+  "resourceLogs": [{
+    "resource": {"attributes": [
+      {"key":"fairway.task_id","value":{"stringValue":"T-CLAUDE"}},
+      {"key":"fairway.role","value":{"stringValue":"backend"}},
+      {"key":"service.name","value":{"stringValue":"claude_code"}}
+    ]},
+    "scopeLogs": [{"logRecords": [{
+      "attributes": [
+        {"key":"claude_code.session.id","value":{"stringValue":"claude-session-9"}},
+        {"key":"claude_code.api.request.id","value":{"stringValue":"req-9"}},
+        {"key":"claude_code.api.request.model","value":{"stringValue":"claude-opus-4"}},
+        {"key":"claude_code.api.request.input_tokens","value":{"intValue":"101"}},
+        {"key":"claude_code.api.request.cache_read_input_tokens","value":{"intValue":"60"}},
+        {"key":"claude_code.api.request.cache_creation_input_tokens","value":{"intValue":"11"}},
+        {"key":"claude_code.api.response.output_tokens","value":{"intValue":"33"}},
+        {"key":"claude_code.api.request.total_tokens","value":{"intValue":"134"}},
+        {"key":"claude_code.cost.usage","value":{"doubleValue":0.7}},
+        {"key":"claude_code.query.source","value":{"stringValue":"mcp"}}
+      ]
+    }]}]
+  }]
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = runAdapter(t, script, "--input", claudeRequestOTel, "--dry-run")
+	assertContains(t, out, "record usage T-CLAUDE")
+	assertContains(t, out, "--provider claude")
+	assertContains(t, out, "--external-session-id claude-session-9")
+	assertContains(t, out, "--model claude-opus-4")
+	assertContains(t, out, "--input-tokens 101")
+	assertContains(t, out, "--cached-input-tokens 60")
+	assertContains(t, out, "--output-tokens 33")
+	assertContains(t, out, "--total-tokens 134")
+	assertContains(t, out, "--metadata request_id=req-9")
+	assertContains(t, out, "--metadata cache_creation=11")
+	assertContains(t, out, "--metadata cost=0.7")
+	assertContains(t, out, "--metadata query_source=mcp")
 
 	unknownOTel := filepath.Join(repo, "unknown-otel.json")
 	if err := os.WriteFile(unknownOTel, []byte(`{"fairway.task_id":"T-003","provider":"shell","fairway.usage.source":"unknown","fairway.usage.confidence":"unknown"}`), 0o644); err != nil {
@@ -682,7 +737,7 @@ func TestProviderOTelIngestAdapter(t *testing.T) {
 	assertNotContains(t, out, "--total-tokens 0")
 
 	sensitiveOTel := filepath.Join(repo, "sensitive-otel.json")
-	if err := os.WriteFile(sensitiveOTel, []byte(`{"fairway.task_id":"T-004","provider":"codex","prompt":"do not store"}`), 0o644); err != nil {
+	if err := os.WriteFile(sensitiveOTel, []byte(`{"fairway.task_id":"T-004","provider":"codex","prompt_text":"do not store"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("bash", script, "--input", sensitiveOTel, "--dry-run")

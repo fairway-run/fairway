@@ -172,7 +172,7 @@ Expected adapter behavior:
 |---|---|
 | OTel receiver | Provider-supported OTLP logs, metrics, or traces mapped into normalized Fairway usage records. |
 | Codex | OTel `response.completed` token counts or `codex exec --json` `turn.completed.usage`; otherwise caller-supplied start/end snapshots. The provider-specific mapping is tracked by `FW-124`. |
-| Claude | OTel token/cost metrics and API request events; otherwise provider-reported session summary or manual snapshot. The provider-specific mapping is tracked by `FW-126`. |
+| Claude | OTel token/cost metrics and API request events; otherwise provider-reported session summary or manual snapshot. Claude Code OTel mapping landed in `FW-126`. |
 | Gemini | Provider-supported telemetry or usage metadata if exposed; otherwise start/end snapshots. |
 | tmux/shell | Elapsed time and optional manually supplied usage only. |
 
@@ -248,6 +248,40 @@ examples/session-adapters/codex-usage-adapter.sh \
 Use `--dry-run` before recording when introducing a new Codex surface. Unknown
 or absent token fields are omitted from the generated `fairway record usage`
 command, which preserves them as unknown/null in Fairway.
+
+Claude Code usage should use provider-supported OTel, not private local Claude
+logs or transcripts. Fairway maps these Claude Code attributes through
+`provider-otel-ingest.sh`:
+
+| Normalized field | Claude Code examples |
+|---|---|
+| Provider | `service.name=claude_code`, normalized to `claude` |
+| Session/request | `claude_code.session.id`, `claude_code.request.id`, `claude_code.api.request.id` |
+| Query source | `claude_code.query.source`, stored as safe metadata `query_source` |
+| Model | `claude_code.model`, `claude_code.api.request.model` |
+| Input tokens | `claude_code.token.input`, `claude_code.api.request.input_tokens`, `claude_code.api.request.prompt_tokens` |
+| Cache-read tokens | `claude_code.token.cache_read`, `claude_code.api.request.cache_read_input_tokens` |
+| Cache-creation tokens | `claude_code.token.cache_creation`, `claude_code.api.request.cache_creation_input_tokens`, stored as safe metadata `cache_creation` |
+| Output tokens | `claude_code.token.output`, `claude_code.api.response.output_tokens`, `claude_code.api.request.output_tokens` |
+| Total tokens | `claude_code.token.total`, `claude_code.api.request.total_tokens` |
+| Cost | `claude_code.cost.usage`, `claude_code.cost.usd`, stored as safe metadata `cost` |
+
+Example usage-only Claude Code telemetry setup:
+
+```bash
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+export OTEL_RESOURCE_ATTRIBUTES="fairway.task_id=FW-126,fairway.session_id=claude-fw-126,fairway.role=backend,fairway.phase=implementation"
+unset OTEL_LOG_USER_PROMPTS
+unset OTEL_LOG_RAW_API_BODIES
+```
+
+Keep prompt, tool-body, raw API body, transcript, and generated-content logging
+disabled for usage accounting. The adapter only needs token/cost metrics and
+structural request attributes.
 
 ## CLI Contract
 

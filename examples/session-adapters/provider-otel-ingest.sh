@@ -58,7 +58,7 @@ input, fairway_bin, default_task_id, default_session_id, default_role, default_p
 raw = input == "-" ? STDIN.read : File.read(input)
 root = JSON.parse(raw)
 
-SENSITIVE_KEY = /(prompt|transcript|secret|password|cookie|api[_-]?key|bearer|authorization|raw[_-]?body|tool[_-]?body|input[_-]?text|output[_-]?text|content|completion[_-]?(text|content|message)|message)/i
+SENSITIVE_KEY = /(prompt[_-]?(text|content|message)|transcript|secret|password|cookie|api[_-]?key|bearer|authorization|raw[_-]?body|tool[_-]?body|input[_-]?text|output[_-]?text|content|completion[_-]?(text|content|message)|message)/i
 
 def otel_value(value)
   return nil unless value.is_a?(Hash)
@@ -186,10 +186,11 @@ end
 def safe_metadata(attrs)
   out = {}
   {
-    "request_id" => ["gen_ai.operation.name", "request.id", "provider.request_id", "otel.span_id"],
+    "request_id" => ["gen_ai.operation.name", "request.id", "provider.request_id", "claude_code.request.id", "claude_code.api.request.id", "otel.span_id"],
     "track" => ["fairway.track"],
-    "cache_creation" => ["gen_ai.usage.cache_creation_tokens", "cache_creation_tokens", "claude_code.usage.cache_creation_tokens"],
-    "cost" => ["gen_ai.usage.cost", "claude_code.cost.usage", "cost"]
+    "query_source" => ["claude_code.query.source", "query.source"],
+    "cache_creation" => ["gen_ai.usage.cache_creation_tokens", "cache_creation_tokens", "claude_code.usage.cache_creation_tokens", "claude_code.token.cache_creation", "claude_code.api.request.cache_creation_input_tokens"],
+    "cost" => ["gen_ai.usage.cost", "claude_code.cost.usage", "claude_code.cost.usd", "cost"]
   }.each do |target, keys|
     value = first(attrs, keys)
     next if value.empty?
@@ -202,11 +203,21 @@ def safe_metadata(attrs)
   out
 end
 
+def normalize_provider(provider)
+  case provider.to_s
+  when "claude_code", "claude-code", "anthropic.claude"
+    "claude"
+  else
+    provider.to_s
+  end
+end
+
 events = each_event(root)
 commands = []
 events.each do |attrs|
   metadata = safe_metadata(attrs)
   provider = first(attrs, ["fairway.provider", "gen_ai.system", "llm.provider", "ai.provider", "provider", "service.name"])
+  provider = normalize_provider(provider)
   provider = default_provider if provider.empty?
   task_id = first(attrs, ["fairway.task_id", "task.id"])
   task_id = default_task_id if task_id.empty?
@@ -215,18 +226,18 @@ events.each do |attrs|
   args = [fairway_bin, "record", "usage", task_id, "--provider", provider]
   {
     "--session-id" => first(attrs, ["fairway.session_id", "session.id"]),
-    "--external-session-id" => first(attrs, ["provider.session_id", "provider.thread_id", "thread.id", "conversation.id", "gen_ai.conversation.id", "request.id"]),
+    "--external-session-id" => first(attrs, ["provider.session_id", "claude_code.session.id", "claude_code.conversation.id", "provider.thread_id", "thread.id", "conversation.id", "gen_ai.conversation.id", "claude_code.request.id", "claude_code.api.request.id", "request.id"]),
     "--role" => first(attrs, ["fairway.role", "role"]),
     "--phase" => first(attrs, ["fairway.phase", "phase"]),
     "--source" => first(attrs, ["fairway.usage.source"]),
     "--confidence" => first(attrs, ["fairway.usage.confidence"]),
     "--completed-at" => timestamp_value(attrs),
-    "--model" => first(attrs, ["gen_ai.response.model", "gen_ai.request.model", "model", "llm.model_name"]),
-    "--input-tokens" => int_value(attrs, ["gen_ai.usage.input_tokens", "input_tokens", "llm.usage.prompt_tokens", "prompt_tokens", "codex.usage.input_tokens", "claude_code.token.input"]),
-    "--cached-input-tokens" => int_value(attrs, ["gen_ai.usage.cached_input_tokens", "gen_ai.usage.input_token_details.cache_read", "cached_input_tokens", "cache_read_input_tokens", "codex.usage.cached_input_tokens", "claude_code.token.cache_read"]),
-    "--output-tokens" => int_value(attrs, ["gen_ai.usage.output_tokens", "output_tokens", "llm.usage.completion_tokens", "completion_tokens", "codex.usage.output_tokens", "claude_code.token.output"]),
-    "--reasoning-tokens" => int_value(attrs, ["gen_ai.usage.reasoning_tokens", "reasoning_tokens", "codex.usage.reasoning_tokens"]),
-    "--total-tokens" => int_value(attrs, ["gen_ai.usage.total_tokens", "total_tokens", "llm.usage.total_tokens", "codex.usage.total_tokens", "claude_code.token.total"]),
+    "--model" => first(attrs, ["gen_ai.response.model", "gen_ai.request.model", "model", "llm.model_name", "claude_code.model", "claude_code.api.request.model"]),
+    "--input-tokens" => int_value(attrs, ["gen_ai.usage.input_tokens", "input_tokens", "llm.usage.prompt_tokens", "prompt_tokens", "codex.usage.input_tokens", "claude_code.token.input", "claude_code.api.request.input_tokens", "claude_code.api.request.prompt_tokens"]),
+    "--cached-input-tokens" => int_value(attrs, ["gen_ai.usage.cached_input_tokens", "gen_ai.usage.input_token_details.cache_read", "cached_input_tokens", "cache_read_input_tokens", "codex.usage.cached_input_tokens", "claude_code.token.cache_read", "claude_code.api.request.cache_read_input_tokens"]),
+    "--output-tokens" => int_value(attrs, ["gen_ai.usage.output_tokens", "output_tokens", "llm.usage.completion_tokens", "completion_tokens", "codex.usage.output_tokens", "claude_code.token.output", "claude_code.api.request.output_tokens", "claude_code.api.response.output_tokens", "claude_code.api.request.completion_tokens"]),
+    "--reasoning-tokens" => int_value(attrs, ["gen_ai.usage.reasoning_tokens", "reasoning_tokens", "codex.usage.reasoning_tokens", "claude_code.token.reasoning"]),
+    "--total-tokens" => int_value(attrs, ["gen_ai.usage.total_tokens", "total_tokens", "llm.usage.total_tokens", "codex.usage.total_tokens", "claude_code.token.total", "claude_code.api.request.total_tokens"]),
     "--elapsed-seconds" => int_value(attrs, ["fairway.elapsed_seconds", "elapsed_seconds"])
   }.each do |flag, value|
     value = default_session_id if flag == "--session-id" && value.empty?

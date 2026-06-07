@@ -365,6 +365,33 @@ examples/session-adapters/codex-usage-adapter.sh \
 Remove `--dry-run` only after confirming the generated command contains counts
 and metadata, not prompt text or generated content.
 
+For Claude Code, enable usage-only OTel and keep content logging disabled:
+
+```bash
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+export OTEL_RESOURCE_ATTRIBUTES="fairway.task_id=<task-id>,fairway.session_id=<session-id>,fairway.role=<role>,fairway.phase=implementation"
+unset OTEL_LOG_USER_PROMPTS
+unset OTEL_LOG_RAW_API_BODIES
+```
+
+Then feed exported OTLP JSON through:
+
+```bash
+examples/session-adapters/provider-otel-ingest.sh \
+  --input dist/claude-code-otel.json \
+  --provider claude \
+  --task-id <task-id> \
+  --role <role> \
+  --dry-run
+```
+
+Claude Code token and cost metrics map into Fairway usage records; cost is
+preserved only as safe metadata for later planning, not pricing or gating.
+
 Use `fairway task-detail <task-id>` or `fairway usage report --by provider` to
 inspect recorded usage. Rollups are available by `provider`, `task`, `epic`,
 `role`, `day`, `kind`, and `phase`.
