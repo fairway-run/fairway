@@ -1,6 +1,7 @@
 # Provider Usage Accounting
 
-Status: first slice implemented in `FW-123`
+Status: usage attribution implemented in `FW-123`; provider-neutral OTel
+ingestion implemented in `FW-125`
 
 Fairway should be able to report how much provider capacity was used per task,
 session, epic, day, role, and provider when that data is available. This is an
@@ -89,7 +90,28 @@ CLIs while avoiding private DB, transcript, prompt, and auth-state coupling.
 The Fairway adapter should accept OTLP logs, metrics, or traces from a local
 collector/receiver and normalize only structural usage metadata.
 
-The normalized OTel usage envelope should include:
+The provider-neutral OTel adapter is
+`examples/session-adapters/provider-otel-ingest.sh`. It accepts OTLP JSON logs,
+metrics, or traces from stdin or `--input`, then emits `fairway record usage`
+commands. Use `--dry-run` to inspect the generated commands before recording.
+
+```bash
+examples/session-adapters/provider-otel-ingest.sh \
+  --input dist/provider-otel.json \
+  --task-id FW-123 \
+  --role backend \
+  --dry-run
+```
+
+When recording for real, set `FAIRWAY_BIN` if `fairway` is not on `PATH`:
+
+```bash
+FAIRWAY_BIN=./fairway \
+examples/session-adapters/provider-otel-ingest.sh \
+  --input dist/provider-otel.json
+```
+
+The normalized OTel usage envelope includes:
 
 - provider
 - Fairway task/session/correlation id from resource attributes
@@ -102,20 +124,55 @@ The normalized OTel usage envelope should include:
 - output tokens
 - reasoning tokens when available
 - total tokens
-- cost when available
 - source and confidence
 
 Fairway usage ingestion must not require prompt, tool-body, raw API body, auth
 token, transcript, or generated-content logging. Provider content logging may
 exist for other use cases, but it is out of scope for usage accounting.
 
+The generic adapter recognizes these portable Fairway attributes:
+
+| Attribute | Meaning |
+|---|---|
+| `fairway.task_id` | Task receiving attribution. Required unless `--task-id` is supplied. |
+| `fairway.session_id` | Fairway session id. |
+| `fairway.role` | Role or lane receiving attribution. |
+| `fairway.track` | Optional track/correlation label, stored as safe metadata. |
+| `fairway.phase` | Usage phase, such as `implementation`, `review`, `ci`, `deploy`, or `uat`. |
+| `fairway.provider` | Provider override when provider attributes are absent. |
+| `fairway.usage.source` | `provider_reported`, `derived_snapshot`, `manual`, or `unknown`. |
+| `fairway.usage.confidence` | `exact`, `estimated`, or `unknown`. |
+
+The generic adapter recognizes common token attributes including:
+
+| Normalized field | Example OTel attributes |
+|---|---|
+| Provider | `gen_ai.system`, `llm.provider`, `ai.provider`, `provider`, `service.name` |
+| External session/request | `provider.session_id`, `provider.thread_id`, `thread.id`, `conversation.id`, `gen_ai.conversation.id`, `request.id` |
+| Model | `gen_ai.response.model`, `gen_ai.request.model`, `model`, `llm.model_name` |
+| Input tokens | `gen_ai.usage.input_tokens`, `input_tokens`, `llm.usage.prompt_tokens`, `prompt_tokens` |
+| Cached input tokens | `gen_ai.usage.cached_input_tokens`, `gen_ai.usage.input_token_details.cache_read`, `cached_input_tokens`, `cache_read_input_tokens` |
+| Cache creation | `gen_ai.usage.cache_creation_tokens`, `cache_creation_tokens`; stored as safe metadata `cache_creation` until the core schema has a dedicated field. |
+| Output tokens | `gen_ai.usage.output_tokens`, `output_tokens`, `llm.usage.completion_tokens`, `completion_tokens` |
+| Reasoning tokens | `gen_ai.usage.reasoning_tokens`, `reasoning_tokens` |
+| Total tokens | `gen_ai.usage.total_tokens`, `total_tokens`, `llm.usage.total_tokens` |
+
+For OTLP metrics, the adapter also maps token usage datapoints with
+`token.type` / `gen_ai.token.type` values such as `input`, `cache_read`,
+`cache_creation`, `output`, `reasoning`, and `total`.
+
+Cost telemetry may exist in provider OTel streams, but Fairway does not perform
+pricing or cost accounting in this slice. The generic adapter may preserve a
+provider-reported `cost` value as safe metadata for later analysis; it does not
+calculate cost, enforce budgets, or use cost as a readiness gate.
+
 Expected adapter behavior:
 
 | Adapter | Expected source |
 |---|---|
 | OTel receiver | Provider-supported OTLP logs, metrics, or traces mapped into normalized Fairway usage records. |
-| Codex | OTel `response.completed` token counts or `codex exec --json` `turn.completed.usage`; otherwise caller-supplied start/end snapshots. |
-| Claude | OTel token/cost metrics and API request events; otherwise provider-reported session summary or manual snapshot. |
+| Codex | OTel `response.completed` token counts or `codex exec --json` `turn.completed.usage`; otherwise caller-supplied start/end snapshots. The provider-specific mapping is tracked by `FW-124`. |
+| Claude | OTel token/cost metrics and API request events; otherwise provider-reported session summary or manual snapshot. The provider-specific mapping is tracked by `FW-126`. |
 | Gemini | Provider-supported telemetry or usage metadata if exposed; otherwise start/end snapshots. |
 | tmux/shell | Elapsed time and optional manually supplied usage only. |
 
@@ -199,6 +256,11 @@ Unknown numeric fields are stored as `NULL`, not `0`.
 forwards them to `fairway record usage` after refreshing the session record.
 This keeps Fairway core provider-neutral while giving Codex, Claude, Gemini,
 tmux, and shell adapters a stable ingestion point.
+
+`examples/session-adapters/provider-otel-ingest.sh` is the generic OTel bridge.
+It does not poll provider APIs or parse transcripts. Provider-specific adapters
+can either write OTLP JSON for this bridge or call `fairway record usage`
+directly when they already have normalized values.
 
 ## Reporting
 

@@ -306,6 +306,36 @@ examples/session-adapters/provider-event.sh \
   --total-tokens <n>
 ```
 
+For provider-supported OpenTelemetry, use the generic OTel bridge. It accepts
+OTLP JSON logs, metrics, or traces from stdin or `--input`, maps only structural
+usage metadata, and emits `fairway record usage`.
+
+```bash
+examples/session-adapters/provider-otel-ingest.sh \
+  --input dist/provider-otel.json \
+  --task-id <task-id> \
+  --role <role> \
+  --provider <codex|claude|gemini|shell> \
+  --dry-run
+```
+
+Remove `--dry-run` after checking the generated command. If the Fairway binary
+is not on `PATH`, set `FAIRWAY_BIN=/path/to/fairway`. Task context should come
+from OTel resource attributes when possible:
+
+- `fairway.task_id`
+- `fairway.session_id`
+- `fairway.role`
+- `fairway.track`
+- `fairway.phase`
+- `fairway.usage.source`
+- `fairway.usage.confidence`
+
+Provider-specific OTel mappings, such as Codex `response.completed` and Claude
+Code token metrics, should plug into this bridge or call `fairway record usage`
+with already-normalized fields. Do not enable prompt, tool-body, raw API body,
+auth-token, transcript, or generated-content telemetry for usage accounting.
+
 Use `fairway task-detail <task-id>` or `fairway usage report --by provider` to
 inspect recorded usage. Rollups are available by `provider`, `task`, `epic`,
 `role`, `day`, `kind`, and `phase`.

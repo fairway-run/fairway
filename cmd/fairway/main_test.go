@@ -606,6 +606,91 @@ func TestCLI_ProviderUsageAccounting(t *testing.T) {
 	}
 }
 
+func TestProviderOTelIngestAdapter(t *testing.T) {
+	repo := t.TempDir()
+	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "provider-otel-ingest.sh"))
+	codexOTel := filepath.Join(repo, "codex-otel.json")
+	if err := os.WriteFile(codexOTel, []byte(`{
+  "resourceLogs": [{
+    "resource": {"attributes": [
+      {"key":"fairway.task_id","value":{"stringValue":"T-001"}},
+      {"key":"fairway.session_id","value":{"stringValue":"codex-s-1"}},
+      {"key":"fairway.role","value":{"stringValue":"backend"}},
+      {"key":"fairway.phase","value":{"stringValue":"implementation"}},
+      {"key":"gen_ai.system","value":{"stringValue":"codex"}}
+    ]},
+    "scopeLogs": [{"logRecords": [{
+      "timeUnixNano": "1767225600000000000",
+      "attributes": [
+        {"key":"event.name","value":{"stringValue":"response.completed"}},
+        {"key":"provider.session_id","value":{"stringValue":"thread-1"}},
+        {"key":"gen_ai.response.model","value":{"stringValue":"gpt-5-codex"}},
+        {"key":"gen_ai.usage.input_tokens","value":{"intValue":"120"}},
+        {"key":"gen_ai.usage.cached_input_tokens","value":{"intValue":"40"}},
+        {"key":"gen_ai.usage.output_tokens","value":{"intValue":"30"}},
+        {"key":"gen_ai.usage.reasoning_tokens","value":{"intValue":"5"}},
+        {"key":"gen_ai.usage.total_tokens","value":{"intValue":"155"}}
+      ]
+    }]}]
+  }]
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := runAdapter(t, script, "--input", codexOTel, "--dry-run")
+	for _, want := range []string{"record usage T-001", "--provider codex", "--session-id codex-s-1", "--external-session-id thread-1", "--input-tokens 120", "--cached-input-tokens 40", "--output-tokens 30", "--reasoning-tokens 5", "--total-tokens 155"} {
+		assertContains(t, out, want)
+	}
+
+	claudeOTel := filepath.Join(repo, "claude-otel.json")
+	if err := os.WriteFile(claudeOTel, []byte(`{
+  "resourceMetrics": [{
+    "resource": {"attributes": [
+      {"key":"fairway.task_id","value":{"stringValue":"T-002"}},
+      {"key":"fairway.role","value":{"stringValue":"governance"}},
+      {"key":"service.name","value":{"stringValue":"claude"}}
+    ]},
+    "scopeMetrics": [{"metrics": [{
+      "name": "claude_code.token.usage",
+      "sum": {"dataPoints": [{
+        "asInt": "88",
+        "attributes": [
+          {"key":"token.type","value":{"stringValue":"total"}},
+          {"key":"provider.session_id","value":{"stringValue":"claude-run-1"}}
+        ]
+      }]}
+    }]}]
+  }]
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = runAdapter(t, script, "--input", claudeOTel, "--dry-run")
+	assertContains(t, out, "record usage T-002")
+	assertContains(t, out, "--provider claude")
+	assertContains(t, out, "--external-session-id claude-run-1")
+	assertContains(t, out, "--total-tokens 88")
+	assertNotContains(t, out, "--input-tokens 0")
+
+	unknownOTel := filepath.Join(repo, "unknown-otel.json")
+	if err := os.WriteFile(unknownOTel, []byte(`{"fairway.task_id":"T-003","provider":"shell","fairway.usage.source":"unknown","fairway.usage.confidence":"unknown"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = runAdapter(t, script, "--input", unknownOTel, "--dry-run")
+	assertContains(t, out, "record usage T-003")
+	assertContains(t, out, "--provider shell")
+	assertContains(t, out, "--source unknown")
+	assertContains(t, out, "--confidence unknown")
+	assertNotContains(t, out, "--total-tokens 0")
+
+	sensitiveOTel := filepath.Join(repo, "sensitive-otel.json")
+	if err := os.WriteFile(sensitiveOTel, []byte(`{"fairway.task_id":"T-004","provider":"codex","prompt":"do not store"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", script, "--input", sensitiveOTel, "--dry-run")
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("expected sensitive OTel attribute rejection, got success:\n%s", out)
+	}
+}
+
 func TestCLI_CoordinatorStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -1451,6 +1536,25 @@ func runCaptureAllowError(t *testing.T, args ...string) string {
 		t.Fatalf("fairway %v succeeded, expected error", args)
 	}
 	return out
+}
+
+func runAdapter(t *testing.T, script string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("bash", append([]string{script}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("adapter %v failed: %v\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+func mustGetwd(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wd
 }
 
 func captureRun(args ...string) (string, error) {
