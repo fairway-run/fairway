@@ -42,6 +42,31 @@ fairway coordinator tick
 coordinator do next?" A tick may recommend a claim, review, unblock, checkpoint,
 or merge-ready check, but it does not perform those actions automatically.
 
+## Orchestration Controller Direction
+
+The coordinator loop is becoming an orchestration surface. Fairway core remains
+the state, evidence, and review authority; orchestration is a bounded controller
+that reads Fairway state, applies documented policy, and proposes or triggers
+the next safe action.
+
+The controller should not become a general autonomous agent. It should behave
+like an operations controller:
+
+- reconcile active sessions, watchers, batches, reviews, and handbacks;
+- classify work as active, waiting, blocked, stale, complete, or ready;
+- start configured utility monitors for deterministic/pollable work;
+- recommend batching when related tasks share validation surfaces;
+- emit continuation prompts only when provider judgment or implementation is
+  needed;
+- enforce stop conditions before destructive, production-impacting, credential,
+  approval-gated, or review-gated actions;
+- produce a deterministic next-action plan in dry-run mode.
+
+This is the missing layer between Fairway as a dashboard and Fairway as a
+reliable multi-agent operating system. Utility adapters reduce token churn, but
+the orchestration controller decides what should happen after those utilities
+hand control back.
+
 ## Why This Exists
 
 GPUaaS used separate `queue-*`, `agent-*`, and `orchestrator-*` helpers. The

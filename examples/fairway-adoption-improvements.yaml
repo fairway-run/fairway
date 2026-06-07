@@ -976,3 +976,49 @@ tasks:
       - Docs define the operating rule: use tools/scripts for deterministic or pollable work, reports/classifiers for repetitive summarization, agents for judgment, and high-context agents for architecture/release/risk.
       - Examples cover at least CI monitoring, codegen drift check, release asset check, and registry/image freshness check as utility-shaped workflows.
       - Tests cover utility pass, fail, timeout/stale, next-action handback, evidence attachment, and no active provider session required.
+
+  - id: FW-130
+    title: Add Fairway orchestration controller loop
+    kind: epic
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: orchestration
+    source_paths:
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+      - docs/design/watchers.md
+      - docs/design/work-batch-model.md
+      - cmd/fairway/main.go
+      - internal/reconcile
+      - internal/dashboard
+    target_paths:
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+      - docs/design/cli.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/reconcile
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - backend
+    risk_level: high
+    migration_type: fairway-orchestration-controller-loop
+    depends_on:
+      - FW-118
+      - FW-127
+      - FW-128
+      - FW-129
+    acceptance_checks:
+      - Fairway defines an orchestration controller that reads tasks, sessions, watchers, batches, reviews, monitor handbacks, worktrees, and checkpoints.
+      - Controller emits a deterministic next-action plan in dry-run mode without mutating task state.
+      - Plan classifies current state as active, waiting, blocked, stale, complete, ready, review-gated, approval-gated, or utility-gated.
+      - Controller can recommend or start configured utility monitors for deterministic/pollable work when policy allows.
+      - Controller recommends batching when related ready tasks share domain, validation commands, review path, branch/worktree, or expected CI/deploy-run.
+      - Controller emits provider continuation prompts only when judgment, implementation, review, or human decision is required.
+      - Controller enforces stop conditions before destructive, production-impacting, credential, approval-gated, review-gated, or unsafe-to-infer actions.
+      - Dashboard shows the current orchestration recommendation and why the lane is active, waiting, paused, or idle.
+      - Tests cover CI-complete-ready-work, all-work-complete, blocked-by-review, blocked-by-approval, stale-session-reconcile, batch-recommended, utility-monitor-start, and dry-run-no-mutation paths.
