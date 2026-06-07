@@ -441,7 +441,10 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		return DashboardViewData{}, err
 	}
 	filters := taskFiltersFromRequest(r)
-	activity, err := s.store.Activity(r.Context(), maxActivityFetchLimit)
+	activity, err := s.store.ActivityFiltered(r.Context(), store.ActivityOptions{
+		Limit: maxActivityFetchLimit,
+		Kind:  filters.ActivityKind,
+	})
 	if err != nil {
 		return DashboardViewData{}, err
 	}
@@ -594,11 +597,11 @@ func worktreeBranchForRole(worktrees []WorktreeStatus, role string) string {
 }
 
 func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, error) {
-	tasks, sessions, checkpoints, watchers, activity, err := s.projectFacts(r.Context())
+	filters := taskFiltersFromRequest(r)
+	tasks, sessions, checkpoints, watchers, activity, err := s.projectFacts(r.Context(), filters)
 	if err != nil {
 		return DashboardViewData{}, err
 	}
-	filters := taskFiltersFromRequest(r)
 	filteredActivity, activityTotal := filterActivity(activity, filters.ActivityKind, filters.ActivityLimit)
 	readySet := map[string]bool{}
 	displayTasks := filterTasks(tasks, filters, "")
@@ -645,7 +648,7 @@ func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, err
 	}, nil
 }
 
-func (s *MultiServer) projectFacts(ctx context.Context) ([]store.Task, []store.Session, []store.Checkpoint, []store.Watcher, []store.Activity, error) {
+func (s *MultiServer) projectFacts(ctx context.Context, filters TaskFilters) ([]store.Task, []store.Session, []store.Checkpoint, []store.Watcher, []store.Activity, error) {
 	var tasks []store.Task
 	var sessions []store.Session
 	var checkpoints []store.Checkpoint
@@ -666,7 +669,7 @@ func (s *MultiServer) projectFacts(ctx context.Context) ([]store.Task, []store.S
 		if projectWatchers, err := project.Store.Watchers(ctx, false); err == nil {
 			watchers = append(watchers, projectWatchers...)
 		}
-		if projectActivity, err := project.Store.Activity(ctx, maxActivityFetchLimit); err == nil {
+		if projectActivity, err := project.Store.ActivityFiltered(ctx, store.ActivityOptions{Limit: maxActivityFetchLimit, Kind: filters.ActivityKind}); err == nil {
 			activity = append(activity, tagActivityProject(projectActivity, project.Name)...)
 		}
 	}

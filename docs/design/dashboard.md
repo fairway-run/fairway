@@ -134,7 +134,9 @@ It includes:
   before slicing, total filtered count shown separately, and URL-backed
   pagination for additional windows,
 - operational health badges,
-- activity kind and row-count filtering.
+- activity kind and row-count filtering. Activity kind is applied in the store
+  query before the dashboard trims visible rail rows, rather than by fetching a
+  large mixed activity feed first.
 
 The task table is the drill-down layer after the gate and workstream highlights.
 It links to task detail. The board preserves role/status/project/profile/kind/
@@ -184,6 +186,8 @@ not a raw task table. It answers:
 The default report opens to the local current day. A date picker and date-range
 control allow yesterday, last seven days, and custom ranges. Reports preserve
 filters in the URL so a coordinator can share or reopen the same view.
+Report activity and review summaries use the store activity API with the report
+date window applied at query time.
 
 The page layout should be scannable:
 

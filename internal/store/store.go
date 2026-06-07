@@ -255,6 +255,15 @@ type Activity struct {
 	CreatedAt string
 }
 
+type ActivityOptions struct {
+	Limit       int
+	Kind        string
+	TaskID      string
+	Profile     string
+	CreatedFrom string
+	CreatedTo   string
+}
+
 type EventCursor struct {
 	At          string
 	SourceOrder int
@@ -1958,8 +1967,47 @@ ORDER BY d.role, st.status, COALESCE(d.priority, 9999), d.created_at`, s.project
 }
 
 func (s *Store) Activity(ctx context.Context, limit int) ([]Activity, error) {
+	return s.ActivityFiltered(ctx, ActivityOptions{Limit: limit})
+}
+
+func (s *Store) ActivityFiltered(ctx context.Context, opts ActivityOptions) ([]Activity, error) {
+	if opts.Limit <= 0 {
+		opts.Limit = 100
+	}
+	where := []string{}
+	args := []any{s.projectID, s.projectID, s.projectID, s.projectID}
+	joinSQL := ""
+	if strings.TrimSpace(opts.Profile) != "" {
+		joinSQL = "LEFT JOIN task_definitions d ON d.project_id = ? AND d.id = a.task_id"
+		args = append(args, s.projectID)
+	}
+	if strings.TrimSpace(opts.Kind) != "" {
+		where = append(where, "a.kind = ?")
+		args = append(args, strings.TrimSpace(opts.Kind))
+	}
+	if strings.TrimSpace(opts.TaskID) != "" {
+		where = append(where, "a.task_id = ?")
+		args = append(args, strings.TrimSpace(opts.TaskID))
+	}
+	if strings.TrimSpace(opts.CreatedFrom) != "" {
+		where = append(where, "a.created_at >= ?")
+		args = append(args, strings.TrimSpace(opts.CreatedFrom))
+	}
+	if strings.TrimSpace(opts.CreatedTo) != "" {
+		where = append(where, "a.created_at <= ?")
+		args = append(args, strings.TrimSpace(opts.CreatedTo))
+	}
+	if strings.TrimSpace(opts.Profile) != "" {
+		where = append(where, "COALESCE(d.profile, '') = ?")
+		args = append(args, strings.TrimSpace(opts.Profile))
+	}
+	filterSQL := ""
+	if len(where) > 0 {
+		filterSQL = "WHERE " + strings.Join(where, " AND ")
+	}
+	args = append(args, opts.Limit)
 	rows, err := s.db.QueryContext(ctx, `
-SELECT kind, task_id, summary, actor, created_at
+SELECT a.kind, a.task_id, a.summary, a.actor, a.created_at
 FROM (
   SELECT 'state' AS kind, task_id, COALESCE(from_status, 'new') || ' -> ' || to_status AS summary, actor, at AS created_at
     FROM task_state_history WHERE project_id=?
@@ -1972,9 +2020,11 @@ FROM (
   UNION ALL
   SELECT 'review', task_id, verdict || ' by ' || reviewer, reviewer, created_at
     FROM task_reviews WHERE project_id=?
-)
-ORDER BY created_at DESC
-LIMIT ?`, s.projectID, s.projectID, s.projectID, s.projectID, limit)
+) a
+`+joinSQL+`
+`+filterSQL+`
+ORDER BY a.created_at DESC
+LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

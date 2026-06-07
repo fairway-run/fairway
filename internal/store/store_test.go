@@ -149,6 +149,74 @@ func TestSQLiteBusyTimeoutAllowsBurstEvidenceWrite(t *testing.T) {
 	}
 }
 
+func TestActivityFilteredSupportsStoreLevelPredicates(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{
+		{ID: "T-001", Title: "Platform evidence", Role: "backend", Profile: "platform"},
+		{ID: "T-002", Title: "Docs evidence", Role: "backend", Profile: "docs"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", Evidence{CommandText: "go test ./...", Result: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-001", Review{Reviewer: "arch", Verdict: "approve", Reason: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-002", Evidence{CommandText: "npm test", Result: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+
+	evidence, err := s.ActivityFiltered(ctx, ActivityOptions{Limit: 10, Kind: "evidence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence) != 2 {
+		t.Fatalf("evidence activity=%+v, want 2 rows", evidence)
+	}
+	for _, item := range evidence {
+		if item.Kind != "evidence" {
+			t.Fatalf("kind filter returned %+v", item)
+		}
+	}
+
+	taskActivity, err := s.ActivityFiltered(ctx, ActivityOptions{Limit: 10, TaskID: "T-002"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(taskActivity) != 2 {
+		t.Fatalf("task activity=%+v, want import state plus evidence rows for T-002", taskActivity)
+	}
+	for _, item := range taskActivity {
+		if item.TaskID != "T-002" {
+			t.Fatalf("task filter returned %+v", item)
+		}
+	}
+
+	profileActivity, err := s.ActivityFiltered(ctx, ActivityOptions{Limit: 10, Profile: "platform"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profileActivity) != 3 {
+		t.Fatalf("profile activity=%+v, want state/evidence/review rows for T-001", profileActivity)
+	}
+	for _, item := range profileActivity {
+		if item.TaskID != "T-001" {
+			t.Fatalf("profile filter returned %+v", item)
+		}
+	}
+
+	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
+	windowed, err := s.ActivityFiltered(ctx, ActivityOptions{Limit: 10, CreatedFrom: future})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(windowed) != 0 {
+		t.Fatalf("future activity=%+v, want no rows", windowed)
+	}
+}
+
 func TestPostgresCompatReport(t *testing.T) {
 	report, err := PostgresCompatReport()
 	if err != nil {

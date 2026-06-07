@@ -146,10 +146,11 @@ fixtures, and adoption reference.
      profile/kind group, or users repeatedly raise `table_limit` to 100+.
 
 2. Activity feed query scaling
-   - Current state: dashboard fetches a bounded recent activity window and
-     filters in memory.
-   - Next pressure point: add store-level filters for activity kind, task id,
-     profile, and time window instead of fetching a large mixed feed first.
+   - Current state: the store activity API supports kind, task id, profile, and
+     time-window filters. The board activity rail pushes kind filtering into the
+     store query, and reports push the report date window into the store query.
+   - Next pressure point: add URL controls for task/profile-scoped activity
+     feeds when operators need "activity for this workstream" views.
    - Trigger: activity count regularly exceeds a few hundred rows during active
      tracks, or dashboard first paint slows noticeably.
 

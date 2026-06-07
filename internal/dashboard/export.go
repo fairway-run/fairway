@@ -43,7 +43,7 @@ func (s *Server) boardExportPayload(r *http.Request) (boardExportPayload, error)
 }
 
 func (s *MultiServer) boardExport(w http.ResponseWriter, r *http.Request) {
-	tasks, _, _, _, _, err := s.projectFacts(r.Context())
+	tasks, _, _, _, _, err := s.projectFacts(r.Context(), TaskFilters{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

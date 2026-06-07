@@ -186,7 +186,11 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
-	activity, err := s.store.Activity(r.Context(), maxActivityFetchLimit)
+	activity, err := s.store.ActivityFiltered(r.Context(), store.ActivityOptions{
+		Limit:       maxActivityFetchLimit,
+		CreatedFrom: start.Format(time.RFC3339Nano),
+		CreatedTo:   end.Format(time.RFC3339Nano),
+	})
 	if err != nil {
 		return ReportViewData{}, err
 	}
