@@ -210,6 +210,34 @@ type UsageRollup struct {
 	ElapsedSeconds      *int   `json:"elapsed_seconds,omitempty"`
 }
 
+type WorkBatch struct {
+	ID                 string   `json:"id"`
+	Title              string   `json:"title"`
+	Branch             string   `json:"branch,omitempty"`
+	WorktreePath       string   `json:"worktree_path,omitempty"`
+	ValidationCommands []string `json:"validation_commands,omitempty"`
+	ReviewDomains      []string `json:"review_domains,omitempty"`
+	RollbackCriteria   string   `json:"rollback_criteria,omitempty"`
+	SplitCriteria      string   `json:"split_criteria,omitempty"`
+	ExpectedCI         string   `json:"expected_ci,omitempty"`
+	DeployRunID        string   `json:"deploy_run_id,omitempty"`
+	PipelineID         string   `json:"pipeline_id,omitempty"`
+	CreatedAt          string   `json:"created_at"`
+	UpdatedAt          string   `json:"updated_at"`
+	Tasks              []string `json:"tasks,omitempty"`
+}
+
+type WorkBatchEvidence struct {
+	ID           int64  `json:"id"`
+	BatchID      string `json:"batch_id"`
+	CommandText  string `json:"command_text"`
+	Result       string `json:"result"`
+	ArtifactPath string `json:"artifact_path,omitempty"`
+	ArtifactType string `json:"artifact_type,omitempty"`
+	Notes        string `json:"notes,omitempty"`
+	CreatedAt    string `json:"created_at"`
+}
+
 type AuditEvent struct {
 	Actor  string
 	Action string
@@ -1681,6 +1709,218 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func (s *Store) UpsertWorkBatch(ctx context.Context, batch WorkBatch) error {
+	batch.ID = strings.TrimSpace(batch.ID)
+	if batch.ID == "" {
+		return errors.New("batch id is required")
+	}
+	if strings.TrimSpace(batch.Title) == "" {
+		return errors.New("batch title is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	validation, err := json.Marshal(batch.ValidationCommands)
+	if err != nil {
+		return err
+	}
+	reviewDomains, err := json.Marshal(batch.ReviewDomains)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO work_batches
+  (project_id, id, title, branch, worktree_path, validation_commands, review_domains, rollback_criteria, split_criteria, expected_ci, deploy_run_id, pipeline_id, created_at, updated_at)
+VALUES (?, ?, ?, nullif(?, ''), nullif(?, ''), ?, ?, nullif(?, ''), nullif(?, ''), nullif(?, ''), nullif(?, ''), nullif(?, ''), ?, ?)
+ON CONFLICT(project_id, id) DO UPDATE SET
+  title=excluded.title,
+  branch=excluded.branch,
+  worktree_path=excluded.worktree_path,
+  validation_commands=excluded.validation_commands,
+  review_domains=excluded.review_domains,
+  rollback_criteria=excluded.rollback_criteria,
+  split_criteria=excluded.split_criteria,
+  expected_ci=excluded.expected_ci,
+  deploy_run_id=excluded.deploy_run_id,
+  pipeline_id=excluded.pipeline_id,
+  updated_at=excluded.updated_at`,
+		s.projectID, batch.ID, batch.Title, batch.Branch, batch.WorktreePath, string(validation), string(reviewDomains), batch.RollbackCriteria, batch.SplitCriteria, batch.ExpectedCI, batch.DeployRunID, batch.PipelineID, now, now)
+	if err != nil {
+		return err
+	}
+	if len(batch.Tasks) > 0 {
+		return s.AddTasksToWorkBatch(ctx, batch.ID, batch.Tasks)
+	}
+	return nil
+}
+
+func (s *Store) AddTasksToWorkBatch(ctx context.Context, batchID string, taskIDs []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_batches WHERE project_id=? AND id=?`, s.projectID, batchID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return ErrNotFound
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, taskID := range taskIDs {
+		taskID = strings.TrimSpace(taskID)
+		if taskID == "" {
+			continue
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_definitions WHERE project_id=? AND id=?`, s.projectID, taskID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return fmt.Errorf("task %s: %w", taskID, ErrNotFound)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO work_batch_tasks(project_id, batch_id, task_id, created_at) VALUES (?, ?, ?, ?)`, s.projectID, batchID, taskID, now); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE work_batches SET updated_at=? WHERE project_id=? AND id=?`, now, s.projectID, batchID)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) RemoveTasksFromWorkBatch(ctx context.Context, batchID string, taskIDs []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, taskID := range taskIDs {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM work_batch_tasks WHERE project_id=? AND batch_id=? AND task_id=?`, s.projectID, batchID, taskID); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE work_batches SET updated_at=? WHERE project_id=? AND id=?`, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, batchID)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) LinkWorkBatch(ctx context.Context, batchID, deployRunID, pipelineID string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE work_batches SET deploy_run_id=COALESCE(NULLIF(?, ''), deploy_run_id), pipeline_id=COALESCE(NULLIF(?, ''), pipeline_id), updated_at=? WHERE project_id=? AND id=?`, deployRunID, pipelineID, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, batchID)
+	return checkWriteResult(res, err)
+}
+
+func (s *Store) RecordWorkBatchEvidence(ctx context.Context, batchID string, evidence WorkBatchEvidence, mapToTasks bool) (WorkBatchEvidence, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return WorkBatchEvidence{}, err
+	}
+	defer tx.Rollback()
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_batches WHERE project_id=? AND id=?`, s.projectID, batchID).Scan(&exists); err != nil {
+		return WorkBatchEvidence{}, err
+	}
+	if exists == 0 {
+		return WorkBatchEvidence{}, ErrNotFound
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO work_batch_evidence(project_id, batch_id, command_text, result, artifact_path, artifact_type, notes, created_at)
+VALUES (?, ?, nullif(?, ''), nullif(?, ''), nullif(?, ''), nullif(?, ''), nullif(?, ''), ?)`,
+		s.projectID, batchID, evidence.CommandText, evidence.Result, evidence.ArtifactPath, evidence.ArtifactType, evidence.Notes, now)
+	if err != nil {
+		return WorkBatchEvidence{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return WorkBatchEvidence{}, err
+	}
+	evidence.ID = id
+	evidence.BatchID = batchID
+	evidence.CreatedAt = now
+	if mapToTasks {
+		rows, err := tx.QueryContext(ctx, `SELECT task_id FROM work_batch_tasks WHERE project_id=? AND batch_id=? ORDER BY task_id`, s.projectID, batchID)
+		if err != nil {
+			return WorkBatchEvidence{}, err
+		}
+		var taskIDs []string
+		for rows.Next() {
+			var taskID string
+			if err := rows.Scan(&taskID); err != nil {
+				rows.Close()
+				return WorkBatchEvidence{}, err
+			}
+			taskIDs = append(taskIDs, taskID)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return WorkBatchEvidence{}, err
+		}
+		rows.Close()
+		for _, taskID := range taskIDs {
+			notes := strings.TrimSpace(strings.Join([]string{fmt.Sprintf("work_batch=%s", batchID), evidence.Notes}, " "))
+			if _, err := tx.ExecContext(ctx, `
+INSERT INTO task_evidence(project_id, task_id, command_text, result, artifact_path, artifact_type, notes, created_at)
+VALUES (?, ?, ?, ?, nullif(?, ''), nullif(?, ''), nullif(?, ''), ?)`,
+				s.projectID, taskID, "batch "+batchID+": "+evidence.CommandText, evidence.Result, evidence.ArtifactPath, firstNonEmpty(evidence.ArtifactType, "work-batch"), notes, now); err != nil {
+				return WorkBatchEvidence{}, err
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE work_batches SET updated_at=? WHERE project_id=? AND id=?`, now, s.projectID, batchID); err != nil {
+		return WorkBatchEvidence{}, err
+	}
+	return evidence, tx.Commit()
+}
+
+func (s *Store) WorkBatch(ctx context.Context, batchID string) (WorkBatch, []WorkBatchEvidence, error) {
+	row := s.db.QueryRowContext(ctx, workBatchSelectSQL(`WHERE project_id=? AND id=?`), s.projectID, batchID)
+	batch, err := scanWorkBatch(row)
+	if err != nil {
+		return WorkBatch{}, nil, err
+	}
+	tasks, err := s.workBatchTasks(ctx, batchID)
+	if err != nil {
+		return WorkBatch{}, nil, err
+	}
+	batch.Tasks = tasks
+	evidence, err := s.workBatchEvidence(ctx, batchID)
+	if err != nil {
+		return WorkBatch{}, nil, err
+	}
+	return batch, evidence, nil
+}
+
+func (s *Store) WorkBatches(ctx context.Context) ([]WorkBatch, error) {
+	rows, err := s.db.QueryContext(ctx, workBatchSelectSQL(`WHERE project_id=? ORDER BY updated_at DESC, id`), s.projectID)
+	if err != nil {
+		return nil, err
+	}
+	var batches []WorkBatch
+	for rows.Next() {
+		batch, err := scanWorkBatch(rows)
+		if err != nil {
+			return nil, err
+		}
+		batches = append(batches, batch)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for i := range batches {
+		tasks, err := s.workBatchTasks(ctx, batches[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		batches[i].Tasks = tasks
+	}
+	return batches, nil
+}
+
 func (s *Store) AllTasks(ctx context.Context) ([]Task, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
@@ -2014,6 +2254,65 @@ func scanProviderUsage(row rowScanner) (ProviderUsage, error) {
 	item.Model = model.String
 	item.MetadataJSON = metadataJSON.String
 	return item, nil
+}
+
+func workBatchSelectSQL(suffix string) string {
+	return `
+SELECT id, title, branch, worktree_path, validation_commands, review_domains, rollback_criteria, split_criteria, expected_ci, deploy_run_id, pipeline_id, created_at, updated_at
+FROM work_batches ` + suffix
+}
+
+func scanWorkBatch(row rowScanner) (WorkBatch, error) {
+	var batch WorkBatch
+	var branch, worktree, rollback, split, expectedCI, deployRun, pipeline sql.NullString
+	var validation, reviewDomains string
+	if err := row.Scan(&batch.ID, &batch.Title, &branch, &worktree, &validation, &reviewDomains, &rollback, &split, &expectedCI, &deployRun, &pipeline, &batch.CreatedAt, &batch.UpdatedAt); err != nil {
+		return WorkBatch{}, err
+	}
+	batch.Branch = branch.String
+	batch.WorktreePath = worktree.String
+	batch.RollbackCriteria = rollback.String
+	batch.SplitCriteria = split.String
+	batch.ExpectedCI = expectedCI.String
+	batch.DeployRunID = deployRun.String
+	batch.PipelineID = pipeline.String
+	_ = json.Unmarshal([]byte(validation), &batch.ValidationCommands)
+	_ = json.Unmarshal([]byte(reviewDomains), &batch.ReviewDomains)
+	return batch, nil
+}
+
+func (s *Store) workBatchTasks(ctx context.Context, batchID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT task_id FROM work_batch_tasks WHERE project_id=? AND batch_id=? ORDER BY task_id`, s.projectID, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tasks []string
+	for rows.Next() {
+		var taskID string
+		if err := rows.Scan(&taskID); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, taskID)
+	}
+	return tasks, rows.Err()
+}
+
+func (s *Store) workBatchEvidence(ctx context.Context, batchID string) ([]WorkBatchEvidence, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, batch_id, COALESCE(command_text, ''), COALESCE(result, ''), COALESCE(artifact_path, ''), COALESCE(artifact_type, ''), COALESCE(notes, ''), created_at FROM work_batch_evidence WHERE project_id=? AND batch_id=? ORDER BY created_at, id`, s.projectID, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var evidence []WorkBatchEvidence
+	for rows.Next() {
+		var ev WorkBatchEvidence
+		if err := rows.Scan(&ev.ID, &ev.BatchID, &ev.CommandText, &ev.Result, &ev.ArtifactPath, &ev.ArtifactType, &ev.Notes, &ev.CreatedAt); err != nil {
+			return nil, err
+		}
+		evidence = append(evidence, ev)
+	}
+	return evidence, rows.Err()
 }
 
 func nullableIntPtr(value sql.NullInt64) *int {

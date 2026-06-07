@@ -60,7 +60,7 @@
 {{if .Audit.WorkCoverage.Findings}}
 <p>{{.Audit.WorkCoverage.Summary.ChangedFilesUncovered}} recent changed file(s) are not covered by this task's source_paths or target_paths.</p>
 <table class="detail-table"><thead><tr><th>Kind</th><th>Commit</th><th>Files</th><th>Next</th></tr></thead><tbody>
-{{range takeWorkCoverageFindings .Audit.WorkCoverage.Findings 6}}<tr><td>{{.Kind}}</td><td>{{if .Commit}}<code>{{.Commit}}</code>{{end}}</td><td>{{range .Files}}<code>{{.}}</code> {{end}}</td><td>{{.Recommended}}</td></tr>{{end}}
+{{range takeWorkCoverageFindings .Audit.WorkCoverage.Findings 6}}<tr><td>{{.Kind}}</td><td>{{if .Commit}}<code>{{.Commit}}</code>{{end}}</td><td>{{range .Files}}<code>{{.}}</code> {{end}}{{range .RelatedTasks}}<code>{{.}}</code> {{end}}</td><td>{{.Recommended}}</td></tr>{{end}}
 </tbody></table>
 {{else}}<p>Recent changed files are covered by this task's source_paths or target_paths.</p>{{end}}
 {{end}}
@@ -78,6 +78,10 @@
 <article class="detail-panel">
 <h2>Dependencies</h2>
 <ul class="detail-items">{{range .Task.Definition.Dependencies}}<li>{{.}}</li>{{else}}<li>none</li>{{end}}</ul>
+</article>
+<article class="detail-panel">
+<h2>Work Batches</h2>
+<ul class="detail-items">{{range .Batches}}<li><b>{{.ID}}</b> {{.Title}} {{if .PipelineID}}<code>{{.PipelineID}}</code>{{end}}</li>{{else}}<li>none</li>{{end}}</ul>
 </article>
 <article class="detail-panel">
 <h2>Acceptance</h2>

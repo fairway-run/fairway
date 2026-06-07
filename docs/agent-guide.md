@@ -442,6 +442,65 @@ When you spawn follow-up work, Fairway inherits the parent task metadata unless
 you override a metadata flag explicitly. Keep those fields accurate; they drive
 review routing, readiness reports, and dashboard workstream grouping.
 
+## Work Batches
+
+Use work batches when several granular tasks share the same implementation and
+validation surface. The task remains the accountability unit; the batch is the
+branch/worktree/CI/deploy-run/evidence unit.
+
+Batch by shared validation surface when tasks have the same domain, touched
+contracts, review domains, rollback behavior, and proof commands. Do not batch
+when ownership, review routing, rollback, live-environment risk, or dependency
+order need independent proof.
+
+Typical coordinator flow:
+
+```bash
+fairway batch create BATCH-001 \
+  --title "Platform facade validation slice" \
+  --branch feature/platform-facade \
+  --worktree ../worktrees/platform-facade \
+  --task PF-101 \
+  --task PF-102 \
+  --validation-command "go test ./..." \
+  --validation-command "npm test" \
+  --review-domain arch \
+  --review-domain backend \
+  --rollback-criteria "revert the shared branch if API contract changes fail" \
+  --split-criteria "split if frontend and backend failures need different owners" \
+  --expected-ci "GitHub Actions platform validation"
+```
+
+After shared validation, record the batch evidence once and map it to member
+tasks:
+
+```bash
+fairway batch evidence BATCH-001 \
+  --command-text "go test ./... && npm test" \
+  --result pass \
+  --artifact https://ci.example/runs/123 \
+  --artifact-type ci
+fairway batch link BATCH-001 --pipeline-id gha-123 --deploy-run-id deploy-456
+fairway batch show BATCH-001
+```
+
+`batch evidence` maps proof to every member task by default. Only use
+`--map-to-tasks=false` when the evidence is a batch note and does not satisfy
+any individual task acceptance check. Individual tasks still move through
+normal `set-status`, review, profile gates, and `merge-ready`; a passing batch
+does not close tasks automatically.
+
+Before review or deploy boundaries, run:
+
+```bash
+fairway audit work-coverage --dry-run --since-duration 24h
+```
+
+The audit reports `work_batch_candidate` when several related same-domain tasks
+have separate CI/deploy evidence and are not already in a batch. Treat that as
+a signal to batch future work when it shares validation, not as a retroactive
+requirement to rewrite history.
+
 ## Workflow Guard
 
 Use `workflow check` at task, review, and deploy boundaries. It keeps the

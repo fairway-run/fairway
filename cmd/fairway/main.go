@@ -112,6 +112,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdPreflight(opts, args[1:])
 	case "workflow":
 		return cmdWorkflow(ctx, opts, args[1:])
+	case "batch":
+		return cmdBatch(ctx, opts, args[1:])
 	case "audit":
 		return cmdAudit(ctx, opts, args[1:])
 	case "merge-ready":
@@ -835,6 +837,257 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 	})
 }
 
+func cmdBatch(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("batch", "create|add|remove|evidence|link|show|list")
+		return nil
+	}
+	switch args[0] {
+	case "create":
+		return cmdBatchCreate(ctx, opts, args[1:])
+	case "add":
+		return cmdBatchAdd(ctx, opts, args[1:])
+	case "remove":
+		return cmdBatchRemove(ctx, opts, args[1:])
+	case "evidence":
+		return cmdBatchEvidence(ctx, opts, args[1:])
+	case "link":
+		return cmdBatchLink(ctx, opts, args[1:])
+	case "show":
+		return cmdBatchShow(ctx, opts, args[1:])
+	case "list":
+		return cmdBatchList(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown batch subcommand %q", args[0])
+	}
+}
+
+func cmdBatchCreate(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("batch create requires batch id")
+	}
+	batchID := args[0]
+	fs := flag.NewFlagSet("batch create", flag.ContinueOnError)
+	title := fs.String("title", "", "batch title")
+	branch := fs.String("branch", "", "shared branch")
+	worktree := fs.String("worktree", "", "shared worktree path")
+	rollback := fs.String("rollback-criteria", "", "rollback criteria")
+	split := fs.String("split-criteria", "", "split criteria")
+	expectedCI := fs.String("expected-ci", "", "expected CI/deploy run")
+	deployRunID := fs.String("deploy-run-id", "", "deploy-run task or run id")
+	pipelineID := fs.String("pipeline-id", "", "pipeline id or URL")
+	var commands multiFlag
+	var reviewDomains multiFlag
+	var tasks multiFlag
+	fs.Var(&commands, "validation-command", "shared validation command; may repeat")
+	fs.Var(&reviewDomains, "review-domain", "required review domain; may repeat or comma-separate")
+	fs.Var(&tasks, "task", "task id to include; may repeat")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected batch create arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *title == "" {
+		return errors.New("--title is required")
+	}
+	batch := store.WorkBatch{
+		ID:                 batchID,
+		Title:              *title,
+		Branch:             *branch,
+		WorktreePath:       *worktree,
+		ValidationCommands: commands,
+		ReviewDomains:      splitRepeatedCSV(reviewDomains),
+		RollbackCriteria:   *rollback,
+		SplitCriteria:      *split,
+		ExpectedCI:         *expectedCI,
+		DeployRunID:        *deployRunID,
+		PipelineID:         *pipelineID,
+		Tasks:              tasks,
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if err := s.UpsertWorkBatch(ctx, batch); err != nil {
+			return err
+		}
+		if opts.JSON {
+			created, evidence, err := s.WorkBatch(ctx, batchID)
+			if err != nil {
+				return err
+			}
+			return printJSON(struct {
+				Batch    store.WorkBatch           `json:"batch"`
+				Evidence []store.WorkBatchEvidence `json:"evidence"`
+			}{created, evidence})
+		}
+		fmt.Printf("batch %s created\n", batchID)
+		return nil
+	})
+}
+
+func cmdBatchAdd(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 2 {
+		return errors.New("batch add requires batch id and task id")
+	}
+	batchID, taskIDs := args[0], args[1:]
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if err := s.AddTasksToWorkBatch(ctx, batchID, taskIDs); err != nil {
+			return err
+		}
+		if !opts.JSON {
+			fmt.Printf("batch %s added %d task(s)\n", batchID, len(taskIDs))
+		}
+		return nil
+	})
+}
+
+func cmdBatchRemove(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 2 {
+		return errors.New("batch remove requires batch id and task id")
+	}
+	batchID, taskIDs := args[0], args[1:]
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if err := s.RemoveTasksFromWorkBatch(ctx, batchID, taskIDs); err != nil {
+			return err
+		}
+		if !opts.JSON {
+			fmt.Printf("batch %s removed %d task(s)\n", batchID, len(taskIDs))
+		}
+		return nil
+	})
+}
+
+func cmdBatchEvidence(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("batch evidence requires batch id")
+	}
+	batchID := args[0]
+	fs := flag.NewFlagSet("batch evidence", flag.ContinueOnError)
+	commandText := fs.String("command-text", "", "command")
+	result := fs.String("result", "", "result")
+	artifact := fs.String("artifact", "", "artifact")
+	artifactType := fs.String("artifact-type", "work-batch", "artifact type")
+	notes := fs.String("notes", "", "notes")
+	mapToTasks := fs.Bool("map-to-tasks", true, "record mapped evidence rows on member tasks")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected batch evidence arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *commandText == "" {
+		return errors.New("--command-text is required")
+	}
+	if *result == "" {
+		return errors.New("--result is required")
+	}
+	ev := store.WorkBatchEvidence{BatchID: batchID, CommandText: *commandText, Result: *result, ArtifactPath: *artifact, ArtifactType: *artifactType, Notes: *notes}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		recorded, err := s.RecordWorkBatchEvidence(ctx, batchID, ev, *mapToTasks)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(recorded)
+		}
+		fmt.Printf("batch %s evidence recorded\n", batchID)
+		return nil
+	})
+}
+
+func cmdBatchLink(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("batch link requires batch id")
+	}
+	batchID := args[0]
+	fs := flag.NewFlagSet("batch link", flag.ContinueOnError)
+	deployRunID := fs.String("deploy-run-id", "", "deploy-run task or run id")
+	pipelineID := fs.String("pipeline-id", "", "pipeline id or URL")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected batch link arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *deployRunID == "" && *pipelineID == "" {
+		return errors.New("batch link requires --deploy-run-id or --pipeline-id")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if err := s.LinkWorkBatch(ctx, batchID, *deployRunID, *pipelineID); err != nil {
+			return err
+		}
+		if !opts.JSON {
+			fmt.Printf("batch %s linked\n", batchID)
+		}
+		return nil
+	})
+}
+
+func cmdBatchShow(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("batch show requires batch id")
+	}
+	batchID := args[0]
+	if len(args) > 1 {
+		return fmt.Errorf("unexpected batch show arguments: %s", strings.Join(args[1:], " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		batch, evidence, err := s.WorkBatch(ctx, batchID)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(struct {
+				Batch    store.WorkBatch           `json:"batch"`
+				Evidence []store.WorkBatchEvidence `json:"evidence"`
+			}{batch, evidence})
+		}
+		fmt.Printf("%s %s\nbranch: %s\nworktree: %s\ndeploy_run: %s\npipeline: %s\n", batch.ID, batch.Title, fallback(batch.Branch, "none"), fallback(batch.WorktreePath, "none"), fallback(batch.DeployRunID, "none"), fallback(batch.PipelineID, "none"))
+		fmt.Println("tasks:")
+		for _, taskID := range batch.Tasks {
+			fmt.Printf("- %s\n", taskID)
+		}
+		fmt.Println("validation:")
+		for _, command := range batch.ValidationCommands {
+			fmt.Printf("- %s\n", command)
+		}
+		fmt.Println("evidence:")
+		for _, ev := range evidence {
+			fmt.Printf("- %s %s %s\n", ev.Result, ev.CommandText, ev.ArtifactPath)
+		}
+		return nil
+	})
+}
+
+func cmdBatchList(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected batch list arguments: %s", strings.Join(args, " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		batches, err := s.WorkBatches(ctx)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(batches)
+		}
+		for _, batch := range batches {
+			fmt.Printf("%s\t%d tasks\t%s\t%s\n", batch.ID, len(batch.Tasks), fallback(batch.Branch, "no-branch"), batch.Title)
+		}
+		if len(batches) == 0 {
+			fmt.Println("no work batches")
+		}
+		return nil
+	})
+}
+
+func splitRepeatedCSV(values []string) []string {
+	var out []string
+	for _, value := range values {
+		out = append(out, splitCSV(value)...)
+	}
+	return out
+}
+
 func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
 		subcommandUsage("audit", "work-coverage|ci-learning")
@@ -887,13 +1140,14 @@ func cmdAuditWorkCoverage(ctx context.Context, opts globalOptions, args []string
 			fmt.Printf("task_id: %s\n", report.TaskID)
 		}
 		fmt.Printf("commits: %d\n", report.CommitCount)
-		fmt.Printf("summary: commits_without_task_id=%d changed_files_uncovered=%d orphan_evidence=%d evidence_status_decisions=%d done_without_required_evidence=%d missing_required_reviews=%d\n",
+		fmt.Printf("summary: commits_without_task_id=%d changed_files_uncovered=%d orphan_evidence=%d evidence_status_decisions=%d done_without_required_evidence=%d missing_required_reviews=%d work_batch_candidates=%d\n",
 			report.Summary.CommitsWithoutTaskID,
 			report.Summary.ChangedFilesUncovered,
 			report.Summary.OrphanEvidence,
 			report.Summary.EvidenceStatusDecisions,
 			report.Summary.DoneWithoutRequiredEvidence,
-			report.Summary.MissingRequiredReviews)
+			report.Summary.MissingRequiredReviews,
+			report.Summary.WorkBatchCandidates)
 		if len(report.Findings) == 0 {
 			fmt.Println("no work coverage findings")
 			return nil
@@ -905,6 +1159,9 @@ func cmdAuditWorkCoverage(ctx context.Context, opts globalOptions, args []string
 			}
 			if len(finding.Missing) > 0 {
 				fmt.Printf("  missing: %s\n", strings.Join(finding.Missing, ", "))
+			}
+			if len(finding.RelatedTasks) > 0 {
+				fmt.Printf("  related_tasks: %s\n", strings.Join(finding.RelatedTasks, ", "))
 			}
 			if finding.Recommended != "" {
 				fmt.Printf("  next: %s\n", finding.Recommended)
@@ -6396,6 +6653,10 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	if err != nil {
 		return err
 	}
+	batches, err := batchesForTask(ctx, s, taskID)
+	if err != nil {
+		return err
+	}
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		return printJSON(struct {
@@ -6408,7 +6669,8 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 			Sessions             []store.Session       `json:"sessions"`
 			Usage                []store.ProviderUsage `json:"usage"`
 			UsageRollups         []store.UsageRollup   `json:"usage_rollups"`
-		}{task, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions, usageEvents, usageRollups})
+			Batches              []store.WorkBatch     `json:"batches"`
+		}{task, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions, usageEvents, usageRollups, batches})
 	}
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, task.ReviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
@@ -6430,7 +6692,11 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	}
 	fmt.Println("\nevidence:")
 	for _, ev := range evidence {
-		fmt.Printf("- %s %s %s\n", ev.Result, ev.CommandText, ev.ArtifactPath)
+		notes := ""
+		if strings.TrimSpace(ev.Notes) != "" {
+			notes = " " + strings.TrimSpace(ev.Notes)
+		}
+		fmt.Printf("- %s %s %s%s\n", ev.Result, ev.CommandText, ev.ArtifactPath, notes)
 	}
 	fmt.Println("\nhandoffs:")
 	for _, h := range handoffs {
@@ -6457,6 +6723,13 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	}
 	for _, ev := range usageEvents {
 		fmt.Printf("- %s %s/%s total=%s input=%s cached=%s output=%s phase=%s session=%s\n", ev.Provider, ev.Source, ev.Confidence, formatUsageInt(ev.TotalTokens), formatUsageInt(ev.InputTokens), formatUsageInt(ev.CachedInputTokens), formatUsageInt(ev.OutputTokens), firstNonEmpty(ev.Phase, "unknown"), firstNonEmpty(ev.SessionID, ev.ExternalSessionID, "unknown"))
+	}
+	fmt.Println("\nbatches:")
+	if len(batches) == 0 {
+		fmt.Println("- none")
+	}
+	for _, batch := range batches {
+		fmt.Printf("- %s %s branch=%s pipeline=%s\n", batch.ID, batch.Title, firstNonEmpty(batch.Branch, "none"), firstNonEmpty(batch.PipelineID, "none"))
 	}
 	return nil
 }
@@ -6486,6 +6759,23 @@ func sessionsForTask(ctx context.Context, s *store.Store, taskID string) ([]stor
 	for _, session := range sessions {
 		if session.TaskID == taskID {
 			out = append(out, session)
+		}
+	}
+	return out, nil
+}
+
+func batchesForTask(ctx context.Context, s *store.Store, taskID string) ([]store.WorkBatch, error) {
+	batches, err := s.WorkBatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []store.WorkBatch
+	for _, batch := range batches {
+		for _, member := range batch.Tasks {
+			if member == taskID {
+				out = append(out, batch)
+				break
+			}
 		}
 	}
 	return out, nil
@@ -6539,7 +6829,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

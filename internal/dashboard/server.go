@@ -243,6 +243,7 @@ type TaskDetailViewData struct {
 	TaskSessions         []store.Session
 	Usage                []store.ProviderUsage
 	UsageRollups         []store.UsageRollup
+	Batches              []store.WorkBatch
 	Rollup               Rollup
 	CSRFToken            string
 	States               []string
@@ -1161,6 +1162,11 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	batches, err := dashboardBatchesForTask(r.Context(), s.store, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -1176,6 +1182,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		TaskSessions:         sessionsForDashboardTask(sessions, id),
 		Usage:                usageEvents,
 		UsageRollups:         usageRollups,
+		Batches:              batches,
 		Rollup:               rollups[task.Definition.ID],
 		CSRFToken:            s.csrfToken,
 		States:               dashboardMutableStates(s.cfg),
@@ -1275,6 +1282,23 @@ func sessionsForDashboardTask(sessions []store.Session, taskID string) []store.S
 		}
 	}
 	return out
+}
+
+func dashboardBatchesForTask(ctx context.Context, s *store.Store, taskID string) ([]store.WorkBatch, error) {
+	batches, err := s.WorkBatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []store.WorkBatch
+	for _, batch := range batches {
+		for _, member := range batch.Tasks {
+			if member == taskID {
+				out = append(out, batch)
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 func (s *Server) claim(w http.ResponseWriter, r *http.Request) {

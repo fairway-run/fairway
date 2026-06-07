@@ -38,18 +38,20 @@ type WorkCoverageSummary struct {
 	EvidenceStatusDecisions     int `json:"evidence_status_decisions"`
 	DoneWithoutRequiredEvidence int `json:"done_without_required_evidence"`
 	MissingRequiredReviews      int `json:"missing_required_reviews"`
+	WorkBatchCandidates         int `json:"work_batch_candidates"`
 }
 
 type WorkCoverageFinding struct {
-	Kind        string   `json:"kind"`
-	Severity    string   `json:"severity"`
-	Reason      string   `json:"reason"`
-	TaskID      string   `json:"task_id,omitempty"`
-	Commit      string   `json:"commit,omitempty"`
-	Subject     string   `json:"subject,omitempty"`
-	Files       []string `json:"files,omitempty"`
-	Missing     []string `json:"missing,omitempty"`
-	Recommended string   `json:"recommended_action,omitempty"`
+	Kind         string   `json:"kind"`
+	Severity     string   `json:"severity"`
+	Reason       string   `json:"reason"`
+	TaskID       string   `json:"task_id,omitempty"`
+	Commit       string   `json:"commit,omitempty"`
+	Subject      string   `json:"subject,omitempty"`
+	Files        []string `json:"files,omitempty"`
+	RelatedTasks []string `json:"related_tasks,omitempty"`
+	Missing      []string `json:"missing,omitempty"`
+	Recommended  string   `json:"recommended_action,omitempty"`
 }
 
 func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string, s *store.Store, opts WorkCoverageOptions) (WorkCoverageReport, error) {
@@ -94,6 +96,7 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 	}
 	taskPattern := taskIDPattern(taskIDs)
 	pathCoverage := buildTaskPathCoverage(tasks)
+	evidenceByTask := map[string][]store.Evidence{}
 	for _, commit := range commits {
 		mentioned := mentionedTaskIDs(commit.Subject+"\n"+commit.Body, taskPattern, tasks)
 		coveredTasks := tasksCoveringFiles(commit.ChangedFiles, pathCoverage)
@@ -129,6 +132,7 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 		if err != nil {
 			return WorkCoverageReport{}, err
 		}
+		evidenceByTask[task.Definition.ID] = evidence
 		if len(evidence) > 0 && !isTerminalStatus(task.Status, cfg.States.Terminal) {
 			report.Findings = append(report.Findings, WorkCoverageFinding{
 				Kind:        "evidence_without_status_decision",
@@ -161,6 +165,14 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 			})
 			report.Summary.MissingRequiredReviews++
 		}
+	}
+	batches, err := s.WorkBatches(ctx)
+	if err != nil {
+		return WorkCoverageReport{}, err
+	}
+	for _, finding := range workBatchCandidateFindings(tasks, evidenceByTask, batches) {
+		report.Findings = append(report.Findings, finding)
+		report.Summary.WorkBatchCandidates++
 	}
 	sort.SliceStable(report.Findings, func(i, j int) bool {
 		if report.Findings[i].Kind != report.Findings[j].Kind {
@@ -328,6 +340,84 @@ func tasksCoveringFiles(files []string, coverage []taskPathCoverage) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func workBatchCandidateFindings(tasks []store.Task, evidenceByTask map[string][]store.Evidence, batches []store.WorkBatch) []WorkCoverageFinding {
+	batched := map[string]bool{}
+	for _, batch := range batches {
+		for _, taskID := range batch.Tasks {
+			batched[taskID] = true
+		}
+	}
+	type candidate struct {
+		domain string
+		tasks  []string
+	}
+	groups := map[string]candidate{}
+	for _, task := range tasks {
+		if batched[task.Definition.ID] || !taskLooksBatchable(task) || !hasPipelineEvidence(evidenceByTask[task.Definition.ID]) {
+			continue
+		}
+		domain := strings.TrimSpace(task.Definition.OwningDomain)
+		if domain == "" {
+			domain = strings.TrimSpace(task.Definition.Role)
+		}
+		if domain == "" {
+			domain = "unassigned"
+		}
+		key := domain + "|" + strings.TrimSpace(task.Definition.Role)
+		group := groups[key]
+		group.domain = domain
+		group.tasks = append(group.tasks, task.Definition.ID)
+		groups[key] = group
+	}
+	var findings []WorkCoverageFinding
+	for _, group := range groups {
+		if len(group.tasks) < 2 {
+			continue
+		}
+		sort.Strings(group.tasks)
+		findings = append(findings, WorkCoverageFinding{
+			Kind:         "work_batch_candidate",
+			Severity:     "info",
+			Reason:       "multiple related tasks in the same domain have separate CI/deploy evidence and may be over-split",
+			RelatedTasks: append([]string{}, group.tasks...),
+			Recommended:  "consider a work batch when these tasks share branch, worktree, validation commands, review domains, and rollback behavior",
+		})
+	}
+	sort.SliceStable(findings, func(i, j int) bool {
+		return strings.Join(findings[i].RelatedTasks, ",") < strings.Join(findings[j].RelatedTasks, ",")
+	})
+	return findings
+}
+
+func taskLooksBatchable(task store.Task) bool {
+	text := strings.ToLower(strings.Join([]string{
+		task.Definition.Kind,
+		task.Definition.Role,
+		task.Definition.OwningDomain,
+		task.Definition.OwningLayer,
+		task.Definition.MigrationType,
+		task.Definition.Title,
+	}, " "))
+	for _, keyword := range []string{"ci", "deploy", "smoke", "uat", "release", "monitor", "validation"} {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPipelineEvidence(evidence []store.Evidence) bool {
+	for _, ev := range evidence {
+		text := strings.ToLower(strings.Join([]string{ev.ArtifactType, ev.CommandText, ev.ArtifactPath, ev.Notes}, " "))
+		for _, keyword := range []string{"ci", "pipeline", "deploy", "smoke", "uat", "gh run", "gitlab", "workflow"} {
+			if strings.Contains(text, keyword) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func tasksCoveringFile(file string, coverage []taskPathCoverage) []string {

@@ -80,6 +80,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check"},
+		{[]string{"batch", "--help"}, "fairway batch create|add|remove|evidence|link|show|list"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning"},
 		{[]string{"release", "--help"}, "fairway release verify"},
 	} {
@@ -606,6 +607,52 @@ func TestCLI_ProviderUsageAccounting(t *testing.T) {
 	}
 }
 
+func TestCLI_WorkBatches(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: API facade
+  role: backend
+  owning_domain: platform
+- id: T-002
+  title: Frontend contract
+  role: ui
+  owning_domain: platform
+- id: T-003
+  title: Separate task
+  role: backend
+`)
+	runOK(t, "import", "tasks.yaml")
+	runOK(t, "batch", "create", "BATCH-001", "--title", "Platform slice", "--branch", "feature/platform-slice", "--worktree", "../worktrees/platform", "--validation-command", "go test ./...", "--validation-command", "npm test", "--review-domain", "arch,backend", "--task", "T-001", "--task", "T-002", "--rollback-criteria", "revert branch", "--split-criteria", "ownership diverges", "--expected-ci", "github actions")
+	runOK(t, "batch", "add", "BATCH-001", "T-003")
+	runOK(t, "batch", "remove", "BATCH-001", "T-003")
+	runOK(t, "batch", "link", "BATCH-001", "--deploy-run-id", "DEPLOY-001", "--pipeline-id", "gh-run-1")
+	runOK(t, "batch", "evidence", "BATCH-001", "--command-text", "go test ./... && npm test", "--result", "pass", "--artifact", "dist/batch.log", "--artifact-type", "ci")
+	show := runCapture(t, "batch", "show", "BATCH-001")
+	assertContains(t, show, "BATCH-001 Platform slice")
+	assertContains(t, show, "T-001")
+	assertContains(t, show, "T-002")
+	assertContains(t, show, "gh-run-1")
+	assertContains(t, show, "go test ./... && npm test")
+	list := runCapture(t, "batch", "list")
+	assertContains(t, list, "BATCH-001")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "batch BATCH-001: go test ./... && npm test")
+	assertContains(t, detail, "work_batch=BATCH-001")
+	assertContains(t, detail, "BATCH-001 Platform slice branch=feature/platform-slice pipeline=gh-run-1")
+	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, jsonDetail, `"batches"`)
+}
+
 func TestProviderOTelIngestAdapter(t *testing.T) {
 	repo := t.TempDir()
 	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "provider-otel-ingest.sh"))
@@ -1046,9 +1093,15 @@ func TestCLI_AuditWorkCoverage(t *testing.T) {
 	runOK(t, "add", "T-001", "--title", "Covered API", "--role", "backend", "--source-paths", "cmd/api")
 	runOK(t, "add", "T-002", "--title", "Needs evidence", "--role", "backend", "--review-domains", "architecture")
 	runOK(t, "add", "T-003", "--title", "Evidence open", "--role", "backend")
+	runOK(t, "add", "CI-001", "--title", "API CI monitor", "--role", "ops", "--kind", "ci-monitor", "--owning-domain", "platform")
+	runOK(t, "add", "CI-002", "--title", "Frontend CI monitor", "--role", "ops", "--kind", "ci-monitor", "--owning-domain", "platform")
 	runOK(t, "set-status", "T-002", "done")
+	runOK(t, "set-status", "CI-001", "done")
+	runOK(t, "set-status", "CI-002", "done")
 	replaceInFile(t, ".fairway/config.toml", "require_evidence_before_done = false", "require_evidence_before_done = true")
 	runOK(t, "record", "evidence", "T-003", "--command-text", "go test ./...", "--result", "pass")
+	runOK(t, "record", "evidence", "CI-001", "--command-text", "gh run watch api", "--result", "pass", "--artifact-type", "ci_pipeline", "--artifact", "gh-run-api")
+	runOK(t, "record", "evidence", "CI-002", "--command-text", "gh run watch frontend", "--result", "pass", "--artifact-type", "ci_pipeline", "--artifact", "gh-run-frontend")
 
 	writeFile(t, "README.md", "base\n")
 	gitAddCommit(t, repo, "base")
@@ -1066,6 +1119,8 @@ func TestCLI_AuditWorkCoverage(t *testing.T) {
 		"done_without_required_evidence",
 		"evidence_without_status_decision",
 		"missing_required_review_domains",
+		"work_batch_candidate",
+		"related_tasks: CI-001, CI-002",
 		"docs/plan.md",
 		"T-002",
 		"T-003",
@@ -1076,6 +1131,8 @@ func TestCLI_AuditWorkCoverage(t *testing.T) {
 	jsonReport := runCapture(t, "--json", "audit", "work-coverage", "--since-ref", baseRef)
 	assertContains(t, jsonReport, `"kind": "commit_without_task_coverage"`)
 	assertContains(t, jsonReport, `"done_without_required_evidence": 1`)
+	assertContains(t, jsonReport, `"work_batch_candidates": 1`)
+	assertContains(t, jsonReport, `"related_tasks": [`)
 	assertContains(t, jsonReport, `"missing": [`)
 	assertContains(t, jsonReport, `"architecture"`)
 

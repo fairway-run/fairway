@@ -160,6 +160,9 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	if _, err := s.RecordProviderUsage(ctx, store.ProviderUsage{Provider: "codex", TaskID: "T-001", Role: "backend", Phase: "implementation", Source: "provider_reported", Confidence: "exact", TotalTokens: &total, CachedInputTokens: &cached}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.UpsertWorkBatch(ctx, store.WorkBatch{ID: "BATCH-001", Title: "Portal validation batch", Branch: "feature/portal", Tasks: []string{"T-001", "W-001"}}); err != nil {
+		t.Fatal(err)
+	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"backend", "ops/watch"}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/reports", nil)
 	rec := httptest.NewRecorder()
@@ -176,6 +179,7 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 		"CI-FIX",
 		"Missing Required Review Domains",
 		"Provider Usage Attribution",
+		"Work batches / batched tasks",
 		"codex",
 		"150",
 		"Markdown",

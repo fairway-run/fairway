@@ -1,6 +1,6 @@
 # Work Batch Model
 
-Status: proposed for `FW-127`.
+Status: implemented first slice for `FW-127`.
 
 Fairway tasks remain the accountability unit. A work batch is the execution and
 validation unit for related tasks that share one branch, worktree, CI run,
@@ -61,6 +61,27 @@ Before implementation, the orchestrator should record:
 - rollback or split criteria;
 - known non-goals.
 
+The first CLI slice stores that plan directly:
+
+```bash
+fairway batch create BATCH-001 \
+  --title "Platform validation slice" \
+  --task T-001 \
+  --task T-002 \
+  --branch feature/platform \
+  --worktree ../worktrees/platform \
+  --validation-command "go test ./..." \
+  --review-domain arch \
+  --review-domain backend \
+  --rollback-criteria "revert shared branch" \
+  --split-criteria "split if failures need different owners" \
+  --expected-ci "GitHub Actions platform workflow"
+```
+
+Use `fairway batch add` and `fairway batch remove` to maintain membership, and
+`fairway batch link --pipeline-id <id> --deploy-run-id <id>` when the shared
+CI/deploy-run exists.
+
 ## Evidence Mapping
 
 One CI/deploy-run can validate multiple tasks. Each task must still be closed
@@ -71,8 +92,30 @@ If a batch fails, split only the failing task or concern into a follow-up branch
 when practical. Do not rerun unrelated passing work just because the original
 batch contained it.
 
+Record shared evidence once:
+
+```bash
+fairway batch evidence BATCH-001 \
+  --command-text "go test ./..." \
+  --result pass \
+  --artifact https://ci.example/runs/123 \
+  --artifact-type ci
+```
+
+By default, batch evidence is also inserted as task evidence for every member
+task with a `work_batch=<batch-id>` note. Use `--map-to-tasks=false` only for
+batch notes that do not validate member task acceptance criteria.
+
 ## Dashboard And Audit
 
 The dashboard should show both task count and batch count. Reconciliation should
 warn when many related tasks in the same domain create separate CI monitors
 with the same validation commands, because that is a signal of over-splitting.
+
+The first implementation exposes:
+
+- `fairway task-detail <task-id>` batch membership and mapped evidence;
+- `/tasks/<task-id>` batch membership;
+- `/reports` batch count and batched-task count;
+- `fairway audit work-coverage` `work_batch_candidate` findings for related
+  same-domain tasks with separate CI/deploy evidence and no existing batch.

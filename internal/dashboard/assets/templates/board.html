@@ -71,13 +71,14 @@
 <div><b>{{.Audit.WorkCoverage.Summary.OrphanEvidence}}</b><span>Orphan evidence</span></div>
 <div><b>{{.Audit.WorkCoverage.Summary.DoneWithoutRequiredEvidence}}</b><span>Done without evidence</span></div>
 <div><b>{{.Audit.WorkCoverage.Summary.MissingRequiredReviews}}</b><span>Missing review</span></div>
+<div><b>{{.Audit.WorkCoverage.Summary.WorkBatchCandidates}}</b><span>Batch candidates</span></div>
 <div><b>{{.Audit.CILearning.Summary.MissingFollowUps}}</b><span>Failed CI follow-ups</span></div>
 </section>
 {{if .Audit.WorkCoverageError}}<p class="muted">work coverage audit unavailable: {{.Audit.WorkCoverageError}}</p>{{end}}
 {{if .Audit.CILearningError}}<p class="muted">CI learning audit unavailable: {{.Audit.CILearningError}}</p>{{end}}
 <h3>Work Coverage Findings</h3>
 <table data-sortable><thead><tr><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Commit</button></th><th><button type="button" data-sort="text">Files</button></th><th><button type="button" data-sort="text">Next</button></th></tr></thead><tbody>
-{{range takeWorkCoverageFindings .Audit.WorkCoverage.Findings 8}}<tr><td>{{.Kind}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{else}}-{{end}}</td><td>{{if .Commit}}<code>{{.Commit}}</code>{{end}}</td><td>{{range .Files}}<code>{{.}}</code> {{end}}</td><td>{{.Recommended}}</td></tr>{{else}}<tr><td colspan="5">no work coverage findings</td></tr>{{end}}
+{{range takeWorkCoverageFindings .Audit.WorkCoverage.Findings 8}}<tr><td>{{.Kind}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{else}}-{{end}}</td><td>{{if .Commit}}<code>{{.Commit}}</code>{{end}}</td><td>{{range .Files}}<code>{{.}}</code> {{end}}{{range .RelatedTasks}}<code>{{.}}</code> {{end}}</td><td>{{.Recommended}}</td></tr>{{else}}<tr><td colspan="5">no work coverage findings</td></tr>{{end}}
 </tbody></table>
 <h3>CI Learning Findings</h3>
 <table data-sortable><thead><tr><th><button type="button" data-sort="text">Class</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Evidence</button></th><th><button type="button" data-sort="text">Follow-up</button></th><th><button type="button" data-sort="text">Reproduce</button></th></tr></thead><tbody>

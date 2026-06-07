@@ -74,6 +74,8 @@ type ReportSummary struct {
 	CIDeployUATFailed  int `json:"ci_deploy_uat_failed"`
 	CIDeployUATRunning int `json:"ci_deploy_uat_running"`
 	MissingReviews     int `json:"missing_reviews"`
+	WorkBatches        int `json:"work_batches"`
+	BatchedTasks       int `json:"batched_tasks"`
 }
 
 type ReportLane struct {
@@ -192,6 +194,10 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
+	batches, err := s.store.WorkBatches(r.Context())
+	if err != nil {
+		return ReportViewData{}, err
+	}
 	usage, err := s.reportUsage(r.Context(), start, end)
 	if err != nil {
 		return ReportViewData{}, err
@@ -225,7 +231,7 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		Window:        window,
 		Filters:       filters,
 		FilterOptions: filterOptions(tasks, activity),
-		Summary:       reportSummary(facts, summaryRows, watchers, start, end),
+		Summary:       reportSummary(facts, summaryRows, watchers, batches, start, end),
 		Lanes:         reportLanes(rows),
 		Timeline:      reportTimeline(facts, watchers, rows, start, end),
 		FollowUps:     reportFollowUps(rows),
@@ -488,8 +494,16 @@ func reportRowMatchesSearch(row ReportTaskRow, raw string) bool {
 	return strings.Contains(strings.ToLower(hay), needle)
 }
 
-func reportSummary(facts []reportTaskFacts, rows []ReportTaskRow, watchers []store.Watcher, start, end time.Time) ReportSummary {
+func reportSummary(facts []reportTaskFacts, rows []ReportTaskRow, watchers []store.Watcher, batches []store.WorkBatch, start, end time.Time) ReportSummary {
 	var summary ReportSummary
+	summary.WorkBatches = len(batches)
+	seenBatchTasks := map[string]bool{}
+	for _, batch := range batches {
+		for _, taskID := range batch.Tasks {
+			seenBatchTasks[taskID] = true
+		}
+	}
+	summary.BatchedTasks = len(seenBatchTasks)
 	rowIDs := map[string]bool{}
 	for _, row := range rows {
 		rowIDs[row.ID] = true

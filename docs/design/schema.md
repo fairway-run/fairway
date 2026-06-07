@@ -283,6 +283,70 @@ Indices:
 - `(project_id, role, created_at)` — lane rollups.
 - `(project_id, created_at)` — daily reports.
 
+### `work_batches`
+
+Execution and validation plans for related tasks that share one branch,
+worktree, CI/deploy-run, review path, and evidence set. Tasks remain the
+accountability unit; batches are the implementation and validation unit.
+
+| Column | Type | Notes |
+|---|---|---|
+| `project_id` | TEXT NOT NULL | |
+| `id` | TEXT NOT NULL | Stable batch identifier, e.g. `BATCH-001`. |
+| `title` | TEXT NOT NULL | Human-readable batch title. |
+| `branch` | TEXT | Shared implementation branch. |
+| `worktree_path` | TEXT | Shared worktree path. |
+| `validation_commands` | TEXT | JSON array of commands expected to validate the batch. |
+| `review_domains` | TEXT | JSON array of review domains expected for the shared work. |
+| `rollback_criteria` | TEXT | Criteria for reverting or backing out the batch. |
+| `split_criteria` | TEXT | Criteria for splitting the batch when failure diagnosis or ownership diverges. |
+| `expected_ci` | TEXT | Expected CI/deploy-run description. |
+| `deploy_run_id` | TEXT | Linked deploy-run id, when known. |
+| `pipeline_id` | TEXT | Linked CI pipeline/run id, when known. |
+| `created_at` | DATETIME NOT NULL | |
+| `updated_at` | DATETIME NOT NULL | |
+
+Primary key: `(project_id, id)`.
+
+### `work_batch_tasks`
+
+Membership join table from work batches to granular Fairway tasks.
+
+| Column | Type | Notes |
+|---|---|---|
+| `project_id` | TEXT NOT NULL | |
+| `batch_id` | TEXT NOT NULL | |
+| `task_id` | TEXT NOT NULL | |
+| `created_at` | DATETIME NOT NULL | |
+
+Primary key: `(project_id, batch_id, task_id)`.
+FKs:
+- `(project_id, batch_id) → work_batches(project_id, id)`.
+- `(project_id, task_id) → task_definitions(project_id, id)`.
+
+Index: `(project_id, task_id)` — task detail batch lookup.
+
+### `work_batch_evidence`
+
+Batch-level evidence records. `fairway batch evidence` can also map evidence to
+each member task by inserting corresponding `task_evidence` rows with a
+`work_batch=<batch-id>` note.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `project_id` | TEXT NOT NULL | |
+| `batch_id` | TEXT NOT NULL | |
+| `command_text` | TEXT | Shared validation command. |
+| `result` | TEXT | `pass` / `fail` / `partial` / `skipped` / `blocked` / NULL. |
+| `artifact_path` | TEXT | Pipeline URL, deploy-run, log, report, or local artifact reference. |
+| `artifact_type` | TEXT | Optional display hint such as `ci`, `deploy`, `uat`, or `work-batch`. |
+| `notes` | TEXT | |
+| `created_at` | DATETIME NOT NULL | |
+
+FK: `(project_id, batch_id) → work_batches(project_id, id)`.
+Index: `(project_id, batch_id, created_at)`.
+
 ## Migration strategy
 
 - One SQL file per migration in `internal/store/migrations/`, named `001_init.sql`, `002_*.sql`, ...

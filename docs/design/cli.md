@@ -28,6 +28,13 @@ fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>                          # includes missing required review domains before merge-ready
 fairway status-report | health-report | timing-report
 fairway usage report [--by <provider|task|epic|role|day|kind|phase>] [--task-id <id>] [--since-duration <duration>]
+fairway batch create <batch-id> --title <t> [--task <id>]... [--branch <b>] [--worktree <path>] [--validation-command <cmd>]... [--review-domain <domain>]... [--rollback-criteria <text>] [--split-criteria <text>] [--expected-ci <text>] [--deploy-run-id <id>] [--pipeline-id <id>]
+fairway batch add <batch-id> <task-id>...
+fairway batch remove <batch-id> <task-id>...
+fairway batch evidence <batch-id> --command-text <cmd> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--notes <text>] [--map-to-tasks=false]
+fairway batch link <batch-id> [--deploy-run-id <id>] [--pipeline-id <id>]
+fairway batch show <batch-id>
+fairway batch list
 fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
@@ -151,6 +158,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   checks for matching `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`, `HARNESS-FIX-*`,
   `UAT-BUG-*`, or `DOC-FIX-*` follow-up tasks. Use `--template` to render a
   learning artifact for review or release notes.
+- `batch` commands model shared implementation and validation units. A batch
+  can contain multiple granular tasks that share one branch/worktree,
+  validation command set, review domains, CI/deploy-run, and evidence set.
+  `batch evidence` maps shared evidence back to each member task by default so
+  tasks still close independently while pointing to the same proof. Use
+  `--map-to-tasks=false` only for batch-level notes that do not satisfy any
+  task acceptance check.
 - `release verify` is an advisory release-readiness guard with a non-zero exit
   on release issues. It consumes observed evidence from commands such as
   `gh release view`, `curl`, `brew info`, and `brew fetch`; it does not call
