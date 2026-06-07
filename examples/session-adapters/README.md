@@ -31,6 +31,32 @@ launcher or watcher must keep the session row associated with the current task
 and emit lifecycle checkpoints or provider events at start, wait/stale/failure,
 and completion.
 
+## Prompt-file shell launch
+
+`fairway session launch` provides a minimal built-in shell adapter for teams
+that want a repeatable prompt-file launch without adopting a tmux wrapper. It
+feeds the prompt file into the provider command, writes output to a transcript,
+upserts the session, and records an initial checkpoint when a task is supplied.
+It does not claim the task or change terminal status.
+
+Dry-run first:
+
+```bash
+fairway session launch \
+  --role orchestrator \
+  --provider claude \
+  --task-id PF-001 \
+  --prompt-file prompts/platform-foundation/PF-001.md \
+  --transcript .fairway/transcripts/claude-orchestrator-PF-001.log \
+  --command "claude" \
+  --dry-run
+```
+
+Then run the same command without `--dry-run`. Prompt and transcript paths are
+relative to the launch worktree unless absolute. For generated prompts, pass
+`--prompt "<text>"` instead of `--prompt-file`; Fairway writes it to
+`.fairway/prompts/<role>-<task>-<timestamp>.md` before starting the command.
+
 ## tmux transcript bridge
 
 `tmux.sh` is provider-neutral. It starts a tmux pane, pipes pane output to a

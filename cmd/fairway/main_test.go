@@ -668,7 +668,26 @@ provider = "codex"
 	runOK(t, "session", "upsert", "--id", "s-dead", "--role", "backend", "--pid", "999999")
 	runOK(t, "session", "reconcile", "--dry-run")
 	runOK(t, "session", "reconcile")
-	runOK(t, "session", "launch", "--role", "backend")
+	runOK(t, "add", "T-001", "--title", "Prompt launch", "--role", "backend")
+	dryRun := runCapture(t, "session", "launch", "--role", "backend", "--task-id", "T-001", "--prompt-file", "prompts/FW-101.md", "--transcript", ".fairway/transcripts/FW-101.log", "--command", "cat", "--dry-run")
+	assertContains(t, dryRun, "session launch dry-run")
+	assertContains(t, dryRun, "command: cat")
+	assertContains(t, dryRun, "prompt_file: prompts/FW-101.md")
+	assertContains(t, dryRun, "transcript: .fairway/transcripts/FW-101.log")
+	assertContains(t, dryRun, "task_id: T-001")
+	if _, err := os.Stat(filepath.Join("..", "worktrees", filepath.Base(repo)+"-backend", "prompts", "FW-101.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("dry-run wrote prompt file or stat failed: %v", err)
+	}
+	launch := runCapture(t, "session", "launch", "--role", "backend", "--task-id", "T-001", "--prompt", "hello from prompt", "--transcript", ".fairway/transcripts/FW-101.log", "--command", "cat")
+	assertContains(t, launch, "export FAIRWAY_SESSION_ID=backend-")
+	assertContains(t, launch, "export FAIRWAY_TASK_ID=T-001")
+	assertContains(t, launch, "transcript .fairway/transcripts/FW-101.log")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, ".fairway/transcripts/FW-101.log")
+	checkpoints := runCapture(t, "checkpoint", "status", "--all")
+	assertContains(t, checkpoints, "Started shell-backed codex session from prompt file")
+	task := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, task, `"Status": "todo"`)
 }
 
 func TestCLI_ProviderUsageAccounting(t *testing.T) {

@@ -13,8 +13,21 @@ fairway session launch \
   [--backend <shell|tmux|zellij>] \
   [--provider <name>] \
   [--task-id <id>] \
+  [--prompt-file <path> | --prompt <text>] \
+  [--transcript <path>] \
+  [--command <provider-command>] \
   [--dry-run]
 ```
+
+The built-in implementation is intentionally small and provider-neutral. For
+`--backend shell`, Fairway can feed a prompt file into a configured provider
+command, tee output to a transcript path, and register the resulting session.
+Prompt and transcript paths are relative to the launch worktree unless absolute.
+If `--prompt` is provided, Fairway writes it to `--prompt-file` or to a generated
+`.fairway/prompts/<role>-<task>-<timestamp>.md` path before launch. `--dry-run`
+prints the resolved session id, provider command, prompt file, transcript,
+worktree, branch, and task metadata without writing prompt files, starting a
+process, claiming a task, or recording a session.
 
 ## Adapter Contract
 
@@ -139,5 +152,28 @@ approve reviews, or mark work merge-ready.
 - Launch adapters may record sessions, but they do not bypass `fairway claim`.
 - Provider commands are config or adapter behavior, never core queue behavior.
 - `--dry-run` prints the command/environment without starting a process.
+- `session launch` may record a session and initial checkpoint when `--task-id`
+  is provided, but it must not claim the task or mark it terminal.
 - Provider runtime watchers are adapters. They may write session, checkpoint,
   evidence, or handoff rows, but Fairway core must not depend on provider APIs.
+
+## Prompt-File Lane Example
+
+For GPUaaS-style platform-foundation lanes, keep the durable lane identity in
+Fairway and make the prompt file the repeatable provider attachment:
+
+```bash
+fairway session launch \
+  --role orchestrator \
+  --provider claude \
+  --task-id PF-001 \
+  --prompt-file prompts/platform-foundation/PF-001.md \
+  --transcript .fairway/transcripts/claude-orchestrator-PF-001.log \
+  --command "claude" \
+  --dry-run
+```
+
+After reviewing the dry-run output, run the same command without `--dry-run`.
+The launch records the session and an initial active checkpoint, while task
+claiming, terminal status changes, evidence, reviews, and merge readiness remain
+normal Fairway operations.

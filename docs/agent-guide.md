@@ -52,6 +52,25 @@ FAIRWAY_TRANSCRIPT=".fairway/transcripts/claude-<role>-<task-id>.log" \
 examples/session-adapters/tmux.sh <role> <task-id>
 ```
 
+For prompt-file based lanes that do not need tmux, use `session launch` as the
+repeatable provider attachment. Dry-run first so the coordinator can see the
+provider command, prompt file, transcript path, worktree, branch, and session
+metadata before anything starts:
+
+```bash
+fairway session launch \
+  --role <role> \
+  --provider <codex|claude|gemini|shell> \
+  --task-id <task-id> \
+  --prompt-file prompts/<track>/<task-id>.md \
+  --transcript .fairway/transcripts/<provider>-<role>-<task-id>.log \
+  --command "<provider-command>" \
+  --dry-run
+```
+
+Run the same command without `--dry-run` after review. It records the session
+and an initial checkpoint, but it does not claim the task or mark it done.
+
 Fairway coordination should work through task state, evidence, handoffs,
 checkpoints, and session records. Provider-specific chat history is useful, but
 it is not the coordination source of truth.

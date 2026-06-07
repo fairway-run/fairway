@@ -23,7 +23,7 @@ fairway session status [--all]
 fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]
 fairway session reconcile [--dry-run]
 fairway reconcile active [--dry-run]                    # report stale/unattended active work across sessions, tasks, evidence, and checkpoints
-fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] # adapter; optional
+fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] [--prompt-file <path>|--prompt <text>] [--transcript <path>] [--command <provider-command>] [--dry-run] # adapter; optional
 fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>                          # includes missing required review domains before merge-ready
 fairway status-report | health-report | timing-report
@@ -123,7 +123,11 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - Task metadata flags (`--profile`, `--owning-domain`, `--source-paths`, etc.)
   are stored on task definitions and also supported by YAML/JSON imports.
 - `session launch` is an adapter command. The queue/session model works even
-  when agents are launched manually.
+  when agents are launched manually. The shell-backed path can feed a prompt
+  file into a provider command, record a transcript path, and upsert a session
+  without claiming the task. Prompt and transcript paths are relative to the
+  launch worktree unless absolute. Use `--dry-run` to inspect the command,
+  prompt file, transcript, and session metadata without mutation.
 - `session reconcile` handles session-local cleanup such as missing PID/tmux
   panes and stale sessions attached to terminal tasks. `reconcile active` is
   broader: it reports unattended `in_progress` tasks, evidence without a status

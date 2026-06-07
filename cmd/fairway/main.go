@@ -2403,6 +2403,11 @@ func cmdSessionLaunch(ctx context.Context, opts globalOptions, args []string) er
 	provider := fs.String("provider", "", "provider")
 	taskID := fs.String("task-id", "", "task id")
 	name := fs.String("name", "", "session name")
+	promptFile := fs.String("prompt-file", "", "prompt file to feed to the launched provider")
+	promptText := fs.String("prompt", "", "prompt text to write to --prompt-file or a generated prompt file")
+	transcript := fs.String("transcript", "", "transcript path for launched output")
+	commandText := fs.String("command", "", "provider command to run; defaults to shell login command")
+	dryRun := fs.Bool("dry-run", false, "print launch plan without starting a process or recording a session")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2438,20 +2443,74 @@ func cmdSessionLaunch(ctx context.Context, opts globalOptions, args []string) er
 				providerName = roleCfg.Provider
 			}
 		}
-		sessionID := generatedSessionID(sessionRole, os.Getpid())
+		sessionName := *name
+		if sessionName == "" {
+			sessionName = "fairway-" + sessionRole
+		}
+		sessionID := generatedSessionID(sessionRole, -1)
+		resolvedPrompt, err := ensureLaunchPromptFile(worktreePath, sessionRole, *taskID, *promptFile, *promptText, *dryRun)
+		if err != nil {
+			return err
+		}
+		resolvedTranscript := *transcript
+		if resolvedTranscript == "" {
+			resolvedTranscript = filepath.Join(".fairway", "transcripts", sessionID+".log")
+		}
+		providerCommand := *commandText
+		if providerCommand == "" {
+			providerCommand = "${SHELL:-bash} -l"
+		}
+		plan := sessionLaunchPlan{
+			SessionID:       sessionID,
+			Role:            sessionRole,
+			TaskID:          *taskID,
+			Backend:         launchBackend,
+			Provider:        providerName,
+			SessionName:     sessionName,
+			WorktreePath:    worktreePath,
+			Branch:          branch,
+			PromptFile:      resolvedPrompt,
+			TranscriptPath:  resolvedTranscript,
+			ProviderCommand: providerCommand,
+			DryRun:          *dryRun,
+		}
+		if *dryRun {
+			if opts.JSON {
+				return printJSON(plan)
+			}
+			printSessionLaunchPlan(plan)
+			return nil
+		}
+		pid, err := launchShellSession(plan)
+		if err != nil {
+			return err
+		}
 		session := store.Session{
 			ID:             sessionID,
 			Role:           sessionRole,
 			WorktreePath:   worktreePath,
 			Branch:         branch,
-			SessionBackend: "shell",
+			SessionBackend: launchBackend,
 			Provider:       providerName,
-			SessionName:    *name,
+			SessionName:    sessionName,
 			TaskID:         *taskID,
+			PID:            &pid,
+			TranscriptPath: resolvedTranscript,
 			Status:         "running",
 		}
 		if err := s.UpsertSession(ctx, session); err != nil {
 			return err
+		}
+		if *taskID != "" {
+			if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+				TaskID:       *taskID,
+				State:        "active",
+				Owner:        sessionRole,
+				Summary:      fmt.Sprintf("Started shell-backed %s session from prompt file %s; transcript: %s", firstNonEmpty(providerName, "provider"), resolvedPrompt, resolvedTranscript),
+				ArtifactPath: resolvedTranscript,
+			}); err != nil {
+				return err
+			}
 		}
 		if opts.JSON {
 			return printJSON(session)
@@ -2461,8 +2520,133 @@ func cmdSessionLaunch(ctx context.Context, opts globalOptions, args []string) er
 			fmt.Printf("export FAIRWAY_TASK_ID=%s\n", *taskID)
 		}
 		fmt.Printf("cd %s\n", worktreePath)
+		fmt.Printf("transcript %s\n", resolvedTranscript)
 		return nil
 	})
+}
+
+type sessionLaunchPlan struct {
+	SessionID       string `json:"session_id"`
+	Role            string `json:"role"`
+	TaskID          string `json:"task_id,omitempty"`
+	Backend         string `json:"backend"`
+	Provider        string `json:"provider,omitempty"`
+	SessionName     string `json:"session_name"`
+	WorktreePath    string `json:"worktree_path"`
+	Branch          string `json:"branch"`
+	PromptFile      string `json:"prompt_file"`
+	TranscriptPath  string `json:"transcript_path"`
+	ProviderCommand string `json:"provider_command"`
+	DryRun          bool   `json:"dry_run"`
+}
+
+func ensureLaunchPromptFile(root, role, taskID, promptFile, promptText string, dryRun bool) (string, error) {
+	explicitPromptFile := strings.TrimSpace(promptFile) != ""
+	if !explicitPromptFile {
+		nameParts := []string{sanitizePathToken(role)}
+		if strings.TrimSpace(taskID) != "" {
+			nameParts = append(nameParts, sanitizePathToken(taskID))
+		}
+		nameParts = append(nameParts, time.Now().UTC().Format("20060102T150405Z"))
+		promptFile = filepath.Join(".fairway", "prompts", strings.Join(nameParts, "-")+".md")
+	}
+	if dryRun {
+		return promptFile, nil
+	}
+	path := promptFile
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, path)
+	}
+	if strings.TrimSpace(promptText) != "" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(path, []byte(promptText), 0o600); err != nil {
+			return "", err
+		}
+		return promptFile, nil
+	}
+	if _, err := os.Stat(path); err != nil {
+		if explicitPromptFile {
+			return "", fmt.Errorf("prompt file %s: %w", promptFile, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			return "", err
+		}
+	}
+	return promptFile, nil
+}
+
+func launchShellSession(plan sessionLaunchPlan) (int, error) {
+	if err := os.MkdirAll(filepath.Dir(absOrRelPath(plan.TranscriptPath, plan.WorktreePath)), 0o755); err != nil {
+		return 0, err
+	}
+	promptPath := absOrRelPath(plan.PromptFile, plan.WorktreePath)
+	transcriptPath := absOrRelPath(plan.TranscriptPath, plan.WorktreePath)
+	script := fmt.Sprintf("cat %s | %s > %s 2>&1", shellQuote(promptPath), plan.ProviderCommand, shellQuote(transcriptPath))
+	shellPath := os.Getenv("SHELL")
+	if shellPath == "" {
+		shellPath = "/bin/sh"
+	}
+	cmd := exec.Command(shellPath, "-lc", script)
+	cmd.Dir = plan.WorktreePath
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	go func() {
+		_ = cmd.Wait()
+	}()
+	return cmd.Process.Pid, nil
+}
+
+func printSessionLaunchPlan(plan sessionLaunchPlan) {
+	fmt.Println("session launch dry-run")
+	fmt.Printf("session_id: %s\n", plan.SessionID)
+	fmt.Printf("role: %s\n", plan.Role)
+	fmt.Printf("backend: %s\n", plan.Backend)
+	fmt.Printf("provider: %s\n", plan.Provider)
+	fmt.Printf("command: %s\n", plan.ProviderCommand)
+	fmt.Printf("prompt_file: %s\n", plan.PromptFile)
+	fmt.Printf("transcript: %s\n", plan.TranscriptPath)
+	fmt.Printf("worktree: %s\n", plan.WorktreePath)
+	fmt.Printf("branch: %s\n", plan.Branch)
+	if plan.TaskID != "" {
+		fmt.Printf("task_id: %s\n", plan.TaskID)
+	}
+}
+
+func sanitizePathToken(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "session"
+	}
+	return out
+}
+
+func absOrRelPath(pathValue, root string) string {
+	if filepath.IsAbs(pathValue) {
+		return pathValue
+	}
+	return filepath.Join(root, pathValue)
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func processAlive(pid int) bool {
