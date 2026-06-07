@@ -14,6 +14,10 @@ and uses semantic versioning.
   columns, bulk actions, and CSV/JSON export, `/board?tab=diagnostics` serves
   operational diagnostics, `/reports` serves retrospectives, and `/tasks/<id>`
   remains task detail.
+- Dashboard board saved views now support personal views in
+  `~/.fairway/views.json`, read-only team views from `.fairway/views.json`,
+  "Save current view", and Cmd/Ctrl+1..9 shortcuts for the first nine personal
+  views.
 - Active-work reconciliation now detects monitor sessions without backing proof,
   so CI/deploy/UAT/provider monitors cannot leave fake active work behind when
   no automation, process, external poller, or bounded manual checkpoint exists.

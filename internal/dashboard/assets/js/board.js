@@ -79,6 +79,27 @@
     });
   });
 
+  document.querySelectorAll("form[data-saved-view-form]").forEach((form) => {
+    form.addEventListener("submit", () => {
+      const query = form.querySelector('input[name="query"]');
+      const returnTo = form.querySelector('input[name="return_to"]');
+      const url = new URL(window.location.href);
+      url.searchParams.delete("page");
+      if (query) query.value = url.searchParams.toString();
+      if (returnTo) returnTo.value = `/board${url.search ? url.search : ""}`;
+    });
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+    const digit = Number(event.key);
+    if (!Number.isInteger(digit) || digit < 1 || digit > 9) return;
+    const link = document.querySelector(`[data-saved-view-shortcut="${digit}"]`);
+    if (!link) return;
+    event.preventDefault();
+    window.location.assign(link.href);
+  });
+
   document.querySelectorAll(".board-table").forEach((table) => {
     const selectAll = table.querySelector('thead input[type="checkbox"]');
     const rowChecks = Array.from(table.querySelectorAll('tbody input[type="checkbox"]'));

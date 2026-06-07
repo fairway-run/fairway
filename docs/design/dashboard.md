@@ -103,6 +103,10 @@ It includes:
   chips,
 - sortable task columns with URL state; shift-click adds a secondary sort key,
 - a column chooser with URL-backed visibility and up/down ordering controls,
+- saved views for named filter, column, and sort combinations. Personal views
+  are persisted to `~/.fairway/views.json`; team views are read from
+  `.fairway/views.json` and are read-only in the dashboard. The first nine
+  personal views are available with Cmd/Ctrl+1..9 shortcuts,
 - bulk selection with CSRF-backed Claim, Hand off, Set status, and Record
   evidence dialogs; terminal status changes remain CLI-gated,
 - CSV and JSON export for the current board view. Exports use the active

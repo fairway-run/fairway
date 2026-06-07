@@ -201,6 +201,26 @@
 {{end}}
 </div>
 </details>
+<details class="saved-views">
+<summary><span>Views</span><b>{{len .PersonalViews}} personal</b></summary>
+<div class="saved-view-menu">
+<section>
+<h3>Personal</h3>
+{{range .PersonalViews}}<a href="{{.Href}}" {{if .Shortcut}}data-saved-view-shortcut="{{.Shortcut}}"{{end}}>{{if .Shortcut}}<kbd>{{.Shortcut}}</kbd> {{end}}{{.Name}}</a>{{else}}<span>none</span>{{end}}
+</section>
+<section>
+<h3>Team</h3>
+{{range .TeamViews}}<a href="{{.Href}}">{{.Name}}</a>{{else}}<span>none</span>{{end}}
+</section>
+<form method="post" action="/actions/views/save" data-saved-view-form>
+<input type="hidden" name="csrf" value="{{.CSRFToken}}">
+<input type="hidden" name="query" value="{{.CurrentViewQuery}}">
+<input type="hidden" name="return_to" value="{{boardTabHref .Filters .Filters.Tab}}">
+<label>Name<input name="name" required placeholder="View name"></label>
+<button class="btn" type="submit">Save current view</button>
+</form>
+</div>
+</details>
 <a class="btn" href="{{boardExportHref .Filters "csv"}}">Export CSV</a>
 <a class="btn" href="{{boardExportHref .Filters "json"}}">Export JSON</a>
 <button class="btn" type="submit" form="board-filter-form">Apply</button>

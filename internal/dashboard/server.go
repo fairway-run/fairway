@@ -241,6 +241,9 @@ type DashboardViewData struct {
 	FilterChips          []FilterChip
 	ClearFiltersHref     string
 	BoardColumns         []BoardColumn
+	PersonalViews        []SavedView
+	TeamViews            []SavedView
+	CurrentViewQuery     string
 	Activity             []store.Activity
 	ActivityTotal        int
 	Health               store.Health
@@ -314,6 +317,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux.HandleFunc("/actions/bulk/handoff", s.bulkHandoff)
 	mux.HandleFunc("/actions/bulk/set-status", s.bulkSetStatus)
 	mux.HandleFunc("/actions/bulk/evidence", s.bulkEvidence)
+	mux.HandleFunc("/actions/views/save", s.saveView)
 	mux.HandleFunc("/events", s.events)
 	mux.HandleFunc("/", s.index)
 	return http.ListenAndServe(addr, mux)
@@ -429,6 +433,10 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	if view == "board" && filters.Tab == "diagnostics" {
 		auditDiagnostics = s.auditDiagnostics(r.Context(), "")
 	}
+	personalViews, teamViews, err := loadDashboardSavedViews(s.root)
+	if err != nil {
+		return DashboardViewData{}, err
+	}
 	return DashboardViewData{
 		View:                 view,
 		Summary:              dashboardSummary(tasks, displayTasks, workstreams, readySet),
@@ -444,6 +452,9 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		FilterChips:          boardFilterChips(filters),
 		ClearFiltersHref:     boardClearFiltersHref(filters),
 		BoardColumns:         boardColumns(filters),
+		PersonalViews:        personalViews,
+		TeamViews:            teamViews,
+		CurrentViewQuery:     boardCurrentQuery(filters),
 		Activity:             filteredActivity,
 		ActivityTotal:        activityTotal,
 		Health:               health,
@@ -576,6 +587,17 @@ func boardTabHref(filters TaskFilters, tab string) string {
 func boardPageHref(filters TaskFilters, page int) string {
 	filters.TablePage = page
 	return boardTabHref(filters, filters.Tab)
+}
+
+func boardCurrentQuery(filters TaskFilters) string {
+	href := boardTabHref(filters, filters.Tab)
+	parsed, err := url.Parse(href)
+	if err != nil {
+		return ""
+	}
+	values := parsed.Query()
+	values.Del("page")
+	return values.Encode()
 }
 
 func boardExportHref(filters TaskFilters, format string) string {
@@ -2017,6 +2039,24 @@ func (s *Server) bulkEvidence(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
 }
 
+func (s *Server) saveView(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.FormValue("csrf") != s.csrfToken {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return
+	}
+	view, err := saveDashboardPersonalView(r.FormValue("name"), r.FormValue("query"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.saved-view.save", Detail: "name=" + view.Name})
+	http.Redirect(w, r, savedViewReturnTo(r, view), http.StatusSeeOther)
+}
+
 func (s *Server) bulkActionRequest(w http.ResponseWriter, r *http.Request) ([]string, bool) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2046,6 +2086,18 @@ func bulkReturnTo(r *http.Request) string {
 	parsed, err := url.Parse(returnTo)
 	if err != nil || parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/") || strings.HasPrefix(parsed.Path, "//") {
 		return "/board"
+	}
+	return parsed.RequestURI()
+}
+
+func savedViewReturnTo(r *http.Request, view SavedView) string {
+	returnTo := strings.TrimSpace(r.FormValue("return_to"))
+	if returnTo == "" {
+		return view.Href
+	}
+	parsed, err := url.Parse(returnTo)
+	if err != nil || parsed.Host != "" || parsed.Path != "/board" {
+		return view.Href
 	}
 	return parsed.RequestURI()
 }
