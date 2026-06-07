@@ -691,6 +691,57 @@ func TestProviderOTelIngestAdapter(t *testing.T) {
 	}
 }
 
+func TestCodexUsageAdapter(t *testing.T) {
+	repo := t.TempDir()
+	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "codex-usage-adapter.sh"))
+
+	execJSON := filepath.Join(repo, "codex-exec.jsonl")
+	if err := os.WriteFile(execJSON, []byte(`{"type":"turn.started","content":"ignored generated text"}
+{"type":"turn.completed","thread_id":"codex-thread-1","session_id":"codex-session-1","role":"backend","phase":"implementation","model":"gpt-5-codex","usage":{"input_tokens":120,"cached_input_tokens":40,"output_tokens":30,"reasoning_tokens":5,"total_tokens":155}}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := runAdapter(t, script, "--mode", "exec-json", "--input", execJSON, "--task-id", "T-001", "--dry-run")
+	for _, want := range []string{"record usage T-001", "--provider codex", "--session-id codex-session-1", "--external-session-id codex-thread-1", "--input-tokens 120", "--cached-input-tokens 40", "--output-tokens 30", "--reasoning-tokens 5", "--total-tokens 155"} {
+		assertContains(t, out, want)
+	}
+	assertNotContains(t, out, "ignored generated text")
+
+	unknownJSON := filepath.Join(repo, "codex-unknown.json")
+	if err := os.WriteFile(unknownJSON, []byte(`{"type":"turn.completed","usage":{},"session_id":"codex-session-unknown"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = runAdapter(t, script, "--mode", "exec-json", "--input", unknownJSON, "--task-id", "T-002", "--role", "backend", "--dry-run")
+	assertContains(t, out, "record usage T-002")
+	assertContains(t, out, "--session-id codex-session-unknown")
+	assertNotContains(t, out, "--total-tokens 0")
+
+	out = runAdapter(t, script, "--mode", "snapshot", "--task-id", "T-003", "--session-id", "codex-snapshot", "--started-token-snapshot", "1000", "--completed-token-snapshot", "1250", "--dry-run")
+	assertContains(t, out, "record usage T-003")
+	assertContains(t, out, "--source derived_snapshot")
+	assertContains(t, out, "--confidence estimated")
+	assertContains(t, out, "--started-token-snapshot 1000")
+	assertContains(t, out, "--completed-token-snapshot 1250")
+
+	otelJSON := filepath.Join(repo, "codex-otel.json")
+	if err := os.WriteFile(otelJSON, []byte(`{"resourceLogs":[{"resource":{"attributes":[{"key":"fairway.task_id","value":{"stringValue":"T-004"}},{"key":"gen_ai.system","value":{"stringValue":"codex"}}]},"scopeLogs":[{"logRecords":[{"attributes":[{"key":"event.name","value":{"stringValue":"response.completed"}},{"key":"gen_ai.usage.total_tokens","value":{"intValue":"77"}}]}]}]}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = runAdapter(t, script, "--mode", "otel", "--input", otelJSON, "--task-id", "T-004", "--dry-run")
+	assertContains(t, out, "record usage T-004")
+	assertContains(t, out, "--provider codex")
+	assertContains(t, out, "--total-tokens 77")
+
+	sensitiveJSON := filepath.Join(repo, "codex-sensitive.json")
+	if err := os.WriteFile(sensitiveJSON, []byte(`{"type":"turn.completed","usage":{"prompt":"do not store","total_tokens":1}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", script, "--mode", "exec-json", "--input", sensitiveJSON, "--task-id", "T-005", "--dry-run")
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("expected sensitive Codex usage key rejection, got success:\n%s", out)
+	}
+}
+
 func TestCLI_CoordinatorStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

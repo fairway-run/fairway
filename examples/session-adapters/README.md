@@ -130,3 +130,35 @@ examples/session-adapters/provider-event.sh \
 Task ownership, terminal status gates, review gates, and merge readiness remain
 Fairway responsibilities. Provider watchers should only feed sessions,
 checkpoints, evidence, and handoffs.
+
+## Provider Usage Adapters
+
+`provider-otel-ingest.sh` is the provider-neutral usage bridge. It accepts OTLP
+JSON logs, metrics, or traces from stdin or `--input`, extracts only structural
+usage metadata, and emits `fairway record usage`.
+
+```bash
+examples/session-adapters/provider-otel-ingest.sh \
+  --input dist/provider-otel.json \
+  --task-id FW-125 \
+  --role backend \
+  --dry-run
+```
+
+`codex-usage-adapter.sh` is the Codex-specific wrapper. It supports Codex-shaped
+OTel JSON, `codex exec --json` / newline-delimited JSON with
+`turn.completed.usage`, and caller-supplied token snapshots:
+
+```bash
+examples/session-adapters/codex-usage-adapter.sh \
+  --mode exec-json \
+  --input dist/codex-exec.jsonl \
+  --task-id FW-124 \
+  --session-id codex-fw-124 \
+  --role backend \
+  --dry-run
+```
+
+The Codex adapter does not read private Codex SQLite files, auth files,
+transcripts, prompts, logs, or generated content. Remove `--dry-run` only after
+confirming the generated command records counts and safe metadata only.

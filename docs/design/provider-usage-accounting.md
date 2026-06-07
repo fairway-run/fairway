@@ -186,11 +186,13 @@ input tokens. Cached tokens are important for cost planning: a task with high
 input tokens and a high cache ratio has different optimization needs than a
 task with the same input volume and no cache benefit.
 
-The Codex adapter must not make Fairway core depend on private Codex local
-state such as `~/.codex/*.sqlite`, auth caches, transcripts, prompts, generated
-content, or undocumented log formats. Those files may change across Codex
-updates. The supported boundary is that Codex-specific tooling supplies usage
-values to Fairway through `fairway record usage` or `provider-event.sh`.
+The Codex adapter is `examples/session-adapters/codex-usage-adapter.sh`.
+It must not make Fairway core depend on private Codex local state such as
+`~/.codex/*.sqlite`, auth caches, transcripts, prompts, generated content, or
+undocumented log formats. Those files may change across Codex updates. The
+supported boundary is that Codex-specific tooling supplies usage values to
+Fairway through the adapter, `provider-otel-ingest.sh`, `fairway record usage`,
+or `provider-event.sh`.
 
 Acceptable Codex ingestion paths:
 
@@ -204,6 +206,48 @@ Acceptable Codex ingestion paths:
 
 Private local Codex storage may be useful for one-off diagnosis, but it is not
 an API contract and should not be embedded in Fairway core.
+
+Codex OTel usage can be recorded through the generic bridge:
+
+```bash
+examples/session-adapters/codex-usage-adapter.sh \
+  --mode otel \
+  --input dist/codex-otel.json \
+  --task-id FW-124 \
+  --role backend \
+  --dry-run
+```
+
+Codex `exec --json` or NDJSON output can be recorded without storing generated
+content. The adapter reads only the completed-turn usage object and ignores
+non-usage payloads:
+
+```bash
+codex exec --json "<task prompt>" > dist/codex-exec.jsonl
+
+examples/session-adapters/codex-usage-adapter.sh \
+  --mode exec-json \
+  --input dist/codex-exec.jsonl \
+  --task-id FW-124 \
+  --session-id codex-fw-124 \
+  --role backend \
+  --phase implementation
+```
+
+When only caller-supplied running totals are available:
+
+```bash
+examples/session-adapters/codex-usage-adapter.sh \
+  --mode snapshot \
+  --task-id FW-124 \
+  --session-id codex-fw-124 \
+  --started-token-snapshot 100000 \
+  --completed-token-snapshot 108500
+```
+
+Use `--dry-run` before recording when introducing a new Codex surface. Unknown
+or absent token fields are omitted from the generated `fairway record usage`
+command, which preserves them as unknown/null in Fairway.
 
 ## CLI Contract
 

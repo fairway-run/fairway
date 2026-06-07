@@ -336,6 +336,35 @@ Code token metrics, should plug into this bridge or call `fairway record usage`
 with already-normalized fields. Do not enable prompt, tool-body, raw API body,
 auth-token, transcript, or generated-content telemetry for usage accounting.
 
+For Codex specifically, use the Codex adapter rather than reading private Codex
+SQLite/auth/log/transcript files:
+
+```bash
+examples/session-adapters/codex-usage-adapter.sh \
+  --mode auto \
+  --input dist/codex-usage.jsonl \
+  --task-id <task-id> \
+  --session-id <fairway-session-id> \
+  --role <role> \
+  --dry-run
+```
+
+The adapter supports Codex-shaped OTel JSON, `codex exec --json` /
+newline-delimited JSON with `turn.completed.usage`, and explicit snapshot
+mode:
+
+```bash
+examples/session-adapters/codex-usage-adapter.sh \
+  --mode snapshot \
+  --task-id <task-id> \
+  --session-id <fairway-session-id> \
+  --started-token-snapshot <n> \
+  --completed-token-snapshot <n>
+```
+
+Remove `--dry-run` only after confirming the generated command contains counts
+and metadata, not prompt text or generated content.
+
 Use `fairway task-detail <task-id>` or `fairway usage report --by provider` to
 inspect recorded usage. Rollups are available by `provider`, `task`, `epic`,
 `role`, `day`, `kind`, and `phase`.
