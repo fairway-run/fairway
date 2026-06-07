@@ -101,6 +101,8 @@ It includes:
   paths, and review domains, with the query mirrored in URL state,
 - clearable role/status/project/profile/kind/domain/risk/review-domain filter
   chips,
+- in multi-project mode, the same `/board` toolbar and table are used; project
+  is a normal filter chip and visible/sortable/exportable table column,
 - sortable task columns with URL state; shift-click adds a secondary sort key,
 - a column chooser with URL-backed visibility and up/down ordering controls,
 - saved views for named filter, column, and sort combinations. Personal views
@@ -265,6 +267,13 @@ agent runtime restart.
 `fairway dashboard --multi` aggregates registered projects via SQLite
 `ATTACH DATABASE`. See [multi-project.md](multi-project.md) for the registry
 and command surface.
+
+The multi-project board is a read-oriented operator surface. It uses the same
+template, filter query state, saved-view links, pagination, and export routes as
+single-project mode. Each row carries a dashboard-only project label from the
+registry entry, exposed through the `project` query parameter and Project
+table/export column. Task identity, ownership, evidence, reviews, and gates
+remain authoritative inside the source project store.
 
 ## Security Posture
 

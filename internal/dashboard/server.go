@@ -63,7 +63,10 @@ func NewWithRoot(s *store.Store, cfg config.Config, roles []string, worktrees []
 
 func NewMulti(projects []ProjectStore) http.Handler {
 	mux := http.NewServeMux()
+	server := &MultiServer{projects: projects, csrfToken: newCSRFToken()}
 	mux.Handle("/assets/", dashboardAssetHandler())
+	mux.HandleFunc("/board", server.board)
+	mux.HandleFunc("/board/export", server.boardExport)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		type projectView struct {
 			Name            string
@@ -97,6 +100,11 @@ func NewMulti(projects []ProjectStore) http.Handler {
 		_ = multiTemplate.Execute(w, struct{ Projects []projectView }{views})
 	})
 	return mux
+}
+
+type MultiServer struct {
+	projects  []ProjectStore
+	csrfToken string
 }
 
 type RoleGroup struct {
@@ -256,6 +264,7 @@ type DashboardViewData struct {
 	TaskRoles            map[string]string
 	ActiveReport         reconcile.ActiveReport
 	Audit                AuditDiagnostics
+	ReadOnly             bool
 	CSRFToken            string
 	MutableStates        []string
 	Roles                []string
@@ -336,6 +345,15 @@ func (s *Server) board(w http.ResponseWriter, r *http.Request) {
 	_ = boardTemplate.ExecuteTemplate(w, "layout", data)
 }
 
+func (s *MultiServer) board(w http.ResponseWriter, r *http.Request) {
+	data, err := s.dashboardViewData(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = boardTemplate.ExecuteTemplate(w, "layout", data)
+}
+
 func (s *Server) wall(w http.ResponseWriter, r *http.Request) {
 	data, err := s.dashboardViewData(r, "wall")
 	if err != nil {
@@ -374,6 +392,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	if err != nil {
 		return DashboardViewData{}, err
 	}
+	tasks = tagTasksProject(tasks, s.cfg.Fairway.ProjectName)
 	health, err := s.store.Health(r.Context())
 	if err != nil {
 		return DashboardViewData{}, err
@@ -471,6 +490,90 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		MutableStates:        dashboardMutableStates(s.cfg),
 		Roles:                append([]string(nil), s.roles...),
 	}, nil
+}
+
+func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, error) {
+	tasks, sessions, checkpoints, watchers, activity, err := s.projectFacts(r.Context())
+	if err != nil {
+		return DashboardViewData{}, err
+	}
+	filters := taskFiltersFromRequest(r)
+	filteredActivity, activityTotal := filterActivity(activity, filters.ActivityKind, filters.ActivityLimit)
+	readySet := map[string]bool{}
+	displayTasks := filterTasks(tasks, filters, "")
+	roles := rolesFromTasks(tasks)
+	rollups := taskRollups(tasks, map[string]bool{"done": true})
+	workstreams := groupWorkstreams(displayTasks, readySet)
+	groups := groupTasks(displayTasks, roles)
+	tableSource := append([]store.Task(nil), displayTasks...)
+	sortBoardRows(tableSource, filters)
+	tableRows, pagination := paginateBoardRows(tableSource, filters)
+	personalViews, teamViews, err := loadDashboardSavedViews("")
+	if err != nil {
+		return DashboardViewData{}, err
+	}
+	return DashboardViewData{
+		View:                 "board",
+		Summary:              dashboardSummary(tasks, displayTasks, workstreams, readySet),
+		Groups:               groups,
+		MissingReviewDomains: map[string][]string{},
+		TableRows:            tableRows,
+		Pagination:           pagination,
+		Workstreams:          workstreams,
+		Filters:              filters,
+		FilterOptions:        filterOptions(tasks, activity, ""),
+		FilterChips:          boardFilterChips(filters),
+		ClearFiltersHref:     boardClearFiltersHref(filters),
+		BoardColumns:         boardColumns(filters),
+		PersonalViews:        personalViews,
+		TeamViews:            teamViews,
+		CurrentViewQuery:     boardCurrentQuery(filters),
+		Activity:             filteredActivity,
+		ActivityTotal:        activityTotal,
+		Sessions:             sessions,
+		Checkpoints:          checkpoints,
+		Watchers:             watchers,
+		Rollups:              rollups,
+		TaskRoles:            taskRoleMap(tasks),
+		ReadOnly:             true,
+		CSRFToken:            s.csrfToken,
+		MutableStates:        []string{"todo", "claimed", "in_progress", "blocked", "review"},
+		Roles:                roles,
+	}, nil
+}
+
+func (s *MultiServer) projectFacts(ctx context.Context) ([]store.Task, []store.Session, []store.Checkpoint, []store.Watcher, []store.Activity, error) {
+	var tasks []store.Task
+	var sessions []store.Session
+	var checkpoints []store.Checkpoint
+	var watchers []store.Watcher
+	var activity []store.Activity
+	for _, project := range s.projects {
+		projectTasks, err := project.Store.AllTasks(ctx)
+		if err != nil {
+			return nil, nil, nil, nil, nil, fmt.Errorf("%s tasks: %w", project.Name, err)
+		}
+		tasks = append(tasks, tagTasksProject(projectTasks, project.Name)...)
+		if projectSessions, err := project.Store.Sessions(ctx, false); err == nil {
+			sessions = append(sessions, tagSessionsProject(projectSessions, project.Name)...)
+		}
+		if projectCheckpoints, err := project.Store.Checkpoints(ctx, "", false); err == nil {
+			checkpoints = append(checkpoints, projectCheckpoints...)
+		}
+		if projectWatchers, err := project.Store.Watchers(ctx, false); err == nil {
+			watchers = append(watchers, projectWatchers...)
+		}
+		if projectActivity, err := project.Store.Activity(ctx, maxActivityFetchLimit); err == nil {
+			activity = append(activity, tagActivityProject(projectActivity, project.Name)...)
+		}
+	}
+	sort.SliceStable(activity, func(i, j int) bool {
+		return activity[i].CreatedAt > activity[j].CreatedAt
+	})
+	if len(activity) > maxActivityFetchLimit {
+		activity = activity[:maxActivityFetchLimit]
+	}
+	return tasks, sessions, checkpoints, watchers, activity, nil
 }
 
 const (
@@ -654,6 +757,7 @@ func boardSortAria(filters TaskFilters, column string) string {
 }
 
 var boardColumnCatalog = []BoardColumn{
+	{Key: "project", Label: "Project", Sortable: true},
 	{Key: "id", Label: "ID", Sortable: true},
 	{Key: "title", Label: "Title", Sortable: true},
 	{Key: "role", Label: "Role", Sortable: true},
@@ -670,7 +774,7 @@ var boardColumnCatalog = []BoardColumn{
 	{Key: "workstream", Label: "Workstream", Sortable: true},
 }
 
-var defaultBoardColumns = []string{"id", "title", "role", "status", "kind", "started", "updated", "gates", "owner"}
+var defaultBoardColumns = []string{"project", "id", "title", "role", "status", "kind", "started", "updated", "gates", "owner"}
 
 func boardColumns(filters TaskFilters) []BoardColumn {
 	visible := filters.Columns
@@ -860,7 +964,7 @@ func normalizeBoardSort(raw string) string {
 
 func normalizeBoardSortKey(raw string) string {
 	switch strings.TrimSpace(raw) {
-	case "id", "title", "role", "status", "kind", "started", "updated", "gates", "owner", "profile", "owning_domain", "risk_level", "review_domains", "workstream":
+	case "project", "id", "title", "role", "status", "kind", "started", "updated", "gates", "owner", "profile", "owning_domain", "risk_level", "review_domains", "workstream":
 		return strings.TrimSpace(raw)
 	default:
 		return ""
@@ -955,7 +1059,7 @@ func filterTasks(tasks []store.Task, filters TaskFilters, projectName string) []
 	statuses := statusFilterValues(filters)
 	var out []store.Task
 	for _, task := range tasks {
-		if filters.Project != "" && filters.Project != projectName {
+		if filters.Project != "" && filters.Project != taskProject(task, projectName) {
 			continue
 		}
 		if filters.Search != "" && !taskMatchesSearch(task, filters.Search) {
@@ -1014,6 +1118,8 @@ func sortBoardRows(rows []store.Task, filters TaskFilters) {
 
 func compareBoardTask(left, right store.Task, key string) int {
 	switch key {
+	case "project":
+		return strings.Compare(taskProject(left, ""), taskProject(right, ""))
 	case "id":
 		return strings.Compare(left.Definition.ID, right.Definition.ID)
 	case "title":
@@ -1048,6 +1154,8 @@ func compareBoardTask(left, right store.Task, key string) int {
 func boardTaskCell(task store.Task, column BoardColumn, rollups map[string]Rollup) template.HTML {
 	escape := html.EscapeString
 	switch column.Key {
+	case "project":
+		return template.HTML(escape(taskProject(task, "")))
 	case "id":
 		id := escape(task.Definition.ID)
 		return template.HTML(`<a href="/tasks/` + url.PathEscape(task.Definition.ID) + `">` + id + `</a>`)
@@ -1086,6 +1194,8 @@ func boardTaskCell(task store.Task, column BoardColumn, rollups map[string]Rollu
 
 func boardTaskPlainCell(task store.Task, column BoardColumn, rollups map[string]Rollup) string {
 	switch column.Key {
+	case "project":
+		return taskProject(task, "")
 	case "id":
 		return task.Definition.ID
 	case "title":
@@ -1131,6 +1241,70 @@ func boardTaskWorkstream(task store.Task) string {
 	default:
 		return kind
 	}
+}
+
+func taskProject(task store.Task, fallback string) string {
+	if strings.TrimSpace(task.Project) != "" {
+		return task.Project
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func tagTasksProject(tasks []store.Task, project string) []store.Task {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return tasks
+	}
+	out := append([]store.Task(nil), tasks...)
+	for i := range out {
+		out[i].Project = project
+	}
+	return out
+}
+
+func tagSessionsProject(sessions []store.Session, project string) []store.Session {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return sessions
+	}
+	out := append([]store.Session(nil), sessions...)
+	for i := range out {
+		if out[i].Lane == "" {
+			out[i].Lane = project
+		}
+	}
+	return out
+}
+
+func tagActivityProject(activity []store.Activity, project string) []store.Activity {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return activity
+	}
+	out := append([]store.Activity(nil), activity...)
+	for i := range out {
+		if out[i].Actor != "" {
+			out[i].Actor = project + "/" + out[i].Actor
+		} else {
+			out[i].Actor = project
+		}
+	}
+	return out
+}
+
+func rolesFromTasks(tasks []store.Task) []string {
+	seen := map[string]bool{}
+	var roles []string
+	for _, task := range tasks {
+		role := strings.TrimSpace(task.Definition.Role)
+		if role == "" || seen[role] {
+			continue
+		}
+		seen[role] = true
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	return roles
 }
 
 func trimmedQueryValues(values []string) []string {
@@ -1219,8 +1393,8 @@ func filterOptions(tasks []store.Task, activity []store.Activity, projectName st
 	risks := map[string]bool{}
 	reviewDomains := map[string]bool{}
 	activityKinds := map[string]bool{}
-	addFilterValue(projects, projectName)
 	for _, task := range tasks {
+		addFilterValue(projects, taskProject(task, projectName))
 		addFilterValue(statuses, task.Status)
 		addFilterValue(profiles, task.Definition.Profile)
 		addFilterValue(kinds, task.Definition.Kind)

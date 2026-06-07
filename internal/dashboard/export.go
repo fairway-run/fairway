@@ -38,8 +38,29 @@ func (s *Server) boardExportPayload(r *http.Request) (boardExportPayload, error)
 	if err != nil {
 		return boardExportPayload{}, err
 	}
+	tasks = tagTasksProject(tasks, s.cfg.Fairway.ProjectName)
+	return boardExportPayloadFromTasks(r, tasks, s.cfg.Fairway.ProjectName), nil
+}
+
+func (s *MultiServer) boardExport(w http.ResponseWriter, r *http.Request) {
+	tasks, _, _, _, _, err := s.projectFacts(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	payload := boardExportPayloadFromTasks(r, tasks, "")
+	switch strings.TrimSpace(r.URL.Query().Get("format")) {
+	case "json":
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	default:
+		writeBoardExportCSV(w, payload)
+	}
+}
+
+func boardExportPayloadFromTasks(r *http.Request, tasks []store.Task, projectName string) boardExportPayload {
 	filters := taskFiltersFromRequest(r)
-	filtered := filterTasks(tasks, filters, s.cfg.Fairway.ProjectName)
+	filtered := filterTasks(tasks, filters, projectName)
 	sortBoardRows(filtered, filters)
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	columns := boardVisibleColumns(boardColumns(filters))
@@ -53,7 +74,7 @@ func (s *Server) boardExportPayload(r *http.Request) (boardExportPayload, error)
 	if payload.Format == "" {
 		payload.Format = "csv"
 	}
-	return payload, nil
+	return payload
 }
 
 func boardExportColumnLabels(columns []BoardColumn) []string {

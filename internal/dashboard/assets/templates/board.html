@@ -212,6 +212,7 @@
 <h3>Team</h3>
 {{range .TeamViews}}<a href="{{.Href}}">{{.Name}}</a>{{else}}<span>none</span>{{end}}
 </section>
+{{if not .ReadOnly}}
 <form method="post" action="/actions/views/save" data-saved-view-form>
 <input type="hidden" name="csrf" value="{{.CSRFToken}}">
 <input type="hidden" name="query" value="{{.CurrentViewQuery}}">
@@ -219,6 +220,7 @@
 <label>Name<input name="name" required placeholder="View name"></label>
 <button class="btn" type="submit">Save current view</button>
 </form>
+{{end}}
 </div>
 </details>
 <a class="btn" href="{{boardExportHref .Filters "csv"}}">Export CSV</a>
@@ -226,6 +228,7 @@
 <button class="btn" type="submit" form="board-filter-form">Apply</button>
 <button class="btn" type="button" data-keyboard-help-open>?</button>
 </div>
+{{if not .ReadOnly}}
 <section class="selection-bar" hidden>
 <span>0 selected</span>
 <button class="btn" type="button" data-selection-clear>Clear</button>
@@ -234,6 +237,7 @@
 <button class="btn" type="button" data-bulk-open="bulk-status-dialog">Set status</button>
 <button class="btn" type="button" data-bulk-open="bulk-evidence-dialog">Record evidence</button>
 </section>
+{{end}}
 <table class="board-table" data-sortable {{if .Pagination.Virtualized}}data-server-window="{{.Pagination.WindowSize}}"{{end}}>
 <thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th>{{range boardVisibleColumns $columns}}<th aria-sort="{{boardSortAria $.Filters .Key}}">{{if .Sortable}}<a href="{{boardSortHref $.Filters .Key}}" data-sort-key="{{.Key}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}</tr></thead>
 <tbody>
@@ -264,6 +268,7 @@
 <form method="dialog"><menu><button class="btn" value="cancel">Close</button></menu></form>
 </section>
 </dialog>
+{{if not .ReadOnly}}
 <dialog id="bulk-claim-dialog" class="bulk-dialog">
 <form method="post" action="/actions/bulk/claim" data-bulk-form>
 <input type="hidden" name="csrf" value="{{.CSRFToken}}">
@@ -311,6 +316,7 @@
 <menu><button class="btn" value="cancel" formmethod="dialog">Cancel</button><button class="btn primary" type="submit">Record evidence</button></menu>
 </form>
 </dialog>
+{{end}}
 <footer class="board-footer">
 <span>showing {{.Pagination.Start}}-{{.Pagination.End}} of {{.Pagination.TotalRows}} filtered tasks</span>
 <nav class="pagination" aria-label="Task table pagination">

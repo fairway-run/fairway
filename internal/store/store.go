@@ -70,6 +70,7 @@ type ImportedTaskState struct {
 
 type Task struct {
 	Definition   TaskDefinition
+	Project      string
 	Status       string
 	Owner        string
 	Claimant     string

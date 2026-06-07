@@ -1202,6 +1202,48 @@ func TestMultiDashboardRendersProjects(t *testing.T) {
 	}
 }
 
+func TestMultiDashboardBoardFiltersByProject(t *testing.T) {
+	ctx := context.Background()
+	left, err := store.Open(ctx, filepath.Join(t.TempDir(), "left.db"), "left")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer left.Close()
+	right, err := store.Open(ctx, filepath.Join(t.TempDir(), "right.db"), "right")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer right.Close()
+	if err := left.ImportTasks(ctx, []store.TaskDefinition{{ID: "L-001", Title: "Left project task", Role: "backend", Kind: "dashboard"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.ImportTasks(ctx, []store.TaskDefinition{{ID: "R-001", Title: "Right project task", Role: "ui", Kind: "dashboard"}}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewMulti([]ProjectStore{
+		{Name: "left-project", Path: "/tmp/left", Store: left},
+		{Name: "right-project", Path: "/tmp/right", Store: right},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/board?project=right-project", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Workstream Dashboard",
+		`<b>Project</b> right-project`,
+		"Project</a>",
+		"Right project task",
+		"right-project",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("multi board body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Left project task") {
+		t.Fatalf("multi board included task outside project filter:\n%s", body)
+	}
+}
+
 func TestDashboardAssetsServeTokens(t *testing.T) {
 	handler := dashboardAssetHandler()
 	req := httptest.NewRequest(http.MethodGet, "/assets/css/tokens.css", nil)
