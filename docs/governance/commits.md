@@ -68,8 +68,10 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 - Push integration-ready commits promptly so push-triggered CI can run.
 - CI itself usually does not need a Fairway task; record/link the result as
   task evidence or deploy-run evidence.
-- Create `CI-FIX-*` only when CI exposes an actionable build, test, lint,
-  generated contract, or runner failure.
+- If the active project/profile uses `CI-FIX-*` follow-ups, create one only
+  when CI exposes an actionable build, test, lint, generated contract, or
+  runner failure. `CI-FIX-*` is a project taxonomy convention, not Fairway core
+  grammar.
 - Use `fairway workflow check --require-pushed` before handing off work that
   depends on CI having run.
 
@@ -78,9 +80,11 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 - Use `fairway workflow check --mode deploy --require-clean --require-pushed`
   before deploy, smoke, or UAT work.
 - Create one deploy-run task per meaningful release/deploy attempt.
-- Create scoped finding tasks only for actionable failures:
+- Create scoped finding tasks only for actionable failures. Prefixes such as
   `CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or
-  `DOC-FIX-*`.
+  `DOC-FIX-*` are examples from one profile taxonomy. Other projects should
+  use the task IDs, kinds, labels, and metadata documented by their active
+  workstream profile.
 
 ## Amending vs new commits
 

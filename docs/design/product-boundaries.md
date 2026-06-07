@@ -45,8 +45,11 @@ accounting, and dashboard features do not drift into hidden decision-making.
 - Gate task completion on token cost, provider spend, or model choice. Usage
   accounting is an operational planning signal, not a completion gate.
 - Encode one project's taxonomy as core product grammar. Prefixes such as
-  `CI-FIX-*`, `UAT-BUG-*`, or `OPS-FIX-*` belong to workstream profiles and
-  project conventions.
+  `CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or
+  `DOC-FIX-*` belong to workstream profiles and project conventions. Fairway
+  may surface or recommend them when a profile/adapter uses that taxonomy, but
+  the prefix itself does not own status, review, evidence, or release
+  semantics.
 
 ## Controller Rule
 

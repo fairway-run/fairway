@@ -31,6 +31,7 @@ builds, tests, scans, deployments, or documentation hosting.
 A profile may define:
 
 - task kinds,
+- task taxonomy conventions,
 - packet templates,
 - review routes or review domains,
 - evidence expectations,
@@ -85,6 +86,43 @@ profile-aware metadata (`profile`, `owning_domain`, `owning_layer`,
 metadata for an initial workstream grouping by profile/kind, and later filters
 and packet rendering should build on the same config rather than adding
 project-specific flags.
+
+## Task Taxonomy Conventions
+
+Task IDs and follow-up prefixes are project conventions unless they are
+explicitly defined by Fairway's generic task ID validation. Fairway core does
+not assign semantic meaning to prefixes such as `CI-FIX-*`, `CD-FIX-*`,
+`UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or `DOC-FIX-*`.
+
+Projects that want those labels should document them with the active
+workstream profile and keep the taxonomy close to the gates, evidence types,
+dashboard groups, and tracker labels that use it. For example, a
+release-readiness profile may say:
+
+| Prefix | Profile meaning |
+|---|---|
+| `CI-FIX-*` | Actionable CI/build/test/generated-contract follow-up. |
+| `CD-FIX-*` | Deploy or release automation follow-up. |
+| `UAT-BUG-*` | User-acceptance or smoke finding that needs product review. |
+| `OPS-FIX-*` | Operational environment, credential, registry, or runner follow-up. |
+| `HARNESS-FIX-*` | Test harness, fixture, or local reproduction follow-up. |
+| `DOC-FIX-*` | Documentation, runbook, or generated documentation follow-up. |
+
+The profile can then map the same taxonomy into task kinds, dashboard groups,
+tracker labels, and review domains without requiring Go changes:
+
+```toml
+[[workstream_profiles]]
+name = "release-readiness"
+task_kinds = ["ci-fix", "deploy-fix", "uat-bug", "ops-fix", "harness-fix", "doc-fix"]
+dashboard_groups = ["CI follow-ups", "deploy follow-ups", "UAT findings", "ops findings", "harness fixes", "docs fixes"]
+review_domains = ["ops", "governance"]
+```
+
+Adapters or reports may recommend a project-specific prefix when configured or
+documented by the active profile. They should still record ordinary Fairway
+tasks, evidence, reviews, and gates; the prefix does not bypass ownership,
+review-domain, or merge-readiness rules.
 
 ## Platform-Foundation Sequence
 

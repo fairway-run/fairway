@@ -176,6 +176,29 @@ as review domains. This avoids accidental self-review when a path such as
 `doc/architecture/**` routes to the architecture reviewer. Implementation tasks
 can still be owned by the lane doing the work, such as `backend` or `ui`.
 
+## Project Task Taxonomy
+
+Document project-specific task prefixes in the profile guide or project
+backlog, not in Fairway core. Prefixes such as `CI-FIX-*`, `CD-FIX-*`,
+`UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, and `DOC-FIX-*` are useful
+conventions for release-readiness or stabilization tracks, but they do not
+change Fairway's generic task model.
+
+When a project uses prefixes, define what each prefix means, which task kind it
+maps to, which review domains normally apply, and which evidence type proves
+the follow-up. Keep the same taxonomy aligned across:
+
+- imported queue IDs,
+- `task_kinds`,
+- dashboard groups,
+- tracker labels,
+- CI/deploy/UAT monitor recommendations,
+- review-domain rules.
+
+If a different project uses `BUILD-*`, `REL-*`, or ordinary issue IDs, Fairway
+should work the same way as long as the profile and queue metadata define the
+coordination contract.
+
 ## Agent Guidance
 
 Agents should treat profile config as the local contract for that workstream.
