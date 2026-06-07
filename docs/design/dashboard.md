@@ -107,6 +107,8 @@ It includes:
 - CSV and JSON export for the current board view. Exports use the active
   filters, sort order, and visible column set, and include all filtered rows
   rather than silently truncating at the current page,
+- virtualized table rendering above 200 filtered rows, with normal pagination
+  preserved at or below the threshold,
 - operational health badges,
 - activity kind and row-count filtering.
 

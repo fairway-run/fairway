@@ -203,14 +203,16 @@ type BoardColumn struct {
 }
 
 type TablePagination struct {
-	Page       int
-	PageSize   int
-	TotalRows  int
-	TotalPages int
-	Start      int
-	End        int
-	PrevHref   string
-	NextHref   string
+	Page        int
+	PageSize    int
+	TotalRows   int
+	TotalPages  int
+	Start       int
+	End         int
+	PrevHref    string
+	NextHref    string
+	Virtualized bool
+	WindowSize  int
 }
 
 type FilterOptions struct {
@@ -1334,6 +1336,19 @@ func filterActivity(activity []store.Activity, kind string, limit int) ([]store.
 }
 
 func paginateBoardRows(rows []store.Task, filters TaskFilters) ([]store.Task, TablePagination) {
+	total := len(rows)
+	if total > maxTableLimit {
+		return rows, TablePagination{
+			Page:        1,
+			PageSize:    total,
+			TotalRows:   total,
+			TotalPages:  1,
+			Start:       1,
+			End:         total,
+			Virtualized: true,
+			WindowSize:  maxTableLimit,
+		}
+	}
 	pageSize := filters.TableLimit
 	if pageSize <= 0 {
 		pageSize = defaultTableLimit
@@ -1341,7 +1356,6 @@ func paginateBoardRows(rows []store.Task, filters TaskFilters) ([]store.Task, Ta
 	if pageSize > maxTableLimit {
 		pageSize = maxTableLimit
 	}
-	total := len(rows)
 	totalPages := 1
 	if total > 0 {
 		totalPages = (total + pageSize - 1) / pageSize

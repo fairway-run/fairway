@@ -59,6 +59,38 @@ measurements rather than precise paint entries.
 | SSE evidence event latency | < 1.5 s | 748 ms | Pass |
 | Dashboard RSS | < 50 MB | 53,264 KB | Fail |
 
+## FWRD-129 Remeasurement
+
+After implementing client-side board windowing at the 200-row threshold, the
+same 1000-task fixture was regenerated at:
+
+```text
+/private/tmp/fairway-perf-v129-zC9N7t
+```
+
+The board rendered with:
+
+- `data-virtual-window="200"`,
+- 1000 rows in the HTML DOM,
+- 200 visible rows after client-side windowing,
+- footer text `showing 1-200 of 1000 filtered tasks`.
+
+Post-change measurements:
+
+| Check | Budget | Measured | Result |
+|---|---:|---:|---|
+| Wall first response/total proxy | < 200 ms | 300 / 306 ms | Fail |
+| Board first response/total proxy | < 200 ms | 292 / 301 ms | Fail |
+| Board sorted response/total proxy | p95 < 100 ms | 336 ms p95 total | Fail |
+| Diagnostics response/total proxy | Informational | 298 / 298 ms | Watch |
+| JSON export response/total | Informational | 8 / 8 ms | Pass |
+| Dashboard RSS | < 50 MB | 51,536 KB | Fail |
+
+Conclusion: client-side row windowing improves visible DOM work but does not
+meet the first-paint or sort budget because the server still computes and sends
+all 1000 board rows. The next performance task needs server-side/windowed data
+delivery or a leaner dashboard read model, not only client-side virtualization.
+
 ## Interpretation
 
 The dashboard is usable for current Fairway dogfooding, but the 1000-task
@@ -77,10 +109,8 @@ performance optimization pass.
 
 Recommended follow-up:
 
-- keep `FWRD-129` as the board virtualization task, but do not assume it is
-  sufficient by itself;
-- add or use a follow-up for server-side dashboard read-model/render latency if
-  `FWRD-129` does not bring wall and board first response under 200 ms;
+- add a follow-up for server-side/windowed board data delivery or dashboard
+  read-model/render latency;
 - re-run this fixture after virtualization/read-model changes and record exact
   browser paint timing from a surface that exposes the Paint Timing API.
 
@@ -91,5 +121,5 @@ Go/no-go: no-go for claiming the 1000-task performance budget is met.
 Owner: ops.
 
 Next action: keep `FWRD-151` blocked on dashboard performance budget failures
-and prioritize `FWRD-129` plus any server-side read-model optimization that the
-next measurement pass identifies.
+and prioritize a server-side/windowed data delivery follow-up before removing
+legacy dashboard compatibility.

@@ -213,7 +213,7 @@
 <button class="btn" type="button" data-bulk-open="bulk-status-dialog">Set status</button>
 <button class="btn" type="button" data-bulk-open="bulk-evidence-dialog">Record evidence</button>
 </section>
-<table class="board-table" data-sortable>
+<table class="board-table" data-sortable {{if .Pagination.Virtualized}}data-virtual-window="{{.Pagination.WindowSize}}"{{end}}>
 <thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th>{{range boardVisibleColumns $columns}}<th aria-sort="{{boardSortAria $.Filters .Key}}">{{if .Sortable}}<a href="{{boardSortHref $.Filters .Key}}" data-sort-key="{{.Key}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}</tr></thead>
 <tbody>
 {{range .TableRows}}
@@ -273,11 +273,13 @@
 </form>
 </dialog>
 <footer class="board-footer">
-<span>showing {{.Pagination.Start}}-{{.Pagination.End}} of {{.Pagination.TotalRows}} filtered tasks</span>
+{{if .Pagination.Virtualized}}<span data-virtual-summary>showing first {{.Pagination.WindowSize}} of {{.Pagination.TotalRows}} filtered tasks</span>{{else}}<span>showing {{.Pagination.Start}}-{{.Pagination.End}} of {{.Pagination.TotalRows}} filtered tasks</span>{{end}}
 <nav class="pagination" aria-label="Task table pagination">
+{{if .Pagination.Virtualized}}<span>virtualized window</span>{{else}}
 {{if .Pagination.PrevHref}}<a class="btn" href="{{.Pagination.PrevHref}}">Previous</a>{{else}}<span class="btn disabled">Previous</span>{{end}}
 <span>page {{.Pagination.Page}} of {{.Pagination.TotalPages}}</span>
 {{if .Pagination.NextHref}}<a class="btn" href="{{.Pagination.NextHref}}">Next</a>{{else}}<span class="btn disabled">Next</span>{{end}}
+{{end}}
 </nav>
 </footer>
 </section>

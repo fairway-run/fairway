@@ -491,6 +491,67 @@ func TestBoardColumnChooserUsesURLState(t *testing.T) {
 	}
 }
 
+func TestBoardVirtualizesAboveThreshold(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var tasks []store.TaskDefinition
+	for i := 1; i <= 201; i++ {
+		tasks = append(tasks, store.TaskDefinition{ID: fmt.Sprintf("T-%03d", i), Title: fmt.Sprintf("Task %03d", i), Role: "ui", Kind: "dashboard"})
+	}
+	if err := s.ImportTasks(ctx, tasks); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?table_limit=25", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		`data-virtual-window="200"`,
+		"virtualized window",
+		"showing first 200 of 201 filtered tasks",
+		"Task 201",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("virtual board missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "page 1 of") {
+		t.Fatalf("virtual board should not render page controls:\n%s", body)
+	}
+}
+
+func TestBoardDoesNotVirtualizeAtThreshold(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var tasks []store.TaskDefinition
+	for i := 1; i <= 200; i++ {
+		tasks = append(tasks, store.TaskDefinition{ID: fmt.Sprintf("T-%03d", i), Title: fmt.Sprintf("Task %03d", i), Role: "ui", Kind: "dashboard"})
+	}
+	if err := s.ImportTasks(ctx, tasks); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?table_limit=200", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	if strings.Contains(body, `data-virtual-window`) {
+		t.Fatalf("board should not virtualize at threshold:\n%s", body)
+	}
+	if !strings.Contains(body, "showing 1-200 of 200 filtered tasks") {
+		t.Fatalf("board threshold footer wrong:\n%s", body)
+	}
+}
+
 func TestBoardFiltersByRole(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
