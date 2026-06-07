@@ -93,7 +93,9 @@ It includes:
 - a column chooser with URL-backed visibility and up/down ordering controls,
 - bulk selection with CSRF-backed Claim, Hand off, Set status, and Record
   evidence dialogs; terminal status changes remain CLI-gated,
-- CSV export for the current task table,
+- CSV and JSON export for the current board view. Exports use the active
+  filters, sort order, and visible column set, and include all filtered rows
+  rather than silently truncating at the current page,
 - operational health badges,
 - activity kind and row-count filtering.
 

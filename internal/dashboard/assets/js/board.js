@@ -144,25 +144,6 @@
     updateSelection();
   });
 
-  document.querySelectorAll("[data-export-table]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const table = document.querySelector(button.getAttribute("data-export-table"));
-      if (!table) return;
-      const rows = Array.from(table.querySelectorAll("tr"));
-      const csv = rows.map((row) => Array.from(row.children).slice(1).map((cell) => {
-        const value = (cell.innerText || "").replace(/\\s+/g, " ").trim().replace(/"/g, '""');
-        return `"${value}"`;
-      }).join(",")).join("\\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "fairway-board.csv";
-      link.click();
-      URL.revokeObjectURL(url);
-    });
-  });
-
   function isTextInput(el) {
     if (!el) return false;
     const tag = el.tagName ? el.tagName.toLowerCase() : "";

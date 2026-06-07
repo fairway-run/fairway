@@ -37,6 +37,8 @@ because its CLI version metadata still reported the development version.
 - The board selection bar now opens CSRF-backed bulk action dialogs for claim,
   handoff, non-terminal status changes, and evidence recording. Each bulk
   mutation records per-task audit events.
+- Board exports now run server-side for CSV and JSON using the current filters,
+  sort order, and visible columns while exporting all filtered rows.
 
 ### Release Checklist
 

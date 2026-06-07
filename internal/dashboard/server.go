@@ -301,6 +301,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", dashboardAssetHandler())
 	mux.HandleFunc("/board", s.board)
+	mux.HandleFunc("/board/export", s.boardExport)
 	mux.HandleFunc("/reports", s.reports)
 	mux.HandleFunc("/wall", s.wallRedirect)
 	mux.HandleFunc("/tasks/", s.task)
@@ -565,6 +566,19 @@ func boardTabHref(filters TaskFilters, tab string) string {
 func boardPageHref(filters TaskFilters, page int) string {
 	filters.TablePage = page
 	return boardTabHref(filters, filters.Tab)
+}
+
+func boardExportHref(filters TaskFilters, format string) string {
+	href := boardTabHref(filters, filters.Tab)
+	parsed, err := url.Parse(href)
+	if err != nil {
+		return "/board/export?format=" + url.QueryEscape(format)
+	}
+	parsed.Path = "/board/export"
+	values := parsed.Query()
+	values.Set("format", format)
+	parsed.RawQuery = values.Encode()
+	return parsed.RequestURI()
 }
 
 func boardSortHref(filters TaskFilters, column string) string {
@@ -1025,6 +1039,42 @@ func boardTaskCell(task store.Task, column BoardColumn, rollups map[string]Rollu
 		return template.HTML(escape(strings.Join(task.Definition.ReviewDomains, ", ")))
 	case "workstream":
 		return template.HTML(escape(boardTaskWorkstream(task)))
+	default:
+		return ""
+	}
+}
+
+func boardTaskPlainCell(task store.Task, column BoardColumn, rollups map[string]Rollup) string {
+	switch column.Key {
+	case "id":
+		return task.Definition.ID
+	case "title":
+		return task.Definition.Title
+	case "role":
+		return task.Definition.Role
+	case "status":
+		return task.Status
+	case "kind":
+		return task.Definition.Kind
+	case "started", "updated":
+		return task.UpdatedAt
+	case "gates":
+		if rollup, ok := rollups[task.Definition.ID]; ok {
+			return fmt.Sprintf("%d/%d", rollup.Done, rollup.Total)
+		}
+		return "-"
+	case "owner":
+		return task.Owner
+	case "profile":
+		return task.Definition.Profile
+	case "owning_domain":
+		return task.Definition.OwningDomain
+	case "risk_level":
+		return task.Definition.RiskLevel
+	case "review_domains":
+		return strings.Join(task.Definition.ReviewDomains, ", ")
+	case "workstream":
+		return boardTaskWorkstream(task)
 	default:
 		return ""
 	}
@@ -2198,6 +2248,7 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"boardRows":                boardRows,
 		"boardTabHref":             boardTabHref,
 		"boardPageHref":            boardPageHref,
+		"boardExportHref":          boardExportHref,
 		"boardSortHref":            boardSortHref,
 		"boardSortState":           boardSortState,
 		"boardColumns":             boardColumns,

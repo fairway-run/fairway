@@ -201,7 +201,8 @@
 {{end}}
 </div>
 </details>
-<button class="btn" type="button" data-export-table=".board-table">Export CSV</button>
+<a class="btn" href="{{boardExportHref .Filters "csv"}}">Export CSV</a>
+<a class="btn" href="{{boardExportHref .Filters "json"}}">Export JSON</a>
 <button class="btn" type="submit" form="board-filter-form">Apply</button>
 </div>
 <section class="selection-bar" hidden>
