@@ -20,6 +20,7 @@
 {{if .Filters.Sort}}<input type="hidden" name="sort" value="{{.Filters.Sort}}">{{end}}
 {{if .Filters.Columns}}<input type="hidden" name="columns" value="{{boardColumnsParam .Filters.Columns}}">{{end}}
 {{if .Filters.Project}}<input type="hidden" name="project" value="{{.Filters.Project}}">{{end}}
+{{if eq .Filters.Workstreams "all"}}<input type="hidden" name="workstreams" value="all">{{end}}
 <div class="tb-left">
 <label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search ID, title, owner, path" title="Searches task ID, title, metadata, status, owner, source paths, target paths, and review domains" data-board-search=".board-table"></label>
 {{range .FilterChips}}<a class="chip filter-chip" href="{{.Href}}" title="Clear {{.Label}} filter"><b>{{.Label}}</b> {{.Value}} <span aria-hidden="true">x</span></a>{{end}}
@@ -162,7 +163,8 @@
 <section class="control-section" aria-label="Workstream progress">
 <header class="section-head">
 <h2>Workstream Progress</h2>
-<span>{{.Summary.Workstreams}} workstream(s)</span>
+<span>showing {{len .Workstreams}} of {{.WorkstreamTotal}} workstream(s)</span>
+{{if gt .WorkstreamTotal (len .Workstreams)}}<a class="btn" href="{{.WorkstreamsShowAll}}">Show all</a>{{else if and .WorkstreamsExpanded (gt .WorkstreamTotal 12)}}<a class="btn" href="{{.WorkstreamsCompact}}">Compact</a>{{end}}
 </header>
 <div class="workstream-strip">
 {{range .Workstreams}}

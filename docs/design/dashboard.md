@@ -107,7 +107,10 @@ It includes:
   blocking, advisory, and report-only misses called out,
 - expandable missing-task detail for each gate so exceptions are visible before
   opening individual tasks,
-- workstream progress above the table for quick backlog and completion scans,
+- workstream progress above the table for quick backlog and completion scans.
+  The board renders an actionable compact subset by default when many
+  workstreams match, preserves filter/sort URL state in show-all/compact links,
+  and orders active, ready, and blocked workstreams ahead of passive backlog,
 - search across task ID, title, metadata, status, owner, source paths, target
   paths, and review domains, with the query mirrored in URL state,
 - clearable role/status/project/profile/kind/domain/risk/review-domain filter

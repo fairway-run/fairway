@@ -201,6 +201,7 @@ type TaskFilters struct {
 	ActivityLimit int
 	TableLimit    int
 	TablePage     int
+	Workstreams   string
 }
 
 type FilterChip struct {
@@ -255,6 +256,10 @@ type DashboardViewData struct {
 	TableRows            []store.Task
 	Pagination           TablePagination
 	Workstreams          []WorkstreamGroup
+	WorkstreamTotal      int
+	WorkstreamsExpanded  bool
+	WorkstreamsShowAll   string
+	WorkstreamsCompact   string
 	Filters              TaskFilters
 	FilterOptions        FilterOptions
 	FilterChips          []FilterChip
@@ -474,6 +479,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	displayTasks := filterTasks(tasks, filters, s.cfg.Fairway.ProjectName)
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks, readySet)
+	visibleWorkstreams := visibleWorkstreams(workstreams, filters)
 	groups := groupTasks(displayTasks, s.roles)
 	tableSource := append([]store.Task(nil), displayTasks...)
 	sortBoardRows(tableSource, filters)
@@ -511,7 +517,11 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		MissingReviewDomains: missingReviewDomains,
 		TableRows:            tableRows,
 		Pagination:           pagination,
-		Workstreams:          workstreams,
+		Workstreams:          visibleWorkstreams,
+		WorkstreamTotal:      len(workstreams),
+		WorkstreamsExpanded:  workstreamsExpanded(filters),
+		WorkstreamsShowAll:   boardWorkstreamsHref(filters, "all"),
+		WorkstreamsCompact:   boardWorkstreamsHref(filters, ""),
 		Filters:              filters,
 		FilterOptions:        filterOptions(tasks, activity, s.cfg.Fairway.ProjectName),
 		FilterChips:          boardFilterChips(filters),
@@ -620,6 +630,7 @@ func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, err
 	roles := rolesFromTasks(tasks)
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks, readySet)
+	visibleWorkstreams := visibleWorkstreams(workstreams, filters)
 	groups := groupTasks(displayTasks, roles)
 	projectGroups := projectWallGroups(displayTasks, roles)
 	tableSource := append([]store.Task(nil), displayTasks...)
@@ -637,7 +648,11 @@ func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, err
 		MissingReviewDomains: map[string][]string{},
 		TableRows:            tableRows,
 		Pagination:           pagination,
-		Workstreams:          workstreams,
+		Workstreams:          visibleWorkstreams,
+		WorkstreamTotal:      len(workstreams),
+		WorkstreamsExpanded:  workstreamsExpanded(filters),
+		WorkstreamsShowAll:   boardWorkstreamsHref(filters, "all"),
+		WorkstreamsCompact:   boardWorkstreamsHref(filters, ""),
 		Filters:              filters,
 		FilterOptions:        filterOptions(tasks, activity, ""),
 		FilterChips:          boardFilterChips(filters),
@@ -695,11 +710,12 @@ func (s *MultiServer) projectFacts(ctx context.Context, filters TaskFilters) ([]
 }
 
 const (
-	defaultActivityLimit  = 25
-	defaultTableLimit     = 25
-	maxActivityFetchLimit = 500
-	maxActivityLimit      = 200
-	maxTableLimit         = 200
+	defaultActivityLimit   = 25
+	defaultTableLimit      = 25
+	defaultWorkstreamLimit = 12
+	maxActivityFetchLimit  = 500
+	maxActivityLimit       = 200
+	maxTableLimit          = 200
 )
 
 func groupTasks(tasks []store.Task, roles []string) []RoleGroup {
@@ -780,7 +796,21 @@ func taskFiltersFromRequest(r *http.Request) TaskFilters {
 		ActivityLimit: boundedQueryInt(query.Get("activity_limit"), defaultActivityLimit, maxActivityLimit),
 		TableLimit:    boundedQueryInt(query.Get("table_limit"), defaultTableLimit, maxTableLimit),
 		TablePage:     boundedQueryInt(query.Get("page"), 1, 999999),
+		Workstreams:   dashboardWorkstreamsMode(query.Get("workstreams")),
 	}
+}
+
+func dashboardWorkstreamsMode(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "all":
+		return "all"
+	default:
+		return ""
+	}
+}
+
+func workstreamsExpanded(filters TaskFilters) bool {
+	return filters.Workstreams == "all"
 }
 
 func dashboardTab(raw string) string {
@@ -827,10 +857,18 @@ func boardTabHref(filters TaskFilters, tab string) string {
 	if filters.TablePage > 1 {
 		values.Set("page", strconv.Itoa(filters.TablePage))
 	}
+	if filters.Workstreams == "all" {
+		values.Set("workstreams", "all")
+	}
 	if encoded := values.Encode(); encoded != "" {
 		return "/board?" + encoded
 	}
 	return "/board"
+}
+
+func boardWorkstreamsHref(filters TaskFilters, mode string) string {
+	filters.Workstreams = dashboardWorkstreamsMode(mode)
+	return boardTabHref(filters, filters.Tab)
 }
 
 func boardPageHref(filters TaskFilters, page int) string {
@@ -1634,7 +1672,34 @@ func groupWorkstreams(tasks []store.Task, readySet map[string]bool) []Workstream
 			groups[index].Ready++
 		}
 	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		leftActionable := groups[i].InProgress + groups[i].Ready + groups[i].Blocked
+		rightActionable := groups[j].InProgress + groups[j].Ready + groups[j].Blocked
+		if leftActionable != rightActionable {
+			return leftActionable > rightActionable
+		}
+		if groups[i].InProgress != groups[j].InProgress {
+			return groups[i].InProgress > groups[j].InProgress
+		}
+		if groups[i].Ready != groups[j].Ready {
+			return groups[i].Ready > groups[j].Ready
+		}
+		if groups[i].Blocked != groups[j].Blocked {
+			return groups[i].Blocked > groups[j].Blocked
+		}
+		if groups[i].Total != groups[j].Total {
+			return groups[i].Total > groups[j].Total
+		}
+		return groups[i].Label < groups[j].Label
+	})
 	return groups
+}
+
+func visibleWorkstreams(groups []WorkstreamGroup, filters TaskFilters) []WorkstreamGroup {
+	if workstreamsExpanded(filters) || len(groups) <= defaultWorkstreamLimit {
+		return groups
+	}
+	return groups[:defaultWorkstreamLimit]
 }
 
 func dashboardSummary(allTasks, displayTasks []store.Task, workstreams []WorkstreamGroup, readySet map[string]bool) DashboardSummary {

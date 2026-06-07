@@ -284,6 +284,63 @@ func TestBoardReadyMetricUsesDependencyReadiness(t *testing.T) {
 	}
 }
 
+func TestBoardWorkstreamsCompactAndExpandWithFilterState(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var defs []store.TaskDefinition
+	for i := 1; i <= 15; i++ {
+		defs = append(defs, store.TaskDefinition{
+			ID:      fmt.Sprintf("WS-%03d", i),
+			Title:   fmt.Sprintf("Dashboard workstream %02d", i),
+			Kind:    fmt.Sprintf("kind-%02d", i),
+			Role:    "ui",
+			Profile: "dashboard-v2",
+		})
+	}
+	if err := s.ImportTasks(ctx, defs); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "WS-015", "in_progress", "", false); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?profile=dashboard-v2&sort=workstream", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, "showing 12 of 15 workstream(s)") {
+		t.Fatalf("compact workstream count missing:\n%s", body)
+	}
+	if !strings.Contains(body, `href="/board?profile=dashboard-v2&amp;sort=workstream&amp;workstreams=all"`) {
+		t.Fatalf("show-all href did not preserve board filters:\n%s", body)
+	}
+	activeIndex := strings.Index(body, "dashboard-v2 / kind-15")
+	firstIndex := strings.Index(body, "dashboard-v2 / kind-01")
+	if activeIndex < 0 || firstIndex < 0 || activeIndex > firstIndex {
+		t.Fatalf("active workstream was not favored in compact view: active=%d first=%d\n%s", activeIndex, firstIndex, body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/board?profile=dashboard-v2&sort=workstream&workstreams=all", nil)
+	rec = httptest.NewRecorder()
+	server.board(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{
+		"showing 15 of 15 workstream(s)",
+		`href="/board?profile=dashboard-v2&amp;sort=workstream"`,
+		`<input type="hidden" name="workstreams" value="all">`,
+		"dashboard-v2 / kind-14",
+		"dashboard-v2 / kind-15",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expanded workstream view missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestBoardFiltersByProfileMetadata(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
