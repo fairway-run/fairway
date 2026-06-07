@@ -1318,6 +1318,12 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 		for _, domain := range report.MissingReviewDomains {
 			report.Issues = append(report.Issues, "missing approved review for domain "+domain)
 		}
+		if required := requiredReviewApprovalCount(task.Definition.RiskLevel); required > 0 {
+			approved := approvedReviewCount(reviews)
+			if approved < required {
+				report.Issues = append(report.Issues, fmt.Sprintf("risk level %s requires %d approved review(s); found %d", task.Definition.RiskLevel, required, approved))
+			}
+		}
 		if cfg.Gates.RequireHandoffBeforeMergeReady {
 			ok, err := s.HasHandoff(ctx, taskID)
 			if err != nil {
@@ -3106,6 +3112,34 @@ func missingApprovedReviewDomains(domains []string, reviews []store.Review) []st
 		}
 	}
 	return missing
+}
+
+func requiredReviewApprovalCount(riskLevel string) int {
+	switch strings.ToLower(strings.TrimSpace(riskLevel)) {
+	case "medium":
+		return 1
+	case "high":
+		return 2
+	case "critical", "launch-sensitive", "launch_sensitive", "launchsensitive":
+		return 3
+	default:
+		return 0
+	}
+}
+
+func approvedReviewCount(reviews []store.Review) int {
+	approved := map[string]bool{}
+	for _, review := range reviews {
+		if review.Verdict != "approve" {
+			continue
+		}
+		reviewer := strings.TrimSpace(review.Reviewer)
+		if reviewer == "" {
+			continue
+		}
+		approved[reviewer] = true
+	}
+	return len(approved)
 }
 
 func tasksForProfile(profile config.WorkstreamProfile, tasks []store.Task) []store.Task {

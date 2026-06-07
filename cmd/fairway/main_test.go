@@ -489,6 +489,46 @@ func TestCLI_MergeReadyRequiresReviewDomains(t *testing.T) {
 	runOK(t, "merge-ready", "T-001")
 }
 
+func TestCLI_MergeReadyRequiresRiskLevelReviewCounts(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+
+	runOK(t, "add", "MED-001", "--title", "Medium risk", "--role", "backend", "--risk-level", "medium")
+	mediumFailed := runCaptureAllowError(t, "merge-ready", "MED-001")
+	assertContains(t, mediumFailed, "risk level medium requires 1 approved review(s); found 0")
+	runOK(t, "record", "review", "MED-001", "--reviewer", "architecture", "--verdict", "approve", "--reason", "arch ok")
+	runOK(t, "merge-ready", "MED-001")
+
+	runOK(t, "add", "HIGH-001", "--title", "High risk", "--role", "backend", "--risk-level", "high")
+	runOK(t, "record", "review", "HIGH-001", "--reviewer", "architecture", "--verdict", "approve", "--reason", "arch ok")
+	highFailed := runCaptureAllowError(t, "merge-ready", "HIGH-001")
+	assertContains(t, highFailed, "risk level high requires 2 approved review(s); found 1")
+	runOK(t, "record", "review", "HIGH-001", "--reviewer", "security", "--verdict", "approve", "--reason", "security ok")
+	runOK(t, "merge-ready", "HIGH-001")
+
+	runOK(t, "add", "CRIT-001", "--title", "Critical risk", "--role", "backend", "--risk-level", "critical")
+	runOK(t, "record", "review", "CRIT-001", "--reviewer", "architecture", "--verdict", "approve", "--reason", "arch ok")
+	runOK(t, "record", "review", "CRIT-001", "--reviewer", "security", "--verdict", "approve", "--reason", "security ok")
+	criticalFailed := runCaptureAllowError(t, "merge-ready", "CRIT-001")
+	assertContains(t, criticalFailed, "risk level critical requires 3 approved review(s); found 2")
+	runOK(t, "record", "review", "CRIT-001", "--reviewer", "ops", "--verdict", "approve", "--reason", "ops ok")
+	runOK(t, "merge-ready", "CRIT-001")
+}
+
 func TestCLI_WorktreeSetupStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
