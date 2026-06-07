@@ -48,7 +48,7 @@ func TestValidate_RejectsWorktreeNamingWithoutRole(t *testing.T) {
 	}
 }
 
-func TestLoadIgnoresLegacyDashboardSurface(t *testing.T) {
+func TestLoadToleratesHistoricalDashboardSurfaceKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".fairway", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -90,7 +90,7 @@ default = "task"
 	}
 	cfg, _, err := Load(path)
 	if err != nil {
-		t.Fatalf("Load() legacy dashboard surface error = %v", err)
+		t.Fatalf("Load() historical dashboard surface key error = %v", err)
 	}
 	if cfg.Dashboard.Listen != "127.0.0.1:7878" {
 		t.Fatalf("dashboard listen=%q", cfg.Dashboard.Listen)

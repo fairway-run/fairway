@@ -15,8 +15,9 @@ detail.
 | `/tasks/<task-id>` | Task detail page with metadata, history, evidence, sessions, reviews, and status controls. |
 | `/wall` | Compatibility redirect to `/`. |
 
-There is no dashboard version switch. Older project configs may still contain
-`[dashboard] surface`; Fairway ignores it and new configs should omit it.
+There is no dashboard version switch. `[dashboard] surface` is not part of the
+active config contract; historical configs that still contain it load only
+because unknown TOML keys are ignored.
 
 ## Why Web
 

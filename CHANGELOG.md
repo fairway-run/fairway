@@ -71,10 +71,13 @@ and uses semantic versioning.
 
 - GPUaaS remains the first adoption example, while Fairway core stays generic
   around profiles, evidence, reviews, readiness, and risk.
-- The legacy mixed dashboard is deprecated. This release ignores
-  `[dashboard] surface`; the next release will flip any remaining compatibility
-  flags to the v2 surfaces by default, and the following release will remove
-  v1-only dashboard compatibility paths.
+- Dashboard v2 has replaced the legacy mixed dashboard. There is no dashboard
+  version selector; `/` is the wall, `/board` is the operator board,
+  `/board?tab=diagnostics` is diagnostics, `/reports` is retrospectives, and
+  `/tasks/<id>` is task detail. Historical configs that still contain
+  `[dashboard] surface` continue to load because unknown TOML keys are ignored,
+  but the key is not part of the active config contract. See
+  [docs/design/dashboard.md](docs/design/dashboard.md).
 - Saved links that used `/?status=<state>` should migrate to
   `/board?status=<state>`. Other board state is query-string based, so saved
   `/board` links for filters, sort, columns, page, and project remain

@@ -121,9 +121,10 @@ levels = [
 | `auto_open` | bool | `true` | Open the system browser when `fairway dashboard` starts. |
 
 Fairway has one dashboard. `/` serves the wall view, `/board` serves the
-operator board, `/board?tab=diagnostics` serves diagnostics, and `/tasks/<id>`
-serves task detail. Older configs may still contain `[dashboard] surface`; it
-is ignored and should be removed from new config files.
+operator board, `/board?tab=diagnostics` serves diagnostics, `/reports` serves
+retrospectives, and `/tasks/<id>` serves task detail. There is no dashboard
+version selector; `[dashboard] surface` is not part of the active config
+contract.
 
 ### `[worktrees]`
 
