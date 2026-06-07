@@ -930,3 +930,35 @@ tasks:
       - Agent docs state the operating rule: agents do not poll CI; watcher utilities poll CI and emit Fairway handbacks; agents act on handbacks.
       - Work batch docs explain that batching related tasks plus utility monitoring is the preferred path for reducing CI churn and provider-token spend.
       - Tests cover pass, fail, timeout/stale, ready-work handback, no-ready-work completion, and missing monitor backing proof.
+
+  - id: FW-129
+    title: Distinguish implementer and reviewer sessions in dashboard
+    kind: task
+    role: frontend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-review-context
+    source_paths:
+      - docs/design/review-lanes.md
+      - docs/agent-guide.md
+      - internal/dashboard
+      - internal/store
+    target_paths:
+      - internal/dashboard
+      - internal/dashboard/assets/templates
+      - internal/dashboard/server_test.go
+      - docs/design/review-lanes.md
+    review_domains:
+      - governance
+      - frontend
+      - ops
+    risk_level: medium
+    migration_type: reviewer-session-dashboard-distinction
+    depends_on:
+      - FW-118
+    acceptance_checks:
+      - Dashboard separates or labels implementer sessions, reviewer sessions, watcher sessions, and monitor sessions for the same task.
+      - Reviewer sessions are derived from explicit role/session metadata, not provider name alone.
+      - Task detail shows active reviewer sessions and their latest checkpoint or review verdict.
+      - Wall view makes it clear when a task is waiting on review versus actively being implemented.
+      - Tests cover a task with simultaneous backend implementer, security reviewer, and ops watcher sessions.

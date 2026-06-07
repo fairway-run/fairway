@@ -37,6 +37,112 @@ review/{source-role}
 `fairway merge-ready <task-id>` verifies the required approvals exist before the
 coordinator merges.
 
+## Review Provider Sessions
+
+Review-heavy work should use explicit reviewer provider sessions, not only chat
+comments or detached local branches. The session attaches to the reviewed task
+and uses the reviewer domain as the Fairway role:
+
+```bash
+fairway session upsert \
+  --id review-arch-T-042 \
+  --role arch \
+  --provider codex \
+  --backend codex-thread \
+  --task-id T-042 \
+  --branch review/backend \
+  --worktree ../fairway-review-arch
+
+fairway checkpoint record T-042 \
+  --state active \
+  --owner arch \
+  --summary "Architecture review started; scope: API contract, schema, and boundary rules"
+```
+
+The same shape applies to every review domain:
+
+| Review domain | Typical scope | Session role |
+|---|---|---|
+| Architecture | ownership boundaries, contracts, ADR fit, migration shape | `arch` or `architecture` |
+| Security | auth, secrets, PKI, audit, data exposure, threat model | `security` |
+| Ops | deployability, runbooks, observability, rollback, environment impact | `ops` |
+| Backend | service/API behavior, schema access, workers, tests | `backend` |
+| Frontend | user flows, accessibility, API client behavior, visual regression | `frontend` or `ui` |
+| Governance | evidence quality, task boundaries, CI/CD gates, release discipline | `governance` |
+
+Provider choice is independent of review domain. A security review can run in a
+Codex thread, a tmux Claude pane, Gemini, or a shell session. Fairway records
+the review role, task id, branch, worktree, provider, and backend so the
+dashboard can show who is reviewing what.
+
+For tmux-backed reviews:
+
+```bash
+FAIRWAY_PROVIDER=claude \
+FAIRWAY_PROVIDER_COMMAND="claude" \
+FAIRWAY_TRANSCRIPT=".fairway/transcripts/review-security-T-042.log" \
+examples/session-adapters/tmux.sh security T-042
+```
+
+For shell fallback reviews:
+
+```bash
+fairway session upsert \
+  --id review-ops-shell-T-042 \
+  --role ops \
+  --provider shell \
+  --backend shell \
+  --task-id T-042 \
+  --branch review/backend \
+  --worktree "$PWD"
+```
+
+## Review Handoff
+
+A reviewer session must leave a durable handoff even when the final verdict is
+not approval. Minimum handoff contents:
+
+- scope reviewed,
+- evidence inspected,
+- commands run,
+- verdict or blocker,
+- next owner/action,
+- artifact path when notes are longer than one paragraph.
+
+Use a checkpoint for partial review state:
+
+```bash
+fairway checkpoint record T-042 \
+  --state awaiting_input \
+  --owner security \
+  --summary "Security review blocked: missing secret-rotation evidence; next owner ops"
+```
+
+Use a review record for the domain verdict:
+
+```bash
+fairway record review T-042 \
+  --reviewer security \
+  --verdict changes \
+  --reason "missing secret-rotation rollback evidence"
+```
+
+End the reviewer session when the review is handed off:
+
+```bash
+fairway session end review-security-T-042 \
+  --status ended \
+  --reason "changes requested and handoff recorded" \
+  --exit-code 0
+```
+
+Implementation sessions and review sessions can point at the same task, but
+their roles should differ. The task owner remains the implementation owner;
+reviewer sessions attach as reviewer roles. If the dashboard cannot yet
+distinguish implementer and reviewer sessions directly, use the session id and
+role convention `review-<domain>-<task-id>` and track the product gap in the
+Fairway backlog.
+
 ## Future Command
 
 ```bash
