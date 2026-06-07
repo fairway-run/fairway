@@ -48,6 +48,10 @@ The dashboard is organized as a user flow, not independent pages:
 The wall view is intentionally compact. It answers: "What is each lane doing
 right now?"
 
+In multi-project mode, the wall groups lanes under collapsible project headers,
+prefixes activity summaries with the project name, and shows a per-project
+readiness rollup in the right rail.
+
 Each role lane shows:
 
 - current/idle state,
@@ -274,6 +278,10 @@ single-project mode. Each row carries a dashboard-only project label from the
 registry entry, exposed through the `project` query parameter and Project
 table/export column. Task identity, ownership, evidence, reviews, and gates
 remain authoritative inside the source project store.
+
+The multi-project wall is also read-oriented. `/` renders collapsible project
+sections, each with the standard role lanes. `/projects` remains available as a
+compact registry summary. `/wall` redirects to `/`.
 
 ## Security Posture
 

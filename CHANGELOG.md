@@ -24,6 +24,9 @@ and uses semantic versioning.
 - Dashboard multi-project mode now mounts `/board` with the same operator
   toolbar and table, including project filter chips, Project column display,
   saved-view query state, and CSV/JSON exports that respect the project filter.
+- Dashboard multi-project mode now mounts `/` as a grouped wall with
+  collapsible project headers, project-prefixed activity, and per-project
+  readiness rollups while keeping `/projects` as the compact registry summary.
 - Active-work reconciliation now detects monitor sessions without backing proof,
   so CI/deploy/UAT/provider monitors cannot leave fake active work behind when
   no automation, process, external poller, or bounded manual checkpoint exists.

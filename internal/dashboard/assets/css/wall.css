@@ -161,6 +161,51 @@ a {
   background: var(--panel-2);
 }
 
+.project-wall-group {
+  min-width: 920px;
+  margin-bottom: var(--space-4);
+}
+
+.project-wall-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.project-wall-group summary span {
+  font-weight: 800;
+}
+
+.project-wall-group summary b {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.project-readiness-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.project-readiness-list article {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--panel-2);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.project-readiness-list span,
+.project-readiness-list small {
+  color: var(--muted);
+}
+
 .lane-row {
   display: grid;
   grid-template-columns: 160px repeat(5, minmax(120px, 1fr));

@@ -1191,7 +1191,7 @@ func TestMultiDashboardRendersProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := NewMulti([]ProjectStore{{Name: "fairway", Path: "/tmp/fairway", Store: s}})
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/projects", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	body := rec.Body.String()
@@ -1241,6 +1241,51 @@ func TestMultiDashboardBoardFiltersByProject(t *testing.T) {
 	}
 	if strings.Contains(body, "Left project task") {
 		t.Fatalf("multi board included task outside project filter:\n%s", body)
+	}
+}
+
+func TestMultiDashboardWallGroupsLanesByProject(t *testing.T) {
+	ctx := context.Background()
+	left, err := store.Open(ctx, filepath.Join(t.TempDir(), "left.db"), "left")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer left.Close()
+	right, err := store.Open(ctx, filepath.Join(t.TempDir(), "right.db"), "right")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer right.Close()
+	if err := left.ImportTasks(ctx, []store.TaskDefinition{{ID: "L-001", Title: "Left wall task", Role: "backend", Kind: "dashboard"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.ImportTasks(ctx, []store.TaskDefinition{{ID: "R-001", Title: "Right wall task", Role: "ui", Kind: "dashboard"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.SetStatus(ctx, "R-001", "in_progress", "", false); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewMulti([]ProjectStore{
+		{Name: "left-project", Path: "/tmp/left", Store: left},
+		{Name: "right-project", Path: "/tmp/right", Store: right},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"class=\"project-wall-group\"",
+		"left-project",
+		"right-project",
+		"Left wall task",
+		"Right wall task",
+		`href="/board?project=right-project&amp;role=ui"`,
+		"Project Readiness",
+		"[right-project]",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("multi wall body missing %q:\n%s", want, body)
+		}
 	}
 }
 
@@ -1311,6 +1356,7 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		Rollups              map[string]Rollup
 		ActiveReport         reconcile.ActiveReport
 		Audit                AuditDiagnostics
+		ProjectGroups        []ProjectWallGroup
 	}{
 		View: "wall",
 		Groups: []RoleGroup{

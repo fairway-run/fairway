@@ -67,7 +67,8 @@ func NewMulti(projects []ProjectStore) http.Handler {
 	mux.Handle("/assets/", dashboardAssetHandler())
 	mux.HandleFunc("/board", server.board)
 	mux.HandleFunc("/board/export", server.boardExport)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/wall", server.wallRedirect)
+	mux.HandleFunc("/projects", func(w http.ResponseWriter, r *http.Request) {
 		type projectView struct {
 			Name            string
 			Path            string
@@ -99,6 +100,7 @@ func NewMulti(projects []ProjectStore) http.Handler {
 		}
 		_ = multiTemplate.Execute(w, struct{ Projects []projectView }{views})
 	})
+	mux.HandleFunc("/", server.wall)
 	return mux
 }
 
@@ -111,6 +113,13 @@ type RoleGroup struct {
 	Role    string
 	Current *store.Task
 	Tasks   []store.Task
+}
+
+type ProjectWallGroup struct {
+	Name    string
+	Path    string
+	Groups  []RoleGroup
+	Summary DashboardSummary
 }
 
 type WorkstreamGroup struct {
@@ -240,6 +249,7 @@ type DashboardViewData struct {
 	Gates                []GateStatus
 	GateGroups           []GateGroup
 	Groups               []RoleGroup
+	ProjectGroups        []ProjectWallGroup
 	MissingReviewDomains map[string][]string
 	TableRows            []store.Task
 	Pagination           TablePagination
@@ -354,6 +364,16 @@ func (s *MultiServer) board(w http.ResponseWriter, r *http.Request) {
 	_ = boardTemplate.ExecuteTemplate(w, "layout", data)
 }
 
+func (s *MultiServer) wall(w http.ResponseWriter, r *http.Request) {
+	data, err := s.dashboardViewData(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data.View = "wall"
+	_ = wallTemplate.ExecuteTemplate(w, "layout", data)
+}
+
 func (s *Server) wall(w http.ResponseWriter, r *http.Request) {
 	data, err := s.dashboardViewData(r, "wall")
 	if err != nil {
@@ -384,6 +404,10 @@ func (s *Server) reports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) wallRedirect(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+}
+
+func (s *MultiServer) wallRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 
@@ -505,6 +529,7 @@ func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, err
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks, readySet)
 	groups := groupTasks(displayTasks, roles)
+	projectGroups := projectWallGroups(displayTasks, roles)
 	tableSource := append([]store.Task(nil), displayTasks...)
 	sortBoardRows(tableSource, filters)
 	tableRows, pagination := paginateBoardRows(tableSource, filters)
@@ -516,6 +541,7 @@ func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, err
 		View:                 "board",
 		Summary:              dashboardSummary(tasks, displayTasks, workstreams, readySet),
 		Groups:               groups,
+		ProjectGroups:        projectGroups,
 		MissingReviewDomains: map[string][]string{},
 		TableRows:            tableRows,
 		Pagination:           pagination,
@@ -611,6 +637,34 @@ func groupTasks(tasks []store.Task, roles []string) []RoleGroup {
 		}
 	}
 	return groups
+}
+
+func projectWallGroups(tasks []store.Task, roles []string) []ProjectWallGroup {
+	byProject := map[string][]store.Task{}
+	for _, task := range tasks {
+		project := taskProject(task, "")
+		if project == "" {
+			project = "current"
+		}
+		byProject[project] = append(byProject[project], task)
+	}
+	projects := make([]string, 0, len(byProject))
+	for project := range byProject {
+		projects = append(projects, project)
+	}
+	sort.Strings(projects)
+	out := make([]ProjectWallGroup, 0, len(projects))
+	for _, project := range projects {
+		projectTasks := byProject[project]
+		readySet := map[string]bool{}
+		workstreams := groupWorkstreams(projectTasks, readySet)
+		out = append(out, ProjectWallGroup{
+			Name:    project,
+			Groups:  groupTasks(projectTasks, roles),
+			Summary: dashboardSummary(projectTasks, projectTasks, workstreams, readySet),
+		})
+	}
+	return out
 }
 
 func taskFiltersFromRequest(r *http.Request) TaskFilters {
@@ -1283,6 +1337,7 @@ func tagActivityProject(activity []store.Activity, project string) []store.Activ
 	}
 	out := append([]store.Activity(nil), activity...)
 	for i := range out {
+		out[i].Summary = "[" + project + "] " + out[i].Summary
 		if out[i].Actor != "" {
 			out[i].Actor = project + "/" + out[i].Actor
 		} else {
@@ -1339,6 +1394,20 @@ func wallRoleHref(role string) string {
 	values := url.Values{}
 	values.Set("role", role)
 	return "/board?" + values.Encode()
+}
+
+func wallProjectRoleHref(project, role string) string {
+	values := url.Values{}
+	if strings.TrimSpace(project) != "" {
+		values.Set("project", project)
+	}
+	if strings.TrimSpace(role) != "" {
+		values.Set("role", role)
+	}
+	if encoded := values.Encode(); encoded != "" {
+		return "/board?" + encoded
+	}
+	return "/board"
 }
 
 func wallLaneHref(role, lane string) string {
@@ -2499,6 +2568,7 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"wallDoneToday":            wallDoneToday,
 		"wallTaskHasProvider":      wallTaskHasProvider,
 		"wallRoleHref":             wallRoleHref,
+		"wallProjectRoleHref":      wallProjectRoleHref,
 		"wallLaneHref":             wallLaneHref,
 		"wallRoleActivity":         wallRoleActivity,
 		"boardRows":                boardRows,
