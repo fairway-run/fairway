@@ -79,25 +79,55 @@ Provider usage records should be provider-neutral:
 
 ## Adapter Boundary
 
-Fairway core should not poll provider APIs directly. Provider/session adapters
-should translate provider-specific usage into Fairway records or checkpoints.
+Fairway core should not poll provider APIs directly or read private provider
+state. Provider/session adapters should translate provider-specific usage into
+Fairway records or checkpoints.
+
+The preferred ingestion path is provider-supported OpenTelemetry. OTel keeps
+Fairway neutral across Codex, Claude, Gemini, local models, and future agent
+CLIs while avoiding private DB, transcript, prompt, and auth-state coupling.
+The Fairway adapter should accept OTLP logs, metrics, or traces from a local
+collector/receiver and normalize only structural usage metadata.
+
+The normalized OTel usage envelope should include:
+
+- provider
+- Fairway task/session/correlation id from resource attributes
+- provider session or request id
+- model
+- event timestamp
+- input tokens
+- cached input or cache-read tokens
+- cache-creation tokens when available
+- output tokens
+- reasoning tokens when available
+- total tokens
+- cost when available
+- source and confidence
+
+Fairway usage ingestion must not require prompt, tool-body, raw API body, auth
+token, transcript, or generated-content logging. Provider content logging may
+exist for other use cases, but it is out of scope for usage accounting.
 
 Expected adapter behavior:
 
 | Adapter | Expected source |
 |---|---|
-| Codex | `response.completed` usage or equivalent structured output when available; otherwise start/end usage snapshots. |
-| Claude | CLI/session usage summary if exposed; otherwise tmux transcript summary or manual snapshot. |
-| Gemini | Provider usage metadata if exposed; otherwise start/end snapshots. |
+| OTel receiver | Provider-supported OTLP logs, metrics, or traces mapped into normalized Fairway usage records. |
+| Codex | OTel `response.completed` token counts or `codex exec --json` `turn.completed.usage`; otherwise caller-supplied start/end snapshots. |
+| Claude | OTel token/cost metrics and API request events; otherwise provider-reported session summary or manual snapshot. |
+| Gemini | Provider-supported telemetry or usage metadata if exposed; otherwise start/end snapshots. |
 | tmux/shell | Elapsed time and optional manually supplied usage only. |
 
 Adapters may emit partial records. Unknown fields should remain null or
 `unknown`; adapters must not invent zero values for unavailable usage.
 
-Codex should be the first concrete adapter because it can expose detailed token
-usage, including cached input tokens. Cached tokens are important for cost
-planning: a task with high input tokens and a high cache ratio has different
-optimization needs than a task with the same input volume and no cache benefit.
+OTel should be the first adapter family because both Codex and Claude expose
+provider-supported telemetry with token information. Codex should be the first
+provider mapping because it can expose detailed token usage, including cached
+input tokens. Cached tokens are important for cost planning: a task with high
+input tokens and a high cache ratio has different optimization needs than a
+task with the same input volume and no cache benefit.
 
 The Codex adapter must not make Fairway core depend on private Codex local
 state such as `~/.codex/*.sqlite`, auth caches, transcripts, prompts, generated
@@ -107,6 +137,8 @@ values to Fairway through `fairway record usage` or `provider-event.sh`.
 
 Acceptable Codex ingestion paths:
 
+- OTel events that include token counts on response completion;
+- `codex exec --json` events that include `turn.completed.usage`;
 - provider-reported response usage supplied by a Codex wrapper, hook, or
   observable event surface;
 - explicit start/end running-total snapshots supplied by the caller;
