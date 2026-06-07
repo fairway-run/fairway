@@ -1069,7 +1069,6 @@ tasks:
       - FW-111
       - FW-113
       - FW-127
-      - FW-130
     acceptance_checks:
       - Fairway defines `task done != lane done` as an enforceable workflow invariant in docs and CLI output.
       - Closeout dry-run reports task status, evidence, required reviews, commit association, CI/deploy/UAT evidence, session/watchers, branch merge state, remote branch state, and worktree cleanliness for a role lane and task or batch.
