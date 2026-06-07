@@ -89,6 +89,18 @@ Verdicts are recorded immutably in `task_reviews`. Revising a verdict means a ne
 
 A terminal task can be reopened with `fairway set-status --reopen <task-id> <new-state>`. This writes a history row with `reason = "reopen: <text>"`. The dashboard highlights reopened tasks in the activity feed.
 
+## Historical review debt
+
+When config or product maturity makes older `done` tasks fail current
+review-domain checks, treat that as review debt rather than automatic approval.
+A sweep may inventory the missing domains and group tasks for follow-up, but it
+must not backfill approvals from commit history, chat summaries, or validation
+logs alone.
+
+Clear historical review debt only when a required reviewer records a real
+review, an existing review artifact is attached and referenced by the reviewer,
+or governance records an explicit waiver with scope, reason, and residual risk.
+
 ## Cross-role changes
 
 A PR touching multiple `[[review_routes]]` matches requires approval from each matched role. The first-match-wins rule for routing applies to *which queue picks it up*; final merge requires all matched roles to approve.

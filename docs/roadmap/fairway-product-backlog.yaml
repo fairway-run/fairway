@@ -1240,3 +1240,60 @@ tasks:
       - Internal-only historical notes remain archived or omitted from public navigation.
       - README, product docs, Docusaurus docs, and release notes use consistent positioning language.
       - Docs portal build or local docs validation passes.
+
+  - id: FW-137
+    title: Reconcile historical review debt
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: governance
+    source_paths:
+      - .fairway/state.db
+      - docs/assessment
+      - docs/governance/review-guards.md
+      - docs/design/coordinator-loop.md
+    target_paths:
+      - docs/assessment
+      - docs/governance/review-guards.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: review-debt-reconciliation
+    depends_on:
+      - FW-134
+    acceptance_checks:
+      - Coordinator plan review-gated done tasks are captured in a review-debt assessment with missing domains and recommended resolution.
+      - The sweep does not fabricate approvals; each item is either backed by recorded review evidence, explicitly waived, or left pending with a concrete owner/action.
+      - Fairway state records evidence for the sweep and any review records or waivers that are applied.
+      - Remaining review-gated tasks are intentionally listed as follow-up debt rather than hidden coordinator-plan noise.
+
+  - id: FW-138
+    title: Remeasure dashboard performance blockers and reconcile FWRD state
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/assessment/dashboard-performance-budget.md
+      - docs/assessment/dashboard-redesign-closeout.md
+      - internal/dashboard
+    target_paths:
+      - docs/assessment/dashboard-performance-budget.md
+      - docs/assessment/dashboard-redesign-closeout.md
+      - docs/assessment
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: dashboard-performance-reconciliation
+    depends_on:
+      - FW-134
+    acceptance_checks:
+      - Current dashboard performance posture is remeasured or explicitly reconciled against the existing FWRD-161/FWRD-162 benchmark evidence.
+      - FWRD-129 and FWRD-151 remain blocked only if their original acceptance is intentionally historical/deferred; otherwise state and docs are updated consistently.
+      - Any unresolved performance or RSS gap is recorded as a concrete follow-up instead of silently treated as passed.
+      - The dashboard closeout docs explain which blocked FWRD items are historical, accepted exceptions, or still actionable.
