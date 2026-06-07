@@ -435,6 +435,60 @@ func TestBoardSortOrderAndToggleLinks(t *testing.T) {
 	}
 }
 
+func TestBoardColumnChooserUsesURLState(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{
+			ID:            "T-001",
+			Title:         "Column task",
+			Role:          "ui",
+			Kind:          "dashboard",
+			Profile:       "dashboard-v2",
+			OwningDomain:  "fairway",
+			RiskLevel:     "low",
+			ReviewDomains: []string{"arch"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?columns=title,id,profile,owning_domain,risk_level,review_domains&sort=profile", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Columns</span><b>6 shown",
+		`columns=title%2Cid%2Cprofile%2Cowning_domain%2Crisk_level%2Creview_domains`,
+		`data-sort-key="profile" aria-sort="ascending">Profile</a>`,
+		"Column task",
+		"dashboard-v2",
+		"fairway",
+		"low",
+		"arch",
+		"Move Title right",
+		"Hide</a>",
+		"Show</a>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("column chooser board missing %q:\n%s", want, body)
+		}
+	}
+	titleIndex := strings.Index(body, ">Title</a>")
+	idIndex := strings.Index(body, ">ID</a>")
+	profileIndex := strings.Index(body, ">Profile</a>")
+	if titleIndex < 0 || idIndex < 0 || profileIndex < 0 || !(titleIndex < idIndex && idIndex < profileIndex) {
+		t.Fatalf("column order wrong: title=%d id=%d profile=%d\n%s", titleIndex, idIndex, profileIndex, body)
+	}
+	if strings.Contains(body, ">Role</a>") || strings.Contains(body, ">Status</a>") {
+		t.Fatalf("hidden default columns rendered in table:\n%s", body)
+	}
+}
+
 func TestBoardFiltersByRole(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

@@ -18,6 +18,7 @@
 {{if eq .Filters.Tab "diagnostics"}}<input type="hidden" name="tab" value="diagnostics">{{end}}
 {{if .Filters.Role}}<input type="hidden" name="role" value="{{.Filters.Role}}">{{end}}
 {{if .Filters.Sort}}<input type="hidden" name="sort" value="{{.Filters.Sort}}">{{end}}
+{{if .Filters.Columns}}<input type="hidden" name="columns" value="{{boardColumnsParam .Filters.Columns}}">{{end}}
 {{if .Filters.Project}}<input type="hidden" name="project" value="{{.Filters.Project}}">{{end}}
 <div class="tb-left">
 <label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search ID, title, owner, path" title="Searches task ID, title, metadata, status, owner, source paths, target paths, and review domains" data-board-search=".board-table"></label>
@@ -167,6 +168,7 @@
 </section>
 {{end}}
 <section class="control-section task-table-section" aria-label="Task table">
+{{$columns := .BoardColumns}}{{if not $columns}}{{$columns = boardColumns .Filters}}{{end}}
 <header class="section-head">
 <h2>Task Table</h2>
 <span>sort, search, export, or open task detail</span>
@@ -187,6 +189,18 @@
 <label>Review<select name="review_domain" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.ReviewDomains}}<option value="{{.}}" {{if eq $.Filters.ReviewDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Rows<select name="table_limit" form="board-filter-form"><option value="25" {{if eq .Filters.TableLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.TableLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.TableLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.TableLimit 200}}selected{{end}}>200</option></select></label>
 <label>Page<input class="page-input" type="number" name="page" min="1" max="{{.Pagination.TotalPages}}" value="{{.Pagination.Page}}" form="board-filter-form"></label>
+<details class="column-chooser">
+<summary><span>Columns</span><b>{{len (boardVisibleColumns $columns)}} shown</b></summary>
+<div class="column-menu">
+{{range $columns}}
+<div class="column-option {{if .Visible}}visible{{end}}">
+<a href="{{.ToggleHref}}" aria-pressed="{{if .Visible}}true{{else}}false{{end}}">{{if .Visible}}Hide{{else}}Show{{end}}</a>
+<span>{{.Label}}</span>
+{{if .Visible}}<span class="column-move">{{if .MoveUpHref}}<a href="{{.MoveUpHref}}" aria-label="Move {{.Label}} left">Up</a>{{else}}<span>Up</span>{{end}}{{if .MoveDownHref}}<a href="{{.MoveDownHref}}" aria-label="Move {{.Label}} right">Down</a>{{else}}<span>Down</span>{{end}}</span>{{end}}
+</div>
+{{end}}
+</div>
+</details>
 <button class="btn" type="button" data-export-table=".board-table">Export CSV</button>
 <button class="btn" type="submit" form="board-filter-form">Apply</button>
 </div>
@@ -199,22 +213,15 @@
 <button class="btn" type="button">Record evidence</button>
 </section>
 <table class="board-table" data-sortable>
-<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th><th><a href="{{boardSortHref .Filters "id"}}" data-sort-key="id" aria-sort="{{boardSortState .Filters "id"}}">ID</a></th><th><a href="{{boardSortHref .Filters "title"}}" data-sort-key="title" aria-sort="{{boardSortState .Filters "title"}}">Title</a></th><th><a href="{{boardSortHref .Filters "role"}}" data-sort-key="role" aria-sort="{{boardSortState .Filters "role"}}">Role</a></th><th><a href="{{boardSortHref .Filters "status"}}" data-sort-key="status" aria-sort="{{boardSortState .Filters "status"}}">Status</a></th><th><a href="{{boardSortHref .Filters "kind"}}" data-sort-key="kind" aria-sort="{{boardSortState .Filters "kind"}}">Kind</a></th><th><a href="{{boardSortHref .Filters "started"}}" data-sort-key="started" aria-sort="{{boardSortState .Filters "started"}}">Started</a></th><th><a href="{{boardSortHref .Filters "updated"}}" data-sort-key="updated" aria-sort="{{boardSortState .Filters "updated"}}">Last activity</a></th><th><a href="{{boardSortHref .Filters "gates"}}" data-sort-key="gates" aria-sort="{{boardSortState .Filters "gates"}}">Gates</a></th><th><a href="{{boardSortHref .Filters "owner"}}" data-sort-key="owner" aria-sort="{{boardSortState .Filters "owner"}}">Owner</a></th></tr></thead>
+<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th>{{range boardVisibleColumns $columns}}<th>{{if .Sortable}}<a href="{{boardSortHref $.Filters .Key}}" data-sort-key="{{.Key}}" aria-sort="{{boardSortState $.Filters .Key}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}</tr></thead>
 <tbody>
 {{range .TableRows}}
+{{$task := .}}
 <tr>
 <td><input type="checkbox" aria-label="Select {{.Definition.ID}}"></td>
-<td><a href="/tasks/{{.Definition.ID}}">{{.Definition.ID}}</a></td>
-<td>{{.Definition.Title}}</td>
-<td>{{.Definition.Role}}</td>
-<td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td>
-<td>{{.Definition.Kind}}</td>
-<td>{{.UpdatedAt}}</td>
-<td>{{.UpdatedAt}}</td>
-<td>{{with index $.Rollups .Definition.ID}}{{.Done}}/{{.Total}}{{else}}-{{end}}</td>
-<td>{{.Owner}}</td>
+{{range boardVisibleColumns $columns}}<td>{{boardTaskCell $task . $.Rollups}}</td>{{end}}
 </tr>
-{{else}}<tr><td colspan="10">no tasks</td></tr>{{end}}
+{{else}}<tr><td colspan="{{boardColumnCount $columns}}">no tasks</td></tr>{{end}}
 </tbody>
 </table>
 <footer class="board-footer">

@@ -90,13 +90,14 @@ It includes:
 - clearable role/status/project/profile/kind/domain/risk/review-domain filter
   chips,
 - sortable task columns with URL state; shift-click adds a secondary sort key,
+- a column chooser with URL-backed visibility and up/down ordering controls,
 - CSV export for the current task table,
 - operational health badges,
 - activity kind and row-count filtering.
 
 The task table is the drill-down layer after the gate and workstream highlights.
 It links to task detail. The board preserves role/status/project/profile/kind/
-domain/risk/review/search/sort state when switching between task and
+domain/risk/review/search/sort/column state when switching between task and
 diagnostics tabs.
 
 ## Diagnostics

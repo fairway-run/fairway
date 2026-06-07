@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"fmt"
+	"html"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -170,6 +171,7 @@ type TaskFilters struct {
 	Status        string
 	Statuses      []string
 	Sort          string
+	Columns       []string
 	Profile       string
 	Kind          string
 	OwningDomain  string
@@ -188,6 +190,16 @@ type FilterChip struct {
 	Label string
 	Value string
 	Href  string
+}
+
+type BoardColumn struct {
+	Key          string
+	Label        string
+	Visible      bool
+	Sortable     bool
+	ToggleHref   string
+	MoveUpHref   string
+	MoveDownHref string
 }
 
 type TablePagination struct {
@@ -226,6 +238,7 @@ type DashboardViewData struct {
 	FilterOptions        FilterOptions
 	FilterChips          []FilterChip
 	ClearFiltersHref     string
+	BoardColumns         []BoardColumn
 	Activity             []store.Activity
 	ActivityTotal        int
 	Health               store.Health
@@ -412,6 +425,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		FilterOptions:        filterOptions(tasks, activity, s.cfg.Fairway.ProjectName),
 		FilterChips:          boardFilterChips(filters),
 		ClearFiltersHref:     boardClearFiltersHref(filters),
+		BoardColumns:         boardColumns(filters),
 		Activity:             filteredActivity,
 		ActivityTotal:        activityTotal,
 		Health:               health,
@@ -473,6 +487,7 @@ func taskFiltersFromRequest(r *http.Request) TaskFilters {
 		Status:        strings.Join(statuses, ", "),
 		Statuses:      statuses,
 		Sort:          normalizeBoardSort(query.Get("sort")),
+		Columns:       normalizeBoardColumns(query.Get("columns")),
 		Profile:       strings.TrimSpace(query.Get("profile")),
 		Kind:          strings.TrimSpace(query.Get("kind")),
 		OwningDomain:  strings.TrimSpace(query.Get("owning_domain")),
@@ -509,6 +524,9 @@ func boardTabHref(filters TaskFilters, tab string) string {
 	setIf("q", filters.Search)
 	setIf("role", filters.Role)
 	setIf("sort", filters.Sort)
+	if columns := boardColumnsParam(filters.Columns); columns != "" {
+		values.Set("columns", columns)
+	}
 	for _, status := range statusFilterValues(filters) {
 		values.Add("status", status)
 	}
@@ -571,6 +589,159 @@ func boardSortState(filters TaskFilters, column string) string {
 	}
 }
 
+var boardColumnCatalog = []BoardColumn{
+	{Key: "id", Label: "ID", Sortable: true},
+	{Key: "title", Label: "Title", Sortable: true},
+	{Key: "role", Label: "Role", Sortable: true},
+	{Key: "status", Label: "Status", Sortable: true},
+	{Key: "kind", Label: "Kind", Sortable: true},
+	{Key: "started", Label: "Started", Sortable: true},
+	{Key: "updated", Label: "Last activity", Sortable: true},
+	{Key: "gates", Label: "Gates", Sortable: true},
+	{Key: "owner", Label: "Owner", Sortable: true},
+	{Key: "profile", Label: "Profile", Sortable: true},
+	{Key: "owning_domain", Label: "Domain", Sortable: true},
+	{Key: "risk_level", Label: "Risk", Sortable: true},
+	{Key: "review_domains", Label: "Review domains", Sortable: true},
+	{Key: "workstream", Label: "Workstream", Sortable: true},
+}
+
+var defaultBoardColumns = []string{"id", "title", "role", "status", "kind", "started", "updated", "gates", "owner"}
+
+func boardColumns(filters TaskFilters) []BoardColumn {
+	visible := filters.Columns
+	if len(visible) == 0 {
+		visible = defaultBoardColumns
+	}
+	visibleSet := map[string]bool{}
+	var out []BoardColumn
+	for index, key := range visible {
+		if column, ok := boardColumnByKey(key); ok {
+			column.Visible = true
+			column.ToggleHref = boardColumnToggleHref(filters, key)
+			column.MoveUpHref = boardColumnMoveHref(filters, index, -1)
+			column.MoveDownHref = boardColumnMoveHref(filters, index, 1)
+			out = append(out, column)
+			visibleSet[key] = true
+		}
+	}
+	for _, column := range boardColumnCatalog {
+		if visibleSet[column.Key] {
+			continue
+		}
+		column.Visible = false
+		column.ToggleHref = boardColumnToggleHref(filters, column.Key)
+		out = append(out, column)
+	}
+	return out
+}
+
+func boardVisibleColumns(columns []BoardColumn) []BoardColumn {
+	var out []BoardColumn
+	for _, column := range columns {
+		if column.Visible {
+			out = append(out, column)
+		}
+	}
+	return out
+}
+
+func boardColumnByKey(key string) (BoardColumn, bool) {
+	for _, column := range boardColumnCatalog {
+		if column.Key == key {
+			return column, true
+		}
+	}
+	return BoardColumn{}, false
+}
+
+func normalizeBoardColumns(raw string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		key := strings.TrimSpace(part)
+		if _, ok := boardColumnByKey(key); !ok || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, key)
+	}
+	return out
+}
+
+func boardColumnsParam(columns []string) string {
+	if len(columns) == 0 || stringSlicesEqual(columns, defaultBoardColumns) {
+		return ""
+	}
+	return strings.Join(columns, ",")
+}
+
+func stringSlicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func boardColumnToggleHref(filters TaskFilters, key string) string {
+	columns := filters.Columns
+	if len(columns) == 0 {
+		columns = append([]string(nil), defaultBoardColumns...)
+	} else {
+		columns = append([]string(nil), columns...)
+	}
+	var next []string
+	removed := false
+	for _, column := range columns {
+		if column == key {
+			removed = true
+			continue
+		}
+		next = append(next, column)
+	}
+	if !removed {
+		next = append(next, key)
+	}
+	if len(next) == 0 {
+		next = append([]string(nil), defaultBoardColumns...)
+	}
+	filters.Columns = next
+	filters.TablePage = 1
+	return boardTabHref(filters, filters.Tab)
+}
+
+func boardColumnMoveHref(filters TaskFilters, index, delta int) string {
+	columns := filters.Columns
+	if len(columns) == 0 {
+		columns = append([]string(nil), defaultBoardColumns...)
+	} else {
+		columns = append([]string(nil), columns...)
+	}
+	target := index + delta
+	if index < 0 || index >= len(columns) || target < 0 || target >= len(columns) {
+		return ""
+	}
+	columns[index], columns[target] = columns[target], columns[index]
+	filters.Columns = columns
+	filters.TablePage = 1
+	return boardTabHref(filters, filters.Tab)
+}
+
+func boardColumnCount(columns []BoardColumn) int {
+	count := 1
+	for _, column := range columns {
+		if column.Visible {
+			count++
+		}
+	}
+	return count
+}
+
 func firstBoardSort(raw string) string {
 	parts := boardSortParts(raw)
 	if len(parts) == 0 {
@@ -625,7 +796,7 @@ func normalizeBoardSort(raw string) string {
 
 func normalizeBoardSortKey(raw string) string {
 	switch strings.TrimSpace(raw) {
-	case "id", "title", "role", "status", "kind", "started", "updated", "gates", "owner":
+	case "id", "title", "role", "status", "kind", "started", "updated", "gates", "owner", "profile", "owning_domain", "risk_level", "review_domains", "workstream":
 		return strings.TrimSpace(raw)
 	default:
 		return ""
@@ -795,8 +966,70 @@ func compareBoardTask(left, right store.Task, key string) int {
 		return 0
 	case "owner":
 		return strings.Compare(left.Owner, right.Owner)
+	case "profile":
+		return strings.Compare(left.Definition.Profile, right.Definition.Profile)
+	case "owning_domain":
+		return strings.Compare(left.Definition.OwningDomain, right.Definition.OwningDomain)
+	case "risk_level":
+		return strings.Compare(left.Definition.RiskLevel, right.Definition.RiskLevel)
+	case "review_domains":
+		return strings.Compare(strings.Join(left.Definition.ReviewDomains, ","), strings.Join(right.Definition.ReviewDomains, ","))
+	case "workstream":
+		return strings.Compare(boardTaskWorkstream(left), boardTaskWorkstream(right))
 	default:
 		return strings.Compare(left.Definition.ID, right.Definition.ID)
+	}
+}
+
+func boardTaskCell(task store.Task, column BoardColumn, rollups map[string]Rollup) template.HTML {
+	escape := html.EscapeString
+	switch column.Key {
+	case "id":
+		id := escape(task.Definition.ID)
+		return template.HTML(`<a href="/tasks/` + url.PathEscape(task.Definition.ID) + `">` + id + `</a>`)
+	case "title":
+		return template.HTML(escape(task.Definition.Title))
+	case "role":
+		return template.HTML(escape(task.Definition.Role))
+	case "status":
+		status := escape(task.Status)
+		return template.HTML(`<span class="status-pill ` + escape(safeDashboardClass(task.Status)) + `">` + status + `</span>`)
+	case "kind":
+		return template.HTML(escape(task.Definition.Kind))
+	case "started", "updated":
+		return template.HTML(escape(task.UpdatedAt))
+	case "gates":
+		if rollup, ok := rollups[task.Definition.ID]; ok {
+			return template.HTML(fmt.Sprintf("%d/%d", rollup.Done, rollup.Total))
+		}
+		return "-"
+	case "owner":
+		return template.HTML(escape(task.Owner))
+	case "profile":
+		return template.HTML(escape(task.Definition.Profile))
+	case "owning_domain":
+		return template.HTML(escape(task.Definition.OwningDomain))
+	case "risk_level":
+		return template.HTML(escape(task.Definition.RiskLevel))
+	case "review_domains":
+		return template.HTML(escape(strings.Join(task.Definition.ReviewDomains, ", ")))
+	case "workstream":
+		return template.HTML(escape(boardTaskWorkstream(task)))
+	default:
+		return ""
+	}
+}
+
+func boardTaskWorkstream(task store.Task) string {
+	profile := strings.TrimSpace(task.Definition.Profile)
+	kind := strings.TrimSpace(task.Definition.Kind)
+	switch {
+	case profile != "" && kind != "":
+		return profile + " / " + kind
+	case profile != "":
+		return profile
+	default:
+		return kind
 	}
 }
 
@@ -1824,6 +2057,11 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"boardPageHref":            boardPageHref,
 		"boardSortHref":            boardSortHref,
 		"boardSortState":           boardSortState,
+		"boardColumns":             boardColumns,
+		"boardColumnsParam":        boardColumnsParam,
+		"boardVisibleColumns":      boardVisibleColumns,
+		"boardColumnCount":         boardColumnCount,
+		"boardTaskCell":            boardTaskCell,
 		"statusFilterValues":       statusFilterValues,
 		"statusSelected":           statusSelected,
 		"statusClass":              safeDashboardClass,

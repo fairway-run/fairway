@@ -32,6 +32,8 @@ because its CLI version metadata still reported the development version.
 - The board task table now supports URL-backed sort state, debounced search
   URL state, clearable filter chips, and a project filter for shareable operator
   views.
+- The board now includes a URL-backed column chooser with toggleable optional
+  columns and up/down ordering controls.
 
 ### Release Checklist
 
