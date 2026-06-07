@@ -849,3 +849,41 @@ tasks:
       - mapping records input tokens, output tokens, cache-read tokens, cache-creation tokens, model, request id, cost, session id, and query source when available.
       - mapping keeps raw prompt, raw tool, and raw API body telemetry disabled for usage accounting.
       - docs include Claude Code environment variable guidance for usage-only telemetry.
+
+  - id: FW-127
+    title: Add Fairway work batch model for shared validation
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordination
+    source_paths:
+      - docs/agent-guide.md
+      - docs/design
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - docs/design/work-batch-model.md
+      - docs/agent-guide.md
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+      - cmd/fairway/main_test.go
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: fairway-work-batch-model
+    depends_on:
+      - FW-116
+      - FW-118
+    acceptance_checks:
+      - Fairway defines a work batch as the implementation, validation, review, and deploy-run unit that can contain multiple granular Fairway tasks sharing one branch, worktree, CI run, and evidence set.
+      - CLI supports creating a batch, adding/removing tasks, recording batch evidence, linking a deploy-run or pipeline id, and showing task-to-batch evidence mapping.
+      - Dashboard/reporting distinguishes granular task count from batch count so operators can see when too many small tasks are creating duplicate CI cycles.
+      - Batch plan records included task ids, branch/worktree, shared validation commands, review domains, rollback/split criteria, and expected CI/deploy run.
+      - Individual Fairway tasks still close independently, but may reference the same batch evidence when the evidence clearly validates each task.
+      - Agent guide instructs orchestrators to batch by shared validation surface and to avoid one branch/CI run per small task unless review, rollback, ownership, or dependency risk requires isolation.
+      - Reconcile/audit warns when many related tasks in the same domain are producing separate CI monitors that could have been a batch.
