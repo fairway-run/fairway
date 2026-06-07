@@ -863,6 +863,10 @@ func cmdBatch(ctx context.Context, opts globalOptions, args []string) error {
 }
 
 func cmdBatchCreate(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("batch create", "<batch-id> --title <title> [--task <id>] [--validation-command <cmd>] [--review-domain <domain>] [--branch <branch>] [--worktree <path>] [--expected-ci <run>] [--deploy-run-id <id>] [--pipeline-id <id-or-url>]")
+		return nil
+	}
 	if len(args) < 1 {
 		return errors.New("batch create requires batch id")
 	}
@@ -925,6 +929,10 @@ func cmdBatchCreate(ctx context.Context, opts globalOptions, args []string) erro
 }
 
 func cmdBatchAdd(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("batch add", "<batch-id> <task-id> [task-id...]")
+		return nil
+	}
 	if len(args) < 2 {
 		return errors.New("batch add requires batch id and task id")
 	}
@@ -941,6 +949,10 @@ func cmdBatchAdd(ctx context.Context, opts globalOptions, args []string) error {
 }
 
 func cmdBatchRemove(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("batch remove", "<batch-id> <task-id> [task-id...]")
+		return nil
+	}
 	if len(args) < 2 {
 		return errors.New("batch remove requires batch id and task id")
 	}
@@ -957,6 +969,10 @@ func cmdBatchRemove(ctx context.Context, opts globalOptions, args []string) erro
 }
 
 func cmdBatchEvidence(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("batch evidence", "<batch-id> --command-text <cmd> --result <pass|partial|fail> [--artifact <path>] [--artifact-type <type>] [--notes <text>] [--map-to-tasks=false]")
+		return nil
+	}
 	if len(args) < 1 {
 		return errors.New("batch evidence requires batch id")
 	}
@@ -995,6 +1011,10 @@ func cmdBatchEvidence(ctx context.Context, opts globalOptions, args []string) er
 }
 
 func cmdBatchLink(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("batch link", "<batch-id> [--deploy-run-id <id>] [--pipeline-id <id-or-url>]")
+		return nil
+	}
 	if len(args) < 1 {
 		return errors.New("batch link requires batch id")
 	}
@@ -1023,6 +1043,10 @@ func cmdBatchLink(ctx context.Context, opts globalOptions, args []string) error 
 }
 
 func cmdBatchShow(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("batch show", "<batch-id>")
+		return nil
+	}
 	if len(args) < 1 {
 		return errors.New("batch show requires batch id")
 	}
@@ -1059,6 +1083,10 @@ func cmdBatchShow(ctx context.Context, opts globalOptions, args []string) error 
 }
 
 func cmdBatchList(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("batch list", "")
+		return nil
+	}
 	if len(args) > 0 {
 		return fmt.Errorf("unexpected batch list arguments: %s", strings.Join(args, " "))
 	}

@@ -81,6 +81,12 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check"},
 		{[]string{"batch", "--help"}, "fairway batch create|add|remove|evidence|link|show|list"},
+		{[]string{"batch", "create", "--help"}, "fairway batch create <batch-id> --title <title>"},
+		{[]string{"batch", "add", "--help"}, "fairway batch add <batch-id> <task-id>"},
+		{[]string{"batch", "evidence", "--help"}, "fairway batch evidence <batch-id> --command-text <cmd> --result"},
+		{[]string{"batch", "link", "--help"}, "fairway batch link <batch-id>"},
+		{[]string{"batch", "show", "--help"}, "fairway batch show <batch-id>"},
+		{[]string{"batch", "list", "--help"}, "fairway batch list"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning"},
 		{[]string{"release", "--help"}, "fairway release verify"},
 	} {
