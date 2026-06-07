@@ -43,7 +43,7 @@
 <nav class="view-toggle" aria-label="Dashboard view">
 <a class="{{if eq .View "wall"}}active{{end}}" href="/">Wall</a><a class="{{if or (eq .View "board") (eq .View "detail")}}active{{end}}" href="/board">Board</a><a class="{{if eq .View "reports"}}active{{end}}" href="/reports">Reports</a><a href="/board?tab=diagnostics">Diagnostics</a>
 </nav>
-<button class="theme-toggle" type="button" data-theme-toggle>light</button>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark theme">light</button>
 </div>
 </header>
 {{template "content" .}}

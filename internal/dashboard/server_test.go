@@ -381,7 +381,8 @@ func TestBoardSortSearchAndFilterChipsUseURLState(t *testing.T) {
 		`<b>Status</b> todo`,
 		`Clear filters`,
 		`sort=title`,
-		`aria-sort="ascending">Title</a>`,
+		`aria-sort="ascending"><a href="/board?`,
+		`data-sort-key="title">Title</a>`,
 		"Alpha frontend view",
 	} {
 		if !strings.Contains(body, want) {
@@ -464,7 +465,8 @@ func TestBoardColumnChooserUsesURLState(t *testing.T) {
 	for _, want := range []string{
 		"Columns</span><b>6 shown",
 		`columns=title%2Cid%2Cprofile%2Cowning_domain%2Crisk_level%2Creview_domains`,
-		`data-sort-key="profile" aria-sort="ascending">Profile</a>`,
+		`aria-sort="ascending"><a href="/board?`,
+		`data-sort-key="profile">Profile</a>`,
 		"Column task",
 		"dashboard-v2",
 		"fairway",
@@ -1205,6 +1207,7 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		"dashboard",
 		`/assets/logo.svg`,
 		`aria-label="fairway dashboard"`,
+		`aria-label="Switch to dark theme"`,
 		`data-theme-toggle`,
 		`/assets/js/common.js`,
 		`/assets/js/wall.js`,
@@ -1470,7 +1473,8 @@ func TestDashboardAssetsServeSurfaceStyles(t *testing.T) {
 		want []string
 	}{
 		{path: "/assets/css/wall.css", want: []string{".wall-layout", ".wall-lane", ".lane-states", ".wall-rail"}},
-		{path: "/assets/css/board.css", want: []string{".board-layout", ".control-room-head", ".gate-grid", ".board-table", ".board-rail"}},
+		{path: "/assets/css/board.css", want: []string{".board-layout", ".control-room-head", ".gate-grid", ".board-table", ".board-rail", `th[aria-sort="ascending"] a[data-sort-key]`}},
+		{path: "/assets/css/components.css", want: []string{"a:focus-visible", "button:focus-visible", "summary:focus-visible", "textarea:focus-visible"}},
 		{path: "/assets/js/wall.js", want: []string{"data-lane-toggle", "aria-expanded", "data-lane-panel"}},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tt.path, nil)

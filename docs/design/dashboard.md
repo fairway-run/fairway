@@ -68,6 +68,15 @@ emit a `started` provider event so the wall can show who is actually attached.
 The right rail shows gate readiness and recent activity for quick situational
 awareness.
 
+Accessibility expectations:
+
+- interactive wall and board controls carry labels or visible text,
+- board sort state is exposed on table headers with `aria-sort`,
+- focus rings are visible for links, buttons, inputs, selects, textareas, and
+  disclosure summaries,
+- dashboard actions remain reachable by keyboard through links, forms, and
+  dialogs rather than pointer-only controls.
+
 When recent work-coverage or CI/deploy learning audits find high-risk advisory
 issues, the wall shows a compact diagnostics banner with a link to the board
 diagnostics tab. The banner does not change task state or merge gates; it is a

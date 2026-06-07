@@ -813,13 +813,13 @@ a {
 }
 
 .board-table th button[aria-sort="ascending"]::after,
-.board-table th a[data-sort-key][aria-sort="ascending"]::after {
+.board-table th[aria-sort="ascending"] a[data-sort-key]::after {
   border-bottom: 5px solid currentColor;
   opacity: 0.8;
 }
 
 .board-table th button[aria-sort="descending"]::after,
-.board-table th a[data-sort-key][aria-sort="descending"]::after {
+.board-table th[aria-sort="descending"] a[data-sort-key]::after {
   border-top: 5px solid currentColor;
   opacity: 0.8;
 }

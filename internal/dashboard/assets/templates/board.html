@@ -214,7 +214,7 @@
 <button class="btn" type="button" data-bulk-open="bulk-evidence-dialog">Record evidence</button>
 </section>
 <table class="board-table" data-sortable>
-<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th>{{range boardVisibleColumns $columns}}<th>{{if .Sortable}}<a href="{{boardSortHref $.Filters .Key}}" data-sort-key="{{.Key}}" aria-sort="{{boardSortState $.Filters .Key}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}</tr></thead>
+<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th>{{range boardVisibleColumns $columns}}<th aria-sort="{{boardSortAria $.Filters .Key}}">{{if .Sortable}}<a href="{{boardSortHref $.Filters .Key}}" data-sort-key="{{.Key}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}</tr></thead>
 <tbody>
 {{range .TableRows}}
 {{$task := .}}

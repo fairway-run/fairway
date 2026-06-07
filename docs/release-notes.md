@@ -41,6 +41,8 @@ because its CLI version metadata still reported the development version.
   sort order, and visible columns while exporting all filtered rows.
 - Wall lanes now expand inline to show queue, current work, pending reviews,
   latest events, and a role-filtered board link.
+- Wall and board accessibility now have broader focus-visible coverage, initial
+  theme-toggle labeling, and table-header `aria-sort` semantics.
 
 ### Release Checklist
 

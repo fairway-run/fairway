@@ -141,7 +141,13 @@
 .button:focus-visible,
 .theme-toggle:focus-visible,
 .dropdown-trigger:focus-visible,
-.view-toggle a:focus-visible {
+.view-toggle a:focus-visible,
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
 }

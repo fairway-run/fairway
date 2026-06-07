@@ -613,6 +613,14 @@ func boardSortState(filters TaskFilters, column string) string {
 	}
 }
 
+func boardSortAria(filters TaskFilters, column string) string {
+	state := boardSortState(filters, column)
+	if state == "" {
+		return "none"
+	}
+	return state
+}
+
 var boardColumnCatalog = []BoardColumn{
 	{Key: "id", Label: "ID", Sortable: true},
 	{Key: "title", Label: "Title", Sortable: true},
@@ -2252,6 +2260,7 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"boardExportHref":          boardExportHref,
 		"boardSortHref":            boardSortHref,
 		"boardSortState":           boardSortState,
+		"boardSortAria":            boardSortAria,
 		"boardColumns":             boardColumns,
 		"boardColumnsParam":        boardColumnsParam,
 		"boardVisibleColumns":      boardVisibleColumns,
