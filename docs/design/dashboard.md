@@ -61,6 +61,13 @@ Each role lane shows:
   shows queue, current working card, pending reviews, latest events, and an
   `Open full details for <role>` link to the board filtered by role.
 
+Typed SSE events update the wall in place. Handoff events draw a short-lived arc
+between source and target lanes and increment the handoff metric. Activity
+events prepend verb-first ticker entries and maintain relative timestamps.
+Session heartbeat events pulse the attached working task pill while fresh,
+soften the pulse after one minute, and mute the pill after five minutes without
+inventing synthetic heartbeat state.
+
 The lane header distinguishes live provider attachments from task status. An
 `active session` label means Fairway has a running session row attached to a
 task. An `in_progress without session` label means the task state is active but

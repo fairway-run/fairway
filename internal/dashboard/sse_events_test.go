@@ -51,13 +51,16 @@ func TestSSEEventsFromSourceMapsTaxonomy(t *testing.T) {
 		t.Fatalf("evidence mapping = %#v", events)
 	}
 
-	src = store.EventSource{Source: "session_detach", Role: "backend", Provider: "codex", SessionID: "codex-1", EndReason: "completed"}
+	src = store.EventSource{Source: "session_detach", TaskID: "T-001", Role: "backend", Provider: "codex", SessionID: "codex-1", EndReason: "completed"}
 	src.Cursor.At = "2026-06-04T00:00:03Z"
 	src.Cursor.SourceOrder = 70
 	src.Cursor.ID = 4
 	events = sseEventsFromSource(src)
 	if len(events) != 1 || events[0].Name != "session_detach" || events[0].Payload["reason"] != "completed" {
 		t.Fatalf("session detach mapping = %#v", events)
+	}
+	if events[0].Payload["task_id"] != src.TaskID {
+		t.Fatalf("session detach task payload = %#v", events[0].Payload)
 	}
 }
 

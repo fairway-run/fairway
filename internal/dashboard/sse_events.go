@@ -98,6 +98,7 @@ func sseEventsFromSource(src store.EventSource) []sseEvent {
 	case "session_attach", "session_heartbeat", "session_detach":
 		name := src.Source
 		payload := map[string]any{
+			"task_id":    src.TaskID,
 			"role":       src.Role,
 			"provider":   src.Provider,
 			"session_id": src.SessionID,

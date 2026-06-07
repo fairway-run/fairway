@@ -1411,6 +1411,10 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		`/assets/css/wall.css`,
 		`data-lane-toggle="backend"`,
 		`data-lane-panel="backend"`,
+		`data-wall-role="backend"`,
+		`data-task-id="T-002"`,
+		`data-handoff-count`,
+		`data-wall-ticker`,
 		`aria-expanded="false"`,
 		"backend",
 		"ui",
@@ -1687,10 +1691,10 @@ func TestDashboardAssetsServeSurfaceStyles(t *testing.T) {
 		path string
 		want []string
 	}{
-		{path: "/assets/css/wall.css", want: []string{".wall-layout", ".wall-lane", ".lane-states", ".wall-rail"}},
+		{path: "/assets/css/wall.css", want: []string{".wall-layout", ".wall-lane", ".lane-states", ".wall-rail", ".handoff-arc", ".heartbeat-fresh", ".heartbeat-warm", ".heartbeat-stale"}},
 		{path: "/assets/css/board.css", want: []string{".board-layout", ".control-room-head", ".gate-grid", ".board-table", ".board-rail", `th[aria-sort="ascending"] a[data-sort-key]`}},
 		{path: "/assets/css/components.css", want: []string{"a:focus-visible", "button:focus-visible", "summary:focus-visible", "textarea:focus-visible"}},
-		{path: "/assets/js/wall.js", want: []string{"data-lane-toggle", "aria-expanded", "data-lane-panel"}},
+		{path: "/assets/js/wall.js", want: []string{"data-lane-toggle", "aria-expanded", "data-lane-panel", `new EventSource("/events")`, "drawHandoffArc", "session_heartbeat", "data-handoff-count", "data-wall-ticker"}},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 		rec := httptest.NewRecorder()

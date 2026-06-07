@@ -26,7 +26,7 @@
 <section class="headline" aria-label="Track headline">
 <div class="stat"><b>{{len (wallActiveSessions .Sessions)}}</b><span>agents</span></div>
 <div class="stat"><b>{{wallTasksMoving .Groups}}</b><span>tasks moving</span></div>
-<div class="stat"><b>{{wallHandoffCount .Activity}}</b><span>handoffs</span></div>
+<div class="stat"><b data-handoff-count>{{wallHandoffCount .Activity}}</b><span>handoffs</span></div>
 <div class="stat"><b>{{wallDoneToday .Groups}}</b><span>done today</span></div>
 </section>
 {{end}}

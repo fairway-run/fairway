@@ -27,6 +27,9 @@ and uses semantic versioning.
 - Dashboard multi-project mode now mounts `/` as a grouped wall with
   collapsible project headers, project-prefixed activity, and per-project
   readiness rollups while keeping `/projects` as the compact registry summary.
+- Dashboard wall now consumes typed SSE events for handoff arcs, live
+  verb-first activity ticker entries, relative timestamps, and heartbeat pulse
+  states on working task pills.
 - Active-work reconciliation now detects monitor sessions without backing proof,
   so CI/deploy/UAT/provider monitors cannot leave fake active work behind when
   no automation, process, external poller, or bounded manual checkpoint exists.

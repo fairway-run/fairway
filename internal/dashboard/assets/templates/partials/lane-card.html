@@ -1,7 +1,7 @@
 {{define "lane-column"}}
 <div class="lane-col {{.Lane}}">
 {{range takeTasks .Tasks 3}}
-<a class="pill {{wallProviderClass . $.Sessions}} {{if wallTaskHasProvider . $.Sessions}}active-session{{end}} {{if eq .Status "done"}}done{{else if eq .Status "in_progress"}}working{{end}}" href="/tasks/{{.Definition.ID}}">
+<a class="pill {{wallProviderClass . $.Sessions}} {{if wallTaskHasProvider . $.Sessions}}active-session{{end}} {{if eq .Status "done"}}done{{else if eq .Status "in_progress"}}working{{end}}" href="/tasks/{{.Definition.ID}}" data-task-id="{{.Definition.ID}}" data-task-role="{{.Definition.Role}}">
 <span class="id">{{.Definition.ID}}</span><span>{{.Definition.Title}}</span>
 {{with wallMissingReviewDomains . $.MissingReviewDomains}}<small>missing {{range .}}<code>{{.}}</code> {{end}}</small>{{end}}
 </a>

@@ -36,7 +36,7 @@
 <summary><span>{{.Name}}</span><b>{{.Summary.Total}} tasks · {{.Summary.InProgress}} active · {{.Summary.Done}} done</b></summary>
 {{range .Groups}}
 <article class="wall-lane">
-<div class="lane-row">
+<div class="lane-row" data-wall-role="{{.Role}}">
 <div class="lane-name">
 <button class="lane-toggle" type="button" data-lane-toggle="{{safeClass $project.Name}}-{{safeClass .Role}}" aria-expanded="false" aria-controls="lane-panel-{{safeClass $project.Name}}-{{safeClass .Role}}">{{.Role}}</button>
 {{with wallRoleActiveSession .Role .Tasks $.Sessions $.TaskRoles}}<small class="active">active session {{.TaskID}}</small>{{else}}{{if .Current}}<small class="unsessioned">in_progress without session {{.Current.Definition.ID}}</small>{{else}}<small class="muted">idle . waiting</small>{{end}}{{end}}
@@ -90,7 +90,7 @@
 {{else}}
 {{range .Groups}}
 <article class="wall-lane">
-<div class="lane-row">
+<div class="lane-row" data-wall-role="{{.Role}}">
 <div class="lane-name">
 <button class="lane-toggle" type="button" data-lane-toggle="{{.Role}}" aria-expanded="false" aria-controls="lane-panel-{{safeClass .Role}}">{{.Role}}</button>
 {{with wallRoleActiveSession .Role .Tasks $.Sessions $.TaskRoles}}<small class="active">active session {{.TaskID}}</small>{{else}}{{if .Current}}<small class="unsessioned">in_progress without session {{.Current.Definition.ID}}</small>{{else}}<small class="muted">idle . waiting</small>{{end}}{{end}}
@@ -176,7 +176,7 @@
 {{end}}
 <section class="card">
 <h2>Activity</h2>
-<div class="ticker-list">
+<div class="ticker-list" data-wall-ticker>
 {{range .Activity}}<article class="ticker-entry"><b class="who">{{.TaskID}}</b><span class="what">{{.Kind}} {{.Summary}}</span><time>{{.CreatedAt}}</time></article>{{else}}<p class="muted">no recent activity</p>{{end}}
 </div>
 </section>
