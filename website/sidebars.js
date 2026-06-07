@@ -26,6 +26,8 @@ const sidebars = {
         'design/checkpoints',
         'design/review-lanes',
         'design/session-launch',
+        'design/provider-usage-accounting',
+        'design/work-batch-model',
         'design/watchers'
       ]
     },

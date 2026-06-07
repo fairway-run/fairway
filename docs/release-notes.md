@@ -4,6 +4,44 @@ Fairway `v0.1.1` is the first public release with signed/notarized macOS
 artifacts and a Homebrew cask. The initial `v0.1.0` release artifact was yanked
 because its CLI version metadata still reported the development version.
 
+## v0.1.3
+
+### What Changed
+
+- Provider usage accounting now records normalized usage events with provider,
+  session, task, role, phase, model, token counts, source, and confidence.
+  Unknown usage remains unknown rather than being reported as zero.
+- Provider-supported OpenTelemetry ingestion is available through
+  `examples/session-adapters/provider-otel-ingest.sh`. The bridge maps
+  structural OTLP log, metric, and trace attributes into Fairway usage records
+  without requiring prompt, tool-body, raw API body, auth-token, transcript, or
+  generated-content capture.
+- Codex usage can be attributed through Codex-shaped OTel events,
+  `codex exec --json` / NDJSON `turn.completed.usage`, or caller-supplied
+  start/end token snapshots.
+- Claude Code usage can be attributed through OTel token/cost metrics and API
+  request token attributes while keeping raw prompt/tool/body telemetry disabled
+  for usage accounting.
+- Work batches are now a first-class coordination model. A batch can group
+  multiple granular Fairway tasks under one branch, worktree, validation
+  command set, CI/deploy run, and shared evidence mapping.
+- `fairway batch create|add|remove|evidence|link|show|list` supports shared
+  validation planning and maps batch evidence back to member tasks by default.
+- Dashboard reports and task detail now expose batch context so operators can
+  distinguish granular task progress from validation batches.
+
+### Release Checklist
+
+- `go test ./...` passes.
+- `go vet ./...` passes.
+- adapter syntax checks pass for `provider-event.sh`,
+  `provider-otel-ingest.sh`, and `codex-usage-adapter.sh`.
+- Docusaurus portal builds from `website/`.
+- `goreleaser check` passes.
+- GitHub Actions CI and Docs Portal workflows pass on the pushed commit.
+- Release verification confirms GitHub release state, asset URLs, Homebrew cask
+  version, tap commit, and `brew fetch`.
+
 ## v0.1.2
 
 ### What Changed

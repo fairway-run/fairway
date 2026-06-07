@@ -29,6 +29,22 @@ and uses semantic versioning.
 - Plane tracker adapter spike commands now render dry-run Plane issue payloads,
   fixture import previews, and execution-summary comments from Fairway state
   while explicitly rejecting apply/write paths.
+- Provider usage accounting records normalized provider/session/task usage with
+  source and confidence, including input, cached input, output, reasoning, and
+  total token fields when an adapter can provide them.
+- Provider-neutral OpenTelemetry usage ingestion maps OTLP logs, metrics, and
+  traces into Fairway usage records without requiring prompt, tool-body, raw API
+  body, auth-token, transcript, or generated-content capture.
+- Codex usage attribution supports Codex-shaped OTel events,
+  `codex exec --json` / NDJSON `turn.completed.usage`, and caller-supplied
+  start/end token snapshots.
+- Claude Code usage attribution supports OTel token/cost metrics and API
+  request token attributes while keeping content telemetry disabled for usage
+  accounting.
+- Work batches now model shared implementation and validation units across
+  multiple granular tasks, with CLI support for batch creation, membership,
+  evidence mapping, CI/deploy-run links, dashboard context, and audit findings
+  for over-split validation work.
 - Release-run packets and `fairway release verify` now coordinate release
   attempts, including release notes, changelog state, CI/docs/signing/notary
   evidence, GitHub release state, asset URL checks, Homebrew cask version, and

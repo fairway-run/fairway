@@ -130,6 +130,8 @@ Core Design:
 - [Checkpoints](docs/design/checkpoints.md)
 - [Review lanes](docs/design/review-lanes.md)
 - [Session launch](docs/design/session-launch.md)
+- [Provider usage accounting](docs/design/provider-usage-accounting.md)
+- [Work batch model](docs/design/work-batch-model.md)
 - [Postgres adapter](docs/design/postgres-adapter.md)
 - [Issue tracker integrations](docs/design/issue-tracker-integrations.md)
 - [Worktrees](docs/design/worktrees.md)

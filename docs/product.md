@@ -74,8 +74,13 @@ each version ships.
   findings, while release-run packets and release verification guard public
   release, asset, and Homebrew readiness. Provider usage attribution records
   normalized counts from adapters and rolls them up by task/lane/provider for
-  retrospective planning, without pricing or provider API polling. GPUaaS / ARC
-  remains the adoption example, not the core product shape.
+  retrospective planning, without pricing or provider API polling. OTel usage
+  ingestion, Codex `exec --json` mapping, Claude Code OTel mapping, and work
+  batches now cover the first production lessons from GPUaaS stabilization:
+  usage should be attributed without reading provider-private state, and
+  multiple granular tasks should be validated as one batch when they share a
+  branch, CI run, and proof surface. GPUaaS / ARC remains the adoption example,
+  not the core product shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.

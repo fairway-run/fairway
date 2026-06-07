@@ -97,6 +97,37 @@ The first command warns about dirty docs/code, unpushed commits, and active
 Fairway reconciliation findings. The deploy mode requires clean pushed source
 so CI has a chance to run before deploy evidence is recorded.
 
+When several granular tasks share the same implementation and validation
+surface, create a work batch before editing. Tasks stay granular for ownership
+and review, while the batch owns the branch, worktree, CI/deploy run, and
+shared proof:
+
+```bash
+fairway batch create BATCH-001 \
+  --title "registry operator read models" \
+  --task OPS-001 \
+  --task OPS-002 \
+  --branch codex/registry-ops-readmodels \
+  --validation-command "go test ./cmd/fairway ./internal/store" \
+  --review-domain backend \
+  --review-domain governance
+```
+
+After the shared validation passes, map the batch evidence to member tasks:
+
+```bash
+fairway batch evidence BATCH-001 \
+  --command-text "go test ./..." \
+  --result pass \
+  --artifact dist/ci-123.log \
+  --artifact-type ci
+```
+
+For provider usage attribution, prefer provider-supported OTel or structured
+JSON surfaces over private provider state. The session adapters under
+`examples/session-adapters/` include the generic OTel bridge plus Codex and
+Claude Code usage mappings.
+
 ## Set up lanes
 
 ```bash
