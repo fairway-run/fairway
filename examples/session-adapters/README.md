@@ -131,6 +131,56 @@ Task ownership, terminal status gates, review gates, and merge readiness remain
 Fairway responsibilities. Provider watchers should only feed sessions,
 checkpoints, evidence, and handoffs.
 
+## CI/deploy/UAT monitor utility
+
+`ci-monitor.sh` is a provider-neutral watcher utility for external CI, deploy,
+smoke, UAT, docs, or ops runs. It does not call GitHub, GitLab, Plane, Codex,
+Claude, or any provider API directly. A project-specific wrapper supplies the
+poll command and external run id; the utility translates the result into
+Fairway session proof, watcher lifecycle, checkpoints, evidence, and a
+coordinator handback.
+
+Dry-run a monitor before running it:
+
+```bash
+examples/session-adapters/ci-monitor.sh \
+  --task-id T-001 \
+  --batch-id BATCH-001 \
+  --monitor-kind ci \
+  --external-run-id gha-123 \
+  --poll-command "gh run view gha-123 --json conclusion --jq .conclusion" \
+  --source-sha "$(git rev-parse HEAD)" \
+  --manual-until 2026-06-07 \
+  --artifact https://github.com/org/repo/actions/runs/123 \
+  --dry-run
+```
+
+Run it as a utility process after checking the generated commands:
+
+```bash
+examples/session-adapters/ci-monitor.sh \
+  --task-id T-001 \
+  --batch-id BATCH-001 \
+  --monitor-kind ci \
+  --external-run-id gha-123 \
+  --poll-command "gh run view gha-123 --json conclusion --jq .conclusion" \
+  --success-regex "success" \
+  --failure-regex "failure|cancelled|timed_out" \
+  --interval-seconds 30 \
+  --timeout-seconds 1800 \
+  --artifact https://github.com/org/repo/actions/runs/123
+```
+
+For deterministic wrappers and tests, pass `--result pass|fail|timeout|stale`.
+On failure or timeout the adapter records failed/blocked evidence and prints a
+recommended follow-up prefix: `CI-FIX`, `CD-FIX`, `UAT-BUG`, `OPS-FIX`,
+`HARNESS-FIX`, or `DOC-FIX`, depending on `--monitor-kind`. It recommends by
+default; it does not create tasks automatically.
+
+After closing the watcher and session, the adapter runs
+`fairway reconcile active --dry-run` as the reusable handback. If ready work
+remains, that report surfaces `monitor_completion_resume_needed`.
+
 ## Provider Usage Adapters
 
 `provider-otel-ingest.sh` is the provider-neutral usage bridge. It accepts OTLP

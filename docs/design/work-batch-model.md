@@ -116,6 +116,10 @@ Batching should be paired with utility-first CI/deploy monitoring. The expected
 pattern is one coherent batch, one branch/worktree, one shared CI/deploy-run,
 and one watcher utility that records handback evidence. Long-running agent
 sessions should not spend provider tokens polling the same run.
+Use `examples/session-adapters/ci-monitor.sh` for the first provider-neutral
+utility shape: pass the batch id, task id, external run id, poll command,
+source SHA, expected window, and artifact URL so the monitor evidence maps back
+to the batch and member task.
 
 The first implementation exposes:
 

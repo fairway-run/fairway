@@ -262,6 +262,29 @@ and emit a handback or resume-needed finding. Agents act on those handbacks;
 they should not spend provider tokens repeatedly checking the same pipeline
 status.
 
+Use the provider-neutral CI monitor adapter when a project wrapper can supply a
+poll command:
+
+```bash
+examples/session-adapters/ci-monitor.sh \
+  --task-id <task-id> \
+  --batch-id <batch-id> \
+  --monitor-kind ci \
+  --external-run-id <pipeline-or-run-id> \
+  --poll-command "<command that prints success/failure status>" \
+  --source-sha "$(git rev-parse HEAD)" \
+  --manual-until <date-or-rfc3339> \
+  --artifact <pipeline-url-or-log> \
+  --dry-run
+```
+
+Remove `--dry-run` after checking the generated Fairway commands. The adapter
+records monitor session proof, watcher lifecycle, heartbeats, evidence, and the
+final `reconcile active --dry-run` handback. On failed, timeout, or stale runs
+it recommends a follow-up prefix such as `CI-FIX`, `CD-FIX`, `UAT-BUG`,
+`OPS-FIX`, `HARNESS-FIX`, or `DOC-FIX`; it does not create tasks unless a
+project wrapper chooses to do that explicitly.
+
 Before launching separate CI runs for multiple small tasks, check whether they
 can be grouped into a work batch with one branch, one validation command set,
 one review path, and one CI/deploy-run. Use separate runs only when ownership,

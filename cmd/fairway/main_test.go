@@ -850,6 +850,128 @@ func TestCodexUsageAdapter(t *testing.T) {
 	}
 }
 
+func TestCIMonitorAdapterDryRun(t *testing.T) {
+	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "ci-monitor.sh"))
+
+	pass := runAdapter(t, script,
+		"--task-id", "T-001",
+		"--batch-id", "BATCH-001",
+		"--external-run-id", "gha-123",
+		"--poll-command", "gh run view gha-123",
+		"--source-sha", "abc123",
+		"--manual-until", "2026-06-07",
+		"--artifact", "https://ci.example/gha-123",
+		"--result", "pass",
+		"--dry-run",
+	)
+	for _, want := range []string{
+		"session upsert",
+		"--provider utility",
+		"--backend ci-monitor",
+		"--monitor-kind ci",
+		"--external-run-id gha-123",
+		"--poll-command",
+		"watcher start",
+		"checkpoint record T-001 --state active",
+		"record evidence T-001",
+		"--result pass",
+		"work_batch=BATCH-001",
+		"source_sha=abc123",
+		"watcher finish",
+		"session end ci-monitor-ci-gha-123",
+		"coordinator_handback=ci-monitor ci gha-123 result=pass",
+		"reconcile active --dry-run",
+	} {
+		assertContains(t, pass, want)
+	}
+
+	fail := runAdapter(t, script,
+		"--task-id", "T-001",
+		"--monitor-kind", "deploy",
+		"--external-run-id", "deploy-1",
+		"--poll-command", "deployctl status deploy-1",
+		"--result", "fail",
+		"--dry-run",
+	)
+	for _, want := range []string{
+		"--monitor-kind deploy",
+		"--result fail",
+		"recommended_followup=CD-FIX-<next>",
+		"session end ci-monitor-deploy-deploy-1 --status failed",
+		"coordinator_handback=ci-monitor deploy deploy-1 result=fail",
+	} {
+		assertContains(t, fail, want)
+	}
+
+	timeout := runAdapter(t, script,
+		"--task-id", "T-001",
+		"--monitor-kind", "uat",
+		"--external-run-id", "uat-1",
+		"--poll-command", "uat status uat-1",
+		"--result", "timeout",
+		"--dry-run",
+	)
+	for _, want := range []string{
+		"--monitor-kind uat",
+		"--result blocked",
+		"recommended_followup=UAT-BUG-<next>",
+		"session end ci-monitor-uat-uat-1 --status stale",
+		"coordinator_handback=ci-monitor uat uat-1 result=timeout",
+	} {
+		assertContains(t, timeout, want)
+	}
+}
+
+func TestCIMonitorAdapterLiveSmoke(t *testing.T) {
+	repo := t.TempDir()
+	fairwayBin := filepath.Join(repo, "fairway")
+	build := exec.Command("go", "build", "-o", fairwayBin, ".")
+	build.Dir = mustGetwd(t)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fairway: %v\n%s", err, out)
+	}
+	runExternal := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(fairwayBin, args...)
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("fairway %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	runExternal("init")
+	runExternal("add", "T-001", "--title", "Monitor CI", "--role", "ops")
+
+	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "ci-monitor.sh"))
+	cmd := exec.Command("bash", script,
+		"--task-id", "T-001",
+		"--external-run-id", "gha-live",
+		"--poll-command", "printf success",
+		"--artifact", "dist/gha-live.log",
+		"--result", "pass",
+	)
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "FAIRWAY_BIN="+fairwayBin)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ci-monitor live smoke failed: %v\n%s", err, out)
+	}
+	detail := runExternal("task-detail", "T-001")
+	for _, want := range []string{
+		"external_run=gha-live",
+		"pass printf success dist/gha-live.log",
+	} {
+		assertContains(t, detail, want)
+	}
+	checkpoints := runExternal("checkpoint", "status", "--all")
+	assertContains(t, checkpoints, "ci-monitor watching ci run gha-live")
+	assertContains(t, checkpoints, "ci-monitor completed ci run gha-live: pass")
+	sessions := runExternal("session", "status", "--all")
+	assertContains(t, sessions, "ci-monitor-ci-gha-live")
+	assertContains(t, sessions, "ended")
+}
+
 func TestCLI_CoordinatorStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

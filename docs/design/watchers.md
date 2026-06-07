@@ -122,6 +122,31 @@ The watcher utility owns:
 - creating or recommending follow-up tasks for actionable failures;
 - emitting a continuation prompt or resume-needed finding.
 
+The reference adapter is `examples/session-adapters/ci-monitor.sh`. It is
+provider-neutral: wrappers provide a poll command and external run id, while the
+adapter records Fairway state through existing commands.
+
+```bash
+examples/session-adapters/ci-monitor.sh \
+  --task-id T-001 \
+  --batch-id BATCH-001 \
+  --monitor-kind ci \
+  --external-run-id gha-123 \
+  --poll-command "gh run view gha-123 --json conclusion --jq .conclusion" \
+  --success-regex "success" \
+  --failure-regex "failure|cancelled|timed_out" \
+  --source-sha "$(git rev-parse HEAD)" \
+  --manual-until 2026-06-07 \
+  --artifact https://github.com/org/repo/actions/runs/123
+```
+
+The adapter upserts a monitor session with `monitor_kind`, external run id,
+poll command, source SHA in notes, and optional automation/manual-window proof.
+It starts a watcher, records active checkpoints while waiting, records pass,
+fail, or blocked evidence at completion, closes the watcher/session, and runs
+`fairway reconcile active --dry-run` as the handback. Failed and timed-out runs
+recommend follow-up task prefixes instead of mutating the backlog implicitly.
+
 The agent owns:
 
 - deciding what work is safe to start before the result is known;
