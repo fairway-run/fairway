@@ -72,6 +72,24 @@ func TestTaskDetail_AllowsNullMetadataAfterMigration(t *testing.T) {
 	}
 }
 
+func TestTaskDetail_AllowsEvidenceWithoutArtifact(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Evidence", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", Evidence{CommandText: "go test ./...", Result: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, evidence, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence) != 1 || evidence[0].ArtifactPath != "" || evidence[0].Result != "pass" {
+		t.Fatalf("evidence=%+v, want one artifact-less pass row", evidence)
+	}
+}
+
 func TestPostgresCompatReport(t *testing.T) {
 	report, err := PostgresCompatReport()
 	if err != nil {

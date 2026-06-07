@@ -352,6 +352,89 @@ func TestBoardFiltersBySearchAndStatus(t *testing.T) {
 	}
 }
 
+func TestBoardSortSearchAndFilterChipsUseURLState(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-002", Title: "Zulu backend route", Kind: "feature", Role: "backend", Profile: "dashboard-v2", OwningDomain: "platform", RiskLevel: "medium", ReviewDomains: []string{"arch"}, SourcePaths: []string{"cmd/api/routes.go"}},
+		{ID: "T-001", Title: "Alpha frontend view", Kind: "bug", Role: "ui", Profile: "dashboard-v2", OwningDomain: "dashboard", RiskLevel: "low", ReviewDomains: []string{"ui"}, SourcePaths: []string{"internal/dashboard/assets/js/board.js"}},
+		{ID: "T-003", Title: "Registry worker", Kind: "task", Role: "ops", Profile: "ops", OwningDomain: "registry", RiskLevel: "high"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.Fairway.ProjectName = "fairway-test"
+	server := New(s, cfg, []string{"backend", "ui", "ops"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?q=dashboard&profile=dashboard-v2&project=fairway-test&status=todo&role=ui&kind=bug&owning_domain=dashboard&risk_level=low&review_domain=ui&sort=title", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		`name="sort" value="title"`,
+		`name="project" form="board-filter-form"`,
+		`<b>Search</b> dashboard`,
+		`<b>Project</b> fairway-test`,
+		`<b>Status</b> todo`,
+		`Clear filters`,
+		`sort=title`,
+		`aria-sort="ascending">Title</a>`,
+		"Alpha frontend view",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sorted filtered board missing %q:\n%s", want, body)
+		}
+	}
+	for _, unexpected := range []string{"Zulu backend route", "Registry worker"} {
+		if strings.Contains(body, unexpected) {
+			t.Fatalf("sorted filtered board included %q:\n%s", unexpected, body)
+		}
+	}
+	if !strings.Contains(body, `href="/board?`) || !strings.Contains(body, `sort=title`) || strings.Contains(body, `href="/board?sort=title&amp;q=dashboard`) {
+		t.Fatalf("filter chip hrefs did not preserve URL state clearly:\n%s", body)
+	}
+}
+
+func TestBoardSortOrderAndToggleLinks(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "Beta", Role: "backend", Kind: "task"},
+		{ID: "T-002", Title: "Alpha", Role: "backend", Kind: "task"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?sort=title", nil)
+	rec := httptest.NewRecorder()
+	server.board(rec, req)
+	body := rec.Body.String()
+	alpha := strings.Index(body, "Alpha")
+	beta := strings.Index(body, "Beta")
+	if alpha < 0 || beta < 0 || alpha > beta {
+		t.Fatalf("title ascending sort order wrong: alpha=%d beta=%d\n%s", alpha, beta, body)
+	}
+	if !strings.Contains(body, `sort=-title`) {
+		t.Fatalf("title header did not toggle to descending:\n%s", body)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/board?sort=-title", nil)
+	rec = httptest.NewRecorder()
+	server.board(rec, req)
+	body = rec.Body.String()
+	alpha = strings.Index(body, "Alpha")
+	beta = strings.Index(body, "Beta")
+	if alpha < 0 || beta < 0 || beta > alpha {
+		t.Fatalf("title descending sort order wrong: alpha=%d beta=%d\n%s", alpha, beta, body)
+	}
+}
+
 func TestBoardFiltersByRole(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
@@ -405,7 +488,7 @@ func TestBoardFiltersByMultipleStatuses(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Todo task", "Blocked task", "<b>Status</b> todo, blocked", "showing 1-2 of 2 filtered tasks", `name="status" value="todo"`, `name="status" value="blocked"`} {
+	for _, want := range []string{"Todo task", "Blocked task", "<b>Status</b> todo", "<b>Status</b> blocked", "showing 1-2 of 2 filtered tasks", `name="status" value="todo"`, `name="status" value="blocked"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("multi-status dashboard missing %q:\n%s", want, body)
 		}
@@ -1094,6 +1177,8 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		Sessions:         []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
 		Activity:         []store.Activity{{Kind: "evidence", TaskID: "T-002", Summary: "test pass", CreatedAt: "2026-06-04T00:00:00Z"}},
 		Filters:          TaskFilters{Search: "dashboard", Role: "backend", Status: "todo", Profile: "dashboard-v2", Kind: "task", OwningDomain: "fairway", RiskLevel: "medium", Tab: "tasks", ActivityLimit: 25},
+		FilterChips:      boardFilterChips(TaskFilters{Search: "dashboard", Role: "backend", Statuses: []string{"todo"}, Profile: "dashboard-v2", Kind: "task", OwningDomain: "fairway", RiskLevel: "medium", Tab: "tasks", ActivityLimit: 25}),
+		ClearFiltersHref: boardClearFiltersHref(TaskFilters{Search: "dashboard", Role: "backend", Statuses: []string{"todo"}, Profile: "dashboard-v2", Kind: "task", OwningDomain: "fairway", RiskLevel: "medium", Tab: "tasks", ActivityLimit: 25}),
 		Health:           store.Health{InProgress: 1},
 		StaleCheckpoints: []store.Checkpoint{{TaskID: "T-001", State: "active"}},
 		Watchers:         []store.Watcher{{ID: "W-001", TaskID: "T-001", Status: "active"}},
@@ -1110,8 +1195,11 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		`/assets/js/board.js`,
 		`/assets/css/board.css`,
 		"Search ID, title, owner, path",
+		`data-board-search=".board-table"`,
 		"Diagnostics",
 		"<b>Role</b> backend",
+		"Clear filters",
+		`data-sort-key="title"`,
 		"stale claims",
 		"Workstreams",
 		"Export CSV",
@@ -1191,7 +1279,7 @@ func TestBoardTemplateRendersDiagnosticsTab(t *testing.T) {
 			t.Fatalf("board diagnostics missing %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, "board-table") {
+	if strings.Contains(body, "task-table-section") {
 		t.Fatalf("diagnostics tab should not render task table:\n%s", body)
 	}
 }

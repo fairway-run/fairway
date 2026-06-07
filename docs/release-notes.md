@@ -29,6 +29,9 @@ because its CLI version metadata still reported the development version.
   validation planning and maps batch evidence back to member tasks by default.
 - Dashboard reports and task detail now expose batch context so operators can
   distinguish granular task progress from validation batches.
+- The board task table now supports URL-backed sort state, debounced search
+  URL state, clearable filter chips, and a project filter for shareable operator
+  views.
 
 ### Release Checklist
 

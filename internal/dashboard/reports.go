@@ -230,7 +230,7 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		View:          "reports",
 		Window:        window,
 		Filters:       filters,
-		FilterOptions: filterOptions(tasks, activity),
+		FilterOptions: filterOptions(tasks, activity, s.cfg.Fairway.ProjectName),
 		Summary:       reportSummary(facts, summaryRows, watchers, batches, start, end),
 		Lanes:         reportLanes(rows),
 		Timeline:      reportTimeline(facts, watchers, rows, start, end),

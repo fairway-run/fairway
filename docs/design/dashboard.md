@@ -86,16 +86,18 @@ It includes:
   opening individual tasks,
 - workstream progress above the table for quick backlog and completion scans,
 - search across task ID, title, metadata, status, owner, source paths, target
-  paths, and review domains,
-- role/status/profile/kind/domain/risk/review-domain filter chips,
-- sortable task columns,
+  paths, and review domains, with the query mirrored in URL state,
+- clearable role/status/project/profile/kind/domain/risk/review-domain filter
+  chips,
+- sortable task columns with URL state; shift-click adds a secondary sort key,
 - CSV export for the current task table,
 - operational health badges,
 - activity kind and row-count filtering.
 
 The task table is the drill-down layer after the gate and workstream highlights.
-It links to task detail. The board preserves role/status/search state when
-switching between task and diagnostics tabs.
+It links to task detail. The board preserves role/status/project/profile/kind/
+domain/risk/review/search/sort state when switching between task and
+diagnostics tabs.
 
 ## Diagnostics
 

@@ -2324,7 +2324,7 @@ func nullableIntPtr(value sql.NullInt64) *int {
 }
 
 func (s *Store) evidence(ctx context.Context, taskID string) ([]Evidence, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT command_text, result, artifact_path, artifact_type, duration_seconds, notes, created_at FROM task_evidence WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(command_text, ''), COALESCE(result, ''), COALESCE(artifact_path, ''), COALESCE(artifact_type, ''), duration_seconds, COALESCE(notes, ''), created_at FROM task_evidence WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
 	if err != nil {
 		return nil, err
 	}

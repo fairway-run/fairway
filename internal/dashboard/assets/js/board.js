@@ -25,6 +25,60 @@
     });
   });
 
+  document.querySelectorAll(".board-table thead a[data-sort-key]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (!event.shiftKey) return;
+      event.preventDefault();
+      const key = link.getAttribute("data-sort-key");
+      if (!key) return;
+      const url = new URL(window.location.href);
+      const existing = (url.searchParams.get("sort") || "").split(",").map((part) => part.trim()).filter(Boolean);
+      const withoutKey = existing.filter((part) => part.replace(/^-/, "") !== key);
+      const current = existing.find((part) => part.replace(/^-/, "") === key);
+      let next = key;
+      if (current === key) next = `-${key}`;
+      if (current === `-${key}`) next = "";
+      const parts = next ? [...withoutKey, next] : withoutKey;
+      if (parts.length) {
+        url.searchParams.set("sort", parts.join(","));
+      } else {
+        url.searchParams.delete("sort");
+      }
+      url.searchParams.set("page", "1");
+      window.location.assign(url.toString());
+    });
+  });
+
+  document.querySelectorAll('input[data-board-search]').forEach((input) => {
+    const selector = input.getAttribute("data-board-search");
+    const table = selector ? document.querySelector(selector) : null;
+    let timer = null;
+
+    function applyClientSearch() {
+      if (!table) return;
+      const needle = input.value.trim().toLowerCase();
+      table.querySelectorAll("tbody tr").forEach((row) => {
+        row.hidden = needle !== "" && !(row.innerText || "").toLowerCase().includes(needle);
+      });
+    }
+
+    input.addEventListener("input", () => {
+      applyClientSearch();
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const url = new URL(window.location.href);
+        const value = input.value.trim();
+        if (value) {
+          url.searchParams.set("q", value);
+        } else {
+          url.searchParams.delete("q");
+        }
+        url.searchParams.set("page", "1");
+        window.history.replaceState({}, "", url.toString());
+      }, 250);
+    });
+  });
+
   document.querySelectorAll(".board-table").forEach((table) => {
     const selectAll = table.querySelector('thead input[type="checkbox"]');
     const rowChecks = Array.from(table.querySelectorAll('tbody input[type="checkbox"]'));

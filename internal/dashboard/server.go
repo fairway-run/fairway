@@ -169,16 +169,25 @@ type TaskFilters struct {
 	Role          string
 	Status        string
 	Statuses      []string
+	Sort          string
 	Profile       string
 	Kind          string
 	OwningDomain  string
 	RiskLevel     string
 	ReviewDomain  string
+	Project       string
 	ActivityKind  string
 	Tab           string
 	ActivityLimit int
 	TableLimit    int
 	TablePage     int
+}
+
+type FilterChip struct {
+	Key   string
+	Label string
+	Value string
+	Href  string
 }
 
 type TablePagination struct {
@@ -194,6 +203,7 @@ type TablePagination struct {
 
 type FilterOptions struct {
 	Statuses      []string
+	Projects      []string
 	Profiles      []string
 	Kinds         []string
 	OwningDomains []string
@@ -214,6 +224,8 @@ type DashboardViewData struct {
 	Workstreams          []WorkstreamGroup
 	Filters              TaskFilters
 	FilterOptions        FilterOptions
+	FilterChips          []FilterChip
+	ClearFiltersHref     string
 	Activity             []store.Activity
 	ActivityTotal        int
 	Health               store.Health
@@ -370,7 +382,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	}
 	readySet := taskIDSet(readyTasks)
 	gateGroups := groupGateStatuses(gates)
-	displayTasks := filterTasks(tasks, filters)
+	displayTasks := filterTasks(tasks, filters, s.cfg.Fairway.ProjectName)
 	missingReviewDomains, err := s.dashboardMissingReviewDomainsByTask(r.Context(), displayTasks)
 	if err != nil {
 		return DashboardViewData{}, err
@@ -378,7 +390,9 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
 	workstreams := groupWorkstreams(displayTasks, readySet)
 	groups := groupTasks(displayTasks, s.roles)
-	tableRows, pagination := paginateBoardRows(boardRows(groups), filters)
+	tableSource := append([]store.Task(nil), displayTasks...)
+	sortBoardRows(tableSource, filters)
+	tableRows, pagination := paginateBoardRows(tableSource, filters)
 	activeReport, err := reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
 	if err != nil {
 		return DashboardViewData{}, err
@@ -395,7 +409,9 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		Pagination:           pagination,
 		Workstreams:          workstreams,
 		Filters:              filters,
-		FilterOptions:        filterOptions(tasks, activity),
+		FilterOptions:        filterOptions(tasks, activity, s.cfg.Fairway.ProjectName),
+		FilterChips:          boardFilterChips(filters),
+		ClearFiltersHref:     boardClearFiltersHref(filters),
 		Activity:             filteredActivity,
 		ActivityTotal:        activityTotal,
 		Health:               health,
@@ -456,11 +472,13 @@ func taskFiltersFromRequest(r *http.Request) TaskFilters {
 		Role:          strings.TrimSpace(query.Get("role")),
 		Status:        strings.Join(statuses, ", "),
 		Statuses:      statuses,
+		Sort:          normalizeBoardSort(query.Get("sort")),
 		Profile:       strings.TrimSpace(query.Get("profile")),
 		Kind:          strings.TrimSpace(query.Get("kind")),
 		OwningDomain:  strings.TrimSpace(query.Get("owning_domain")),
 		RiskLevel:     strings.TrimSpace(query.Get("risk_level")),
 		ReviewDomain:  strings.TrimSpace(query.Get("review_domain")),
+		Project:       strings.TrimSpace(query.Get("project")),
 		ActivityKind:  strings.TrimSpace(query.Get("activity_kind")),
 		Tab:           dashboardTab(query.Get("tab")),
 		ActivityLimit: boundedQueryInt(query.Get("activity_limit"), defaultActivityLimit, maxActivityLimit),
@@ -490,6 +508,7 @@ func boardTabHref(filters TaskFilters, tab string) string {
 	}
 	setIf("q", filters.Search)
 	setIf("role", filters.Role)
+	setIf("sort", filters.Sort)
 	for _, status := range statusFilterValues(filters) {
 		values.Add("status", status)
 	}
@@ -498,6 +517,7 @@ func boardTabHref(filters TaskFilters, tab string) string {
 	setIf("owning_domain", filters.OwningDomain)
 	setIf("risk_level", filters.RiskLevel)
 	setIf("review_domain", filters.ReviewDomain)
+	setIf("project", filters.Project)
 	setIf("activity_kind", filters.ActivityKind)
 	if filters.ActivityLimit > 0 && filters.ActivityLimit != defaultActivityLimit {
 		values.Set("activity_limit", strconv.Itoa(filters.ActivityLimit))
@@ -519,6 +539,169 @@ func boardPageHref(filters TaskFilters, page int) string {
 	return boardTabHref(filters, filters.Tab)
 }
 
+func boardSortHref(filters TaskFilters, column string) string {
+	column = normalizeBoardSortKey(column)
+	current := firstBoardSort(filters.Sort)
+	switch current {
+	case column:
+		filters.Sort = "-" + column
+	case "-" + column:
+		filters.Sort = strings.TrimSpace(strings.Join(secondaryBoardSorts(filters.Sort), ","))
+	default:
+		rest := secondaryBoardSorts(filters.Sort)
+		if len(rest) > 0 {
+			filters.Sort = column + "," + strings.Join(rest, ",")
+		} else {
+			filters.Sort = column
+		}
+	}
+	filters.TablePage = 1
+	return boardTabHref(filters, filters.Tab)
+}
+
+func boardSortState(filters TaskFilters, column string) string {
+	column = normalizeBoardSortKey(column)
+	switch firstBoardSort(filters.Sort) {
+	case column:
+		return "ascending"
+	case "-" + column:
+		return "descending"
+	default:
+		return ""
+	}
+}
+
+func firstBoardSort(raw string) string {
+	parts := boardSortParts(raw)
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
+}
+
+func secondaryBoardSorts(raw string) []string {
+	parts := boardSortParts(raw)
+	if len(parts) <= 1 {
+		return nil
+	}
+	return parts[1:]
+}
+
+func boardSortParts(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		desc := strings.HasPrefix(part, "-")
+		key := normalizeBoardSortKey(strings.TrimPrefix(part, "-"))
+		if key == "" {
+			continue
+		}
+		if desc {
+			key = "-" + key
+		}
+		if !boardSortContainsKey(out, key) {
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
+func boardSortContainsKey(parts []string, key string) bool {
+	key = strings.TrimPrefix(key, "-")
+	for _, part := range parts {
+		if strings.TrimPrefix(part, "-") == key {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeBoardSort(raw string) string {
+	return strings.Join(boardSortParts(raw), ",")
+}
+
+func normalizeBoardSortKey(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "id", "title", "role", "status", "kind", "started", "updated", "gates", "owner":
+		return strings.TrimSpace(raw)
+	default:
+		return ""
+	}
+}
+
+func boardFilterChips(filters TaskFilters) []FilterChip {
+	var chips []FilterChip
+	add := func(key, label, value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		chips = append(chips, FilterChip{Key: key, Label: label, Value: value, Href: boardRemoveFilterHref(filters, key, value)})
+	}
+	add("q", "Search", filters.Search)
+	add("role", "Role", filters.Role)
+	for _, status := range statusFilterValues(filters) {
+		add("status", "Status", status)
+	}
+	add("profile", "Profile", filters.Profile)
+	add("kind", "Kind", filters.Kind)
+	add("owning_domain", "Domain", filters.OwningDomain)
+	add("risk_level", "Risk", filters.RiskLevel)
+	add("review_domain", "Review", filters.ReviewDomain)
+	add("project", "Project", filters.Project)
+	return chips
+}
+
+func boardRemoveFilterHref(filters TaskFilters, key, value string) string {
+	filters.TablePage = 1
+	switch key {
+	case "q":
+		filters.Search = ""
+	case "role":
+		filters.Role = ""
+	case "status":
+		var statuses []string
+		for _, status := range statusFilterValues(filters) {
+			if status != value {
+				statuses = append(statuses, status)
+			}
+		}
+		filters.Statuses = statuses
+		filters.Status = strings.Join(statuses, ", ")
+	case "profile":
+		filters.Profile = ""
+	case "kind":
+		filters.Kind = ""
+	case "owning_domain":
+		filters.OwningDomain = ""
+	case "risk_level":
+		filters.RiskLevel = ""
+	case "review_domain":
+		filters.ReviewDomain = ""
+	case "project":
+		filters.Project = ""
+	}
+	return boardTabHref(filters, filters.Tab)
+}
+
+func boardClearFiltersHref(filters TaskFilters) string {
+	filters.Search = ""
+	filters.Role = ""
+	filters.Status = ""
+	filters.Statuses = nil
+	filters.Profile = ""
+	filters.Kind = ""
+	filters.OwningDomain = ""
+	filters.RiskLevel = ""
+	filters.ReviewDomain = ""
+	filters.Project = ""
+	filters.TablePage = 1
+	return boardTabHref(filters, filters.Tab)
+}
+
 func boundedQueryInt(raw string, fallback, max int) int {
 	if strings.TrimSpace(raw) == "" {
 		return fallback
@@ -533,10 +716,13 @@ func boundedQueryInt(raw string, fallback, max int) int {
 	return value
 }
 
-func filterTasks(tasks []store.Task, filters TaskFilters) []store.Task {
+func filterTasks(tasks []store.Task, filters TaskFilters, projectName string) []store.Task {
 	statuses := statusFilterValues(filters)
 	var out []store.Task
 	for _, task := range tasks {
+		if filters.Project != "" && filters.Project != projectName {
+			continue
+		}
 		if filters.Search != "" && !taskMatchesSearch(task, filters.Search) {
 			continue
 		}
@@ -564,6 +750,54 @@ func filterTasks(tasks []store.Task, filters TaskFilters) []store.Task {
 		out = append(out, task)
 	}
 	return out
+}
+
+func sortBoardRows(rows []store.Task, filters TaskFilters) {
+	parts := boardSortParts(filters.Sort)
+	if len(parts) == 0 {
+		sort.SliceStable(rows, func(i, j int) bool {
+			return dashboardTaskMoreRecent(rows[i], rows[j])
+		})
+		return
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		for _, part := range parts {
+			desc := strings.HasPrefix(part, "-")
+			key := strings.TrimPrefix(part, "-")
+			cmp := compareBoardTask(rows[i], rows[j], key)
+			if cmp == 0 {
+				continue
+			}
+			if desc {
+				return cmp > 0
+			}
+			return cmp < 0
+		}
+		return rows[i].Definition.ID < rows[j].Definition.ID
+	})
+}
+
+func compareBoardTask(left, right store.Task, key string) int {
+	switch key {
+	case "id":
+		return strings.Compare(left.Definition.ID, right.Definition.ID)
+	case "title":
+		return strings.Compare(strings.ToLower(left.Definition.Title), strings.ToLower(right.Definition.Title))
+	case "role":
+		return strings.Compare(left.Definition.Role, right.Definition.Role)
+	case "status":
+		return strings.Compare(left.Status, right.Status)
+	case "kind":
+		return strings.Compare(left.Definition.Kind, right.Definition.Kind)
+	case "started", "updated":
+		return strings.Compare(left.UpdatedAt, right.UpdatedAt)
+	case "gates":
+		return 0
+	case "owner":
+		return strings.Compare(left.Owner, right.Owner)
+	default:
+		return strings.Compare(left.Definition.ID, right.Definition.ID)
+	}
 }
 
 func trimmedQueryValues(values []string) []string {
@@ -642,15 +876,17 @@ func taskMatchesSearch(task store.Task, raw string) bool {
 	return false
 }
 
-func filterOptions(tasks []store.Task, activity []store.Activity) FilterOptions {
+func filterOptions(tasks []store.Task, activity []store.Activity, projectName string) FilterOptions {
 	var options FilterOptions
 	statuses := map[string]bool{}
+	projects := map[string]bool{}
 	profiles := map[string]bool{}
 	kinds := map[string]bool{}
 	domains := map[string]bool{}
 	risks := map[string]bool{}
 	reviewDomains := map[string]bool{}
 	activityKinds := map[string]bool{}
+	addFilterValue(projects, projectName)
 	for _, task := range tasks {
 		addFilterValue(statuses, task.Status)
 		addFilterValue(profiles, task.Definition.Profile)
@@ -665,6 +901,7 @@ func filterOptions(tasks []store.Task, activity []store.Activity) FilterOptions 
 		addFilterValue(activityKinds, item.Kind)
 	}
 	options.Statuses = sortedFilterValues(statuses)
+	options.Projects = sortedFilterValues(projects)
 	options.Profiles = sortedFilterValues(profiles)
 	options.Kinds = sortedFilterValues(kinds)
 	options.OwningDomains = sortedFilterValues(domains)
@@ -1585,6 +1822,8 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"boardRows":                boardRows,
 		"boardTabHref":             boardTabHref,
 		"boardPageHref":            boardPageHref,
+		"boardSortHref":            boardSortHref,
+		"boardSortState":           boardSortState,
 		"statusFilterValues":       statusFilterValues,
 		"statusSelected":           statusSelected,
 		"statusClass":              safeDashboardClass,

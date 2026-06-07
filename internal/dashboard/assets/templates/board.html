@@ -17,14 +17,12 @@
 <form id="board-filter-form" class="toolbar" method="get">
 {{if eq .Filters.Tab "diagnostics"}}<input type="hidden" name="tab" value="diagnostics">{{end}}
 {{if .Filters.Role}}<input type="hidden" name="role" value="{{.Filters.Role}}">{{end}}
+{{if .Filters.Sort}}<input type="hidden" name="sort" value="{{.Filters.Sort}}">{{end}}
+{{if .Filters.Project}}<input type="hidden" name="project" value="{{.Filters.Project}}">{{end}}
 <div class="tb-left">
-<label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search ID, title, owner, path" title="Searches task ID, title, metadata, status, owner, source paths, target paths, and review domains"></label>
-{{if .Filters.Role}}<span class="chip"><b>Role</b> {{.Filters.Role}}</span>{{end}}
-{{if .Filters.Status}}<span class="chip"><b>Status</b> {{.Filters.Status}}</span>{{end}}
-{{if .Filters.Profile}}<span class="chip"><b>Profile</b> {{.Filters.Profile}}</span>{{end}}
-{{if .Filters.Kind}}<span class="chip"><b>Kind</b> {{.Filters.Kind}}</span>{{end}}
-{{if .Filters.OwningDomain}}<span class="chip"><b>Domain</b> {{.Filters.OwningDomain}}</span>{{end}}
-{{if .Filters.RiskLevel}}<span class="chip"><b>Risk</b> {{.Filters.RiskLevel}}</span>{{end}}
+<label class="search"><input type="search" name="q" value="{{.Filters.Search}}" placeholder="Search ID, title, owner, path" title="Searches task ID, title, metadata, status, owner, source paths, target paths, and review domains" data-board-search=".board-table"></label>
+{{range .FilterChips}}<a class="chip filter-chip" href="{{.Href}}" title="Clear {{.Label}} filter"><b>{{.Label}}</b> {{.Value}} <span aria-hidden="true">x</span></a>{{end}}
+{{if .FilterChips}}<a class="chip filter-chip clear-all" href="{{.ClearFiltersHref}}">Clear filters</a>{{end}}
 </div>
 <div class="tb-right">
 <a class="btn" href="/">Wall</a>
@@ -182,6 +180,7 @@
 </div>
 </details>
 <label>Profile<select name="profile" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.Profiles}}<option value="{{.}}" {{if eq $.Filters.Profile .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Project<select name="project" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.Projects}}<option value="{{.}}" {{if eq $.Filters.Project .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Kind<select name="kind" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.Kinds}}<option value="{{.}}" {{if eq $.Filters.Kind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Domain<select name="owning_domain" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.OwningDomains}}<option value="{{.}}" {{if eq $.Filters.OwningDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Risk<select name="risk_level" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.RiskLevels}}<option value="{{.}}" {{if eq $.Filters.RiskLevel .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
@@ -200,7 +199,7 @@
 <button class="btn" type="button">Record evidence</button>
 </section>
 <table class="board-table" data-sortable>
-<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Title</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Started</button></th><th><button type="button" data-sort="text">Last activity</button></th><th><button type="button" data-sort="text">Gates</button></th><th><button type="button" data-sort="text">Owner</button></th></tr></thead>
+<thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th><th><a href="{{boardSortHref .Filters "id"}}" data-sort-key="id" aria-sort="{{boardSortState .Filters "id"}}">ID</a></th><th><a href="{{boardSortHref .Filters "title"}}" data-sort-key="title" aria-sort="{{boardSortState .Filters "title"}}">Title</a></th><th><a href="{{boardSortHref .Filters "role"}}" data-sort-key="role" aria-sort="{{boardSortState .Filters "role"}}">Role</a></th><th><a href="{{boardSortHref .Filters "status"}}" data-sort-key="status" aria-sort="{{boardSortState .Filters "status"}}">Status</a></th><th><a href="{{boardSortHref .Filters "kind"}}" data-sort-key="kind" aria-sort="{{boardSortState .Filters "kind"}}">Kind</a></th><th><a href="{{boardSortHref .Filters "started"}}" data-sort-key="started" aria-sort="{{boardSortState .Filters "started"}}">Started</a></th><th><a href="{{boardSortHref .Filters "updated"}}" data-sort-key="updated" aria-sort="{{boardSortState .Filters "updated"}}">Last activity</a></th><th><a href="{{boardSortHref .Filters "gates"}}" data-sort-key="gates" aria-sort="{{boardSortState .Filters "gates"}}">Gates</a></th><th><a href="{{boardSortHref .Filters "owner"}}" data-sort-key="owner" aria-sort="{{boardSortState .Filters "owner"}}">Owner</a></th></tr></thead>
 <tbody>
 {{range .TableRows}}
 <tr>

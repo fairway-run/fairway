@@ -705,7 +705,8 @@ a {
   white-space: nowrap;
 }
 
-.board-table th button {
+.board-table th button,
+.board-table th a[data-sort-key] {
   appearance: none;
   padding: 0;
   border: 0;
@@ -716,9 +717,11 @@ a {
   text-transform: inherit;
   letter-spacing: inherit;
   cursor: pointer;
+  text-decoration: none;
 }
 
-.board-table th button::after {
+.board-table th button::after,
+.board-table th a[data-sort-key]::after {
   content: "";
   display: inline-block;
   width: 0;
@@ -729,12 +732,14 @@ a {
   opacity: 0;
 }
 
-.board-table th button[aria-sort="ascending"]::after {
+.board-table th button[aria-sort="ascending"]::after,
+.board-table th a[data-sort-key][aria-sort="ascending"]::after {
   border-bottom: 5px solid currentColor;
   opacity: 0.8;
 }
 
-.board-table th button[aria-sort="descending"]::after {
+.board-table th button[aria-sort="descending"]::after,
+.board-table th a[data-sort-key][aria-sort="descending"]::after {
   border-top: 5px solid currentColor;
   opacity: 0.8;
 }
