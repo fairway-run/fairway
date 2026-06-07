@@ -99,6 +99,23 @@ usage, including cached input tokens. Cached tokens are important for cost
 planning: a task with high input tokens and a high cache ratio has different
 optimization needs than a task with the same input volume and no cache benefit.
 
+The Codex adapter must not make Fairway core depend on private Codex local
+state such as `~/.codex/*.sqlite`, auth caches, transcripts, prompts, generated
+content, or undocumented log formats. Those files may change across Codex
+updates. The supported boundary is that Codex-specific tooling supplies usage
+values to Fairway through `fairway record usage` or `provider-event.sh`.
+
+Acceptable Codex ingestion paths:
+
+- provider-reported response usage supplied by a Codex wrapper, hook, or
+  observable event surface;
+- explicit start/end running-total snapshots supplied by the caller;
+- manual values entered during session closeout when no structured usage is
+  available.
+
+Private local Codex storage may be useful for one-off diagnosis, but it is not
+an API contract and should not be embedded in Fairway core.
+
 ## CLI Contract
 
 Provider adapters record usage through Fairway commands. The smallest direct

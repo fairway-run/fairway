@@ -751,3 +751,36 @@ tasks:
       - design explains how usage can later roll up by epic, role, provider, day, task kind, validation phase, and external tracker issue without making token usage a completion gate.
       - reports can identify expensive task classes and guide follow-up improvements such as scripts, runbooks, prompts, adapters, dashboards, or workflow changes.
       - implementation, if included, has schema migration/backward compatibility tests and does not break existing agent_sessions or task_evidence rows.
+
+  - id: FW-124
+    title: Add Codex provider usage adapter
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-usage
+    source_paths:
+      - docs/design/provider-usage-accounting.md
+      - docs/agent-guide.md
+      - examples/session-adapters/provider-event.sh
+      - cmd/fairway/main.go
+    target_paths:
+      - examples/session-adapters/codex-usage-adapter.sh
+      - docs/design/provider-usage-accounting.md
+      - docs/agent-guide.md
+      - cmd/fairway/main_test.go
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: codex-provider-usage-adapter
+    depends_on:
+      - FW-123
+    acceptance_checks:
+      - Codex usage adapter feeds normalized Fairway usage events through `fairway record usage` or `provider-event.sh`; Fairway core does not read Codex private SQLite files, auth files, transcripts, prompts, or generated content.
+      - adapter accepts provider-reported response usage when supplied, including input tokens, cached input tokens, output tokens, reasoning tokens, total tokens, model, session/thread id, and phase.
+      - adapter supports derived start/end token snapshots when only a running total is available, but the snapshot source is supplied by the provider surface or caller rather than scraped from private Codex state by Fairway core.
+      - unknown or unavailable Codex fields are recorded as unknown/null, not zero.
+      - docs explain the supported Codex usage ingestion paths and warn that private Codex local DB/log schemas are not stable API contracts.
+      - tests cover provider-reported cached-token ingestion, derived snapshot ingestion, unknown values, and privacy rejection for prompt/token/content metadata.
