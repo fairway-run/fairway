@@ -1328,6 +1328,12 @@ VALUES (?, ?, ?, nullif(?, ''), ?, ?)`,
 	return err
 }
 
+func (s *Store) AuditCount(ctx context.Context, action string) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_events WHERE project_id=? AND action=?`, s.projectID, action).Scan(&count)
+	return count, err
+}
+
 func (s *Store) TrackerLinks(ctx context.Context) ([]TrackerLink, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT task_id, provider, external_id, COALESCE(url, ''), created_at, updated_at

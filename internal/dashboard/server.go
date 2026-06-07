@@ -251,6 +251,9 @@ type DashboardViewData struct {
 	TaskRoles            map[string]string
 	ActiveReport         reconcile.ActiveReport
 	Audit                AuditDiagnostics
+	CSRFToken            string
+	MutableStates        []string
+	Roles                []string
 }
 
 type TaskDetailViewData struct {
@@ -303,6 +306,10 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux.HandleFunc("/tasks/", s.task)
 	mux.HandleFunc("/actions/claim", s.claim)
 	mux.HandleFunc("/actions/set-status", s.setStatus)
+	mux.HandleFunc("/actions/bulk/claim", s.bulkClaim)
+	mux.HandleFunc("/actions/bulk/handoff", s.bulkHandoff)
+	mux.HandleFunc("/actions/bulk/set-status", s.bulkSetStatus)
+	mux.HandleFunc("/actions/bulk/evidence", s.bulkEvidence)
 	mux.HandleFunc("/events", s.events)
 	mux.HandleFunc("/", s.index)
 	return http.ListenAndServe(addr, mux)
@@ -438,6 +445,9 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		TaskRoles:            taskRoleMap(tasks),
 		ActiveReport:         activeReport,
 		Audit:                auditDiagnostics,
+		CSRFToken:            s.csrfToken,
+		MutableStates:        dashboardMutableStates(s.cfg),
+		Roles:                append([]string(nil), s.roles...),
 	}, nil
 }
 
@@ -1826,6 +1836,139 @@ func (s *Server) setStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.set-status", TaskID: taskID, Detail: "status=" + target})
 	http.Redirect(w, r, "/tasks/"+taskID, http.StatusSeeOther)
+}
+
+func (s *Server) bulkClaim(w http.ResponseWriter, r *http.Request) {
+	taskIDs, ok := s.bulkActionRequest(w, r)
+	if !ok {
+		return
+	}
+	for _, taskID := range taskIDs {
+		task, _, _, _, _, err := s.store.TaskDetail(r.Context(), taskID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := s.store.Claim(r.Context(), taskID, task.Definition.Role, ""); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.bulk.claim", TaskID: taskID, Detail: "claimed from board bulk action"})
+	}
+	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
+}
+
+func (s *Server) bulkHandoff(w http.ResponseWriter, r *http.Request) {
+	taskIDs, ok := s.bulkActionRequest(w, r)
+	if !ok {
+		return
+	}
+	toRole := strings.TrimSpace(r.FormValue("to_role"))
+	payload := strings.TrimSpace(r.FormValue("payload"))
+	if toRole == "" || payload == "" {
+		http.Error(w, "to_role and payload are required", http.StatusBadRequest)
+		return
+	}
+	for _, taskID := range taskIDs {
+		if err := s.store.RecordHandoff(r.Context(), taskID, store.Handoff{ToRole: toRole, Payload: payload}); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.bulk.handoff", TaskID: taskID, Detail: "to=" + toRole})
+	}
+	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
+}
+
+func (s *Server) bulkSetStatus(w http.ResponseWriter, r *http.Request) {
+	taskIDs, ok := s.bulkActionRequest(w, r)
+	if !ok {
+		return
+	}
+	target := strings.TrimSpace(r.FormValue("status"))
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	stateCfg := state.Config{Allowed: s.cfg.States.Allowed, Terminal: s.cfg.States.Terminal, Transitions: s.cfg.States.Transitions}
+	if target == "" {
+		http.Error(w, "status is required", http.StatusBadRequest)
+		return
+	}
+	if state.IsTerminal(stateCfg, target) {
+		http.Error(w, "terminal status changes use CLI gates", http.StatusBadRequest)
+		return
+	}
+	for _, taskID := range taskIDs {
+		task, _, _, _, _, err := s.store.TaskDetail(r.Context(), taskID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := state.ValidateTransition(stateCfg, task.Status, target, false); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := s.store.SetStatus(r.Context(), taskID, target, reason, s.cfg.Gates.RequireBlockedReason); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.bulk.set-status", TaskID: taskID, Detail: "status=" + target})
+	}
+	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
+}
+
+func (s *Server) bulkEvidence(w http.ResponseWriter, r *http.Request) {
+	taskIDs, ok := s.bulkActionRequest(w, r)
+	if !ok {
+		return
+	}
+	commandText := strings.TrimSpace(r.FormValue("command_text"))
+	result := strings.TrimSpace(r.FormValue("result"))
+	artifact := strings.TrimSpace(r.FormValue("artifact"))
+	artifactType := strings.TrimSpace(r.FormValue("artifact_type"))
+	notes := strings.TrimSpace(r.FormValue("notes"))
+	if commandText == "" || result == "" {
+		http.Error(w, "command_text and result are required", http.StatusBadRequest)
+		return
+	}
+	for _, taskID := range taskIDs {
+		if err := s.store.RecordEvidence(r.Context(), taskID, store.Evidence{CommandText: commandText, Result: result, ArtifactPath: artifact, ArtifactType: artifactType, Notes: notes}); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.bulk.evidence", TaskID: taskID, Detail: "result=" + result})
+	}
+	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
+}
+
+func (s *Server) bulkActionRequest(w http.ResponseWriter, r *http.Request) ([]string, bool) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return nil, false
+	}
+	if r.FormValue("csrf") != s.csrfToken {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
+		return nil, false
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return nil, false
+	}
+	taskIDs := trimmedQueryValues(r.Form["task_id"])
+	if len(taskIDs) == 0 {
+		http.Error(w, "at least one task_id is required", http.StatusBadRequest)
+		return nil, false
+	}
+	return taskIDs, true
+}
+
+func bulkReturnTo(r *http.Request) string {
+	returnTo := strings.TrimSpace(r.FormValue("return_to"))
+	if returnTo == "" {
+		return "/board"
+	}
+	parsed, err := url.Parse(returnTo)
+	if err != nil || parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/") || strings.HasPrefix(parsed.Path, "//") {
+		return "/board"
+	}
+	return parsed.RequestURI()
 }
 
 func dashboardMutableStates(cfg config.Config) []string {

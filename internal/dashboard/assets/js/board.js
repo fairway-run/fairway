@@ -84,10 +84,14 @@
     const rowChecks = Array.from(table.querySelectorAll('tbody input[type="checkbox"]'));
     const selectionBar = table.closest(".task-table-section")?.querySelector(".selection-bar");
     const selectionCount = selectionBar?.querySelector("span");
-    const clearButton = selectionBar?.querySelector("button");
+    const clearButton = selectionBar?.querySelector("[data-selection-clear]");
+
+    function selectedTaskIDs() {
+      return rowChecks.filter((check) => check.checked).map((check) => check.value).filter(Boolean);
+    }
 
     function updateSelection() {
-      const selected = rowChecks.filter((check) => check.checked).length;
+      const selected = selectedTaskIDs().length;
       if (selectionBar) selectionBar.hidden = selected === 0;
       if (selectionCount) selectionCount.textContent = `${selected} selected`;
       if (selectAll) {
@@ -113,6 +117,30 @@
         updateSelection();
       });
     }
+    selectionBar?.querySelectorAll("[data-bulk-open]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const ids = selectedTaskIDs();
+        if (ids.length === 0) return;
+        const dialog = document.getElementById(button.getAttribute("data-bulk-open"));
+        const form = dialog?.querySelector("form[data-bulk-form]");
+        if (!dialog || !form) return;
+        form.querySelectorAll('input[name="task_id"]').forEach((input) => input.remove());
+        ids.forEach((id) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "task_id";
+          input.value = id;
+          form.appendChild(input);
+        });
+        const returnTo = form.querySelector('input[name="return_to"]');
+        if (returnTo) returnTo.value = `${window.location.pathname}${window.location.search}`;
+        const list = form.querySelector("[data-selected-task-list]");
+        if (list) list.textContent = ids.join(", ");
+        if (typeof dialog.showModal === "function") {
+          dialog.showModal();
+        }
+      });
+    });
     updateSelection();
   });
 

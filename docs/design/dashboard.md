@@ -91,6 +91,8 @@ It includes:
   chips,
 - sortable task columns with URL state; shift-click adds a secondary sort key,
 - a column chooser with URL-backed visibility and up/down ordering controls,
+- bulk selection with CSRF-backed Claim, Hand off, Set status, and Record
+  evidence dialogs; terminal status changes remain CLI-gated,
 - CSV export for the current task table,
 - operational health badges,
 - activity kind and row-count filtering.

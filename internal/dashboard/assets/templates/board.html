@@ -206,11 +206,11 @@
 </div>
 <section class="selection-bar" hidden>
 <span>0 selected</span>
-<button class="btn" type="button">Clear</button>
-<button class="btn" type="button">Claim</button>
-<button class="btn" type="button">Hand off</button>
-<button class="btn" type="button">Set status</button>
-<button class="btn" type="button">Record evidence</button>
+<button class="btn" type="button" data-selection-clear>Clear</button>
+<button class="btn" type="button" data-bulk-open="bulk-claim-dialog">Claim</button>
+<button class="btn" type="button" data-bulk-open="bulk-handoff-dialog">Hand off</button>
+<button class="btn" type="button" data-bulk-open="bulk-status-dialog">Set status</button>
+<button class="btn" type="button" data-bulk-open="bulk-evidence-dialog">Record evidence</button>
 </section>
 <table class="board-table" data-sortable>
 <thead><tr><th><input type="checkbox" aria-label="Select all tasks"></th>{{range boardVisibleColumns $columns}}<th>{{if .Sortable}}<a href="{{boardSortHref $.Filters .Key}}" data-sort-key="{{.Key}}" aria-sort="{{boardSortState $.Filters .Key}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</th>{{end}}</tr></thead>
@@ -218,12 +218,59 @@
 {{range .TableRows}}
 {{$task := .}}
 <tr>
-<td><input type="checkbox" aria-label="Select {{.Definition.ID}}"></td>
+<td><input type="checkbox" name="task_id" value="{{.Definition.ID}}" aria-label="Select {{.Definition.ID}}"></td>
 {{range boardVisibleColumns $columns}}<td>{{boardTaskCell $task . $.Rollups}}</td>{{end}}
 </tr>
 {{else}}<tr><td colspan="{{boardColumnCount $columns}}">no tasks</td></tr>{{end}}
 </tbody>
 </table>
+<dialog id="bulk-claim-dialog" class="bulk-dialog">
+<form method="post" action="/actions/bulk/claim" data-bulk-form>
+<input type="hidden" name="csrf" value="{{.CSRFToken}}">
+<input type="hidden" name="return_to" value="">
+<h3>Claim selected tasks</h3>
+<p class="muted">Selected tasks will be claimed by their configured role.</p>
+<div class="selected-task-list" data-selected-task-list></div>
+<menu><button class="btn" value="cancel" formmethod="dialog">Cancel</button><button class="btn primary" type="submit">Claim</button></menu>
+</form>
+</dialog>
+<dialog id="bulk-handoff-dialog" class="bulk-dialog">
+<form method="post" action="/actions/bulk/handoff" data-bulk-form>
+<input type="hidden" name="csrf" value="{{.CSRFToken}}">
+<input type="hidden" name="return_to" value="">
+<h3>Hand off selected tasks</h3>
+<div class="selected-task-list" data-selected-task-list></div>
+<label>To role<select name="to_role" required>{{range .Roles}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+<label>Payload<textarea name="payload" required placeholder="Context, requested action, and handoff criteria"></textarea></label>
+<menu><button class="btn" value="cancel" formmethod="dialog">Cancel</button><button class="btn primary" type="submit">Record handoff</button></menu>
+</form>
+</dialog>
+<dialog id="bulk-status-dialog" class="bulk-dialog">
+<form method="post" action="/actions/bulk/set-status" data-bulk-form>
+<input type="hidden" name="csrf" value="{{.CSRFToken}}">
+<input type="hidden" name="return_to" value="">
+<h3>Set selected task status</h3>
+<p class="muted">Terminal statuses still use CLI gates and are not available here.</p>
+<div class="selected-task-list" data-selected-task-list></div>
+<label>Status<select name="status" required>{{range .MutableStates}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+<label>Reason<textarea name="reason" placeholder="Reason for status change"></textarea></label>
+<menu><button class="btn" value="cancel" formmethod="dialog">Cancel</button><button class="btn primary" type="submit">Set status</button></menu>
+</form>
+</dialog>
+<dialog id="bulk-evidence-dialog" class="bulk-dialog">
+<form method="post" action="/actions/bulk/evidence" data-bulk-form>
+<input type="hidden" name="csrf" value="{{.CSRFToken}}">
+<input type="hidden" name="return_to" value="">
+<h3>Record evidence for selected tasks</h3>
+<div class="selected-task-list" data-selected-task-list></div>
+<label>Command<input name="command_text" required placeholder="go test ./..."></label>
+<label>Result<select name="result" required><option value="pass">pass</option><option value="fail">fail</option><option value="blocked">blocked</option><option value="skipped">skipped</option></select></label>
+<label>Artifact<input name="artifact" placeholder="path or URL"></label>
+<label>Artifact type<input name="artifact_type" placeholder="verification"></label>
+<label>Notes<textarea name="notes" placeholder="Evidence summary"></textarea></label>
+<menu><button class="btn" value="cancel" formmethod="dialog">Cancel</button><button class="btn primary" type="submit">Record evidence</button></menu>
+</form>
+</dialog>
 <footer class="board-footer">
 <span>showing {{.Pagination.Start}}-{{.Pagination.End}} of {{.Pagination.TotalRows}} filtered tasks</span>
 <nav class="pagination" aria-label="Task table pagination">

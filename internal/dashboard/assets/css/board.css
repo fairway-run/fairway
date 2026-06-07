@@ -935,6 +935,74 @@ a {
   display: none;
 }
 
+.bulk-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0;
+  color: var(--text);
+  background: var(--panel);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.32);
+}
+
+.bulk-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.36);
+}
+
+.bulk-dialog form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.bulk-dialog h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.bulk-dialog label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.bulk-dialog input,
+.bulk-dialog select,
+.bulk-dialog textarea {
+  width: 100%;
+  padding: var(--space-2);
+  color: var(--text);
+  background: var(--panel-2);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+  font: inherit;
+}
+
+.bulk-dialog textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.bulk-dialog menu {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+
+.selected-task-list {
+  padding: var(--space-2);
+  color: var(--muted);
+  background: var(--panel-2);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
 .board-footer {
   display: flex;
   align-items: center;

@@ -982,6 +982,93 @@ func TestDashboardSetStatusRequiresCSRFAndAudits(t *testing.T) {
 	}
 }
 
+func TestDashboardBulkActionsRequireCSRFAndAuditPerTask(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "First", Role: "backend"},
+		{ID: "T-002", Title: "Second", Role: "ui"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend", "ui"}, nil)
+
+	badReq := httptest.NewRequest(http.MethodPost, "/actions/bulk/evidence", strings.NewReader("task_id=T-001&csrf=bad&command_text=go+test&result=pass"))
+	badReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	badRec := httptest.NewRecorder()
+	server.bulkEvidence(badRec, badReq)
+	if badRec.Code != http.StatusForbidden {
+		t.Fatalf("bad csrf status=%d, want 403", badRec.Code)
+	}
+
+	form := url.Values{}
+	form.Add("csrf", server.csrfToken)
+	form.Add("task_id", "T-001")
+	form.Add("task_id", "T-002")
+	form.Set("command_text", "go test ./...")
+	form.Set("result", "pass")
+	form.Set("artifact_type", "verification")
+	req := httptest.NewRequest(http.MethodPost, "/actions/bulk/evidence", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	server.bulkEvidence(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("bulk evidence status=%d, want 303 body=%s", rec.Code, rec.Body.String())
+	}
+	for _, taskID := range []string{"T-001", "T-002"} {
+		_, _, evidence, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(evidence) != 1 || evidence[0].Result != "pass" || evidence[0].ArtifactType != "verification" {
+			t.Fatalf("%s evidence=%+v, want one pass verification", taskID, evidence)
+		}
+	}
+	auditRows, err := s.AuditCount(ctx, "dashboard.bulk.evidence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auditRows != 2 {
+		t.Fatalf("audit rows=%d, want 2", auditRows)
+	}
+}
+
+func TestDashboardBulkSetStatusRejectsTerminalStatus(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	server := New(s, cfg, []string{"backend"}, nil)
+	form := url.Values{}
+	form.Set("csrf", server.csrfToken)
+	form.Set("task_id", "T-001")
+	form.Set("status", "done")
+	req := httptest.NewRequest(http.MethodPost, "/actions/bulk/set-status", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	server.bulkSetStatus(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("terminal bulk status code=%d, want 400", rec.Code)
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != "todo" {
+		t.Fatalf("status=%q, want unchanged todo", task.Status)
+	}
+}
+
 func TestMultiDashboardRendersProjects(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

@@ -34,6 +34,9 @@ because its CLI version metadata still reported the development version.
   views.
 - The board now includes a URL-backed column chooser with toggleable optional
   columns and up/down ordering controls.
+- The board selection bar now opens CSRF-backed bulk action dialogs for claim,
+  handoff, non-terminal status changes, and evidence recording. Each bulk
+  mutation records per-task audit events.
 
 ### Release Checklist
 
