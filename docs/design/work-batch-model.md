@@ -112,6 +112,11 @@ The dashboard should show both task count and batch count. Reconciliation should
 warn when many related tasks in the same domain create separate CI monitors
 with the same validation commands, because that is a signal of over-splitting.
 
+Batching should be paired with utility-first CI/deploy monitoring. The expected
+pattern is one coherent batch, one branch/worktree, one shared CI/deploy-run,
+and one watcher utility that records handback evidence. Long-running agent
+sessions should not spend provider tokens polling the same run.
+
 The first implementation exposes:
 
 - `fairway task-detail <task-id>` batch membership and mapped evidence;

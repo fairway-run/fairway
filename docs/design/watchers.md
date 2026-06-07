@@ -103,6 +103,37 @@ the dashboard and reconciliation output show that the lane is not truly idle.
 `monitor_completion_resume_needed` when all watcher/monitor sessions are closed,
 a recent monitor completion exists, and one or more ready tasks remain.
 
+## Utility-First Monitoring
+
+CI, deploy, smoke, and UAT polling should be performed by utility processes,
+not by long-running agent conversations. The operating rule is:
+
+```text
+Agents do not poll CI. Watchers poll CI and emit Fairway handbacks.
+Agents act on handbacks.
+```
+
+The watcher utility owns:
+
+- polling the external run;
+- recording heartbeat/checkpoint state;
+- closing the monitor session when the run completes;
+- attaching pass/fail evidence;
+- creating or recommending follow-up tasks for actionable failures;
+- emitting a continuation prompt or resume-needed finding.
+
+The agent owns:
+
+- deciding what work is safe to start before the result is known;
+- making code, docs, review, or release decisions from the handback;
+- batching related work so one CI run validates multiple tasks where safe;
+- escalating when the handback requires approval, missing credentials, or a
+  production-impacting decision.
+
+This prevents token-heavy provider sessions from sitting idle during 15-20
+minute CI windows, while still preserving a durable audit trail for what was
+watched and what happened next.
+
 ## Packet Shape
 
 ```yaml

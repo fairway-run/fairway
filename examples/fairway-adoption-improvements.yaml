@@ -887,3 +887,46 @@ tasks:
       - Individual Fairway tasks still close independently, but may reference the same batch evidence when the evidence clearly validates each task.
       - Agent guide instructs orchestrators to batch by shared validation surface and to avoid one branch/CI run per small task unless review, rollback, ownership, or dependency risk requires isolation.
       - Reconcile/audit warns when many related tasks in the same domain are producing separate CI monitors that could have been a batch.
+
+  - id: FW-128
+    title: Add CI monitor utility handback adapter
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: watchers
+    source_paths:
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/design/work-batch-model.md
+      - examples/session-adapters
+      - cmd/fairway/main.go
+      - internal/reconcile
+    target_paths:
+      - examples/session-adapters/ci-monitor.sh
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/design/work-batch-model.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/reconcile
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - backend
+    risk_level: medium
+    migration_type: ci-monitor-utility-handback
+    depends_on:
+      - FW-116
+      - FW-118
+      - FW-127
+    acceptance_checks:
+      - CI/deploy/UAT monitor polling can run as a utility process without keeping a provider agent conversation active.
+      - Utility records monitor session proof with monitor kind, automation id or external run id, poll command, source SHA, task id, and expected completion window.
+      - Utility records heartbeat/checkpoint updates while waiting and closes the monitor session when the external run finishes.
+      - Utility attaches pass/fail/timeout evidence and creates or recommends `CI-FIX`, `CD-FIX`, `UAT-BUG`, `OPS-FIX`, `HARNESS-FIX`, or `DOC-FIX` follow-up tasks for actionable failures.
+      - Utility emits a reusable coordinator continuation prompt or resume-needed finding after the final monitored run completes and ready work remains.
+      - Agent docs state the operating rule: agents do not poll CI; watcher utilities poll CI and emit Fairway handbacks; agents act on handbacks.
+      - Work batch docs explain that batching related tasks plus utility monitoring is the preferred path for reducing CI churn and provider-token spend.
+      - Tests cover pass, fail, timeout/stale, ready-work handback, no-ready-work completion, and missing monitor backing proof.

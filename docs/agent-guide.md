@@ -245,6 +245,28 @@ Do not make Fairway depend on Codex, Claude, Gemini, or any provider API.
 Fairway should expose the session/checkpoint/evidence surfaces; provider
 watchers should feed those surfaces.
 
+## CI Monitor Utility Rule
+
+CI, deploy, smoke, and UAT polling should be delegated to watcher utilities
+instead of long-running agent conversations:
+
+```text
+Agents do not poll CI. Watchers poll CI and emit Fairway handbacks.
+Agents act on handbacks.
+```
+
+Agents should start or link the monitor, record the expected wait window, then
+switch to safe non-conflicting work or pause. The monitor utility should poll,
+record heartbeat/checkpoint state, attach evidence, close the monitor session,
+and emit a handback or resume-needed finding. Agents act on those handbacks;
+they should not spend provider tokens repeatedly checking the same pipeline
+status.
+
+Before launching separate CI runs for multiple small tasks, check whether they
+can be grouped into a work batch with one branch, one validation command set,
+one review path, and one CI/deploy-run. Use separate runs only when ownership,
+rollback, risk, sequencing, or failure diagnosis requires it.
+
 ## Provider Usage Accounting
 
 Provider usage is attribution and planning telemetry, not a completion gate.
