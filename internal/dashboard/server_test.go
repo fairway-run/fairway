@@ -1155,6 +1155,7 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		Checkpoints          []store.Checkpoint
 		Activity             []store.Activity
 		TaskRoles            map[string]string
+		Rollups              map[string]Rollup
 		ActiveReport         reconcile.ActiveReport
 		Audit                AuditDiagnostics
 	}{
@@ -1182,6 +1183,7 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		GateGroups:           []GateGroup{{Label: "dashboard-v2 / foundation", TaskCount: 2, SatisfiedCount: 1, MissingTaskCount: 1}},
 		Sessions:             []store.Session{{ID: "s-1", Role: "backend", Provider: "codex", TaskID: "T-002", Status: "running"}},
 		TaskRoles:            map[string]string{"T-002": "backend"},
+		Rollups:              map[string]Rollup{"T-002": {Done: 1, Total: 3}},
 		Checkpoints: []store.Checkpoint{{
 			TaskID:  "T-002",
 			State:   "active",
@@ -1205,7 +1207,11 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		`aria-label="fairway dashboard"`,
 		`data-theme-toggle`,
 		`/assets/js/common.js`,
+		`/assets/js/wall.js`,
 		`/assets/css/wall.css`,
+		`data-lane-toggle="backend"`,
+		`data-lane-panel="backend"`,
+		`aria-expanded="false"`,
 		"backend",
 		"ui",
 		"backlog",
@@ -1220,6 +1226,14 @@ func TestWallTemplateRendersRoleLanesAndProviders(t *testing.T) {
 		"1 unattended in_progress",
 		"idle . waiting",
 		"Open lane",
+		"Open full details for backend",
+		"backend lane details",
+		"Queue",
+		"Working",
+		"Pending review",
+		"Latest events",
+		"gates 1/3",
+		"handoff backend to ui",
 		`href="/board?role=backend"`,
 		`href="/board?role=backend&amp;status=todo"`,
 		"dashboard-v2 / foundation",
@@ -1457,6 +1471,7 @@ func TestDashboardAssetsServeSurfaceStyles(t *testing.T) {
 	}{
 		{path: "/assets/css/wall.css", want: []string{".wall-layout", ".wall-lane", ".lane-states", ".wall-rail"}},
 		{path: "/assets/css/board.css", want: []string{".board-layout", ".control-room-head", ".gate-grid", ".board-table", ".board-rail"}},
+		{path: "/assets/js/wall.js", want: []string{"data-lane-toggle", "aria-expanded", "data-lane-panel"}},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 		rec := httptest.NewRecorder()

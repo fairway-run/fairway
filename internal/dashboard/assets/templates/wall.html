@@ -33,7 +33,7 @@
 <article class="wall-lane">
 <div class="lane-row">
 <div class="lane-name">
-<span>{{.Role}}</span>
+<button class="lane-toggle" type="button" data-lane-toggle="{{.Role}}" aria-expanded="false" aria-controls="lane-panel-{{safeClass .Role}}">{{.Role}}</button>
 {{with wallRoleActiveSession .Role .Tasks $.Sessions $.TaskRoles}}<small class="active">active session {{.TaskID}}</small>{{else}}{{if .Current}}<small class="unsessioned">in_progress without session {{.Current.Definition.ID}}</small>{{else}}<small class="muted">idle . waiting</small>{{end}}{{end}}
 <a class="lane-detail" href="{{wallRoleHref .Role}}">Open lane</a>
 </div>
@@ -43,6 +43,41 @@
 {{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "review" $.Sessions $.MissingReviewDomains) "Lane" "review" "Role" .Role "Sessions" $.Sessions "MissingReviewDomains" $.MissingReviewDomains}}
 {{template "lane-column" dict "Tasks" (wallLaneTasks .Tasks "done" $.Sessions $.MissingReviewDomains) "Lane" "done" "Role" .Role "Sessions" $.Sessions "MissingReviewDomains" $.MissingReviewDomains}}
 </div>
+<section class="lane-panel" id="lane-panel-{{safeClass .Role}}" data-lane-panel="{{.Role}}" hidden>
+<div class="lane-panel-head">
+<h2>{{.Role}} lane details</h2>
+<a href="{{wallRoleHref .Role}}">Open full details for {{.Role}}</a>
+</div>
+<div class="lane-panel-grid">
+<section>
+<h3>Queue</h3>
+<div class="lane-panel-list">
+{{range wallLaneTasks .Tasks "backlog" $.Sessions $.MissingReviewDomains}}<a href="/tasks/{{.Definition.ID}}"><b>{{.Definition.ID}}</b><span>{{.Definition.Title}}</span><small>{{.Definition.Kind}} · {{.Status}}</small></a>{{else}}<p class="muted">no queued tasks</p>{{end}}
+</div>
+</section>
+<section>
+<h3>Working</h3>
+{{with .Current}}
+<article class="lane-working-card">
+<a href="/tasks/{{.Definition.ID}}"><b>{{.Definition.ID}}</b> {{.Definition.Title}}</a>
+<p>{{.Definition.Kind}} · {{.Status}} · updated {{.UpdatedAt}}</p>
+<p>gates {{with index $.Rollups .Definition.ID}}{{.Done}}/{{.Total}}{{else}}-{{end}}</p>
+{{with wallMissingReviewDomains . $.MissingReviewDomains}}<p>needs {{range .}}<code>{{.}}</code> {{end}}</p>{{end}}
+</article>
+{{else}}<p class="muted">no active task</p>{{end}}
+<h3>Latest events</h3>
+<div class="lane-panel-list compact">
+{{range wallRoleActivity .Role $.Activity $.TaskRoles 5}}<a href="/tasks/{{.TaskID}}"><b>{{.TaskID}}</b><span>{{.Kind}} {{.Summary}}</span><small>{{.CreatedAt}}</small></a>{{else}}<p class="muted">no recent events</p>{{end}}
+</div>
+</section>
+<section>
+<h3>Pending review</h3>
+<div class="lane-panel-list">
+{{range wallLaneTasks .Tasks "review" $.Sessions $.MissingReviewDomains}}<a href="/tasks/{{.Definition.ID}}"><b>{{.Definition.ID}}</b><span>{{.Definition.Title}}</span><small>{{with wallMissingReviewDomains . $.MissingReviewDomains}}missing {{range .}}{{.}} {{end}}{{else}}{{.ReviewStatus}}{{end}}</small></a>{{else}}<p class="muted">no pending reviews</p>{{end}}
+</div>
+</section>
+</div>
+</section>
 </article>
 {{end}}
 </section>

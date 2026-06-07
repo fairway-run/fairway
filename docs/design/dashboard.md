@@ -52,7 +52,9 @@ Each role lane shows:
 - current/idle state,
 - representative backlog, claimed, working, review, and done task pills,
 - overflow links that drill into the matching board filter,
-- an `Open lane` action that opens the full board filtered by role.
+- a lane-name toggle that opens one inline detail panel at a time. The panel
+  shows queue, current working card, pending reviews, latest events, and an
+  `Open full details for <role>` link to the board filtered by role.
 
 The lane header distinguishes live provider attachments from task status. An
 `active session` label means Fairway has a running session row attached to a

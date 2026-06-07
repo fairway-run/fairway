@@ -2245,6 +2245,7 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"wallTaskHasProvider":      wallTaskHasProvider,
 		"wallRoleHref":             wallRoleHref,
 		"wallLaneHref":             wallLaneHref,
+		"wallRoleActivity":         wallRoleActivity,
 		"boardRows":                boardRows,
 		"boardTabHref":             boardTabHref,
 		"boardPageHref":            boardPageHref,
@@ -2335,6 +2336,20 @@ func wallTaskNeedsReview(task store.Task, missingReviewDomains map[string][]stri
 
 func wallMissingReviewDomains(task store.Task, missingReviewDomains map[string][]string) []string {
 	return missingReviewDomains[task.Definition.ID]
+}
+
+func wallRoleActivity(role string, activity []store.Activity, taskRoles map[string]string, limit int) []store.Activity {
+	var out []store.Activity
+	for _, event := range activity {
+		if taskRoles[event.TaskID] != role {
+			continue
+		}
+		out = append(out, event)
+		if limit > 0 && len(out) >= limit {
+			return out
+		}
+	}
+	return out
 }
 
 func dashboardTaskMoreRecent(left, right store.Task) bool {

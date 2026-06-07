@@ -227,6 +227,118 @@ a {
   border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
 }
 
+.lane-toggle {
+  width: fit-content;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.lane-toggle:hover {
+  color: var(--accent);
+}
+
+.lane-panel {
+  min-width: 920px;
+  padding: 0 18px 18px;
+  border-top: var(--border-width) solid var(--line);
+}
+
+.lane-panel[hidden] {
+  display: none;
+}
+
+.lane-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.lane-panel-head h2,
+.lane-panel h3 {
+  margin: 0;
+}
+
+.lane-panel-head h2 {
+  font-size: var(--text-lg);
+}
+
+.lane-panel-head a {
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.lane-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.lane-panel-grid > section {
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--panel-2);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.lane-panel h3 {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.lane-panel-list {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 220px;
+  margin-top: var(--space-3);
+  overflow: auto;
+}
+
+.lane-panel-list.compact {
+  max-height: 150px;
+}
+
+.lane-panel-list a,
+.lane-working-card {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  background: var(--panel);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.lane-panel-list b,
+.lane-working-card b {
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.lane-panel-list span,
+.lane-panel-list small,
+.lane-working-card p {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.lane-working-card {
+  margin: var(--space-3) 0;
+}
+
 .lane-col {
   display: flex;
   flex-direction: column;

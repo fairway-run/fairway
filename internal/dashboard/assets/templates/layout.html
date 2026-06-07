@@ -48,6 +48,7 @@
 </header>
 {{template "content" .}}
 <script src="/assets/js/common.js" defer></script>
+{{if eq .View "wall"}}<script src="/assets/js/wall.js" defer></script>{{end}}
 {{if eq .View "board"}}<script src="/assets/js/board.js" defer></script>{{end}}
 </body>
 </html>

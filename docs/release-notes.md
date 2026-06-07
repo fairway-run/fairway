@@ -39,6 +39,8 @@ because its CLI version metadata still reported the development version.
   mutation records per-task audit events.
 - Board exports now run server-side for CSV and JSON using the current filters,
   sort order, and visible columns while exporting all filtered rows.
+- Wall lanes now expand inline to show queue, current work, pending reviews,
+  latest events, and a role-filtered board link.
 
 ### Release Checklist
 
