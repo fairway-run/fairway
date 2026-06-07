@@ -6,6 +6,15 @@
 # source material for demos and adoption fixtures; this roadmap file is the
 # project backlog target for `.fairway/config.toml`.
 #
+# Source authority:
+# - Active backlog definition lives here.
+# - Runtime execution state lives in `.fairway/state.db` and must be changed
+#   through Fairway commands.
+# - `examples/fairway-adoption-improvements.yaml` and `docs/archive/*.yaml`
+#   are source material/provenance, not active queues.
+# - Promotion and retirement rules are documented in
+#   `docs/design/backlog-sources.md`.
+#
 tasks:
   - id: FW-101
     title: Add prompt-file session launch path

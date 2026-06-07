@@ -23,7 +23,9 @@ Archived material:
 - [GPUaaS parity and gap assessment - 2026-05-29](gpuaas-parity-and-gap-assessment-2026-05-29.md)
 
 The dashboard redesign backlog YAML is retained in this directory as a
-source-only historical artifact.
+source-only historical artifact. It is not an active queue and must not be
+restored into `.fairway/config.toml` without a new promotion/reconciliation
+decision.
 
 Archive rules:
 
@@ -31,5 +33,8 @@ Archive rules:
   provenance.
 - Do not use archived docs as implementation authority without checking the
   current docs first.
+- Do not edit archived queue YAMLs to drive current work. Promote a fresh task
+  into `docs/roadmap/fairway-product-backlog.yaml`, then import or reconcile the
+  live Fairway DB.
 - Keep private deployment details, secrets, customer data, and repo-specific
   incident data out of public docs entirely.

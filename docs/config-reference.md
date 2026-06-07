@@ -109,7 +109,7 @@ levels = [
 |---|---|---|---|
 | `project_name` | string | basename of repo root | Label used by the multi-project dashboard. Must be unique across `~/.fairway/registry.toml`. |
 | `db_path` | string | `.fairway/state.db` | SQLite DB path. Relative to repo root unless absolute. Fairway opens SQLite with WAL mode and a bounded 5s busy timeout so short local write bursts can wait for the current writer instead of failing immediately with `SQLITE_BUSY`. |
-| `queue_source` | string | `inline` | `inline` (DB is authoritative), `yaml:<path>` or `json:<path>` (DB is still authoritative; the file is for bootstrap import only). |
+| `queue_source` | string | `inline` | `inline` (DB-only task definitions), `yaml:<path>` or `json:<path>` (active backlog definition for import/reconciliation; runtime execution state still lives in the DB). |
 | `main_branch` | string | `main` | Base branch new worktree branches are created from. |
 | `task_id_pattern` | string | `^[A-Z]+-[0-9]+$` | Regex enforced for task IDs. GPUaaS parity configs use a wider pattern for legacy IDs such as `A-DEMO-UAT-001` and `A-PROV-REMOVE-SSH`. |
 

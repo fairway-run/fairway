@@ -81,6 +81,19 @@ attachments. A long-lived provider session may carry useful working memory, but
 the lane can move between Codex, Claude, Gemini, tmux, or shell without changing
 task identity, ownership, checkpoints, evidence, reviews, or merge gates.
 
+For long-running tracks, keep a local untracked working memory file under
+`tmp-ux/`. Record the current objective, ordered task list, active task, last
+completed task and commit, validation commands, required reviews, and the next
+action after CI, review, wait, or handback. Do not commit these files unless the
+coordinator explicitly converts one into a public assessment or runbook.
+
+Use the active backlog selected by `.fairway/config.toml` as the implementation
+queue. In this repository that is
+`docs/roadmap/fairway-product-backlog.yaml`. Treat `examples/*.yaml` and
+`docs/archive/*.yaml` as source material or provenance only. If a candidate task
+from those files becomes active work, promote it into the active backlog and
+import/reconcile the DB before claiming it.
+
 ## Active Work Visibility
 
 Dashboard wall visibility is driven by both task state and session state. A task
