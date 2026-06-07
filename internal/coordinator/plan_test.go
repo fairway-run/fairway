@@ -1,0 +1,139 @@
+package coordinator
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/store"
+)
+
+func TestBuildPlanClassifiesReadyCompleteReviewAndApproval(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "READY-001", Title: "Ready work", Kind: "task", Role: "backend", OwningDomain: "api", ReviewDomains: []string{"backend"}},
+		{ID: "READY-002", Title: "Related ready work", Kind: "task", Role: "backend", OwningDomain: "api", ReviewDomains: []string{"backend"}},
+		{ID: "DONE-001", Title: "Complete work", Kind: "task", Role: "backend"},
+		{ID: "REVIEW-001", Title: "Review gated work", Kind: "task", Role: "ui", ReviewDomains: []string{"arch"}},
+		{ID: "APPROVAL-001", Title: "Approval gated work", Kind: "task", Role: "ops"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONE-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "REVIEW-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "APPROVAL-001", State: "awaiting_input", Owner: "ops", Summary: "waiting on approval to deploy"}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.Ready != 3 || plan.Summary.Complete != 2 {
+		t.Fatalf("summary ready/complete = %+v", plan.Summary)
+	}
+	if plan.Summary.ReviewGated != 1 {
+		t.Fatalf("review_gated=%d, want 1", plan.Summary.ReviewGated)
+	}
+	if plan.Summary.ApprovalGated != 1 || len(plan.StopConditions) == 0 {
+		t.Fatalf("approval gating not surfaced: summary=%+v stops=%+v", plan.Summary, plan.StopConditions)
+	}
+	if !hasPlanAction(plan, "ready", "consider_work_batch", "") {
+		t.Fatalf("expected batch recommendation in %+v", plan.Actions)
+	}
+	if !hasPlanAction(plan, "review-gated", "record_required_reviews", "REVIEW-001") {
+		t.Fatalf("expected review-gated action in %+v", plan.Actions)
+	}
+}
+
+func TestBuildPlanClassifiesStaleSessionUtilityAndDryRunNoMutation(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "ACTIVE-001", Title: "Active work", Kind: "task", Role: "backend"},
+		{ID: "UTILITY-001", Title: "CI monitor", Kind: "task", Role: "ops"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "ACTIVE-001", "in_progress", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSession(ctx, store.Session{ID: "ended-task-session", Role: "backend", Provider: "codex", SessionBackend: "codex", TaskID: "ACTIVE-001", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "ACTIVE-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSession(ctx, store.Session{ID: "ci-monitor", Role: "ops/watch", SessionBackend: "ci-monitor", Provider: "shell", TaskID: "UTILITY-001", MonitorKind: "ci", ExternalRunID: "gha-1", PollCommand: "gh run view gha-1", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.CurrentStatus(ctx, "UTILITY-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20, UtilityMonitorAllowed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.CurrentStatus(ctx, "UTILITY-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatalf("dry-run plan mutated task status: before=%s after=%s", before, after)
+	}
+	if plan.Summary.Stale == 0 || !hasPlanAction(plan, "stale", "mark_session_stale", "ACTIVE-001") {
+		t.Fatalf("stale session not surfaced: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+	if plan.Summary.UtilityGated == 0 || !hasPlanAction(plan, "utility-gated", "continue_configured_utility_monitor", "UTILITY-001") {
+		t.Fatalf("utility monitor not surfaced: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+}
+
+func TestBuildPlanAllWorkCompleteIsIdle(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DONE-001", Title: "Complete", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONE-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.Complete != 1 || plan.Summary.TopClassification != "idle" {
+		t.Fatalf("all-complete plan = %+v", plan.Summary)
+	}
+}
+
+func openPlanStore(t *testing.T, ctx context.Context) *store.Store {
+	t.Helper()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+func hasPlanAction(plan Plan, classification, action, taskID string) bool {
+	for _, candidate := range plan.Actions {
+		if candidate.Classification == classification && candidate.Action == action && (taskID == "" || candidate.TaskID == taskID) {
+			return true
+		}
+	}
+	return false
+}

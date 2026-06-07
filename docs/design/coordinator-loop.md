@@ -10,6 +10,7 @@ unless the user runs the explicit task commands.
 ```bash
 fairway coordinator preflight
 fairway coordinator status
+fairway coordinator plan
 fairway coordinator tick
 ```
 
@@ -46,9 +47,15 @@ does not delete branches or worktrees automatically.
 5. watcher and checkpoint summary,
 6. health report.
 
-`tick` is `status` plus dispatch recommendations. It answers: "what should the
-coordinator do next?" A tick may recommend a claim, review, unblock, checkpoint,
-or merge-ready check, but it does not perform those actions automatically.
+`plan` is the deterministic dry-run orchestration controller surface. It reads
+tasks, sessions, watchers, batches, reviews, worktrees, checkpoints, and active
+reconciliation findings, then emits typed next actions without mutating task
+state.
+
+`tick` prints the same plan in daily operating form. It answers: "what should
+the coordinator do next?" A tick may recommend a claim, review, unblock,
+checkpoint, utility handback, batch, or merge-ready check, but it does not
+perform those actions automatically.
 
 ## Orchestration Controller Direction
 
@@ -62,7 +69,8 @@ like an operations controller:
 
 - reconcile active sessions, watchers, batches, reviews, and handbacks;
 - classify work as active, waiting, blocked, stale, complete, or ready;
-- start configured utility monitors for deterministic/pollable work;
+- recommend or continue configured utility monitors for deterministic/pollable
+  work when `--allow-utility-monitor` is set;
 - recommend batching when related tasks share validation surfaces;
 - block or warn before dispatching new implementation work on a lane whose
   previous task is done but whose branch/worktree/session cleanup is not
@@ -71,7 +79,10 @@ like an operations controller:
   needed;
 - enforce stop conditions before destructive, production-impacting, credential,
   approval-gated, or review-gated actions;
-- produce a deterministic next-action plan in dry-run mode.
+- produce a deterministic next-action plan in dry-run mode. Unknown or unsafe
+  actions remain recommendations or stop conditions; Fairway does not infer
+  destructive, production-impacting, credential, approval-gated, or review-gated
+  mutations.
 
 This is the missing layer between Fairway as a dashboard and Fairway as a
 reliable multi-agent operating system. Utility adapters reduce token churn, but

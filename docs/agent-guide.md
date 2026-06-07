@@ -1077,6 +1077,7 @@ fairway task-detail <task-id>
 fairway status-report
 fairway health-report
 fairway dispatch-plan --role <role>
+fairway coordinator plan
 fairway checkpoint status
 fairway session status
 fairway session reconcile --dry-run

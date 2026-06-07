@@ -56,6 +56,7 @@
 <span>monitor resume: {{.ActiveReport.Summary.MonitorResumeNeeded}}</span>
 <span>provider lifecycle: {{.ActiveReport.Summary.ProviderLifecycleMissing}}</span>
 <span>closeout debt: {{len .CloseoutReports}}</span>
+<span>orchestration: {{.CoordinatorPlan.Summary.TopClassification}}</span>
 </section>
 {{if eq .Filters.Tab "diagnostics"}}
 <section class="diagnostics-grid">
@@ -339,6 +340,13 @@
 {{end}}
 </section>
 <aside class="board-rail">
+<section class="card">
+<h2>Orchestration</h2>
+<p><b>{{.CoordinatorPlan.Summary.TopClassification}}</b> {{.CoordinatorPlan.Summary.TopReason}}</p>
+<div class="ticker-list">
+{{range .CoordinatorPlan.Actions}}<article class="ticker-entry"><b class="who">{{.Classification}}</b><span class="what">{{.Action}} {{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</span><time>{{.Reason}}</time></article>{{else}}<p class="muted">no next actions</p>{{end}}
+</div>
+</section>
 <section class="card">
 <h2>Activity</h2>
 <form class="activity-controls" method="get">

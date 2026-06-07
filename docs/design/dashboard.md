@@ -103,6 +103,8 @@ The board is the working surface for operators.
 It includes:
 
 - a control-room header with total filtered scope,
+- current orchestration recommendation and reason from the same dry-run plan
+  evaluator used by `fairway coordinator plan`,
 - gate readiness above the table, grouped by profile/gate group with
   blocking, advisory, and report-only misses called out,
 - expandable missing-task detail for each gate so exceptions are visible before

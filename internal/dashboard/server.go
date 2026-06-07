@@ -18,6 +18,7 @@ import (
 
 	"github.com/subashram/fairway/internal/audit"
 	"github.com/subashram/fairway/internal/config"
+	coord "github.com/subashram/fairway/internal/coordinator"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/state"
@@ -279,6 +280,7 @@ type DashboardViewData struct {
 	Rollups              map[string]Rollup
 	TaskRoles            map[string]string
 	ActiveReport         reconcile.ActiveReport
+	CoordinatorPlan      coord.Plan
 	CloseoutReports      []reconcile.CloseoutReport
 	Audit                AuditDiagnostics
 	ReadOnly             bool
@@ -496,6 +498,16 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	if err != nil {
 		return DashboardViewData{}, err
 	}
+	coordinatorPlan, err := coord.BuildPlan(r.Context(), s.cfg, s.store, coord.PlanOptions{
+		Worktrees:            dashboardWorktreeFacts(s.worktrees),
+		StaleCheckpointAfter: 2 * time.Hour,
+		MonitorHandbackAfter: 2 * time.Hour,
+		ReadyLimit:           5,
+		RecommendationLimit:  5,
+	})
+	if err != nil {
+		return DashboardViewData{}, err
+	}
 	closeoutReports, err := s.dashboardCloseoutReports(r.Context(), tasks, 8)
 	if err != nil {
 		return DashboardViewData{}, err
@@ -541,6 +553,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		Rollups:              rollups,
 		TaskRoles:            taskRoleMap(tasks),
 		ActiveReport:         activeReport,
+		CoordinatorPlan:      coordinatorPlan,
 		CloseoutReports:      closeoutReports,
 		Audit:                auditDiagnostics,
 		CSRFToken:            s.csrfToken,
@@ -618,6 +631,22 @@ func worktreeBranchForRole(worktrees []WorktreeStatus, role string) string {
 	return ""
 }
 
+func dashboardWorktreeFacts(worktrees []WorktreeStatus) []coord.WorktreeFact {
+	facts := make([]coord.WorktreeFact, 0, len(worktrees))
+	for _, worktree := range worktrees {
+		facts = append(facts, coord.WorktreeFact{
+			Role:       worktree.Role,
+			Branch:     worktree.Branch,
+			Path:       worktree.Path,
+			Registered: worktree.Registered,
+			Exists:     worktree.Exists,
+			Dirty:      worktree.Dirty,
+			LastCommit: worktree.LastCommit,
+		})
+	}
+	return facts
+}
+
 func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, error) {
 	filters := taskFiltersFromRequest(r)
 	tasks, sessions, checkpoints, watchers, activity, err := s.projectFacts(r.Context(), filters)
@@ -668,10 +697,17 @@ func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, err
 		Watchers:             watchers,
 		Rollups:              rollups,
 		TaskRoles:            taskRoleMap(tasks),
-		ReadOnly:             true,
-		CSRFToken:            s.csrfToken,
-		MutableStates:        []string{"todo", "claimed", "in_progress", "blocked", "review"},
-		Roles:                roles,
+		CoordinatorPlan: coord.Plan{
+			DryRun: true,
+			Summary: coord.PlanSummary{
+				TopClassification: "multi-project",
+				TopReason:         "open an individual project for mutable orchestration recommendations",
+			},
+		},
+		ReadOnly:      true,
+		CSRFToken:     s.csrfToken,
+		MutableStates: []string{"todo", "claimed", "in_progress", "blocked", "review"},
+		Roles:         roles,
 	}, nil
 }
 

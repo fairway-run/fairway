@@ -27,6 +27,8 @@ fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider
 fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>                          # includes missing required review domains before merge-ready
 fairway status-report | health-report | timing-report
+fairway coordinator plan [--ready-limit <n>] [--recommendation-limit <n>] [--allow-utility-monitor] # deterministic dry-run next-action plan
+fairway coordinator tick                               # prints the same plan in daily tick form
 fairway usage report [--by <provider|task|epic|role|day|kind|phase>] [--task-id <id>] [--since-duration <duration>]
 fairway batch create <batch-id> --title <t> [--task <id>]... [--branch <b>] [--worktree <path>] [--validation-command <cmd>]... [--review-domain <domain>]... [--rollback-criteria <text>] [--split-criteria <text>] [--expected-ci <text>] [--deploy-run-id <id>] [--pipeline-id <id>]
 fairway batch add <batch-id> <task-id>...

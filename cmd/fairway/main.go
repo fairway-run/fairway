@@ -22,6 +22,7 @@ import (
 
 	"github.com/subashram/fairway/internal/audit"
 	"github.com/subashram/fairway/internal/config"
+	coord "github.com/subashram/fairway/internal/coordinator"
 	"github.com/subashram/fairway/internal/dashboard"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
@@ -2818,10 +2819,10 @@ func cmdDispatchPlan(ctx context.Context, opts globalOptions, args []string) err
 
 func cmdCoordinator(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("coordinator requires subcommand: preflight, status, tick")
+		return errors.New("coordinator requires subcommand: preflight, status, tick, plan")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("coordinator", "preflight|status|tick")
+		subcommandUsage("coordinator", "preflight|status|tick|plan")
 		return nil
 	}
 	switch args[0] {
@@ -2830,9 +2831,105 @@ func cmdCoordinator(ctx context.Context, opts globalOptions, args []string) erro
 	case "status":
 		return cmdCoordinatorReport(ctx, opts, args[1:], false, false)
 	case "tick":
-		return cmdCoordinatorReport(ctx, opts, args[1:], false, true)
+		return cmdCoordinatorPlan(ctx, opts, args[1:], true)
+	case "plan":
+		return cmdCoordinatorPlan(ctx, opts, args[1:], false)
 	default:
 		return fmt.Errorf("unknown coordinator subcommand %q", args[0])
+	}
+}
+
+func cmdCoordinatorPlan(ctx context.Context, opts globalOptions, args []string, tick bool) error {
+	fs := flag.NewFlagSet("coordinator plan", flag.ContinueOnError)
+	readyLimit := fs.Int("ready-limit", 10, "maximum ready tasks to include")
+	recommendationLimit := fs.Int("recommendation-limit", 20, "maximum next actions to include")
+	staleAfter := fs.Duration("stale-checkpoint-after", 2*time.Hour, "active checkpoint stale threshold")
+	monitorHandbackAfter := fs.Duration("monitor-handback-after", 2*time.Hour, "recent monitor handback window")
+	allowUtility := fs.Bool("allow-utility-monitor", false, "recommend continuing configured utility monitors when present")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected coordinator plan arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		worktrees, err := collectWorktreeStatus(cfg, root)
+		if err != nil {
+			return err
+		}
+		plan, err := coord.BuildPlan(ctx, cfg, s, coord.PlanOptions{
+			Worktrees:             coordinatorWorktreeFacts(worktrees),
+			StaleCheckpointAfter:  *staleAfter,
+			MonitorHandbackAfter:  *monitorHandbackAfter,
+			ReadyLimit:            *readyLimit,
+			RecommendationLimit:   *recommendationLimit,
+			UtilityMonitorAllowed: *allowUtility,
+		})
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(plan)
+		}
+		if tick {
+			fmt.Println("coordinator tick")
+		} else {
+			fmt.Println("coordinator plan")
+		}
+		printCoordinatorPlan(plan)
+		return nil
+	})
+}
+
+func coordinatorWorktreeFacts(worktrees []worktreeStatus) []coord.WorktreeFact {
+	facts := make([]coord.WorktreeFact, 0, len(worktrees))
+	for _, worktree := range worktrees {
+		facts = append(facts, coord.WorktreeFact{
+			Role:       worktree.Role,
+			Branch:     worktree.Branch,
+			Path:       worktree.Path,
+			Registered: worktree.Registered,
+			Exists:     worktree.Exists,
+			Dirty:      worktree.Dirty,
+			LastCommit: worktree.LastCommit,
+		})
+	}
+	return facts
+}
+
+func printCoordinatorPlan(plan coord.Plan) {
+	fmt.Printf("dry_run: %t\nok: %t\n", plan.DryRun, plan.OK)
+	fmt.Printf("summary: top=%s ready=%d active=%d waiting=%d blocked=%d stale=%d complete=%d review_gated=%d approval_gated=%d utility_gated=%d batch_recommended=%d\n",
+		plan.Summary.TopClassification,
+		plan.Summary.Ready,
+		plan.Summary.Active,
+		plan.Summary.Waiting,
+		plan.Summary.Blocked,
+		plan.Summary.Stale,
+		plan.Summary.Complete,
+		plan.Summary.ReviewGated,
+		plan.Summary.ApprovalGated,
+		plan.Summary.UtilityGated,
+		plan.Summary.BatchRecommended,
+	)
+	if plan.Summary.TopReason != "" {
+		fmt.Printf("why: %s\n", plan.Summary.TopReason)
+	}
+	if len(plan.StopConditions) > 0 {
+		fmt.Println("stop_conditions:")
+		for _, stop := range plan.StopConditions {
+			fmt.Printf("- %s task=%s role=%s reason=%s\n", stop.Kind, stop.TaskID, stop.Role, stop.Reason)
+		}
+	}
+	if len(plan.Actions) > 0 {
+		fmt.Println("next_actions:")
+		for _, action := range plan.Actions {
+			target := action.TaskID
+			if target == "" && len(action.TaskIDs) > 0 {
+				target = strings.Join(action.TaskIDs, ",")
+			}
+			fmt.Printf("- [%s] %s task=%s role=%s reason=%s\n", action.Classification, action.Action, target, action.Role, action.Reason)
+		}
 	}
 }
 

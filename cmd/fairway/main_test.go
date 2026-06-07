@@ -1288,6 +1288,12 @@ name = "backend"
 	git(t, repo, "commit", "-m", "init")
 	runOK(t, "worktree", "setup")
 	runOK(t, "coordinator", "status")
+	plan := runCapture(t, "--json", "coordinator", "plan")
+	for _, want := range []string{`"dry_run": true`, `"actions":`, `"top_classification":`} {
+		if !strings.Contains(plan, want) {
+			t.Fatalf("coordinator plan missing %q:\n%s", want, plan)
+		}
+	}
 	runOK(t, "--json", "coordinator", "tick")
 	runOK(t, "coordinator", "preflight")
 	runOK(t, "dispatch-plan")
