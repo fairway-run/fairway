@@ -321,23 +321,38 @@ task_kinds = ["architecture-map"]
 		"--owning-domain", "platform",
 		"--owning-layer", "api",
 		"--source-paths", "cmd/api,doc/api",
+		"--source-paths", "packages/services",
 		"--target-paths", "packages/services/platform",
 		"--review-domains", "architecture,security",
+		"--review-domains", "governance",
+		"--acceptance", "map current owner",
+		"--acceptance", "map target owner",
 		"--risk-level", "medium",
 		"--migration-type", "facade")
 	detail := runCapture(t, "task-detail", "T-001")
 	assertContains(t, detail, "metadata:")
 	assertContains(t, detail, "profile: platform-foundation")
-	assertContains(t, detail, "source_paths: cmd/api, doc/api")
+	assertContains(t, detail, "source_paths: cmd/api, doc/api, packages/services")
+	assertContains(t, detail, "- map current owner")
+	assertContains(t, detail, "- map target owner")
 
 	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
 	assertContains(t, jsonDetail, `"owning_domain": "platform"`)
 	assertContains(t, jsonDetail, `"review_domains": [`)
+	assertContains(t, jsonDetail, `"governance"`)
 
-	runOK(t, "update", "T-001", "--risk-level", "high", "--source-paths", "cmd/api/routes.go")
+	runOK(t, "update", "T-001", "--risk-level", "high",
+		"--source-paths", "cmd/api/routes.go",
+		"--source-paths", "doc/api/openapi.yaml,packages/services/platform",
+		"--acceptance", "updated acceptance one",
+		"--acceptance", "updated acceptance two")
 	updated := runCapture(t, "--json", "task-detail", "T-001")
 	assertContains(t, updated, `"risk_level": "high"`)
 	assertContains(t, updated, `"cmd/api/routes.go"`)
+	assertContains(t, updated, `"doc/api/openapi.yaml"`)
+	assertContains(t, updated, `"packages/services/platform"`)
+	assertContains(t, updated, `"updated acceptance one"`)
+	assertContains(t, updated, `"updated acceptance two"`)
 
 	if err := run(context.Background(), []string{"add", "T-002", "--title", "Bad profile", "--role", "backend", "--profile", "missing"}); err == nil {
 		t.Fatal("expected unknown profile validation error")

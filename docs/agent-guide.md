@@ -552,10 +552,20 @@ fairway add T-010 \
   --owning-domain platform \
   --owning-layer service \
   --source-paths cmd/api,packages/services \
+  --source-paths docs/api \
   --review-domains architecture,backend \
+  --review-domains governance \
+  --acceptance "current owners are mapped" \
+  --acceptance "target owners and review routes are mapped" \
   --risk-level medium \
   --migration-type ownership-map
 ```
+
+`--acceptance`, `--source-paths`, `--target-paths`, and `--review-domains` are
+repeatable. The path/domain flags also accept comma-separated values, so use
+repeated flags when it keeps long task definitions readable. `task-detail`
+renders acceptance checks as separate bullets and path/domain metadata as
+flattened lists in the order supplied.
 
 When you spawn follow-up work, Fairway inherits the parent task metadata unless
 you override a metadata flag explicitly. Keep those fields accurate; they drive

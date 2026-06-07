@@ -5,9 +5,9 @@ fairway init                                            # scaffold .fairway/conf
 fairway ready [--in <epic-id>] [--priority <n>]         # list tasks ready for the caller's role (sorted by priority, sequence, created_at)
 fairway claim <task-id>                                 # transition todo → in_progress, assign owner
 fairway claim --in <epic-id>                            # claim next ready descendant within an epic
-fairway add <task-id> --title <t> [--kind <k>] [--parent <id>] [--priority <n>] [--sequence <n>] [--role <r>] [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>] [--target-paths <csv>] [--review-domains <csv>] [--risk-level <r>] [--migration-type <t>]
-fairway spawn --id <task-id> --title <t> [--kind <k>] [--child | --sibling | --parent <id> | --root] [--from-task <id>] [--priority <n>] [--force] [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>] [--target-paths <csv>] [--review-domains <csv>] [--risk-level <r>] [--migration-type <t>]
-fairway update <task-id> [--title <t>] [--notes <text>] [--kind <k>] [--parent <id>] [--priority <n>] [--sequence <n>] [--dependencies <a,b,c>] [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>] [--target-paths <csv>] [--review-domains <csv>] [--risk-level <r>] [--migration-type <t>]
+fairway add <task-id> --title <t> [--kind <k>] [--parent <id>] [--priority <n>] [--sequence <n>] [--role <r>] [--acceptance <text>]... [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>]... [--target-paths <csv>]... [--review-domains <csv>]... [--risk-level <r>] [--migration-type <t>]
+fairway spawn --id <task-id> --title <t> [--kind <k>] [--child | --sibling | --parent <id> | --root] [--from-task <id>] [--priority <n>] [--force] [--acceptance <text>]... [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>]... [--target-paths <csv>]... [--review-domains <csv>]... [--risk-level <r>] [--migration-type <t>]
+fairway update <task-id> [--title <t>] [--notes <text>] [--kind <k>] [--parent <id>] [--priority <n>] [--sequence <n>] [--dependencies <a,b,c>] [--acceptance <text>]... [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>]... [--target-paths <csv>]... [--review-domains <csv>]... [--risk-level <r>] [--migration-type <t>]
 fairway tree <task-id> [--depth <n>]                    # print descendant tree
 fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]
 fairway record evidence <task-id> --command-text <text> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <text>]
@@ -122,6 +122,10 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   definitions but never overwrite DB-owned execution state.
 - Task metadata flags (`--profile`, `--owning-domain`, `--source-paths`, etc.)
   are stored on task definitions and also supported by YAML/JSON imports.
+  `--acceptance`, `--source-paths`, `--target-paths`, and `--review-domains`
+  are repeatable. List flags may also contain comma-separated values; repeated
+  list flags are flattened in the order supplied and rendered as task metadata
+  in `task-detail`.
 - `session launch` is an adapter command. The queue/session model works even
   when agents are launched manually. The shell-backed path can feed a prompt
   file into a provider command, record a transcript path, and upsert a session

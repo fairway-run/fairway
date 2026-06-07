@@ -204,7 +204,8 @@ func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
 	role := fs.String("role", "", "owning role")
 	notes := fs.String("notes", "", "notes")
 	deps := fs.String("dependencies", "", "comma-separated dependency ids")
-	acceptance := fs.String("acceptance", "", "acceptance check")
+	var acceptance multiFlag
+	fs.Var(&acceptance, "acceptance", "acceptance check; repeatable")
 	metadata := addTaskMetadataFlags(fs)
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -226,8 +227,8 @@ func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
 	if *deps != "" {
 		task.Dependencies = splitCSV(*deps)
 	}
-	if *acceptance != "" {
-		task.AcceptanceChecks = []string{*acceptance}
+	if len(acceptance) > 0 {
+		task.AcceptanceChecks = cleanRepeatedValues(acceptance)
 	}
 	applyTaskMetadataFlags(&task, metadata, nil)
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
@@ -263,7 +264,8 @@ func cmdSpawn(ctx context.Context, opts globalOptions, args []string) error {
 	role := fs.String("role", "", "owning role")
 	notes := fs.String("notes", "", "notes")
 	deps := fs.String("dependencies", "", "comma-separated dependency ids")
-	acceptance := fs.String("acceptance", "", "acceptance check")
+	var acceptance multiFlag
+	fs.Var(&acceptance, "acceptance", "acceptance check; repeatable")
 	metadata := addTaskMetadataFlags(fs)
 	force := fs.Bool("force", false, "suppress granularity warnings")
 	if err := fs.Parse(args); err != nil {
@@ -350,8 +352,8 @@ func cmdSpawn(ctx context.Context, opts globalOptions, args []string) error {
 		if *deps != "" {
 			task.Dependencies = splitCSV(*deps)
 		}
-		if *acceptance != "" {
-			task.AcceptanceChecks = []string{*acceptance}
+		if len(acceptance) > 0 {
+			task.AcceptanceChecks = cleanRepeatedValues(acceptance)
 		}
 		applyTaskMetadataFlags(&task, metadata, changed)
 		if err := validateTaskMetadata([]store.TaskDefinition{task}, cfg); err != nil {
@@ -379,7 +381,8 @@ func cmdUpdate(ctx context.Context, opts globalOptions, args []string) error {
 	role := fs.String("role", "", "owning role")
 	notes := fs.String("notes", "", "notes")
 	deps := fs.String("dependencies", "", "comma-separated dependency ids")
-	acceptance := fs.String("acceptance", "", "acceptance check")
+	var acceptance multiFlag
+	fs.Var(&acceptance, "acceptance", "acceptance check; repeatable")
 	metadata := addTaskMetadataFlags(fs)
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -427,10 +430,10 @@ func cmdUpdate(ctx context.Context, opts globalOptions, args []string) error {
 			task.Dependencies = splitCSV(*deps)
 		}
 		if changed["acceptance"] {
-			if *acceptance == "" {
+			if len(acceptance) == 0 || len(cleanRepeatedValues(acceptance)) == 0 {
 				task.AcceptanceChecks = nil
 			} else {
-				task.AcceptanceChecks = []string{*acceptance}
+				task.AcceptanceChecks = cleanRepeatedValues(acceptance)
 			}
 		}
 		applyTaskMetadataFlags(&task, metadata, changed)
@@ -5447,21 +5450,27 @@ type taskMetadataFlags struct {
 	Profile       *string
 	OwningDomain  *string
 	OwningLayer   *string
-	SourcePaths   *string
-	TargetPaths   *string
-	ReviewDomains *string
+	SourcePaths   *multiFlag
+	TargetPaths   *multiFlag
+	ReviewDomains *multiFlag
 	RiskLevel     *string
 	MigrationType *string
 }
 
 func addTaskMetadataFlags(fs *flag.FlagSet) taskMetadataFlags {
+	var sourcePaths multiFlag
+	var targetPaths multiFlag
+	var reviewDomains multiFlag
+	fs.Var(&sourcePaths, "source-paths", "comma-separated source paths; repeatable")
+	fs.Var(&targetPaths, "target-paths", "comma-separated target paths; repeatable")
+	fs.Var(&reviewDomains, "review-domains", "comma-separated review domains; repeatable")
 	return taskMetadataFlags{
 		Profile:       fs.String("profile", "", "workstream profile name"),
 		OwningDomain:  fs.String("owning-domain", "", "owning domain metadata"),
 		OwningLayer:   fs.String("owning-layer", "", "owning layer metadata"),
-		SourcePaths:   fs.String("source-paths", "", "comma-separated source paths"),
-		TargetPaths:   fs.String("target-paths", "", "comma-separated target paths"),
-		ReviewDomains: fs.String("review-domains", "", "comma-separated review domains"),
+		SourcePaths:   &sourcePaths,
+		TargetPaths:   &targetPaths,
+		ReviewDomains: &reviewDomains,
 		RiskLevel:     fs.String("risk-level", "", "risk level metadata"),
 		MigrationType: fs.String("migration-type", "", "migration type metadata"),
 	}
@@ -5478,13 +5487,13 @@ func applyTaskMetadataFlags(task *store.TaskDefinition, metadata taskMetadataFla
 		task.OwningLayer = *metadata.OwningLayer
 	}
 	if changed == nil || changed["source-paths"] {
-		task.SourcePaths = splitCSV(*metadata.SourcePaths)
+		task.SourcePaths = splitRepeatedCSV(*metadata.SourcePaths)
 	}
 	if changed == nil || changed["target-paths"] {
-		task.TargetPaths = splitCSV(*metadata.TargetPaths)
+		task.TargetPaths = splitRepeatedCSV(*metadata.TargetPaths)
 	}
 	if changed == nil || changed["review-domains"] {
-		task.ReviewDomains = splitCSV(*metadata.ReviewDomains)
+		task.ReviewDomains = splitRepeatedCSV(*metadata.ReviewDomains)
 	}
 	if changed == nil || changed["risk-level"] {
 		task.RiskLevel = *metadata.RiskLevel
@@ -5659,6 +5668,17 @@ func splitCSV(value string) []string {
 		part = strings.TrimSpace(part)
 		if part != "" {
 			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func cleanRepeatedValues(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
 		}
 	}
 	return out
