@@ -106,6 +106,9 @@ payload. Follow-up `FWRD-161` implemented server-side board windows and resolved
 the operational board latency issue. `FWRD-129` remains blocked as historical
 evidence that the original client-only acceptance was not met.
 
+Reconciliation: FW-138 confirms this remains the intended state. Do not mark
+`FWRD-129` done unless the original acceptance is rewritten or waived.
+
 ### `FWRD-151` Performance Budget Verification
 
 Status: blocked.
@@ -115,6 +118,10 @@ server-side windowing resolved wall/board/sort latency, and `FWRD-162` accepted
 the RSS exception at `<=52 MiB` for the documented local single-project
 operator fixture. `FWRD-151` remains blocked because its original strict budget
 was not met as written.
+
+Reconciliation: FW-138 confirms this remains the intended state. The current
+release posture depends on the reviewed FWRD-162 exception, not on treating the
+original strict FWRD-151 budget as passed.
 
 Primary evidence:
 

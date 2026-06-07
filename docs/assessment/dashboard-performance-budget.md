@@ -181,19 +181,25 @@ The SSE budget passes with the current one-second polling model.
 
 ## Blocking Gaps
 
-Before using the 1000-task budget as complete release evidence, Fairway needs
-reviews on the FWRD-162 RSS exception.
+The original strict RSS target is not met. FWRD-162 records a reviewed and
+accepted `<=52 MiB` RSS exception for the documented 1000-task local
+single-project macOS ARM64 operator dashboard fixture.
 
 Recommended follow-up:
 
 - record exact browser paint timing from a surface that exposes the Paint
   Timing API before final dashboard-v2 release signoff.
+- measure multi-project, larger-than-1000-task, long-lived dashboard, and
+  repeated diagnostics-run shapes before extending the RSS exception to those
+  environments.
 
 ## Decision
 
-Go/no-go: go for FWRD-160 after FWRD-162 receives ops and architecture review.
+Go/no-go: go for the retired dashboard v2 surface under the documented local
+single-project operator fixture and the FWRD-162 RSS exception.
 
 Owner: ops.
 
-Next action: record FWRD-162 ops/architecture reviews, then allow FWRD-160 to
-remove legacy dashboard compatibility if no walkthrough blocker is raised.
+Next action: keep FWRD-129 and FWRD-151 blocked as historical/deferred evidence
+unless their original acceptance is explicitly rewritten or waived. Use
+FW-138's reconciliation artifact for the current state decision.
