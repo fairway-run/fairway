@@ -148,11 +148,14 @@ For a batch, closeout should prove:
   intentional checkpoints.
 
 This prevents a successful batch from leaving behind branch cleanup work that
-is larger than the original implementation. The intended product surface is a
-dedicated closeout command that can run in dry-run mode before applying branch
-or session cleanup:
+is larger than the original implementation. The first closeout surface is
+task-level:
 
 ```bash
-fairway lane closeout --role <role> --batch-id <batch-id> --dry-run
-fairway lane closeout --role <role> --batch-id <batch-id> --apply
+fairway workflow closeout <task-id> --dry-run
+fairway workflow check --mode close --task-id <task-id> --require-clean
 ```
+
+Batch-level closeout can build on the same report model later. Until then,
+run closeout for every task in the batch and keep the shared branch preserved
+with an explicit reason until the batch is merged and cleaned.

@@ -75,6 +75,7 @@ type Task struct {
 	Owner        string
 	Claimant     string
 	Branch       string
+	CommitSHA    string
 	ReviewStatus string
 	UpdatedAt    string
 }
@@ -932,7 +933,7 @@ func (s *Store) Ready(ctx context.Context, role string, terminal []string) ([]Ta
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
        d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.risk_level, d.migration_type,
-       st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
+       st.status, st.owner, st.claimant, st.branch, st.commit_sha, st.review_status, st.updated_at
 FROM task_definitions d
 JOIN task_state st ON st.project_id = d.project_id AND st.task_id = d.id
 WHERE d.project_id = ? AND st.status = 'todo'`+roleSQL+`
@@ -1357,6 +1358,10 @@ ORDER BY provider, external_id`, s.projectID)
 }
 
 func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, requireBlockedReason bool) error {
+	return s.SetStatusWithCommit(ctx, taskID, status, reason, "", requireBlockedReason)
+}
+
+func (s *Store) SetStatusWithCommit(ctx context.Context, taskID, status, reason, commitSHA string, requireBlockedReason bool) error {
 	if status == "blocked" && requireBlockedReason && strings.TrimSpace(reason) == "" {
 		return errors.New("reason is required when blocking a task")
 	}
@@ -1382,7 +1387,7 @@ func (s *Store) SetStatus(ctx context.Context, taskID, status, reason string, re
 	if status != "in_progress" {
 		claimantSQL = "NULL"
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE task_state SET status=?, claimant=`+claimantSQL+`, completed_at=?, updated_at=? WHERE project_id=? AND task_id=?`, status, completed, now, s.projectID, taskID)
+	_, err = tx.ExecContext(ctx, `UPDATE task_state SET status=?, claimant=`+claimantSQL+`, completed_at=?, commit_sha=COALESCE(nullif(?, ''), commit_sha), updated_at=? WHERE project_id=? AND task_id=?`, status, completed, commitSHA, now, s.projectID, taskID)
 	if err != nil {
 		return err
 	}
@@ -1474,7 +1479,7 @@ func (s *Store) TaskDetail(ctx context.Context, taskID string) (Task, []Transiti
 	row := s.db.QueryRowContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
        d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.risk_level, d.migration_type,
-       st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
+       st.status, st.owner, st.claimant, st.branch, st.commit_sha, st.review_status, st.updated_at
 FROM task_definitions d JOIN task_state st ON st.project_id=d.project_id AND st.task_id=d.id
 WHERE d.project_id=? AND d.id=?`, s.projectID, taskID)
 	task, err := scanTask(row)
@@ -1932,7 +1937,7 @@ func (s *Store) AllTasks(ctx context.Context) ([]Task, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
        d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.risk_level, d.migration_type,
-       st.status, st.owner, st.claimant, st.branch, st.review_status, st.updated_at
+       st.status, st.owner, st.claimant, st.branch, st.commit_sha, st.review_status, st.updated_at
 FROM task_definitions d JOIN task_state st ON st.project_id=d.project_id AND st.task_id=d.id
 WHERE d.project_id=?
 ORDER BY d.role, st.status, COALESCE(d.priority, 9999), d.created_at`, s.projectID)
@@ -2157,9 +2162,9 @@ func scanTask(row rowScanner) (Task, error) {
 	var task Task
 	var acceptance, deps string
 	var sourcePaths, targetPaths, reviewDomains sql.NullString
-	var parent, kind, notes, profile, owningDomain, owningLayer, riskLevel, migrationType, owner, claimant, branch, reviewStatus, updated sql.NullString
+	var parent, kind, notes, profile, owningDomain, owningLayer, riskLevel, migrationType, owner, claimant, branch, commitSHA, reviewStatus, updated sql.NullString
 	var priority, sequence sql.NullInt64
-	err := row.Scan(&task.Definition.ID, &parent, &kind, &task.Definition.Title, &task.Definition.Role, &notes, &acceptance, &deps, &priority, &sequence, &profile, &owningDomain, &owningLayer, &sourcePaths, &targetPaths, &reviewDomains, &riskLevel, &migrationType, &task.Status, &owner, &claimant, &branch, &reviewStatus, &updated)
+	err := row.Scan(&task.Definition.ID, &parent, &kind, &task.Definition.Title, &task.Definition.Role, &notes, &acceptance, &deps, &priority, &sequence, &profile, &owningDomain, &owningLayer, &sourcePaths, &targetPaths, &reviewDomains, &riskLevel, &migrationType, &task.Status, &owner, &claimant, &branch, &commitSHA, &reviewStatus, &updated)
 	if err != nil {
 		return Task{}, err
 	}
@@ -2193,6 +2198,7 @@ func scanTask(row rowScanner) (Task, error) {
 	task.Owner = owner.String
 	task.Claimant = claimant.String
 	task.Branch = branch.String
+	task.CommitSHA = commitSHA.String
 	task.ReviewStatus = reviewStatus.String
 	task.UpdatedAt = updated.String
 	return task, nil

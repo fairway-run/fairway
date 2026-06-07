@@ -9,7 +9,7 @@ fairway add <task-id> --title <t> [--kind <k>] [--parent <id>] [--priority <n>] 
 fairway spawn --id <task-id> --title <t> [--kind <k>] [--child | --sibling | --parent <id> | --root] [--from-task <id>] [--priority <n>] [--force] [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>] [--target-paths <csv>] [--review-domains <csv>] [--risk-level <r>] [--migration-type <t>]
 fairway update <task-id> [--title <t>] [--notes <text>] [--kind <k>] [--parent <id>] [--priority <n>] [--sequence <n>] [--dependencies <a,b,c>] [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>] [--target-paths <csv>] [--review-domains <csv>] [--risk-level <r>] [--migration-type <t>]
 fairway tree <task-id> [--depth <n>]                    # print descendant tree
-fairway set-status <task-id> <state> [--reason <text>] [--reopen]
+fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]
 fairway record evidence <task-id> --command-text <text> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <text>]
 fairway record guard-report <task-id> --guard <name> [--mode <report_only|warning|blocking>] [--finding <text>]... [--false-positive <text>]... [--allowed-debt <text>]... [--graduation-criteria <text>] [--artifact <path>] [--result <result>]
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
@@ -38,7 +38,8 @@ fairway batch list
 fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
-fairway workflow check [--mode <task|close|deploy>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
+fairway workflow check [--mode <task|close|deploy>] [--task-id <id>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
+fairway workflow closeout <task-id> [--dry-run] [--apply] [--preserve-branch-reason <reason>] # report lane branch/worktree/session closeout debt
 fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
 fairway audit ci-learning [--task-id <id>] [--template] # classify failed CI/deploy/smoke/UAT evidence and follow-up coverage
 fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
@@ -135,8 +136,19 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
   active reconciliation findings. Use `--mode deploy` before deploy/UAT work;
   it requires a clean committed SHA and pushed commits so CI can run. Use
-  `--require-clean` or `--require-pushed` when the current boundary should fail
-  instead of warn.
+  `--mode close --task-id <id>` before moving a lane to new implementation
+  work; it includes the lane closeout report for the task. Use `--require-clean`
+  or `--require-pushed` when the current boundary should fail instead of warn.
+- `workflow closeout <task-id>` is advisory by default. It reports task status,
+  commit association, CI/deploy/UAT evidence, review-domain completeness,
+  active sessions/watchers, branch merge state, remote branch presence,
+  worktree cleanliness, and explicit branch preservation reasons. `--apply`
+  deletes only a verified merged `origin/<branch>` remote branch when the
+  closeout report has no blockers. It does not delete local branches or
+  worktrees.
+- `set-status` records `commit_sha` for terminal CLI transitions. Pass
+  `--commit <sha>` to pin an explicit task commit; otherwise Fairway records
+  the current `HEAD` when marking a task terminal.
 - `tracker` commands are provider-neutral adapter contract surfaces. `configure`,
   `import`, `export-status`, `resolve`, and `reconcile` are dry-run/advisory
   until a provider adapter explicitly adds an apply path. Tracker planning

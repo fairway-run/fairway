@@ -51,6 +51,46 @@ func CurrentBranch(root string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func BranchExists(root, branch string) bool {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return false
+	}
+	return run(root, "rev-parse", "--verify", branch) == nil
+}
+
+func BranchMerged(root, branch, base string) bool {
+	branch = strings.TrimSpace(branch)
+	base = strings.TrimSpace(base)
+	if branch == "" || base == "" {
+		return false
+	}
+	if !BranchExists(root, branch) || !BranchExists(root, base) {
+		return false
+	}
+	return run(root, "merge-base", "--is-ancestor", branch, base) == nil
+}
+
+func RemoteBranchExists(root, branch string) bool {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return false
+	}
+	return run(root, "show-ref", "--verify", "--quiet", "refs/remotes/origin/"+branch) == nil
+}
+
+func DeleteRemoteBranch(root, remote, branch string) error {
+	remote = strings.TrimSpace(remote)
+	branch = strings.TrimSpace(branch)
+	if remote == "" {
+		remote = "origin"
+	}
+	if branch == "" {
+		return fmt.Errorf("branch is required")
+	}
+	return run(root, "push", remote, "--delete", branch)
+}
+
 func EnsureWorktree(root, base, branch, path string) error {
 	if err := ensureBranch(root, base, branch); err != nil {
 		return err

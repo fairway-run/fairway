@@ -79,7 +79,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"usage", "--help"}, "fairway usage report"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
-		{[]string{"workflow", "--help"}, "fairway workflow check"},
+		{[]string{"workflow", "--help"}, "fairway workflow check|closeout"},
 		{[]string{"batch", "--help"}, "fairway batch create|add|remove|evidence|link|show|list"},
 		{[]string{"batch", "create", "--help"}, "fairway batch create <batch-id> --title <title>"},
 		{[]string{"batch", "add", "--help"}, "fairway batch add <batch-id> <task-id>"},
@@ -92,6 +92,90 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 	} {
 		out := runCapture(t, tc.args...)
 		assertContains(t, out, tc.want)
+	}
+}
+
+func TestCLI_WorkflowCloseoutCleanTask(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	commit := strings.TrimSpace(gitOutput(t, repo, "rev-parse", "--short", "HEAD"))
+
+	runOK(t, "add", "T-001", "--title", "Closeout", "--role", "backend")
+	runOK(t, "claim", "T-001")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass")
+	runOK(t, "set-status", "T-001", "done")
+	out := runCapture(t, "workflow", "closeout", "T-001", "--dry-run")
+	assertContains(t, out, "lane_closeout: true")
+	assertContains(t, out, "commit: "+commit)
+	assertContains(t, out, "safe_merged_branch")
+	runOK(t, "workflow", "check", "--mode", "close", "--task-id", "T-001")
+}
+
+func TestCLI_WorkflowCloseoutApplyDeletesVerifiedMergedRemoteBranch(t *testing.T) {
+	repo := t.TempDir()
+	remote := filepath.Join(t.TempDir(), "origin.git")
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	if err := os.MkdirAll(remote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, remote, "init", "--bare")
+	git(t, repo, "remote", "add", "origin", remote)
+	runOK(t, "init")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	git(t, repo, "push", "-u", "origin", "main")
+	git(t, repo, "checkout", "-b", "agent/backend")
+	writeFile(t, "feature.txt", "feature\n")
+	git(t, repo, "add", "feature.txt")
+	git(t, repo, "commit", "-m", "T-001 feature")
+	commit := strings.TrimSpace(gitOutput(t, repo, "rev-parse", "HEAD"))
+	git(t, repo, "push", "-u", "origin", "agent/backend")
+	git(t, repo, "checkout", "main")
+	git(t, repo, "merge", "--no-ff", "agent/backend", "-m", "merge T-001")
+	git(t, repo, "push", "origin", "main")
+
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: Closeout remote
+  role: backend
+  status: done
+  branch: agent/backend
+  commit_sha: `+commit+`
+`)
+	runOK(t, "import", "tasks.yaml", "--state-once")
+	if err := os.Remove("tasks.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	runOK(t, "record", "evidence", "T-001", "--command-text", "gh run view --json conclusion", "--result", "pass", "--artifact-type", "ci")
+	out := runCapture(t, "workflow", "closeout", "T-001", "--dry-run")
+	assertContains(t, out, "safe_merged_remote_branch")
+	runOK(t, "workflow", "closeout", "T-001", "--apply")
+	if err := exec.Command("git", "-C", remote, "show-ref", "--verify", "--quiet", "refs/heads/agent/backend").Run(); err == nil {
+		t.Fatal("remote branch still exists after closeout apply")
 	}
 }
 
@@ -2058,6 +2142,17 @@ func git(t *testing.T, dir string, args ...string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return string(out)
 }
 
 func gitInit(t *testing.T, dir string) {

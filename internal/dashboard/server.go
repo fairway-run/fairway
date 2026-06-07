@@ -18,6 +18,7 @@ import (
 
 	"github.com/subashram/fairway/internal/audit"
 	"github.com/subashram/fairway/internal/config"
+	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
@@ -273,6 +274,7 @@ type DashboardViewData struct {
 	Rollups              map[string]Rollup
 	TaskRoles            map[string]string
 	ActiveReport         reconcile.ActiveReport
+	CloseoutReports      []reconcile.CloseoutReport
 	Audit                AuditDiagnostics
 	ReadOnly             bool
 	CSRFToken            string
@@ -472,6 +474,10 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	if err != nil {
 		return DashboardViewData{}, err
 	}
+	closeoutReports, err := s.dashboardCloseoutReports(r.Context(), tasks, 8)
+	if err != nil {
+		return DashboardViewData{}, err
+	}
 	var auditDiagnostics AuditDiagnostics
 	if view == "board" && filters.Tab == "diagnostics" {
 		auditDiagnostics = s.auditDiagnostics(r.Context(), "")
@@ -509,11 +515,81 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		Rollups:              rollups,
 		TaskRoles:            taskRoleMap(tasks),
 		ActiveReport:         activeReport,
+		CloseoutReports:      closeoutReports,
 		Audit:                auditDiagnostics,
 		CSRFToken:            s.csrfToken,
 		MutableStates:        dashboardMutableStates(s.cfg),
 		Roles:                append([]string(nil), s.roles...),
 	}, nil
+}
+
+func (s *Server) dashboardCloseoutReports(ctx context.Context, tasks []store.Task, limit int) ([]reconcile.CloseoutReport, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	var reports []reconcile.CloseoutReport
+	stateCfg := state.Config{Allowed: s.cfg.States.Allowed, Terminal: s.cfg.States.Terminal, Transitions: s.cfg.States.Transitions}
+	for _, task := range tasks {
+		if !state.IsTerminal(stateCfg, task.Status) {
+			continue
+		}
+		gitInfo := s.closeoutGitForTask(task)
+		report, err := reconcile.Closeout(ctx, s.store, reconcile.CloseoutOptions{
+			TaskID:   task.Definition.ID,
+			Role:     task.Definition.Role,
+			Terminal: s.cfg.States.Terminal,
+			Git:      gitInfo,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if report.OK {
+			continue
+		}
+		reports = append(reports, report)
+		if len(reports) >= limit {
+			break
+		}
+	}
+	return reports, nil
+}
+
+func (s *Server) closeoutGitForTask(task store.Task) reconcile.CloseoutGit {
+	branch := strings.TrimSpace(task.Branch)
+	if branch == "" {
+		branch = worktreeBranchForRole(s.worktrees, task.Definition.Role)
+	}
+	worktreePath, worktreeDirty := worktreeStateForRole(s.worktrees, task.Definition.Role)
+	info := reconcile.CloseoutGit{
+		Branch:        branch,
+		Base:          s.cfg.Fairway.MainBranch,
+		WorktreePath:  worktreePath,
+		WorktreeDirty: worktreeDirty,
+	}
+	if s.root != "" && branch != "" {
+		info.BranchExists = fairwaygit.BranchExists(s.root, branch)
+		info.BranchMerged = fairwaygit.BranchMerged(s.root, branch, s.cfg.Fairway.MainBranch)
+		info.RemoteBranchExists = branch != s.cfg.Fairway.MainBranch && fairwaygit.RemoteBranchExists(s.root, branch)
+	}
+	return info
+}
+
+func worktreeStateForRole(worktrees []WorktreeStatus, role string) (string, bool) {
+	for _, worktree := range worktrees {
+		if worktree.Role == role {
+			return worktree.Path, worktree.Dirty
+		}
+	}
+	return "", false
+}
+
+func worktreeBranchForRole(worktrees []WorktreeStatus, role string) string {
+	for _, worktree := range worktrees {
+		if worktree.Role == role {
+			return worktree.Branch
+		}
+	}
+	return ""
 }
 
 func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, error) {

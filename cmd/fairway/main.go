@@ -622,13 +622,14 @@ type preflightConfigRef struct {
 }
 
 type workflowCheckReport struct {
-	OK              bool                   `json:"ok"`
-	Mode            string                 `json:"mode"`
-	Git             fairwaygit.Status      `json:"git"`
-	Reconcile       reconcile.ActiveReport `json:"reconcile"`
-	Issues          []string               `json:"issues"`
-	Warnings        []string               `json:"warnings,omitempty"`
-	Recommendations []string               `json:"recommendations,omitempty"`
+	OK              bool                     `json:"ok"`
+	Mode            string                   `json:"mode"`
+	Git             fairwaygit.Status        `json:"git"`
+	Reconcile       reconcile.ActiveReport   `json:"reconcile"`
+	Closeout        reconcile.CloseoutReport `json:"closeout,omitempty"`
+	Issues          []string                 `json:"issues"`
+	Warnings        []string                 `json:"warnings,omitempty"`
+	Recommendations []string                 `json:"recommendations,omitempty"`
 }
 
 func cmdPreflight(opts globalOptions, args []string) error {
@@ -707,14 +708,16 @@ func cmdPreflight(opts globalOptions, args []string) error {
 
 func cmdWorkflow(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("workflow", "check")
+		subcommandUsage("workflow", "check|closeout")
 		return nil
 	}
 	switch args[0] {
 	case "check":
 		return cmdWorkflowCheck(ctx, opts, args[1:])
+	case "closeout":
+		return cmdWorkflowCloseout(ctx, opts, args[1:])
 	default:
-		return errors.New("workflow requires subcommand: check")
+		return errors.New("workflow requires subcommand: check|closeout")
 	}
 }
 
@@ -722,6 +725,8 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 	fs := flag.NewFlagSet("workflow check", flag.ContinueOnError)
 	base := fs.String("base", "", "base ref")
 	mode := fs.String("mode", "task", "workflow mode: task, deploy, close")
+	taskID := fs.String("task-id", "", "task id for closeout mode")
+	preserveReason := fs.String("preserve-branch-reason", "", "explicit reason to preserve an unmerged task branch in closeout mode")
 	requireClean := fs.Bool("require-clean", false, "fail if the worktree is dirty")
 	requirePushed := fs.Bool("require-pushed", false, "fail if HEAD has unpushed commits")
 	staleAfter := fs.Duration("stale-checkpoint-after", 0, "warn on active checkpoints older than duration")
@@ -751,6 +756,33 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 			Mode:      *mode,
 			Git:       gitStatus,
 			Reconcile: reconcileReport,
+		}
+		var closeoutReport reconcile.CloseoutReport
+		if *mode == "close" {
+			if *taskID == "" {
+				report.Issues = append(report.Issues, "close mode requires --task-id")
+			} else {
+				task, _, _, _, _, err := s.TaskDetail(ctx, *taskID)
+				if err != nil {
+					return err
+				}
+				closeoutGit := buildCloseoutGit(root, *base, task, gitStatus)
+				closeoutReport, err = reconcile.Closeout(ctx, s, reconcile.CloseoutOptions{
+					TaskID:         *taskID,
+					Role:           task.Definition.Role,
+					Terminal:       cfg.States.Terminal,
+					Git:            closeoutGit,
+					PreserveReason: *preserveReason,
+				})
+				if err != nil {
+					return err
+				}
+				report.Closeout = closeoutReport
+				if !closeoutReport.OK {
+					report.Issues = append(report.Issues, fmt.Sprintf("lane closeout has %d blocker(s)", closeoutReport.Summary.Blockers))
+					report.Recommendations = append(report.Recommendations, "run fairway workflow closeout "+*taskID+" --dry-run and resolve lane closeout debt")
+				}
+			}
 		}
 		if gitStatus.Dirty {
 			message := "worktree has uncommitted changes"
@@ -829,12 +861,153 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 					fmt.Printf("- %s\n", recommendation)
 				}
 			}
+			if *mode == "close" && closeoutReport.TaskID != "" {
+				printCloseoutReport(closeoutReport)
+			}
 		}
 		if !report.OK {
 			return errors.New("workflow check failed")
 		}
 		return nil
 	})
+}
+
+func cmdWorkflowCloseout(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("workflow closeout", "<task-id> [--dry-run] [--apply] [--base <ref>] [--preserve-branch-reason <reason>]")
+		return nil
+	}
+	if len(args) < 1 {
+		return errors.New("workflow closeout requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("workflow closeout", flag.ContinueOnError)
+	base := fs.String("base", "", "base ref")
+	_ = fs.Bool("dry-run", true, "report lane closeout state without mutation")
+	apply := fs.Bool("apply", false, "apply safe cleanup; currently refuses destructive branch/worktree cleanup")
+	preserveReason := fs.String("preserve-branch-reason", "", "explicit reason to preserve an unmerged task branch")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected workflow closeout arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		if *base == "" {
+			*base = cfg.Fairway.MainBranch
+		}
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		gitStatus, err := fairwaygit.Check(root, *base)
+		if err != nil {
+			return err
+		}
+		closeoutGit := buildCloseoutGit(root, *base, task, gitStatus)
+		report, err := reconcile.Closeout(ctx, s, reconcile.CloseoutOptions{
+			TaskID:         taskID,
+			Role:           task.Definition.Role,
+			Terminal:       cfg.States.Terminal,
+			Git:            closeoutGit,
+			PreserveReason: *preserveReason,
+		})
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		printCloseoutReport(report)
+		if !report.OK {
+			return errors.New("workflow closeout failed")
+		}
+		if *apply {
+			if !report.Apply.DeleteRemoteBranch {
+				fmt.Println("closeout apply: no eligible remote branch cleanup")
+				return nil
+			}
+			if err := fairwaygit.DeleteRemoteBranch(root, report.Apply.Remote, report.Apply.Branch); err != nil {
+				return err
+			}
+			fmt.Printf("deleted remote branch %s/%s\n", firstNonEmpty(report.Apply.Remote, "origin"), report.Apply.Branch)
+		}
+		return nil
+	})
+}
+
+func buildCloseoutGit(root, base string, task store.Task, gitStatus fairwaygit.Status) reconcile.CloseoutGit {
+	branch := firstNonEmpty(task.Branch, gitStatus.Branch)
+	worktreePath := gitStatus.Root
+	worktreeDirty := gitStatus.Dirty
+	if branch != "" && branch != gitStatus.Branch {
+		if worktree, ok := worktreeForBranch(root, branch); ok {
+			worktreePath = worktree.Path
+			if status, err := fairwaygit.Check(worktree.Path, base); err == nil {
+				worktreeDirty = status.Dirty
+			}
+		}
+	}
+	return reconcile.CloseoutGit{
+		Branch:             branch,
+		Base:               base,
+		WorktreePath:       worktreePath,
+		WorktreeDirty:      worktreeDirty,
+		BranchExists:       fairwaygit.BranchExists(root, branch),
+		BranchMerged:       fairwaygit.BranchMerged(root, branch, base),
+		RemoteBranchExists: branch != base && fairwaygit.RemoteBranchExists(root, branch),
+	}
+}
+
+func worktreeForBranch(root, branch string) (fairwaygit.Worktree, bool) {
+	worktrees, err := fairwaygit.Worktrees(root)
+	if err != nil {
+		return fairwaygit.Worktree{}, false
+	}
+	for _, worktree := range worktrees {
+		if worktree.Branch == branch {
+			return worktree, true
+		}
+	}
+	return fairwaygit.Worktree{}, false
+}
+
+func printCloseoutReport(report reconcile.CloseoutReport) {
+	fmt.Printf("lane_closeout: %t\ntask: %s\nrole: %s\nbranch: %s\nworktree: %s\ncommit: %s\n", report.OK, report.TaskID, report.Role, report.Branch, report.Worktree, report.Commit)
+	fmt.Printf("summary: blockers=%d warnings=%d active_sessions=%d active_watchers=%d missing_review_domains=%d missing_commits=%d verification_evidence=%d pending_verification=%d dirty_worktrees=%d unmerged_branches=%d remote_branches=%d safe_branches=%d preserved_branches=%d\n",
+		report.Summary.Blockers,
+		report.Summary.Warnings,
+		report.Summary.ActiveSessions,
+		report.Summary.ActiveWatchers,
+		report.Summary.MissingReviewDomains,
+		report.Summary.MissingCommits,
+		report.Summary.VerificationEvidence,
+		report.Summary.PendingVerification,
+		report.Summary.DirtyWorktrees,
+		report.Summary.UnmergedBranches,
+		report.Summary.RemoteBranchesPresent,
+		report.Summary.SafeToDeleteBranches,
+		report.Summary.PreservedBranches,
+	)
+	if len(report.Findings) == 0 {
+		fmt.Println("findings: none")
+		return
+	}
+	fmt.Println("findings:")
+	for _, finding := range report.Findings {
+		domains := ""
+		if len(finding.MissingDomains) > 0 {
+			domains = " domains=" + strings.Join(finding.MissingDomains, ",")
+		}
+		extra := domains
+		if finding.Commit != "" {
+			extra += " commit=" + finding.Commit
+		}
+		if finding.EvidenceType != "" {
+			extra += " evidence=" + finding.EvidenceType
+		}
+		fmt.Printf("- %s %s action=%s%s reason=%s\n", finding.Severity, finding.Kind, finding.Action, extra, finding.Reason)
+	}
 }
 
 func cmdBatch(ctx context.Context, opts globalOptions, args []string) error {
@@ -4858,7 +5031,7 @@ func cmdTUI(ctx context.Context, opts globalOptions, args []string) error {
 					continue
 				}
 				reason := strings.Join(parts[3:], " ")
-				if err := setStatusWithConfig(ctx, cfg, s, parts[1], parts[2], reason, false); err != nil {
+				if err := setStatusWithConfig(ctx, cfg, ".", s, parts[1], parts[2], reason, "", false); err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					continue
 				}
@@ -5529,12 +5702,13 @@ func cmdSetStatus(ctx context.Context, opts globalOptions, args []string) error 
 	}
 	fs := flag.NewFlagSet("set-status", flag.ContinueOnError)
 	reason := fs.String("reason", "", "reason")
+	commitSHA := fs.String("commit", "", "commit SHA to associate with a terminal status; defaults to HEAD for terminal CLI transitions")
 	reopen := fs.Bool("reopen", false, "reopen terminal task")
 	if err := fs.Parse(args[2:]); err != nil {
 		return err
 	}
-	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-		if err := setStatusWithConfig(ctx, cfg, s, args[0], args[1], *reason, *reopen); err != nil {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		if err := setStatusWithConfig(ctx, cfg, root, s, args[0], args[1], *reason, *commitSHA, *reopen); err != nil {
 			return err
 		}
 		fmt.Println("status", args[0], args[1])
@@ -5542,21 +5716,28 @@ func cmdSetStatus(ctx context.Context, opts globalOptions, args []string) error 
 	})
 }
 
-func setStatusWithConfig(ctx context.Context, cfg config.Config, s *store.Store, taskID, target, reason string, reopen bool) error {
+func setStatusWithConfig(ctx context.Context, cfg config.Config, root string, s *store.Store, taskID, target, reason, commitSHA string, reopen bool) error {
 	current, err := s.CurrentStatus(ctx, taskID)
 	if err != nil {
 		return err
 	}
 	stateCfg := state.Config{Allowed: cfg.States.Allowed, Terminal: cfg.States.Terminal, Transitions: cfg.States.Transitions}
+	terminal := state.IsTerminal(stateCfg, target)
 	if err := state.ValidateTransition(stateCfg, current, target, reopen); err != nil {
 		return err
 	}
-	if state.IsTerminal(stateCfg, target) {
+	if terminal {
 		if err := validateTerminalGates(ctx, cfg, s, taskID); err != nil {
 			return err
 		}
+		if strings.TrimSpace(commitSHA) == "" {
+			commitSHA = fairwaygit.LastCommit(root)
+		}
 	}
-	return s.SetStatus(ctx, taskID, target, reason, cfg.Gates.RequireBlockedReason)
+	if !terminal {
+		commitSHA = ""
+	}
+	return s.SetStatusWithCommit(ctx, taskID, target, reason, commitSHA, cfg.Gates.RequireBlockedReason)
 }
 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
@@ -6867,7 +7048,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

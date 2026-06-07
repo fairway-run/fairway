@@ -31,6 +31,12 @@ fairway coordinator tick
 11. release-run verification for release attempts, including public release
     state, asset URLs, and Homebrew fetch evidence.
 
+Use `fairway workflow closeout <task-id> --dry-run` for the lane-closeout check.
+Use `fairway workflow check --mode close --task-id <task-id> --require-clean`
+when the coordinator is deciding whether a lane may move to its next
+implementation task. The closeout guard is advisory about cleanup actions; it
+does not delete branches or worktrees automatically.
+
 `status` prints the current operating board:
 
 1. role lane summary,

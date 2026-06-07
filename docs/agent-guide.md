@@ -602,8 +602,10 @@ operating model short by turning the repeated manual checks into one command.
 # Normal task boundary: warns on dirty files and unpushed commits.
 fairway workflow check
 
-# Close/review boundary: fail if the task slice is not committed.
-fairway workflow check --mode close --require-clean
+# Close/review boundary: fail if the task slice is not committed and the lane
+# has unresolved branch/worktree/session closeout debt.
+fairway workflow check --mode close --task-id <task-id> --require-clean
+fairway workflow closeout <task-id> --dry-run
 
 # Deploy/UAT boundary: require clean pushed source and active-work
 # reconciliation before creating deploy evidence.
@@ -625,7 +627,10 @@ The command reports:
 - missing upstream tracking;
 - active reconciliation findings such as `in_progress` work without a session
   or evidence without a status decision;
-- deploy-run guidance for CI/CD/UAT attempts.
+- deploy-run guidance for CI/CD/UAT attempts;
+- lane closeout findings such as missing reviews, active sessions/watchers,
+  dirty worktrees, unmerged branches, remote branch leftovers, and explicit
+  branch preservation reasons.
 
 `audit work-coverage` is advisory. It catches commits that do not mention or
 map to a task, changed files outside task `source_paths` / `target_paths`,
@@ -706,25 +711,28 @@ valid reasons are review pending, CI pending, blocked dependency, preserved
 release branch, follow-up batch, or operator-approved investigation. Branches
 left behind without one of those reasons are cleanup debt.
 
-Until Fairway has a dedicated closeout command, use this manual sequence before
-moving a lane to the next implementation task:
+Use the closeout guard before moving a lane to the next implementation task:
 
 ```bash
 fairway task-detail <task-id>
 fairway merge-ready <task-id>
-fairway workflow check --mode close --require-clean
+fairway workflow closeout <task-id> --dry-run
+fairway workflow check --mode close --task-id <task-id> --require-clean
 fairway reconcile active --dry-run
-git branch --contains <task-commit>
-git branch -r --contains <task-commit>
 ```
 
 Then merge and delete the task branch, or record a preserve reason as evidence
-or checkpoint. The target product command is expected to be shaped like:
+or checkpoint:
 
 ```bash
-fairway lane closeout --role <role> --task-id <task-id> --dry-run
-fairway lane closeout --role <role> --task-id <task-id> --apply
+fairway workflow closeout <task-id> --dry-run \
+  --preserve-branch-reason "release branch retained until tag cut"
 ```
+
+`workflow closeout --apply` deletes only a verified merged `origin/<branch>`
+remote branch when the closeout report has no blockers. It does not delete
+local branches or worktrees; operators still perform or approve those cleanup
+commands explicitly.
 
 ## Claim Work
 
