@@ -18,6 +18,7 @@ fairway.exe
 .fairway/dashboard-multi.pid
 .fairway/dashboard-multi.log
 .fairway/transcripts/
+tmp-ux/
 plane-eval-local/
 
 # Local release credentials

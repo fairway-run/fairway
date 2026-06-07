@@ -1078,3 +1078,156 @@ tasks:
       - Coordinator/preflight output includes lane closeout findings and blocks or warns before dispatching new implementation work on a lane with unresolved branch/worktree cleanup debt.
       - Dashboard diagnostics or lane detail surfaces closeout debt, including stale done-task branches, dirty worktrees, and preserved-branch reasons.
       - Tests cover clean closeout, review-gated closeout, CI-pending closeout, preserved branch with reason, dirty worktree, unmerged branch, safe merged remote deletion dry-run, and refusal to delete unmerged branches.
+
+  - id: FW-132
+    title: Refresh public positioning and product boundary docs
+    kind: docs
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product
+    source_paths:
+      - README.md
+      - docs/product.md
+      - docs/design/product-boundaries.md
+      - docs/release-notes.md
+      - docs/agent-guide.md
+    target_paths:
+      - README.md
+      - docs/product.md
+      - docs/design/product-boundaries.md
+      - docs/release-notes.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: product-positioning
+    depends_on:
+      - FW-131
+    acceptance_checks:
+      - README positions Fairway as a coordination control plane for multi-agent engineering work, with traffic-control/lane language as the original primitive rather than the whole product.
+      - Product docs define explicit non-goals for auto-claim, auto-approve, auto-merge, auto-push, destructive cleanup, transcript storage, provider auth storage, CI execution, workflow-engine replacement, and cost gating.
+      - Provider usage accounting is documented as an advisory planning signal, not a task completion gate.
+      - Release notes and agent guide point to the durable product boundary rules.
+
+  - id: FW-133
+    title: Define backlog source authority and promotion rules
+    kind: docs
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: roadmap
+    source_paths:
+      - docs/roadmap/fairway-product-backlog.yaml
+      - examples/fairway-adoption-improvements.yaml
+      - docs/archive
+      - docs/design/backlog-sources.md
+      - docs/agent-guide.md
+    target_paths:
+      - docs/design/backlog-sources.md
+      - docs/agent-guide.md
+      - docs/archive/README.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+    risk_level: low
+    migration_type: backlog-source-authority
+    depends_on:
+      - FW-131
+    acceptance_checks:
+      - Docs identify the active backlog file, example/source-material files, archived queues, and Fairway DB runtime state.
+      - Promotion rules explain how a task moves from examples/archive into the active backlog and DB.
+      - Archive rules explain when old queue files are retained for provenance and when they must not be treated as active.
+      - Agent guide tells provider sessions to maintain local untracked memory files under tmp-ux for long-running tracks.
+
+  - id: FW-134
+    title: Move project-specific task taxonomy into workstream profiles
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: profiles
+    source_paths:
+      - docs/governance/commits.md
+      - docs/design/workstream-profiles.md
+      - docs/workstream-profile-guide.md
+      - docs/design/product-boundaries.md
+    target_paths:
+      - docs/governance/commits.md
+      - docs/design/workstream-profiles.md
+      - docs/workstream-profile-guide.md
+      - docs/design/product-boundaries.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: profile-taxonomy-boundary
+    depends_on:
+      - FW-132
+    acceptance_checks:
+      - Docs clarify that prefixes such as CI-FIX, CD-FIX, UAT-BUG, OPS-FIX, HARNESS-FIX, and DOC-FIX are project/profile conventions, not Fairway core grammar.
+      - Workstream profile docs show how a project can define or document task taxonomy without changing core code.
+      - Governance docs avoid implying Fairway semantically owns CI, UAT, or deploy task prefixes.
+
+  - id: FW-135
+    title: Complete GPUaaS operator dashboard walkthrough signoff
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: adoption
+    source_paths:
+      - docs/assessment/dashboard-v2-walkthrough.md
+      - docs/assessment/dashboard-redesign-closeout.md
+      - docs/design/dashboard.md
+      - README.md
+    target_paths:
+      - docs/assessment/dashboard-v2-walkthrough.md
+      - docs/assessment/dashboard-redesign-closeout.md
+      - docs/release-notes.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: adoption-signoff
+    depends_on:
+      - FW-102
+      - FW-105
+    acceptance_checks:
+      - GPUaaS operator walkthrough is completed against the current wall, board, diagnostics, reports, and task-detail flows.
+      - Signoff records which personas were covered and which workflows passed, failed, or need follow-up.
+      - Any operator-identified gaps are recorded as Fairway tasks rather than hidden notes.
+      - Dashboard redesign closeout distinguishes dogfood completion from external/adopter signoff.
+
+  - id: FW-136
+    title: Add Fairway public docs cleanup pass
+    kind: docs
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: docs-portal
+    source_paths:
+      - README.md
+      - docs
+      - docusaurus
+    target_paths:
+      - README.md
+      - docs
+      - docusaurus
+    review_domains:
+      - arch
+      - governance
+    risk_level: low
+    migration_type: public-docs-cleanup
+    depends_on:
+      - FW-132
+      - FW-133
+      - FW-134
+    acceptance_checks:
+      - Public docs navigation highlights quickstart, product boundaries, backlog sources, dashboard, agent guide, and release notes.
+      - Internal-only historical notes remain archived or omitted from public navigation.
+      - README, product docs, Docusaurus docs, and release notes use consistent positioning language.
+      - Docs portal build or local docs validation passes.

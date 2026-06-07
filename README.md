@@ -4,7 +4,7 @@
 
 # Fairway
 
-**Traffic control for coding agents.**
+**Coordination control plane for multi-agent engineering work.**
 
 Fairway is a local-first coordination tool for teams running multiple coding
 agents in parallel on one repository. It gives each lane a task queue, state
@@ -57,6 +57,7 @@ provider memory.
 - Not an IAM tool.
 - Not a CI runner.
 - Not an LLM provider abstraction — fairway dispatches to whatever agent you run inside a worktree; it does not spawn agents itself.
+- Not an autonomous approval, merge, deploy, or cleanup engine.
 
 ## Quickstart
 
@@ -116,6 +117,8 @@ Start here:
 Core Design:
 
 - [Scope and non-goals](docs/design/scope.md)
+- [Product boundaries](docs/design/product-boundaries.md)
+- [Backlog sources](docs/design/backlog-sources.md)
 - [Concepts](docs/design/concepts.md)
 - [Release cuts](docs/design/release-cuts.md)
 - [Implementation roadmap](docs/design/implementation-roadmap.md)

@@ -10,6 +10,7 @@ Current public docs should start from:
 - [Product](../product.md)
 - [Agent guide](../agent-guide.md)
 - [Dashboard](../design/dashboard.md)
+- [Backlog sources](../design/backlog-sources.md)
 - [Release notes](../release-notes.md)
 
 Archived material:

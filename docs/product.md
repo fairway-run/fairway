@@ -107,8 +107,15 @@ These will never be in fairway:
 - An LLM provider abstraction.
 - A CI runner.
 - A SaaS hosted offering.
+- An autonomous approval, merge, deploy, or cleanup engine.
+- A transcript, prompt, secret, or provider-credential store by default.
+- A product-specific task taxonomy hardcoded into core.
 
 If a feature pushes toward any of those, it goes in a different tool.
+
+The durable boundary rules are defined in
+[Product boundaries](design/product-boundaries.md). The active backlog source
+rules are defined in [Backlog sources](design/backlog-sources.md).
 
 ## Competing approaches considered
 
