@@ -150,13 +150,17 @@ def parse_events(raw)
     return parsed if parsed.is_a?(Array)
     return [parsed]
   rescue JSON::ParserError
-    raw.each_line.filter_map do |line|
+    events = []
+    raw.each_line do |line|
       line = line.strip
       next if line.empty?
-      JSON.parse(line)
-    rescue JSON::ParserError
-      nil
+      begin
+        events << JSON.parse(line)
+      rescue JSON::ParserError
+        next
+      end
     end
+    events
   end
 end
 
