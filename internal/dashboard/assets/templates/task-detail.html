@@ -97,6 +97,11 @@
 </article>
 <article class="detail-panel wide">
 <h2>Sessions</h2>
+{{if .ActiveFindings}}
+<table class="detail-table"><thead><tr><th>Finding</th><th>Provider</th><th>Session</th><th>Expected</th><th>Action</th><th>Reason</th></tr></thead><tbody>
+{{range .ActiveFindings}}<tr><td>{{.Kind}}</td><td>{{.Provider}}</td><td>{{.SessionID}} {{if .ExternalSessionID}}<code>{{.ExternalSessionID}}</code>{{end}}</td><td>{{.ExpectedCheckpoint}}</td><td>{{.Action}}</td><td>{{.Reason}}</td></tr>{{end}}
+</tbody></table>
+{{end}}
 <table class="detail-table"><thead><tr><th>ID</th><th>Backend</th><th>Provider</th><th>Status</th><th>Pane</th><th>Transcript</th><th>Monitor proof</th></tr></thead><tbody>
 {{range .TaskSessions}}<tr><td>{{.ID}}</td><td>{{.SessionBackend}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.TmuxPane}}</td><td>{{if .TranscriptPath}}<code>{{.TranscriptPath}}</code>{{end}}</td><td>{{if .MonitorKind}}{{.MonitorKind}} {{end}}{{if .AutomationID}}automation {{.AutomationID}} {{end}}{{if .ExternalRunID}}run {{.ExternalRunID}} {{end}}{{if .PollCommand}}poll <code>{{.PollCommand}}</code> {{end}}{{if .ManualUntil}}manual until {{.ManualUntil}}{{end}}</td></tr>{{else}}<tr><td colspan="7">none</td></tr>{{end}}
 </tbody></table>

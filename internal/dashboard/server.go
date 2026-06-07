@@ -303,6 +303,7 @@ type TaskDetailViewData struct {
 	CSRFToken            string
 	States               []string
 	Audit                AuditDiagnostics
+	ActiveFindings       []reconcile.ActiveFinding
 }
 
 type AuditDiagnostics struct {
@@ -2058,6 +2059,11 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	activeReport, err := reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	missingReviewDomains := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	data := TaskDetailViewData{
 		View:                 "detail",
@@ -2080,6 +2086,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		CSRFToken:            s.csrfToken,
 		States:               dashboardMutableStates(s.cfg),
 		Audit:                s.auditDiagnostics(r.Context(), id),
+		ActiveFindings:       activeFindingsForTask(activeReport.Findings, id),
 	}
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
 }
@@ -2179,6 +2186,16 @@ func sessionsForDashboardTask(sessions []store.Session, taskID string) []store.S
 	for _, session := range sessions {
 		if session.TaskID == taskID {
 			out = append(out, session)
+		}
+	}
+	return out
+}
+
+func activeFindingsForTask(findings []reconcile.ActiveFinding, taskID string) []reconcile.ActiveFinding {
+	var out []reconcile.ActiveFinding
+	for _, finding := range findings {
+		if finding.TaskID == taskID {
+			out = append(out, finding)
 		}
 	}
 	return out

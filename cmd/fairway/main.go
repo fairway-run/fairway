@@ -2373,14 +2373,15 @@ func cmdReconcileActive(ctx context.Context, opts globalOptions, args []string) 
 			return nil
 		}
 		fmt.Printf("ok: %t\n", report.OK)
-		fmt.Printf("summary: stale_sessions=%d unattended_in_progress=%d status_decision_required=%d active_parent_without_rollup=%d stale_checkpoints=%d monitor_sessions_no_proof=%d monitor_resume_needed=%d\n",
+		fmt.Printf("summary: stale_sessions=%d unattended_in_progress=%d status_decision_required=%d active_parent_without_rollup=%d stale_checkpoints=%d monitor_sessions_no_proof=%d monitor_resume_needed=%d provider_lifecycle_missing=%d\n",
 			report.Summary.StaleSessions,
 			report.Summary.UnattendedInProgress,
 			report.Summary.StatusDecisionRequired,
 			report.Summary.ActiveParentWithoutRollup,
 			report.Summary.StaleCheckpoints,
 			report.Summary.MonitorSessionsNoProof,
-			report.Summary.MonitorResumeNeeded)
+			report.Summary.MonitorResumeNeeded,
+			report.Summary.ProviderLifecycleMissing)
 		for _, finding := range report.Findings {
 			mode := "reported"
 			if !*dryRun && finding.Action == "mark_session_stale" && finding.SessionID != "" {
@@ -2389,8 +2390,8 @@ func cmdReconcileActive(ctx context.Context, opts globalOptions, args []string) 
 				}
 				mode = "applied"
 			}
-			fmt.Printf("%s\t%s\trole=%s\ttask=%s\tstatus=%s\tsession=%s\taction=%s\treason=%s\n",
-				mode, finding.Kind, finding.Role, finding.TaskID, finding.TaskStatus, finding.SessionID, finding.Action, finding.Reason)
+			fmt.Printf("%s\t%s\trole=%s\ttask=%s\tstatus=%s\tsession=%s\texternal=%s\tprovider=%s\texpected_checkpoint=%s\taction=%s\treason=%s\n",
+				mode, finding.Kind, finding.Role, finding.TaskID, finding.TaskStatus, finding.SessionID, finding.ExternalSessionID, finding.Provider, finding.ExpectedCheckpoint, finding.Action, finding.Reason)
 		}
 		return nil
 	})

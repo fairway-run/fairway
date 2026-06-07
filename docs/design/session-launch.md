@@ -121,6 +121,15 @@ Recommended status mapping:
 This keeps Fairway provider-neutral while still making provider-specific runtime
 events visible to coordinators and dashboards.
 
+`fairway reconcile active` enforces the lifecycle convention as an advisory
+readiness guard. A provider session attached to a task must have a matching
+checkpoint: `active` for started/running, `awaiting_input` for waiting,
+failed, stale, or no-progress, and `done` for completed. The checkpoint should
+name the Fairway session id, external session id, or transcript artifact so the
+guard can associate it with the provider attachment. The guard reports the
+provider, external session id, role, task id, and expected checkpoint; it never
+polls provider APIs or changes task ownership.
+
 The reference convention is `examples/session-adapters/provider-event.sh`. A
 provider-specific watcher can translate its local enum into one of Fairway's
 generic runtime states and call:

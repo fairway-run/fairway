@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ type ActiveSummary struct {
 	StaleCheckpoints          int `json:"stale_checkpoints"`
 	MonitorSessionsNoProof    int `json:"monitor_sessions_no_proof"`
 	MonitorResumeNeeded       int `json:"monitor_resume_needed"`
+	ProviderLifecycleMissing  int `json:"provider_lifecycle_missing"`
 }
 
 type ActiveFinding struct {
@@ -37,6 +39,7 @@ type ActiveFinding struct {
 	Action               string `json:"action"`
 	Reason               string `json:"reason"`
 	SessionID            string `json:"session_id,omitempty"`
+	ExternalSessionID    string `json:"external_session_id,omitempty"`
 	Provider             string `json:"provider,omitempty"`
 	Backend              string `json:"backend,omitempty"`
 	Role                 string `json:"role,omitempty"`
@@ -46,6 +49,7 @@ type ActiveFinding struct {
 	LatestEvidenceAt     string `json:"latest_evidence_at,omitempty"`
 	LatestCheckpoint     string `json:"latest_checkpoint,omitempty"`
 	LatestCheckpointAt   string `json:"latest_checkpoint_at,omitempty"`
+	ExpectedCheckpoint   string `json:"expected_checkpoint,omitempty"`
 	CompletedMonitorID   string `json:"completed_monitor_id,omitempty"`
 	ReadyTaskCount       int    `json:"ready_task_count,omitempty"`
 }
@@ -95,10 +99,12 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 		}
 	}
 	latestCheckpoint := map[string]store.Checkpoint{}
+	checkpointsByTask := map[string][]store.Checkpoint{}
 	for _, checkpoint := range checkpoints {
 		if _, ok := latestCheckpoint[checkpoint.TaskID]; !ok {
 			latestCheckpoint[checkpoint.TaskID] = checkpoint
 		}
+		checkpointsByTask[checkpoint.TaskID] = append(checkpointsByTask[checkpoint.TaskID], checkpoint)
 	}
 
 	var findings []ActiveFinding
@@ -148,6 +154,28 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 				TaskID:     session.TaskID,
 				TaskStatus: task.Status,
 			})
+		}
+		if isProviderLifecycleSession(session) {
+			satisfied, expected := providerLifecycleSatisfied(session, checkpointsByTask[session.TaskID])
+			if !satisfied {
+				latest := latestCheckpoint[session.TaskID]
+				findings = append(findings, ActiveFinding{
+					Kind:               "provider_session_missing_lifecycle_checkpoint",
+					Severity:           "warning",
+					Action:             "record_provider_event_checkpoint",
+					Reason:             fmt.Sprintf("provider session is missing %q lifecycle checkpoint for status %q", expected, firstNonEmpty(session.Status, "running")),
+					SessionID:          session.ID,
+					ExternalSessionID:  providerExternalSessionID(session),
+					Provider:           session.Provider,
+					Backend:            session.SessionBackend,
+					Role:               session.Role,
+					TaskID:             session.TaskID,
+					TaskStatus:         task.Status,
+					LatestCheckpoint:   latest.State,
+					LatestCheckpointAt: latest.CreatedAt,
+					ExpectedCheckpoint: expected,
+				})
+			}
 		}
 	}
 
@@ -210,6 +238,8 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 			report.Summary.MonitorSessionsNoProof++
 		case "monitor_completion_resume_needed":
 			report.Summary.MonitorResumeNeeded++
+		case "provider_session_missing_lifecycle_checkpoint":
+			report.Summary.ProviderLifecycleMissing++
 		case "unattended_in_progress":
 			report.Summary.UnattendedInProgress++
 		case "status_decision_required":
@@ -221,6 +251,97 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 		}
 	}
 	return report, nil
+}
+
+func isProviderLifecycleSession(session store.Session) bool {
+	if strings.TrimSpace(session.TaskID) == "" || strings.TrimSpace(session.Provider) == "" {
+		return false
+	}
+	if isMonitorSession(session) {
+		return false
+	}
+	return true
+}
+
+func expectedProviderLifecycleCheckpoint(session store.Session) string {
+	switch normalizeLifecycleStatus(session.Status) {
+	case "waiting_on_approval", "waiting_on_input", "awaiting_input", "waiting", "failed", "stale", "no_progress":
+		return "awaiting_input"
+	case "completed", "complete", "done", "ended":
+		return "done"
+	case "", "running", "active", "started":
+		return "active"
+	default:
+		return "active"
+	}
+}
+
+func normalizeLifecycleStatus(status string) string {
+	status = strings.ToLower(strings.TrimSpace(status))
+	status = strings.ReplaceAll(status, "-", "_")
+	status = strings.ReplaceAll(status, " ", "_")
+	return status
+}
+
+func providerLifecycleSatisfied(session store.Session, checkpoints []store.Checkpoint) (bool, string) {
+	expected := expectedProviderLifecycleCheckpoint(session)
+	for _, state := range providerAcceptedLifecycleStates(expected) {
+		if hasProviderLifecycleCheckpoint(session, state, checkpoints) {
+			return true, expected
+		}
+	}
+	return false, expected
+}
+
+func providerAcceptedLifecycleStates(expected string) []string {
+	switch expected {
+	case "active":
+		return []string{"active", "awaiting_input", "done"}
+	default:
+		return []string{expected}
+	}
+}
+
+func hasProviderLifecycleCheckpoint(session store.Session, expected string, checkpoints []store.Checkpoint) bool {
+	for _, checkpoint := range checkpoints {
+		if checkpoint.State != expected {
+			continue
+		}
+		if providerLifecycleCheckpointMatches(session, checkpoint) {
+			return true
+		}
+	}
+	return false
+}
+
+func providerLifecycleCheckpointMatches(session store.Session, checkpoint store.Checkpoint) bool {
+	if checkpoint.Owner != "" && session.Role != "" && checkpoint.Owner != session.Role {
+		return false
+	}
+	summary := strings.ToLower(checkpoint.Summary)
+	sessionID := strings.ToLower(strings.TrimSpace(session.ID))
+	externalID := strings.ToLower(strings.TrimSpace(providerExternalSessionID(session)))
+	if sessionID != "" && strings.Contains(summary, sessionID) {
+		return true
+	}
+	if externalID != "" && strings.Contains(summary, externalID) {
+		return true
+	}
+	if session.TranscriptPath != "" && checkpoint.ArtifactPath == session.TranscriptPath {
+		return true
+	}
+	return false
+}
+
+func providerExternalSessionID(session store.Session) string {
+	if strings.TrimSpace(session.SessionName) != "" {
+		return session.SessionName
+	}
+	prefix := strings.TrimSpace(session.Provider) + "-"
+	if prefix != "-" && strings.HasPrefix(session.ID, prefix) {
+		return strings.TrimPrefix(session.ID, prefix)
+	}
+	return ""
 }
 
 func isMonitorSession(session store.Session) bool {

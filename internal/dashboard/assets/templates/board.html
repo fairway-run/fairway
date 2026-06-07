@@ -53,6 +53,7 @@
 <span>sessions: {{len .Sessions}}</span>
 <span>monitor proof: {{.ActiveReport.Summary.MonitorSessionsNoProof}}</span>
 <span>monitor resume: {{.ActiveReport.Summary.MonitorResumeNeeded}}</span>
+<span>provider lifecycle: {{.ActiveReport.Summary.ProviderLifecycleMissing}}</span>
 <span>closeout debt: {{len .CloseoutReports}}</span>
 </section>
 {{if eq .Filters.Tab "diagnostics"}}

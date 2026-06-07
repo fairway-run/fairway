@@ -260,6 +260,14 @@ the mapped checkpoint, evidence, handoff, or stale-session event. Use `started`,
 waiting/stale/failure states, and `completed` as mandatory lifecycle events for
 active delegated sessions; use `running` only as a metadata refresh.
 
+`fairway reconcile active` checks that provider sessions have the matching
+lifecycle checkpoint for their attached task. Running or started sessions need
+an `active` checkpoint that names the Fairway session id, external session id,
+or transcript artifact. Waiting, failed, stale, and no-progress sessions need
+an `awaiting_input` checkpoint. Completed sessions need a `done` checkpoint.
+The finding is advisory and provider-neutral; it tells the coordinator which
+Fairway checkpoint is missing without polling provider APIs.
+
 Do not make Fairway depend on Codex, Claude, Gemini, or any provider API.
 Fairway should expose the session/checkpoint/evidence surfaces; provider
 watchers should feed those surfaces.

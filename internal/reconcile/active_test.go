@@ -184,6 +184,144 @@ func TestActiveMonitorCompletionFollowedByNextSessionIsClean(t *testing.T) {
 	}
 }
 
+func TestActiveProviderSessionWithoutStartedCheckpointIsReported(t *testing.T) {
+	ctx := context.Background()
+	s := newReconcileTestStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Provider work", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "T-001", "backend", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "T-001", State: "active", Owner: "backend", Summary: "generic active checkpoint without provider session identity"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSession(ctx, store.Session{
+		ID:             "codex-thread-123",
+		Role:           "backend",
+		TaskID:         "T-001",
+		Status:         "running",
+		SessionBackend: "codex-thread",
+		Provider:       "codex",
+		SessionName:    "thread-123",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Active(ctx, s, ActiveOptions{Terminal: []string{"done"}, StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertProviderLifecycleMissing(t, report, "T-001", "codex-thread-123", "thread-123", "active")
+}
+
+func TestActiveProviderSessionWithStartedCheckpointIsClean(t *testing.T) {
+	ctx := context.Background()
+	s := newReconcileTestStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Provider work", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "T-001", "backend", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSession(ctx, store.Session{
+		ID:             "codex-thread-123",
+		Role:           "backend",
+		TaskID:         "T-001",
+		Status:         "running",
+		SessionBackend: "codex-thread",
+		Provider:       "codex",
+		SessionName:    "thread-123",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "T-001", State: "active", Owner: "backend", Summary: "Provider session codex-thread-123 started: implementation"}); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Active(ctx, s, ActiveOptions{Terminal: []string{"done"}, StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK || report.Summary.ProviderLifecycleMissing != 0 {
+		t.Fatalf("report=%+v, want provider lifecycle clean", report)
+	}
+}
+
+func TestActiveProviderSessionWaitingAndFailedCheckpointAreClean(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		sessionStatus string
+		summary       string
+	}{
+		{name: "waiting", sessionStatus: "running", summary: "Provider session codex-thread-123 waiting on input: need decision"},
+		{name: "failed", sessionStatus: "failed", summary: "Provider session codex-thread-123 failed: command failed"},
+		{name: "stale", sessionStatus: "stale", summary: "Provider session codex-thread-123 stale: no progress"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := newReconcileTestStore(t)
+			if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Provider work", Role: "backend"}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Claim(ctx, "T-001", "backend", ""); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.UpsertSession(ctx, store.Session{
+				ID:             "codex-thread-123",
+				Role:           "backend",
+				TaskID:         "T-001",
+				Status:         tc.sessionStatus,
+				SessionBackend: "codex-thread",
+				Provider:       "codex",
+				SessionName:    "thread-123",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "T-001", State: "awaiting_input", Owner: "backend", Summary: tc.summary}); err != nil {
+				t.Fatal(err)
+			}
+			report, err := Active(ctx, s, ActiveOptions{Terminal: []string{"done"}, StaleCheckpointAfter: time.Hour})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !report.OK || report.Summary.ProviderLifecycleMissing != 0 {
+				t.Fatalf("report=%+v, want provider lifecycle clean for %s", report, tc.sessionStatus)
+			}
+		})
+	}
+}
+
+func TestActiveProviderSessionCompletedCheckpointIsClean(t *testing.T) {
+	ctx := context.Background()
+	s := newReconcileTestStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Provider work", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "T-001", "backend", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSession(ctx, store.Session{
+		ID:             "codex-thread-123",
+		Role:           "backend",
+		TaskID:         "T-001",
+		Status:         "running",
+		SessionBackend: "codex-thread",
+		Provider:       "codex",
+		SessionName:    "thread-123",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "T-001", State: "done", Owner: "backend", Summary: "Provider session codex-thread-123 completed: implementation"}); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Active(ctx, s, ActiveOptions{Terminal: []string{"done"}, StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK || report.Summary.ProviderLifecycleMissing != 0 {
+		t.Fatalf("report=%+v, want provider lifecycle clean for completed session", report)
+	}
+}
+
 func assertMonitorNoProof(t *testing.T, report ActiveReport, taskID, sessionID string) {
 	t.Helper()
 	if report.OK {
@@ -198,6 +336,27 @@ func assertMonitorNoProof(t *testing.T, report ActiveReport, taskID, sessionID s
 		}
 	}
 	t.Fatalf("missing monitor proof finding for %s/%s in %+v", taskID, sessionID, report.Findings)
+}
+
+func assertProviderLifecycleMissing(t *testing.T, report ActiveReport, taskID, sessionID, externalID, expected string) {
+	t.Helper()
+	if report.OK {
+		t.Fatalf("report OK, want provider lifecycle finding: %+v", report)
+	}
+	if report.Summary.ProviderLifecycleMissing != 1 {
+		t.Fatalf("provider lifecycle missing=%d, want 1 in %+v", report.Summary.ProviderLifecycleMissing, report)
+	}
+	for _, finding := range report.Findings {
+		if finding.Kind == "provider_session_missing_lifecycle_checkpoint" &&
+			finding.TaskID == taskID &&
+			finding.SessionID == sessionID &&
+			finding.ExternalSessionID == externalID &&
+			finding.ExpectedCheckpoint == expected &&
+			finding.Action == "record_provider_event_checkpoint" {
+			return
+		}
+	}
+	t.Fatalf("missing provider lifecycle finding for %s/%s in %+v", taskID, sessionID, report.Findings)
 }
 
 func newReconcileTestStore(t *testing.T) *store.Store {

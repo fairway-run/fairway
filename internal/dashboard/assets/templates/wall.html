@@ -12,6 +12,7 @@
 {{if .ActiveReport.Summary.StaleCheckpoints}}<span>{{.ActiveReport.Summary.StaleCheckpoints}} stale checkpoint(s)</span>{{end}}
 {{if .ActiveReport.Summary.MonitorSessionsNoProof}}<span>{{.ActiveReport.Summary.MonitorSessionsNoProof}} monitor proof warning(s)</span>{{end}}
 {{if .ActiveReport.Summary.MonitorResumeNeeded}}<span>{{.ActiveReport.Summary.MonitorResumeNeeded}} monitor resume needed</span>{{end}}
+{{if .ActiveReport.Summary.ProviderLifecycleMissing}}<span>{{.ActiveReport.Summary.ProviderLifecycleMissing}} provider lifecycle warning(s)</span>{{end}}
 </section>
 {{end}}
 {{if .Audit.HighRiskCount}}

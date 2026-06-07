@@ -136,6 +136,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   proof or a fresh bounded manual checkpoint. It also reports
   `monitor_completion_resume_needed` when monitors are complete, no active
   sessions/watchers remain, and ready work is waiting for the coordinator loop.
+  Provider sessions attached to tasks must also have a matching lifecycle
+  checkpoint: `active` for started/running, `awaiting_input` for waiting,
+  failed, stale, or no-progress, and `done` for completed.
 - `workflow check` composes git and active-work checks into the operating-model
   guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
   active reconciliation findings. Use `--mode deploy` before deploy/UAT work;
