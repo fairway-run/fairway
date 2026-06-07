@@ -129,9 +129,10 @@ These are product follow-ups found while using Fairway to coordinate the
 GPUaaS platform-foundation and Docusaurus portal tracks. Keep them here until
 they graduate into a release cut or an imported Fairway task queue.
 
-The immediate follow-ups are also available as an importable queue in
-`examples/fairway-adoption-improvements.yaml` so GPUaaS adoption can continue
-while Fairway improvements are assigned as their own bounded workstream.
+The immediate follow-ups are promoted into the active Fairway product backlog at
+`docs/roadmap/fairway-product-backlog.yaml`. The original
+`examples/fairway-adoption-improvements.yaml` remains source material for demos,
+fixtures, and adoption reference.
 
 ### Immediate When Needed
 

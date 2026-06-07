@@ -1,0 +1,1081 @@
+#
+# Fairway active product backlog.
+#
+# This file is promoted from examples/fairway-adoption-improvements.yaml after
+# the dashboard redesign queue closeout on 2026-06-07. The examples file remains
+# source material for demos and adoption fixtures; this roadmap file is the
+# project backlog target for `.fairway/config.toml`.
+#
+tasks:
+  - id: FW-101
+    title: Add prompt-file session launch path
+    kind: session-adapter
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/design/session-launch.md
+      - examples/session-adapters
+      - internal
+      - cmd
+    target_paths:
+      - cmd
+      - internal
+      - examples/session-adapters
+      - docs/design/session-launch.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: product-hardening
+    acceptance_checks:
+      - session launch supports a prompt-file based path or documented launcher convention
+      - dry-run output shows provider command, prompt file, transcript path, and session metadata
+      - launcher records a session without claiming a task
+      - docs explain how GPUaaS platform-foundation lanes should use the prompt-file path
+
+  - id: FW-102
+    title: Add dashboard gate-readiness drill-down
+    kind: dashboard
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/dashboard.md
+      - internal
+      - web
+    target_paths:
+      - internal
+      - web
+      - docs/design/dashboard.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: product-hardening
+    acceptance_checks:
+      - task detail shows which profile gates the task satisfies
+      - task detail shows counted evidence rows and remaining missing evidence reasons
+      - dashboard uses the same readiness evaluation logic as the CLI
+
+  - id: FW-103
+    title: Add SQLite busy retry for burst local writes
+    kind: store-hardening
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: storage
+    source_paths:
+      - internal
+      - docs/design/postgres-adapter.md
+      - docs/design/implementation-roadmap.md
+    target_paths:
+      - internal
+      - docs/config-reference.md
+      - docs/design/implementation-roadmap.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: reliability
+    acceptance_checks:
+      - SQLite store writes use a small busy timeout or retry policy
+      - burst evidence/review writes from scripts do not fail with SQLITE_BUSY under normal local use
+      - retry behavior is documented and remains bounded
+
+  - id: FW-104
+    title: Add store-level activity filters
+    kind: dashboard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/dashboard.md
+      - internal
+      - web
+    target_paths:
+      - internal
+      - web
+      - docs/design/dashboard.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: low
+    migration_type: product-hardening
+    acceptance_checks:
+      - activity queries support kind, task id, profile, and time-window filters at the store/API layer
+      - dashboard activity feed no longer needs to fetch a large mixed feed before filtering
+      - existing unfiltered activity view remains available
+
+  - id: FW-105
+    title: Add workstream pagination or expandable groups
+    kind: dashboard
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/dashboard.md
+      - internal
+      - web
+    target_paths:
+      - internal
+      - web
+      - docs/design/dashboard.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: low
+    migration_type: product-hardening
+    acceptance_checks:
+      - dashboard stays scannable when a profile or kind group has more than 50 tasks
+      - workstream sections can paginate, collapse, or expand without losing filter state
+      - default view still favors the most actionable active tasks
+
+  - id: FW-106
+    title: Preserve repeated task metadata flags in CLI add/update
+    kind: cli-hardening
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli
+    source_paths:
+      - cmd/fairway/main.go
+      - docs/design/cli.md
+      - docs/agent-guide.md
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - docs/design/cli.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: product-hardening
+    acceptance_checks:
+      - repeated metadata flags such as --acceptance preserve all supplied values
+      - add and update tests cover repeated acceptance values and comma-separated metadata values
+      - docs state which flags are repeatable and how repeated values are rendered in task detail
+
+  - id: FW-107
+    title: Align dashboard ready metric with CLI readiness
+    kind: dashboard
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard
+      - cmd/fairway/main.go
+      - docs/design/dashboard.md
+    target_paths:
+      - internal/dashboard
+      - internal/dashboard/server_test.go
+      - docs/design/dashboard.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: product-hardening
+    acceptance_checks:
+      - dashboard summary ready count uses the same dependency-aware readiness evaluator as `fairway ready`
+      - dashboard distinguishes open/todo backlog count from claimable ready count
+      - dashboard tests cover a blocked-by-dependency task that is todo but not ready
+      - GPUaaS platform-foundation dashboard and `fairway --json ready` agree on claimable task count
+
+  - id: FW-108
+    title: Add provider-neutral tmux transcript and checkpoint bridge
+    kind: session-adapter
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+      - examples/session-adapters
+      - cmd/fairway/main.go
+      - internal/session
+      - internal/store
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/session
+      - examples/session-adapters
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: provider-neutral-session-bridge
+    depends_on:
+      - FW-101
+    acceptance_checks:
+      - tmux-backed Codex, Claude, Gemini, and shell lanes can be registered with provider, role, task id, tmux pane, transcript path, pid, worktree, and branch in one repeatable command or adapter
+      - adapter captures or tails a transcript path that the dashboard and `task-detail` can surface without provider-specific APIs
+      - adapter records an initial checkpoint when a task is associated and documents a cadence for fresh checkpoints on long-running lanes
+      - session reconcile can mark missing tmux/PID sessions stale without changing task ownership
+      - docs include GPUaaS-style examples for Claude lanes that coordinate through Fairway state rather than provider chat
+
+  - id: FW-109
+    title: Add delegated provider session watcher adapter pattern
+    kind: session-adapter
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+      - examples/session-adapters
+      - cmd/fairway/main.go
+      - internal/store
+    target_paths:
+      - examples/session-adapters
+      - examples/session-adapters/provider-event.sh
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: delegated-provider-session-watcher
+    depends_on:
+      - FW-108
+    acceptance_checks:
+      - docs define how provider-specific runtime states such as waiting on approval, waiting on input, completed, failed, and stale map to Fairway sessions, checkpoints, evidence, or handoffs
+      - example adapter or documented convention covers delegated Codex thread monitoring without making Fairway core depend on Codex APIs
+      - watcher records `awaiting_input` checkpoints for delegated sessions that need approval or user input
+      - dashboard/task-detail/coordinator output can surface the session and latest checkpoint without provider-specific chat access
+      - docs state that task ownership, terminal gates, and merge readiness remain Fairway responsibilities
+
+  - id: FW-110
+    title: Add active provider-session readiness guard
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+      - examples/session-adapters/provider-event.sh
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/session
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/session
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: provider-session-readiness-guard
+    depends_on:
+      - FW-109
+    acceptance_checks:
+      - readiness/coordinator checks identify active external provider sessions that do not have a `started` provider-event checkpoint for their associated task
+      - guard output includes provider, external session id, role, task id, and the missing lifecycle checkpoint so the coordinator can repair state without provider-specific polling
+      - stale, waiting, failed, and completed provider sessions are evaluated against the documented lifecycle checkpoint rule instead of only session heartbeat state
+      - dashboard or task-detail surfaces the guard finding alongside existing session/checkpoint state
+      - tests cover active session without started checkpoint, active session with started checkpoint, waiting/stale checkpoint, and completed checkpoint cases
+
+  - id: FW-111
+    title: Add stale in-progress reconciliation and active-work watchdog
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sessions
+    source_paths:
+      - docs/agent-guide.md
+      - docs/design/session-launch.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/dashboard
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: stale-in-progress-active-work-reconcile
+    depends_on:
+      - FW-110
+    acceptance_checks:
+      - "`fairway reconcile active` reports active-work mismatches across sessions, tasks, checkpoints, evidence, parent tasks, and live provider attachments"
+      - coordinator/readiness output distinguishes `running session + terminal task`, `in_progress task + no running session`, `in_progress task with stale checkpoint/heartbeat`, and `external process/thread + no Fairway session` as separate findings
+      - reconcile report can run in dry-run mode and prints provider, session id, task id, task status, latest evidence result, latest checkpoint, and recommended action
+      - dashboard distinguishes active provider work from unattended `in_progress` queue state without implying someone is actively working
+      - dashboard banner shows the count of `in_progress` tasks with no live session or stale checkpoint
+      - optional fix mode can end stale sessions but does not automatically close or reopen tasks without explicit operator action
+      - pass/fail/partial evidence on an `in_progress` task creates a required status-decision finding until the operator marks done, blocked, todo, or an allowed follow-up state
+      - parent or backlog tasks in `in_progress` warn unless they have direct rollup evidence/checkpoint proving someone is producing a rollup artifact
+      - default config remains four-state, but docs define extension options such as `stale`, `needs_followup`, `waiting_for_prereq`, or `partial` for tracks that need partial-completion semantics
+      - tests cover stale running session on terminal task, unattended in-progress task, evidence-without-status-decision, active parent without rollup artifact, and clean active session cases
+
+  - id: FW-112
+    title: Add grouped subcommand help coverage
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli
+    source_paths:
+      - docs/design/cli.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - docs/design/cli.md
+    review_domains:
+      - governance
+    risk_level: low
+    migration_type: cli-help-usability
+    acceptance_checks:
+      - grouped commands accept `help`, `-h`, and `--help` without returning an unknown-subcommand error
+      - "`session --help` lists `upsert`, `status`, `end`, `reconcile`, and `launch`"
+      - dashboard, db, record, checkpoint, packet, watcher, tracker, and regression-pack help output lists valid subcommands or grouped command usage
+      - CLI smoke tests cover representative grouped help aliases
+      - docs/design/cli.md documents grouped help behavior
+
+  - id: FW-113
+    title: Add work-coverage audit for commits tasks and evidence
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: work-coverage-audit
+    source_paths:
+      - docs/design/coordinator-loop.md
+      - docs/design/schema.md
+      - docs/agent-guide.md
+      - cmd/fairway/main.go
+      - internal/store
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - docs/design/coordinator-loop.md
+      - docs/config-reference.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+    risk_level: medium
+    migration_type: work-coverage-audit
+    depends_on:
+      - FW-111
+    acceptance_checks:
+      - "`fairway audit work-coverage` compares recent commits, changed files, tasks, evidence, checkpoints, reviews, and configured source/target paths."
+      - Audit reports commits since a configurable base ref that do not mention or map to a Fairway task id.
+      - Audit reports changed files that are not covered by active or recently completed task source_paths or target_paths.
+      - Audit reports evidence artifacts that cannot be linked to a task and done tasks that have no evidence when evidence is required by config or profile.
+      - Audit reports tasks marked done or merge-ready while required review domains are missing.
+      - Audit supports `--since-ref`, `--since-duration`, `--task-id`, `--json`, and `--dry-run` without mutating task state.
+      - Documentation explains that the audit is advisory by default and should be used at task, review, deploy, and release boundaries.
+
+  - id: FW-114
+    title: Add CI and deploy failure learning audit
+    kind: readiness-guard
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: ci-learning-audit
+    source_paths:
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+      - docs/governance/review-guards.md
+      - cmd/fairway/main.go
+      - internal/store
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - docs/design/coordinator-loop.md
+      - docs/governance/review-guards.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: ci-deploy-learning-audit
+    depends_on:
+      - FW-113
+    acceptance_checks:
+      - Audit classifies failed CI, deploy, smoke, and UAT evidence as missed local gate, missed review gate, CI-environment-only failure, flaky runner/cache failure, or approval-gated blocker.
+      - Audit identifies failed pipeline/deploy evidence with no matching CI-FIX, CD-FIX, OPS-FIX, HARNESS-FIX, UAT-BUG, or DOC-FIX task.
+      - Audit can render a learning artifact template that records failure class, root cause, missed gate, expected local reproduction command, owner, and follow-up task.
+      - Review guidance requires tasks that touch CI scripts, release gates, YAML/JSON, generated artifacts, or promotion wiring to record exact verification commands.
+      - Tests cover deterministic script failure with no follow-up task, environment-only failure with follow-up task, and clean passed pipeline evidence.
+
+  - id: FW-115
+    title: Surface work-coverage and learning findings in dashboard
+    kind: dashboard
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/dashboard.md
+      - docs/design/coordinator-loop.md
+      - internal/dashboard
+      - internal/store
+    target_paths:
+      - internal/dashboard
+      - internal/dashboard/server_test.go
+      - docs/design/dashboard.md
+    review_domains:
+      - arch
+      - governance
+      - ui
+    risk_level: medium
+    migration_type: work-coverage-dashboard
+    depends_on:
+      - FW-113
+      - FW-114
+    acceptance_checks:
+      - Dashboard diagnostics shows counts for uncovered commits, uncovered changed files, orphan evidence, done-without-evidence, missing-review, and failed-CI-without-follow-up findings.
+      - Task detail shows whether a task covers recent changed files through source_paths or target_paths.
+      - Wall or diagnostics banner highlights high-risk coverage findings without obscuring normal ready/active/done task flow.
+      - Findings link to the relevant commit, task, evidence artifact, review record, or suggested follow-up command.
+      - Dashboard tests cover a clean repo, an uncovered commit, orphan evidence, and a failed CI evidence row without follow-up task.
+
+  - id: FW-116
+    title: Require backing monitor process for watcher and CI sessions
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: watchers
+    source_paths:
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/dashboard
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: watcher-lifecycle-readiness-guard
+    depends_on:
+      - FW-111
+      - FW-114
+    acceptance_checks:
+      - watcher and CI monitor sessions can record a backing process kind, automation id, pid, tmux pane, external run id, or explicit manual checkpoint window
+      - "`fairway reconcile active` reports monitor sessions that have no backing process/automation proof and no fresh bounded checkpoint"
+      - dashboard diagnostics distinguishes real active monitor work from stale monitor bookkeeping that only left a task in progress
+      - "watcher start or deploy-run monitor creation docs require proving the heartbeat/automation exists before leaving the task `in_progress`"
+      - tests cover a monitor with a valid backing automation, a monitor with no backing automation, and a manually bounded checkpoint that expires
+
+  - id: FW-117
+    title: Add release-run packet and release verification guard
+    kind: readiness-guard
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - docs/governance/release.md
+      - docs/release-notes.md
+      - CHANGELOG.md
+      - .github/workflows/release.yml
+      - .goreleaser.yaml
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/reconcile
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/reconcile
+      - docs/governance/release.md
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: release-run-readiness-guard
+    depends_on:
+      - FW-113
+      - FW-114
+      - FW-116
+    acceptance_checks:
+      - release-run packet captures version, tag, source SHA, release notes, changelog state, CI status, docs status, signing/notary status, release URL, Homebrew tap commit, and verification commands
+      - release-run workflow requires one Fairway task/checkpoint per release attempt and evidence for local checks, pushed main checks, tag push, release workflow result, public release state, asset access, and Homebrew fetch
+      - guard reports a failure when the Homebrew cask points to a version whose GitHub release is still draft or whose asset URLs return 404
+      - guard reports missing release notes or changelog updates before tag creation
+      - docs include exact v0.1.2 lessons learned, including publishing the draft release before treating the Homebrew cask as usable
+      - tests cover clean release-run, draft-release-with-public-cask, missing-release-notes, and failed-asset-url cases
+
+  - id: FW-118
+    title: Add monitor completion handback and next-action resume guard
+    kind: readiness-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: watchers
+    source_paths:
+      - docs/design/watchers.md
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+      - cmd/fairway/main.go
+      - internal/reconcile
+      - internal/dashboard
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/reconcile
+      - internal/dashboard
+      - docs/design/watchers.md
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: watcher-completion-handback
+    depends_on:
+      - FW-116
+    acceptance_checks:
+      - When a watcher or heartbeat closes the final monitored CI/deploy/UAT task, Fairway records an explicit handback checkpoint or next-action recommendation.
+      - Watcher completion produces a reusable coordinator continuation prompt when ready work remains, including working-memory path, queue config, completed monitor summary, and "continue unless stop condition applies" instruction.
+      - Provider-backed monitor integrations can send the continuation prompt to the owning coordinator/orchestrator session after all monitored items are reconciled.
+      - Coordinator/readiness output distinguishes "all monitors complete, no active sessions, ready work exists" from a genuinely idle/complete state.
+      - Dashboard diagnostics shows a resume-needed finding when monitors finish and the task queue has ready non-conflicting work.
+      - Agent guide documents that monitor completion is not terminal unless the operator explicitly marked the whole work block complete, and that CI/deploy monitor tooling must either send a continuation prompt or record why no continuation is safe.
+      - Tests cover all monitored tasks complete with ready work available, all monitored tasks complete with no ready work, and monitor completion followed by next branch push.
+
+  - id: FW-119
+    title: Add daily reports and retrospective dashboard view
+    kind: dashboard
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - internal/dashboard
+      - internal/store
+      - cmd/fairway/main.go
+    target_paths:
+      - internal/dashboard
+      - internal/dashboard/server_test.go
+      - internal/store
+      - cmd/fairway/main.go
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - docs/quickstart.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+      - ui
+    risk_level: medium
+    migration_type: dashboard-reports
+    depends_on:
+      - FW-104
+      - FW-105
+      - FW-118
+    acceptance_checks:
+      - "`/reports` opens a polished daily report for the local current day with date picker, today/yesterday/last-seven-days shortcuts, and URL-preserved filters."
+      - report summary separates delivery outcomes from monitor/deploy-run/watch bookkeeping so a high "done today" count is explainable.
+      - report shows completed tasks, moving tasks, created follow-ups, blocked/resolved tasks, evidence rows, reviews, and CI/deploy/UAT result summaries before any large table.
+      - lane outcome section groups work by role and domain/kind with representative task links, latest evidence links, and pagination or expandable groups for large days.
+      - CI/deploy/UAT timeline shows pipeline/deploy identifiers, source SHA or branch, environment, result, elapsed wait window when available, and generated follow-up tasks.
+      - "follow-up taxonomy groups `CI-FIX`, `CD-FIX`, `UAT-BUG`, `OPS-FIX`, `HARNESS-FIX`, and `DOC-FIX` tasks created during the report window."
+      - review/evidence section shows newly satisfied gates, failed or partial evidence, and done tasks still missing required review domains.
+      - drill-down task table is bounded, filterable, sortable, paginated, and supports include/exclude monitor/deploy-run bookkeeping.
+      - report exports Markdown, JSON, and CSV for the exact selected date range and filters.
+      - navigation links Wall, Board, Reports, Diagnostics, and task detail using the same dashboard shell and visual system.
+      - "page avoids raw data-dump presentation: stable summary cards, small status chips, clear section rhythm, no nested cards, and no oversized unbounded tables."
+      - tests cover local-day boundary behavior, monitor/deploy-run inclusion filters, role/domain grouping, follow-up taxonomy grouping, and export matching filtered browser scope.
+
+  - id: FW-120
+    title: Set up local Plane evaluation workspace
+    kind: tracker
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: tracker
+    source_paths:
+      - docs/design/issue-tracker-integrations.md
+      - docs/product.md
+      - examples/fairway-adoption-improvements.yaml
+    target_paths:
+      - docs/design/issue-tracker-integrations.md
+      - docs/operations/plane-local-evaluation.md
+      - examples/tracker-adapters/plane
+    review_domains:
+      - arch
+      - ops
+      - governance
+    risk_level: medium
+    migration_type: tracker-plane-local-evaluation
+    acceptance_checks:
+      - local Plane setup is documented with exact Docker/compose command, version/source used, URL, startup verification, shutdown, reset, and data persistence notes.
+      - a Fairway evaluation workspace/project is created in Plane with representative epics, tasks, follow-up tasks, labels, modules/cycles where available, comments, and links.
+      - evaluation records which Plane concepts map cleanly to Fairway task id, title, notes, parent, status, priority, role, domain, kind, review domains, acceptance checks, evidence links, and follow-up taxonomy.
+      - evaluation records which Plane concepts are planning-only and must not mutate Fairway execution state.
+      - credentials, tokens, cookies, and local secrets are not committed; any env file names are added to ignore rules if needed.
+      - setup can be repeated from a clean local machine without relying on hidden manual browser steps except initial admin account creation if Plane requires it.
+
+  - id: FW-121
+    title: Define provider-neutral external tracker adapter contract
+    kind: tracker
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: tracker
+    source_paths:
+      - docs/design/issue-tracker-integrations.md
+      - cmd/fairway/main.go
+      - internal/store
+    target_paths:
+      - docs/design/issue-tracker-integrations.md
+      - docs/design/cli.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/tracker
+      - internal/store
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: tracker-adapter-contract
+    depends_on:
+      - FW-120
+    acceptance_checks:
+      - tracker adapter contract defines provider-neutral operations for configure, dry-run import, link, export-status/comment, reconcile, and resolve external references.
+      - contract explicitly separates planning mirror operations from Fairway execution-state mutations.
+      - provider mapping supports Plane, Jira, and Linear concepts without hardcoding Plane-specific fields into Fairway core.
+      - tracker reconcile reports drift without mutating Fairway DB or remote tracker state unless an explicit apply command is added.
+      - tests cover provider registry, unsupported provider error handling, dry-run reconcile, and link persistence.
+
+  - id: FW-122
+    title: Add Plane tracker adapter spike
+    kind: tracker
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: tracker
+    source_paths:
+      - docs/design/issue-tracker-integrations.md
+      - docs/operations/plane-local-evaluation.md
+      - internal/tracker
+      - cmd/fairway/main.go
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/tracker/plane
+      - examples/tracker-adapters/plane
+      - docs/design/issue-tracker-integrations.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - backend
+      - governance
+    risk_level: medium
+    migration_type: tracker-plane-adapter-spike
+    depends_on:
+      - FW-121
+    acceptance_checks:
+      - Plane adapter can dry-run export a bounded Fairway task set to Plane issue payloads with field mapping visible before write.
+      - Plane adapter can create or update Plane issues for a small evaluation set while storing Fairway tracker links for created external issue ids and URLs.
+      - Plane adapter can export a completion/blocker/evidence summary as a Plane comment or equivalent planning-surface update without changing Fairway execution state.
+      - Plane adapter can import explicitly selected Plane issues into Fairway tasks only through an operator-driven dry-run/apply flow.
+      - adapter configuration and credentials come from environment or OS credential store, not committed config.
+      - spike report states what should generalize to Jira/Linear and what remains Plane-specific.
+
+  - id: FW-123
+    title: Add provider usage accounting telemetry model
+    kind: telemetry
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-usage
+    source_paths:
+      - docs/design/session-launch.md
+      - docs/design/schema.md
+      - docs/agent-guide.md
+      - examples/session-adapters
+    target_paths:
+      - docs/design/provider-usage-accounting.md
+      - docs/design/schema.md
+      - docs/agent-guide.md
+      - examples/session-adapters/provider-event.sh
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: provider-usage-accounting
+    depends_on:
+      - FW-118
+    acceptance_checks:
+      - provider usage accounting uses provider-specific adapters that emit normalized Fairway usage events; Fairway core does not parse every provider transcript or poll provider APIs directly.
+      - usage model defines provider-neutral fields for provider, external session id, task id, started token snapshot, completed token snapshot, derived delta, provider-reported total, elapsed time, and confidence/source.
+      - Codex is treated as the first concrete adapter and captures cached input tokens when available so reports can show cache ratio and distinguish cached-heavy tasks from fully uncached work.
+      - model supports providers that expose explicit per-run usage and providers that only expose a running total by recording start/end snapshots without requiring Fairway to call provider APIs.
+      - session adapters can record usage checkpoints or evidence without storing prompts, transcripts, secrets, model inputs, or other sensitive content.
+      - task detail, reports, and dashboard summaries can show token usage per task/session when data exists and show unknown when it does not; unavailable values are not reported as zero.
+      - design explains how usage can later roll up by epic, role, provider, day, task kind, validation phase, and external tracker issue without making token usage a completion gate.
+      - reports can identify expensive task classes and guide follow-up improvements such as scripts, runbooks, prompts, adapters, dashboards, or workflow changes.
+      - implementation, if included, has schema migration/backward compatibility tests and does not break existing agent_sessions or task_evidence rows.
+
+  - id: FW-124
+    title: Add Codex provider usage adapter
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-usage
+    source_paths:
+      - docs/design/provider-usage-accounting.md
+      - docs/agent-guide.md
+      - examples/session-adapters/provider-event.sh
+      - cmd/fairway/main.go
+    target_paths:
+      - examples/session-adapters/codex-usage-adapter.sh
+      - docs/design/provider-usage-accounting.md
+      - docs/agent-guide.md
+      - cmd/fairway/main_test.go
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: codex-provider-usage-adapter
+    depends_on:
+      - FW-123
+      - FW-125
+    acceptance_checks:
+      - Codex usage adapter feeds normalized Fairway usage events through the provider-neutral OTel ingestion path when available, or through `fairway record usage` / `provider-event.sh` for `codex exec --json` and manual snapshots.
+      - Fairway core does not read Codex private SQLite files, auth files, transcripts, prompts, logs, or generated content.
+      - adapter accepts OTel `response.completed` token counts and `codex exec --json` `turn.completed.usage` when supplied, including input tokens, cached input tokens, output tokens, reasoning tokens, total tokens, model, session/thread id, and phase.
+      - adapter supports derived start/end token snapshots when only a running total is available, but the snapshot source is supplied by the provider surface or caller rather than scraped from private Codex state by Fairway core.
+      - unknown or unavailable Codex fields are recorded as unknown/null, not zero.
+      - docs explain the supported Codex usage ingestion paths and warn that private Codex local DB/log schemas are not stable API contracts.
+      - tests cover provider-reported cached-token ingestion, derived snapshot ingestion, unknown values, and privacy rejection for prompt/token/content metadata.
+
+  - id: FW-125
+    title: Add provider-neutral OTel usage ingestion
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-usage
+    source_paths:
+      - docs/design/provider-usage-accounting.md
+      - examples/session-adapters/provider-event.sh
+      - cmd/fairway/main.go
+      - internal/store
+    target_paths:
+      - examples/session-adapters/provider-otel-ingest.sh
+      - docs/design/provider-usage-accounting.md
+      - docs/agent-guide.md
+      - cmd/fairway/main_test.go
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: provider-otel-usage-ingestion
+    depends_on:
+      - FW-123
+    acceptance_checks:
+      - OTel usage ingestion accepts provider-supported OTLP logs, metrics, or traces and emits normalized Fairway usage records through `fairway record usage` or `provider-event.sh`.
+      - ingestion maps provider, Fairway task/session/correlation id, provider request/session id, model, event timestamp, input tokens, cached/cache-read tokens, cache-creation tokens, output tokens, reasoning tokens when available, total tokens, cost when available, source, and confidence.
+      - Fairway task context is carried by resource attributes such as `fairway.task_id`, `fairway.session_id`, `fairway.role`, and `fairway.track` rather than provider-specific private state.
+      - ingestion explicitly does not require prompt logging, tool-body logging, raw API body logging, auth-token capture, transcript capture, or generated-content capture.
+      - unavailable token fields remain unknown/null and are not reported as zero.
+      - docs define the provider-neutral OTel contract and explain how Codex and Claude provider mappings plug into it.
+      - tests cover at least one Codex-shaped OTel usage event, one Claude-shaped OTel usage event, unknown fields, and rejection of sensitive prompt/token/content metadata.
+
+  - id: FW-126
+    title: Add Claude Code OTel usage mapping
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-usage
+    source_paths:
+      - docs/design/provider-usage-accounting.md
+      - examples/session-adapters/provider-otel-ingest.sh
+    target_paths:
+      - examples/session-adapters/provider-otel-ingest.sh
+      - docs/design/provider-usage-accounting.md
+      - docs/agent-guide.md
+      - cmd/fairway/main_test.go
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: claude-code-otel-usage-mapping
+    depends_on:
+      - FW-125
+    acceptance_checks:
+      - Claude Code OTel mapping captures `claude_code.token.usage`, `claude_code.cost.usage`, and API request token attributes when present.
+      - mapping records input tokens, output tokens, cache-read tokens, cache-creation tokens, model, request id, cost, session id, and query source when available.
+      - mapping keeps raw prompt, raw tool, and raw API body telemetry disabled for usage accounting.
+      - docs include Claude Code environment variable guidance for usage-only telemetry.
+
+  - id: FW-127
+    title: Add Fairway work batch model for shared validation
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordination
+    source_paths:
+      - docs/agent-guide.md
+      - docs/design
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - docs/design/work-batch-model.md
+      - docs/agent-guide.md
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+      - cmd/fairway/main_test.go
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: fairway-work-batch-model
+    depends_on:
+      - FW-116
+      - FW-118
+    acceptance_checks:
+      - Fairway defines a work batch as the implementation, validation, review, and deploy-run unit that can contain multiple granular Fairway tasks sharing one branch, worktree, CI run, and evidence set.
+      - CLI supports creating a batch, adding/removing tasks, recording batch evidence, linking a deploy-run or pipeline id, and showing task-to-batch evidence mapping.
+      - Dashboard/reporting distinguishes granular task count from batch count so operators can see when too many small tasks are creating duplicate CI cycles.
+      - Batch plan records included task ids, branch/worktree, shared validation commands, review domains, rollback/split criteria, and expected CI/deploy run.
+      - Individual Fairway tasks still close independently, but may reference the same batch evidence when the evidence clearly validates each task.
+      - Agent guide instructs orchestrators to batch by shared validation surface and to avoid one branch/CI run per small task unless review, rollback, ownership, or dependency risk requires isolation.
+      - Reconcile/audit warns when many related tasks in the same domain are producing separate CI monitors that could have been a batch.
+
+  - id: FW-128
+    title: Add CI monitor utility handback adapter
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: watchers
+    source_paths:
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/design/work-batch-model.md
+      - examples/session-adapters
+      - cmd/fairway/main.go
+      - internal/reconcile
+    target_paths:
+      - examples/session-adapters/ci-monitor.sh
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/design/work-batch-model.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/reconcile
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - backend
+    risk_level: medium
+    migration_type: ci-monitor-utility-handback
+    depends_on:
+      - FW-116
+      - FW-118
+      - FW-127
+    acceptance_checks:
+      - CI/deploy/UAT monitor polling can run as a utility process without keeping a provider agent conversation active.
+      - Utility records monitor session proof with monitor kind, automation id or external run id, poll command, source SHA, task id, and expected completion window.
+      - Utility records heartbeat/checkpoint updates while waiting and closes the monitor session when the external run finishes.
+      - Utility attaches pass/fail/timeout evidence and creates or recommends `CI-FIX`, `CD-FIX`, `UAT-BUG`, `OPS-FIX`, `HARNESS-FIX`, or `DOC-FIX` follow-up tasks for actionable failures.
+      - Utility emits a reusable coordinator continuation prompt or resume-needed finding after the final monitored run completes and ready work remains.
+      - "Agent docs state the operating rule: agents do not poll CI; watcher utilities poll CI and emit Fairway handbacks; agents act on handbacks."
+      - Work batch docs explain that batching related tasks plus utility monitoring is the preferred path for reducing CI churn and provider-token spend.
+      - Tests cover pass, fail, timeout/stale, ready-work handback, no-ready-work completion, and missing monitor backing proof.
+
+  - id: FW-129
+    title: Add tool-first utility adapter contract
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: utilities
+    source_paths:
+      - docs/agent-guide.md
+      - docs/design/watchers.md
+      - docs/design/cli.md
+      - examples/session-adapters
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/reconcile
+      - internal/dashboard
+    target_paths:
+      - docs/agent-guide.md
+      - docs/design/watchers.md
+      - docs/design/cli.md
+      - examples/session-adapters/utility-event.sh
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/store
+      - internal/reconcile
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - backend
+    risk_level: medium
+    migration_type: tool-first-utility-adapter-contract
+    depends_on:
+      - FW-116
+      - FW-118
+      - FW-128
+    acceptance_checks:
+      - Fairway defines a provider-neutral utility adapter contract for deterministic, repetitive, or pollable work that should not consume provider-agent tokens.
+      - Utility events can record task id, batch id, role, utility name, command, external run id, started/heartbeat/completed/failed/timeout/stale state, evidence artifacts, and recommended next action.
+      - CLI or adapter example supports emitting utility handbacks into existing session, checkpoint, evidence, and reconcile surfaces without creating provider-specific dependencies.
+      - Dashboard and reconcile output distinguish utility work from active agent/provider work and show when a human or agent decision is required.
+      - "Docs define the operating rule: use tools/scripts for deterministic or pollable work, reports/classifiers for repetitive summarization, agents for judgment, and high-context agents for architecture/release/risk."
+      - Examples cover at least CI monitoring, codegen drift check, release asset check, and registry/image freshness check as utility-shaped workflows.
+      - Tests cover utility pass, fail, timeout/stale, next-action handback, evidence attachment, and no active provider session required.
+
+  - id: FW-130
+    title: Add Fairway orchestration controller loop
+    kind: epic
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: orchestration
+    source_paths:
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+      - docs/design/watchers.md
+      - docs/design/work-batch-model.md
+      - cmd/fairway/main.go
+      - internal/reconcile
+      - internal/dashboard
+    target_paths:
+      - docs/design/coordinator-loop.md
+      - docs/agent-guide.md
+      - docs/design/cli.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/reconcile
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - backend
+    risk_level: high
+    migration_type: fairway-orchestration-controller-loop
+    depends_on:
+      - FW-118
+      - FW-127
+      - FW-128
+      - FW-129
+    acceptance_checks:
+      - Fairway defines an orchestration controller that reads tasks, sessions, watchers, batches, reviews, monitor handbacks, worktrees, and checkpoints.
+      - Controller emits a deterministic next-action plan in dry-run mode without mutating task state.
+      - Plan classifies current state as active, waiting, blocked, stale, complete, ready, review-gated, approval-gated, or utility-gated.
+      - Controller can recommend or start configured utility monitors for deterministic/pollable work when policy allows.
+      - Controller recommends batching when related ready tasks share domain, validation commands, review path, branch/worktree, or expected CI/deploy-run.
+      - Controller emits provider continuation prompts only when judgment, implementation, review, or human decision is required.
+      - Controller enforces stop conditions before destructive, production-impacting, credential, approval-gated, review-gated, or unsafe-to-infer actions.
+      - Dashboard shows the current orchestration recommendation and why the lane is active, waiting, paused, or idle.
+      - Tests cover CI-complete-ready-work, all-work-complete, blocked-by-review, blocked-by-approval, stale-session-reconcile, batch-recommended, utility-monitor-start, and dry-run-no-mutation paths.
+
+  - id: FW-131
+    title: Add lane closeout guard for branch and worktree lifecycle
+    kind: workflow-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: workflow
+    source_paths:
+      - docs/agent-guide.md
+      - docs/design/work-batch-model.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - internal/git
+      - internal/reconcile
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - docs/agent-guide.md
+      - docs/design/cli.md
+      - docs/design/work-batch-model.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/git
+      - internal/reconcile
+      - internal/store
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - backend
+    risk_level: high
+    migration_type: lane-branch-worktree-closeout
+    depends_on:
+      - FW-111
+      - FW-113
+      - FW-127
+      - FW-130
+    acceptance_checks:
+      - Fairway defines `task done != lane done` as an enforceable workflow invariant in docs and CLI output.
+      - Closeout dry-run reports task status, evidence, required reviews, commit association, CI/deploy/UAT evidence, session/watchers, branch merge state, remote branch state, and worktree cleanliness for a role lane and task or batch.
+      - Closeout distinguishes safe-to-delete merged branches from branches that must be preserved because of pending review, pending CI, blocked dependency, release preservation, follow-up batch, or explicit operator reason.
+      - Closeout can run in advisory mode before a lane claims the next implementation task and emits a finding when the previous lane task is done but branch/worktree/session cleanup is incomplete.
+      - Optional apply mode deletes only verified merged remote branches and refuses destructive cleanup unless the task or batch is merge-ready, merged into the configured main branch, and cleanly reconciled.
+      - Coordinator/preflight output includes lane closeout findings and blocks or warns before dispatching new implementation work on a lane with unresolved branch/worktree cleanup debt.
+      - Dashboard diagnostics or lane detail surfaces closeout debt, including stale done-task branches, dirty worktrees, and preserved-branch reasons.
+      - Tests cover clean closeout, review-gated closeout, CI-pending closeout, preserved branch with reason, dirty worktree, unmerged branch, safe merged remote deletion dry-run, and refusal to delete unmerged branches.

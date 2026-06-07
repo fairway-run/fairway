@@ -20,6 +20,17 @@ until this closeout decision is reviewed. After review, set the active
 `queue_source` to the next approved queue or to `inline` if the DB is the active
 source of truth.
 
+Review status:
+
+- Architecture: approved on 2026-06-07.
+- Governance: approved on 2026-06-07.
+
+Active queue replacement:
+
+- Promoted backlog: `docs/roadmap/fairway-product-backlog.yaml`.
+- Local config target: `yaml:docs/roadmap/fairway-product-backlog.yaml`.
+- Source material retained at `examples/fairway-adoption-improvements.yaml`.
+
 ## Shipped State
 
 The dashboard is now the unified local operator surface:
