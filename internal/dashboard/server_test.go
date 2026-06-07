@@ -691,6 +691,85 @@ func TestBoardRendersProfileGateReadiness(t *testing.T) {
 	}
 }
 
+func TestTaskDetailRendersProfileGateReadiness(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "Has source doc evidence", Kind: "content-entry", Role: "docs"},
+		{ID: "T-002", Title: "Missing source doc evidence", Kind: "content-entry", Role: "docs"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{
+		CommandText:  "make docs-portal-check",
+		Result:       "pass",
+		ArtifactPath: "packages/docs",
+		ArtifactType: "source-doc-check",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{
+		CommandText:  "make docs-link-check",
+		Result:       "pass",
+		ArtifactPath: "docs/source-map.json",
+		ArtifactType: "source-doc-check",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.WorkstreamProfiles = []config.WorkstreamProfile{{
+		Name:      "docusaurus-portal",
+		TaskKinds: []string{"content-entry"},
+		Gates: []config.WorkstreamProfileGate{{
+			Name:                  "source-docs-linked",
+			Group:                 "content coverage",
+			Mode:                  "blocking",
+			EvidenceType:          "source-doc-check",
+			RequiredEvidenceCount: 2,
+			AcceptedResults:       []string{"pass"},
+			ArtifactRequired:      true,
+			Description:           "Each migrated page links back to source docs.",
+		}},
+	}}
+	server := New(s, cfg, []string{"docs"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Gate Readiness",
+		"docusaurus-portal / source-docs-linked",
+		"Each migrated page links back to source docs.",
+		"source-doc-check",
+		"satisfied",
+		"<td>2</td><td>satisfied</td>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("satisfied task gate detail missing %q:\n%s", want, body)
+		}
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/tasks/T-002", nil)
+	rec = httptest.NewRecorder()
+	server.task(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{
+		"Gate Readiness",
+		"docusaurus-portal / source-docs-linked",
+		"missing",
+		"needs 2 matching evidence row(s), found 0",
+		"matching rows must include evidence artifacts",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing task gate detail missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestBoardDiagnosticsRendersCleanCoverageAndLearningCounts(t *testing.T) {
 	ctx := context.Background()
 	root := initDashboardGitRepo(t)

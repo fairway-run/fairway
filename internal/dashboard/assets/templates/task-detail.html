@@ -55,6 +55,14 @@
 </dl>
 </article>
 <article class="detail-panel wide">
+<h2>Gate Readiness</h2>
+{{if .TaskGates}}
+<table class="detail-table"><thead><tr><th>Gate</th><th>Mode</th><th>Evidence</th><th>Status</th><th>Matched</th><th>Reason</th></tr></thead><tbody>
+{{range .TaskGates}}<tr><td><b>{{.Profile}} / {{.Name}}</b>{{if .Description}}<br><span class="muted">{{.Description}}</span>{{end}}</td><td>{{.Mode}}</td><td>{{.EvidenceType}}</td><td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td><td>{{.Matching}}</td><td>{{if .Reasons}}{{range .Reasons}}{{.}} {{end}}{{else}}satisfied{{end}}</td></tr>{{end}}
+</tbody></table>
+{{else}}<p class="muted">no profile gates apply to this task</p>{{end}}
+</article>
+<article class="detail-panel wide">
 <h2>Coverage Diagnostics</h2>
 {{if .Audit.WorkCoverageError}}<p class="muted">work coverage audit unavailable: {{.Audit.WorkCoverageError}}</p>{{else}}
 {{if .Audit.WorkCoverage.Findings}}

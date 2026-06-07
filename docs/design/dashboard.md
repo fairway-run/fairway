@@ -221,6 +221,9 @@ shows:
 - task status, owner, review status, and descendant rollup,
 - CSRF-protected claim and non-terminal status update controls,
 - metadata and source/target paths,
+- task-scoped profile gate readiness, including matching evidence counts and
+  missing evidence reasons from the same evaluator used by `merge-ready` and
+  board gate rollups,
 - notes, dependencies, and acceptance checks,
 - transition history,
 - evidence,

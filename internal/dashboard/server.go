@@ -299,11 +299,23 @@ type TaskDetailViewData struct {
 	Usage                []store.ProviderUsage
 	UsageRollups         []store.UsageRollup
 	Batches              []store.WorkBatch
+	TaskGates            []TaskGateStatus
 	Rollup               Rollup
 	CSRFToken            string
 	States               []string
 	Audit                AuditDiagnostics
 	ActiveFindings       []reconcile.ActiveFinding
+}
+
+type TaskGateStatus struct {
+	Profile      string
+	Name         string
+	Mode         string
+	EvidenceType string
+	Description  string
+	Status       string
+	Matching     int
+	Reasons      []string
 }
 
 type AuditDiagnostics struct {
@@ -1796,6 +1808,43 @@ func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, 
 	return statuses, nil
 }
 
+func (s *Server) taskGateStatuses(task store.Task, evidence []store.Evidence) []TaskGateStatus {
+	var statuses []TaskGateStatus
+	now := time.Now().UTC()
+	for _, profile := range s.cfg.WorkstreamProfiles {
+		if len(profile.Gates) == 0 || !profileAppliesToTask(profile, task) {
+			continue
+		}
+		for _, gate := range profile.Gates {
+			if !gateAppliesToTask(gate, task) {
+				continue
+			}
+			ok, matching, reasons := evaluateGateForTask(gate, evidence, now)
+			status := TaskGateStatus{
+				Profile:      profile.Name,
+				Name:         gate.Name,
+				Mode:         gate.Mode,
+				EvidenceType: gate.EvidenceType,
+				Description:  gate.Description,
+				Status:       "satisfied",
+				Matching:     matching,
+			}
+			if !ok {
+				status.Status = "missing"
+				status.Reasons = reasons
+			}
+			statuses = append(statuses, status)
+		}
+	}
+	sort.SliceStable(statuses, func(i, j int) bool {
+		if statuses[i].Profile != statuses[j].Profile {
+			return statuses[i].Profile < statuses[j].Profile
+		}
+		return statuses[i].Name < statuses[j].Name
+	})
+	return statuses
+}
+
 func gateGroupLabel(profile config.WorkstreamProfile, gate config.WorkstreamProfileGate) string {
 	if strings.TrimSpace(gate.Group) != "" {
 		return strings.TrimSpace(gate.Group)
@@ -2085,6 +2134,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Usage:                usageEvents,
 		UsageRollups:         usageRollups,
 		Batches:              batches,
+		TaskGates:            s.taskGateStatuses(task, evidence),
 		Rollup:               rollups[task.Definition.ID],
 		CSRFToken:            s.csrfToken,
 		States:               dashboardMutableStates(s.cfg),
