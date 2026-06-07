@@ -328,6 +328,8 @@ type PendingMigration struct {
 	Name    string `json:"name"`
 }
 
+const sqliteBusyTimeoutMillis = 5000
+
 func Open(ctx context.Context, path, projectID string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -337,6 +339,10 @@ func Open(ctx context.Context, path, projectID string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeoutMillis)); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -425,6 +431,9 @@ func PendingMigrations(ctx context.Context, path string) ([]PendingMigration, er
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeoutMillis)); err != nil {
+		return nil, err
+	}
 	entries, err := migrationFS.ReadDir("migrations")
 	if err != nil {
 		return nil, err

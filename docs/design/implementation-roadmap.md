@@ -164,11 +164,12 @@ fixtures, and adoption reference.
      CLI to understand why.
 
 4. SQLite busy handling for burst local writes
-   - Current state: multiple Fairway CLI writes issued at the same time can hit
-     `SQLITE_BUSY`; serial reruns succeed.
-   - Next pressure point: add a small busy timeout/retry policy around store
-     writes so shell scripts or orchestrators can record evidence/reviews in
-     quick succession without manual retry.
+   - Current state: SQLite opens use WAL mode and a bounded 5s busy timeout so
+     short local write bursts wait for the current writer instead of failing
+     immediately with `SQLITE_BUSY`.
+   - Next pressure point: if operators still see lock contention under heavier
+     multi-agent scripts, add command-level retry/reporting around the specific
+     high-volume write paths.
    - Trigger: adoption tracks commonly record several evidence or review rows
      from scripts, or users see database lock errors during normal local use.
 

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestClaim_AllowsExactlyOneWinner(t *testing.T) {
@@ -87,6 +88,64 @@ func TestTaskDetail_AllowsEvidenceWithoutArtifact(t *testing.T) {
 	}
 	if len(evidence) != 1 || evidence[0].ArtifactPath != "" || evidence[0].Result != "pass" {
 		t.Fatalf("evidence=%+v, want one artifact-less pass row", evidence)
+	}
+}
+
+func TestSQLiteBusyTimeoutAllowsBurstEvidenceWrite(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	first, err := Open(ctx, dbPath, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	if err := first.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Evidence", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Open(ctx, dbPath, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+
+	conn, err := first.db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	releaseDone := make(chan error, 1)
+	time.AfterFunc(100*time.Millisecond, func() {
+		_, err := conn.ExecContext(ctx, "COMMIT")
+		releaseDone <- err
+	})
+	writeDone := make(chan error, 1)
+	go func() {
+		writeDone <- second.RecordEvidence(ctx, "T-001", Evidence{CommandText: "go test ./...", Result: "pass"})
+	}()
+
+	select {
+	case err := <-writeDone:
+		if err != nil {
+			t.Fatalf("write after busy wait: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("write did not complete after lock release")
+	}
+	if err := <-releaseDone; err != nil {
+		t.Fatalf("release lock: %v", err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, evidence, _, _, err := first.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence) != 1 {
+		t.Fatalf("evidence rows=%d, want 1", len(evidence))
 	}
 }
 
