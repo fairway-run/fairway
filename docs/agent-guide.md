@@ -667,6 +667,65 @@ For deploy work, create one deploy-run task for the attempt and create
 `CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or
 `DOC-FIX-*` follow-ups only for actionable findings.
 
+## Lane Closeout Rule
+
+Fairway task completion is not the same as lane completion. The older lane
+worktree model had an important invariant:
+
+```text
+finish task -> review/merge -> clean lane -> next task
+```
+
+Fairway must preserve that invariant. A lane should not claim the next
+implementation task just because the current task is marked `done`. A lane is
+ready for the next task only when its current task or batch has a recorded
+closeout decision:
+
+- task status is decided: done, blocked, todo/reset, or explicit follow-up;
+- evidence is attached and acceptance checks are accounted for;
+- required reviews are approved, waived with reason, or the task remains
+  review-gated;
+- the task or batch commit exists and is associated with the work;
+- CI/deploy/UAT result is recorded when that work boundary applies;
+- branch is merged and deleted from configured remotes, or intentionally
+  preserved with a reason;
+- role worktree is clean and on the expected branch;
+- provider sessions, watchers, and monitor utilities are ended or intentionally
+  still running with fresh checkpoints;
+- `fairway reconcile active --dry-run` and the relevant workflow check are
+  clean or have explicit findings.
+
+Treat this as the lane boundary:
+
+```text
+task done != lane done
+```
+
+If a branch or worktree must remain after the task is done, record why. Common
+valid reasons are review pending, CI pending, blocked dependency, preserved
+release branch, follow-up batch, or operator-approved investigation. Branches
+left behind without one of those reasons are cleanup debt.
+
+Until Fairway has a dedicated closeout command, use this manual sequence before
+moving a lane to the next implementation task:
+
+```bash
+fairway task-detail <task-id>
+fairway merge-ready <task-id>
+fairway workflow check --mode close --require-clean
+fairway reconcile active --dry-run
+git branch --contains <task-commit>
+git branch -r --contains <task-commit>
+```
+
+Then merge and delete the task branch, or record a preserve reason as evidence
+or checkpoint. The target product command is expected to be shaped like:
+
+```bash
+fairway lane closeout --role <role> --task-id <task-id> --dry-run
+fairway lane closeout --role <role> --task-id <task-id> --apply
+```
+
 ## Claim Work
 
 ```bash

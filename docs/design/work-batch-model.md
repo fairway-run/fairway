@@ -128,3 +128,31 @@ The first implementation exposes:
 - `/reports` batch count and batched-task count;
 - `fairway audit work-coverage` `work_batch_candidate` findings for related
   same-domain tasks with separate CI/deploy evidence and no existing batch.
+
+## Batch And Lane Closeout
+
+A completed task or batch is not enough to release a lane for new work. The
+lane is available only after branch, worktree, review, CI/deploy, session, and
+remote cleanup state are reconciled.
+
+For a batch, closeout should prove:
+
+- all member tasks have terminal or explicit follow-up status;
+- shared evidence is mapped to every member task that it validates;
+- required reviews for every member task are approved or explicitly waived;
+- the batch branch is merged, or preserved with a recorded reason;
+- configured remote branches are deleted after merge, or preserved with a
+  recorded reason;
+- the role worktree is clean and no longer carrying unmerged batch state;
+- related sessions, watchers, and utility monitors are ended or have fresh
+  intentional checkpoints.
+
+This prevents a successful batch from leaving behind branch cleanup work that
+is larger than the original implementation. The intended product surface is a
+dedicated closeout command that can run in dry-run mode before applying branch
+or session cleanup:
+
+```bash
+fairway lane closeout --role <role> --batch-id <batch-id> --dry-run
+fairway lane closeout --role <role> --batch-id <batch-id> --apply
+```

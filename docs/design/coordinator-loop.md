@@ -26,7 +26,9 @@ fairway coordinator tick
    required review domains,
 9. advisory CI/deploy learning audit for failed pipeline, deploy, smoke, and
    UAT evidence without follow-up work,
-10. release-run verification for release attempts, including public release
+10. lane closeout checks for done/reviewed work that still has unmerged,
+    undeleted, dirty, or intentionally preserved branch/worktree state,
+11. release-run verification for release attempts, including public release
     state, asset URLs, and Homebrew fetch evidence.
 
 `status` prints the current operating board:
@@ -56,6 +58,9 @@ like an operations controller:
 - classify work as active, waiting, blocked, stale, complete, or ready;
 - start configured utility monitors for deterministic/pollable work;
 - recommend batching when related tasks share validation surfaces;
+- block or warn before dispatching new implementation work on a lane whose
+  previous task is done but whose branch/worktree/session cleanup is not
+  closed;
 - emit continuation prompts only when provider judgment or implementation is
   needed;
 - enforce stop conditions before destructive, production-impacting, credential,

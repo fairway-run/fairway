@@ -1022,3 +1022,52 @@ tasks:
       - Controller enforces stop conditions before destructive, production-impacting, credential, approval-gated, review-gated, or unsafe-to-infer actions.
       - Dashboard shows the current orchestration recommendation and why the lane is active, waiting, paused, or idle.
       - Tests cover CI-complete-ready-work, all-work-complete, blocked-by-review, blocked-by-approval, stale-session-reconcile, batch-recommended, utility-monitor-start, and dry-run-no-mutation paths.
+
+  - id: FW-131
+    title: Add lane closeout guard for branch and worktree lifecycle
+    kind: workflow-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: workflow
+    source_paths:
+      - docs/agent-guide.md
+      - docs/design/work-batch-model.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - internal/git
+      - internal/reconcile
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - docs/agent-guide.md
+      - docs/design/cli.md
+      - docs/design/work-batch-model.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - internal/git
+      - internal/reconcile
+      - internal/store
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - backend
+    risk_level: high
+    migration_type: lane-branch-worktree-closeout
+    depends_on:
+      - FW-111
+      - FW-113
+      - FW-127
+      - FW-130
+    acceptance_checks:
+      - Fairway defines `task done != lane done` as an enforceable workflow invariant in docs and CLI output.
+      - Closeout dry-run reports task status, evidence, required reviews, commit association, CI/deploy/UAT evidence, session/watchers, branch merge state, remote branch state, and worktree cleanliness for a role lane and task or batch.
+      - Closeout distinguishes safe-to-delete merged branches from branches that must be preserved because of pending review, pending CI, blocked dependency, release preservation, follow-up batch, or explicit operator reason.
+      - Closeout can run in advisory mode before a lane claims the next implementation task and emits a finding when the previous lane task is done but branch/worktree/session cleanup is incomplete.
+      - Optional apply mode deletes only verified merged remote branches and refuses destructive cleanup unless the task or batch is merge-ready, merged into the configured main branch, and cleanly reconciled.
+      - Coordinator/preflight output includes lane closeout findings and blocks or warns before dispatching new implementation work on a lane with unresolved branch/worktree cleanup debt.
+      - Dashboard diagnostics or lane detail surfaces closeout debt, including stale done-task branches, dirty worktrees, and preserved-branch reasons.
+      - Tests cover clean closeout, review-gated closeout, CI-pending closeout, preserved branch with reason, dirty worktree, unmerged branch, safe merged remote deletion dry-run, and refusal to delete unmerged branches.
