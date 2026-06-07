@@ -174,6 +174,21 @@ needed for these utilities is:
 - usage reporting that attributes agent tokens only to judgment or execution
   work, not to utility polling.
 
+`examples/session-adapters/utility-event.sh` is the reusable event contract for
+those utilities. It accepts:
+
+- identity: task id, optional batch id, role, utility name, utility kind;
+- execution proof: command, external run id, automation id, source SHA,
+  expected manual window;
+- state: `started`, `heartbeat`, `completed`, `failed`, `timeout`, or `stale`;
+- output: artifact, artifact type, result, recommended next action, and
+  `--decision-required`.
+
+The adapter writes existing Fairway facts only: utility session rows,
+watcher lifecycle, checkpoints, evidence, and the final
+`reconcile active --dry-run` handback. It does not add provider dependencies or
+make task status/review/merge decisions.
+
 ## Packet Shape
 
 ```yaml

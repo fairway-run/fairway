@@ -173,6 +173,11 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   missing release status, and failed Homebrew fetch verification.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
+- Utility adapters such as `examples/session-adapters/utility-event.sh` and
+  `examples/session-adapters/ci-monitor.sh` are shell-level conventions over
+  existing Fairway commands, not new core subcommands. They should record
+  provider-neutral utility sessions, checkpoints, evidence, watcher lifecycle,
+  and handback output without making task status, review, or merge decisions.
 - `adoption artifact` is the generic readiness report. It uses configured
   workstream profile `route_samples` when no `--route` flags are provided and
   reports named profile gates plus evidence-backed gate evaluation. `parity

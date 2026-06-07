@@ -315,6 +315,28 @@ or re-summarizing raw logs in conversation. If a repeated workflow cannot be
 captured by a utility yet, create a Fairway backlog task for the missing tool
 surface rather than adding more provider-routing rules.
 
+Use the generic utility event adapter for deterministic checks that are not
+CI/deploy polling loops:
+
+```bash
+examples/session-adapters/utility-event.sh \
+  --task-id <task-id> \
+  --batch-id <batch-id> \
+  --utility-name codegen-drift \
+  --utility-kind codegen \
+  --command "make codegen-check" \
+  --external-run-id <run-or-scan-id> \
+  --source-sha "$(git rev-parse HEAD)" \
+  --artifact dist/codegen-drift.log \
+  --state completed \
+  --recommended-next-action "continue review; generated artifacts are clean"
+```
+
+Supported utility states are `started`, `heartbeat`, `completed`, `failed`,
+`timeout`, and `stale`. Terminal utility events record checkpoint state,
+evidence, watcher/session closure, and a `reconcile active --dry-run` handback.
+Use `--decision-required` when a human or agent must choose the next action.
+
 ## Provider Usage Accounting
 
 Provider usage is attribution and planning telemetry, not a completion gate.

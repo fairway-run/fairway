@@ -972,6 +972,167 @@ func TestCIMonitorAdapterLiveSmoke(t *testing.T) {
 	assertContains(t, sessions, "ended")
 }
 
+func TestUtilityEventAdapterDryRun(t *testing.T) {
+	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "utility-event.sh"))
+
+	started := runAdapter(t, script,
+		"--task-id", "T-001",
+		"--batch-id", "BATCH-001",
+		"--utility-name", "codegen-drift",
+		"--utility-kind", "codegen",
+		"--command", "make codegen-check",
+		"--external-run-id", "codegen-1",
+		"--source-sha", "abc123",
+		"--manual-until", "2026-06-07",
+		"--artifact", "dist/codegen.log",
+		"--state", "started",
+		"--dry-run",
+	)
+	for _, want := range []string{
+		"session upsert",
+		"--provider utility",
+		"--backend codegen-drift",
+		"--monitor-kind codegen",
+		"--external-run-id codegen-1",
+		"--poll-command",
+		"watcher start",
+		"checkpoint record T-001 --state active",
+		"utility=codegen-drift",
+		"work_batch=BATCH-001",
+		"source_sha=abc123",
+	} {
+		assertContains(t, started, want)
+	}
+
+	completed := runAdapter(t, script,
+		"--task-id", "T-001",
+		"--utility-name", "release-assets",
+		"--utility-kind", "release-asset",
+		"--command", "scripts/check-release-assets.sh",
+		"--external-run-id", "v0.1.3",
+		"--artifact", "dist/release-assets.md",
+		"--state", "completed",
+		"--recommended-next-action", "continue release checklist",
+		"--dry-run",
+	)
+	for _, want := range []string{
+		"checkpoint record T-001 --state done",
+		"record evidence T-001",
+		"--result pass",
+		"--artifact-type release-asset_utility",
+		"watcher finish release-assets-release-asset-v0.1.3 --result pass",
+		"session end release-assets-release-asset-v0.1.3 --status ended",
+		"utility_handback=release-assets kind=release-asset task=T-001 result=pass decision_required=false",
+		"recommended_next_action=continue release checklist",
+		"reconcile active --dry-run",
+	} {
+		assertContains(t, completed, want)
+	}
+
+	failed := runAdapter(t, script,
+		"--task-id", "T-001",
+		"--utility-name", "registry-freshness",
+		"--utility-kind", "registry",
+		"--command", "scripts/check-image-freshness.sh",
+		"--external-run-id", "registry-1",
+		"--state", "failed",
+		"--decision-required",
+		"--recommended-next-action", "create OPS-FIX for stale image",
+		"--dry-run",
+	)
+	for _, want := range []string{
+		"checkpoint record T-001 --state awaiting_input",
+		"--result fail",
+		"decision_required=true",
+		"utility_handback=registry-freshness kind=registry task=T-001 result=fail decision_required=true",
+	} {
+		assertContains(t, failed, want)
+	}
+
+	stale := runAdapter(t, script,
+		"--task-id", "T-001",
+		"--utility-name", "stale-branch-scan",
+		"--utility-kind", "stale-branch",
+		"--command", "git for-each-ref refs/heads",
+		"--state", "stale",
+		"--result", "blocked",
+		"--dry-run",
+	)
+	for _, want := range []string{
+		"checkpoint record T-001 --state awaiting_input",
+		"--result blocked",
+		"session end stale-branch-scan-stale-branch-T-001-stale-branch --status stale",
+		"utility_handback=stale-branch-scan kind=stale-branch task=T-001 result=stale",
+	} {
+		assertContains(t, stale, want)
+	}
+}
+
+func TestUtilityEventAdapterLiveSmoke(t *testing.T) {
+	repo := t.TempDir()
+	fairwayBin := filepath.Join(repo, "fairway")
+	build := exec.Command("go", "build", "-o", fairwayBin, ".")
+	build.Dir = mustGetwd(t)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fairway: %v\n%s", err, out)
+	}
+	runExternal := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(fairwayBin, args...)
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("fairway %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	runExternal("init")
+	runExternal("add", "T-001", "--title", "Release asset check", "--role", "ops")
+
+	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "utility-event.sh"))
+	for _, args := range [][]string{
+		{
+			"--task-id", "T-001",
+			"--utility-name", "release-assets",
+			"--utility-kind", "release-asset",
+			"--command", "scripts/check-release-assets.sh",
+			"--external-run-id", "v0.1.3",
+			"--artifact", "dist/release-assets.md",
+			"--state", "started",
+		},
+		{
+			"--task-id", "T-001",
+			"--utility-name", "release-assets",
+			"--utility-kind", "release-asset",
+			"--command", "scripts/check-release-assets.sh",
+			"--external-run-id", "v0.1.3",
+			"--artifact", "dist/release-assets.md",
+			"--state", "completed",
+			"--recommended-next-action", "continue release checklist",
+		},
+	} {
+		cmd := exec.Command("bash", append([]string{script}, args...)...)
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "FAIRWAY_BIN="+fairwayBin)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("utility-event live smoke failed: %v\n%s", err, out)
+		}
+	}
+
+	detail := runExternal("task-detail", "T-001")
+	for _, want := range []string{
+		"pass scripts/check-release-assets.sh dist/release-assets.md",
+		"utility=release-assets",
+		"next_action=continue release checklist",
+	} {
+		assertContains(t, detail, want)
+	}
+	sessions := runExternal("session", "status", "--all")
+	assertContains(t, sessions, "release-assets-release-asset-v0.1.3")
+	assertContains(t, sessions, "ended")
+}
+
 func TestCLI_CoordinatorStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

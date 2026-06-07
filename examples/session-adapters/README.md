@@ -181,6 +181,71 @@ After closing the watcher and session, the adapter runs
 `fairway reconcile active --dry-run` as the reusable handback. If ready work
 remains, that report surfaces `monitor_completion_resume_needed`.
 
+## Generic utility event adapter
+
+`utility-event.sh` is the generic contract for deterministic utilities that do
+not need a provider conversation. It records one event at a time:
+
+- `started` starts a Fairway utility session, starts a watcher, and records an
+  active checkpoint.
+- `heartbeat` refreshes the utility session and records an active checkpoint.
+- `completed` records done checkpoint state, pass evidence by default, finishes
+  the watcher/session, and emits a handback.
+- `failed` records awaiting-input checkpoint state, failed evidence by default,
+  finishes the watcher/session, and emits a handback.
+- `timeout` and `stale` record awaiting-input checkpoint state, blocked
+  evidence by default, mark the session stale, and emit a handback.
+
+Common fields are provider-neutral: task id, optional batch id, role, utility
+name, utility kind, command, external run id, source SHA, expected manual
+window, artifact, result, recommended next action, and whether a decision is
+required.
+
+Codegen drift check:
+
+```bash
+examples/session-adapters/utility-event.sh \
+  --task-id T-010 \
+  --batch-id BATCH-004 \
+  --utility-name codegen-drift \
+  --utility-kind codegen \
+  --command "make codegen-check" \
+  --external-run-id codegen-20260607 \
+  --source-sha "$(git rev-parse HEAD)" \
+  --artifact dist/codegen-drift.log \
+  --state completed \
+  --recommended-next-action "continue review; generated artifacts are clean"
+```
+
+Release asset check:
+
+```bash
+examples/session-adapters/utility-event.sh \
+  --task-id REL-001 \
+  --utility-name release-assets \
+  --utility-kind release-asset \
+  --command "scripts/check-release-assets.sh v0.1.3" \
+  --external-run-id v0.1.3 \
+  --artifact dist/release-assets.md \
+  --state failed \
+  --decision-required \
+  --recommended-next-action "create DOC-FIX or release follow-up for missing artifact"
+```
+
+Registry/image freshness check:
+
+```bash
+examples/session-adapters/utility-event.sh \
+  --task-id OPS-010 \
+  --utility-name registry-freshness \
+  --utility-kind registry \
+  --command "scripts/check-image-freshness.sh" \
+  --external-run-id registry-scan-20260607 \
+  --artifact dist/registry-freshness.json \
+  --state timeout \
+  --recommended-next-action "create OPS-FIX if the registry remains unreachable"
+```
+
 ## Provider Usage Adapters
 
 `provider-otel-ingest.sh` is the provider-neutral usage bridge. It accepts OTLP
