@@ -145,6 +145,23 @@ examples/session-adapters/provider-otel-ingest.sh \
   --dry-run
 ```
 
+When a project needs a non-default Fairway config, set `FAIRWAY_BIN` to an
+executable wrapper path, not to a shell command with embedded arguments:
+
+```bash
+tmpdir=$(mktemp -d /tmp/fairway-wrapper.XXXXXX)
+cat > "$tmpdir/fairway" <<'EOF'
+#!/usr/bin/env bash
+cd /path/to/fairway
+exec go run ./cmd/fairway --config /path/to/project/.fairway/config.toml "$@"
+EOF
+chmod +x "$tmpdir/fairway"
+
+FAIRWAY_BIN="$tmpdir/fairway" examples/session-adapters/provider-otel-ingest.sh \
+  --input dist/provider-otel.json \
+  --task-id FW-125
+```
+
 `codex-usage-adapter.sh` is the Codex-specific wrapper. It supports Codex-shaped
 OTel JSON, `codex exec --json` / newline-delimited JSON with
 `turn.completed.usage`, and caller-supplied token snapshots:
