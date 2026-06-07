@@ -1482,6 +1482,11 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		"Owner",
 		"Backlog task",
 		"Working task",
+		`data-board-row data-task-href="/tasks/T-001"`,
+		`data-keyboard-panel="columns"`,
+		`data-keyboard-panel="views"`,
+		`data-keyboard-help-open`,
+		`id="keyboard-help-dialog"`,
 		"showing 1-2 of 2 filtered tasks",
 		"page 1 of 1",
 		"dashboard-v2 / foundation",
@@ -1558,7 +1563,20 @@ func TestDashboardAssetsServeViewToggleScripts(t *testing.T) {
 		want []string
 	}{
 		{path: "/assets/js/common.js", want: []string{"fairway.dashboard.theme", "data-theme-toggle", "localStorage"}},
-		{path: "/assets/js/board.js", want: []string{`event.key === "g"`, `event.key === "w"`, `window.location.assign("/")`}},
+		{path: "/assets/js/board.js", want: []string{
+			`event.key === "g"`,
+			`event.key === "w"`,
+			`window.location.assign("/")`,
+			`setCursor(cursorIndex + 1)`,
+			`setCursor(cursorIndex - 1)`,
+			`input[data-board-search]`,
+			`openCursorDialog("bulk-status-dialog")`,
+			`openCursorDialog("bulk-handoff-dialog")`,
+			`data-keyboard-panel="columns"`,
+			`data-keyboard-panel="views"`,
+			`keyboard-help-dialog`,
+			`isTextInput(document.activeElement)`,
+		}},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 		rec := httptest.NewRecorder()

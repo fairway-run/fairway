@@ -107,6 +107,11 @@ It includes:
   are persisted to `~/.fairway/views.json`; team views are read from
   `.fairway/views.json` and are read-only in the dashboard. The first nine
   personal views are available with Cmd/Ctrl+1..9 shortcuts,
+- keyboard navigation for board operators: `j`/`k` moves the row cursor,
+  Enter opens task detail, `/` focuses search, `c` and `v` toggle columns and
+  saved views, `x` toggles selection, `s` and `h` open status and handoff
+  dialogs, `t` toggles theme, `g w` goes to the wall, `?` opens help, and Esc
+  closes open menus/dialogs,
 - bulk selection with CSRF-backed Claim, Hand off, Set status, and Record
   evidence dialogs; terminal status changes remain CLI-gated,
 - CSV and JSON export for the current board view. Exports use the active

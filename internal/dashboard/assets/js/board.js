@@ -165,14 +165,83 @@
     updateSelection();
   });
 
+  const boardTable = document.querySelector(".board-table");
+  const boardRows = Array.from(boardTable?.querySelectorAll("tbody tr[data-board-row]") || []);
+  let cursorIndex = boardRows.length ? 0 : -1;
+
   function isTextInput(el) {
     if (!el) return false;
     const tag = el.tagName ? el.tagName.toLowerCase() : "";
     return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
   }
 
+  function setCursor(index) {
+    if (!boardRows.length) return;
+    cursorIndex = Math.max(0, Math.min(index, boardRows.length - 1));
+    boardRows.forEach((row, rowIndex) => {
+      row.classList.toggle("cursor", rowIndex === cursorIndex);
+      if (rowIndex === cursorIndex) row.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  function cursorRow() {
+    if (cursorIndex < 0) setCursor(0);
+    return boardRows[cursorIndex] || null;
+  }
+
+  function closeMenusAndDialogs() {
+    document.querySelectorAll("details[open]").forEach((details) => {
+      details.open = false;
+    });
+    document.querySelectorAll("dialog[open]").forEach((dialog) => {
+      if (typeof dialog.close === "function") dialog.close();
+    });
+  }
+
+  function toggleDetails(selector) {
+    const details = document.querySelector(selector);
+    if (!details) return;
+    details.open = !details.open;
+  }
+
+  function openCursorDialog(dialogID) {
+    const row = cursorRow();
+    if (!row) return;
+    const checkbox = row.querySelector('input[name="task_id"]');
+    if (!checkbox) return;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    document.querySelector(`[data-bulk-open="${dialogID}"]`)?.click();
+  }
+
+  function toggleCursorSelection() {
+    const row = cursorRow();
+    const checkbox = row?.querySelector('input[name="task_id"]');
+    if (!checkbox) return;
+    checkbox.checked = !checkbox.checked;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function toggleKeyboardHelp() {
+    const dialog = document.getElementById("keyboard-help-dialog");
+    if (!dialog) return;
+    if (dialog.open) {
+      dialog.close();
+      return;
+    }
+    if (typeof dialog.showModal === "function") dialog.showModal();
+  }
+
+  document.querySelector("[data-keyboard-help-open]")?.addEventListener("click", toggleKeyboardHelp);
+  setCursor(0);
+
   window.addEventListener("keydown", (event) => {
     if (isTextInput(document.activeElement)) return;
+    if (event.key === "Escape") {
+      closeMenusAndDialogs();
+      prefix = "";
+      return;
+    }
     if (event.key === "g") {
       prefix = "g";
       return;
@@ -183,5 +252,55 @@
       return;
     }
     prefix = "";
+    switch (event.key) {
+      case "j":
+        event.preventDefault();
+        setCursor(cursorIndex + 1);
+        break;
+      case "k":
+        event.preventDefault();
+        setCursor(cursorIndex - 1);
+        break;
+      case "Enter": {
+        const href = cursorRow()?.getAttribute("data-task-href");
+        if (href) {
+          event.preventDefault();
+          window.location.assign(href);
+        }
+        break;
+      }
+      case "/":
+        event.preventDefault();
+        document.querySelector('input[data-board-search]')?.focus();
+        break;
+      case "c":
+        event.preventDefault();
+        toggleDetails('[data-keyboard-panel="columns"]');
+        break;
+      case "v":
+        event.preventDefault();
+        toggleDetails('[data-keyboard-panel="views"]');
+        break;
+      case "x":
+        event.preventDefault();
+        toggleCursorSelection();
+        break;
+      case "s":
+        event.preventDefault();
+        openCursorDialog("bulk-status-dialog");
+        break;
+      case "h":
+        event.preventDefault();
+        openCursorDialog("bulk-handoff-dialog");
+        break;
+      case "t":
+        event.preventDefault();
+        document.querySelector("[data-theme-toggle]")?.click();
+        break;
+      case "?":
+        event.preventDefault();
+        toggleKeyboardHelp();
+        break;
+    }
   });
 })();

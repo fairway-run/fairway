@@ -189,7 +189,7 @@
 <label>Review<select name="review_domain" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.ReviewDomains}}<option value="{{.}}" {{if eq $.Filters.ReviewDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Rows<select name="table_limit" form="board-filter-form"><option value="25" {{if eq .Filters.TableLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.TableLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.TableLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.TableLimit 200}}selected{{end}}>200</option></select></label>
 <label>Page<input class="page-input" type="number" name="page" min="1" max="{{.Pagination.TotalPages}}" value="{{.Pagination.Page}}" form="board-filter-form"></label>
-<details class="column-chooser">
+<details class="column-chooser" data-keyboard-panel="columns">
 <summary><span>Columns</span><b>{{len (boardVisibleColumns $columns)}} shown</b></summary>
 <div class="column-menu">
 {{range $columns}}
@@ -201,7 +201,7 @@
 {{end}}
 </div>
 </details>
-<details class="saved-views">
+<details class="saved-views" data-keyboard-panel="views">
 <summary><span>Views</span><b>{{len .PersonalViews}} personal</b></summary>
 <div class="saved-view-menu">
 <section>
@@ -224,6 +224,7 @@
 <a class="btn" href="{{boardExportHref .Filters "csv"}}">Export CSV</a>
 <a class="btn" href="{{boardExportHref .Filters "json"}}">Export JSON</a>
 <button class="btn" type="submit" form="board-filter-form">Apply</button>
+<button class="btn" type="button" data-keyboard-help-open>?</button>
 </div>
 <section class="selection-bar" hidden>
 <span>0 selected</span>
@@ -238,13 +239,31 @@
 <tbody>
 {{range .TableRows}}
 {{$task := .}}
-<tr>
+<tr data-board-row data-task-href="/tasks/{{.Definition.ID}}">
 <td><input type="checkbox" name="task_id" value="{{.Definition.ID}}" aria-label="Select {{.Definition.ID}}"></td>
 {{range boardVisibleColumns $columns}}<td>{{boardTaskCell $task . $.Rollups}}</td>{{end}}
 </tr>
 {{else}}<tr><td colspan="{{boardColumnCount $columns}}">no tasks</td></tr>{{end}}
 </tbody>
 </table>
+<dialog id="keyboard-help-dialog" class="bulk-dialog">
+<section>
+<h3>Keyboard</h3>
+<dl class="keyboard-list">
+<dt>j / k</dt><dd>Move row cursor</dd>
+<dt>Enter</dt><dd>Open task detail</dd>
+<dt>/</dt><dd>Focus search</dd>
+<dt>c / v</dt><dd>Toggle columns or views</dd>
+<dt>x</dt><dd>Toggle row selection</dd>
+<dt>s / h</dt><dd>Open status or handoff for cursor row</dd>
+<dt>t</dt><dd>Toggle theme</dd>
+<dt>g w</dt><dd>Go to wall</dd>
+<dt>?</dt><dd>Toggle help</dd>
+<dt>Esc</dt><dd>Close menus and dialogs</dd>
+</dl>
+<form method="dialog"><menu><button class="btn" value="cancel">Close</button></menu></form>
+</section>
+</dialog>
 <dialog id="bulk-claim-dialog" class="bulk-dialog">
 <form method="post" action="/actions/bulk/claim" data-bulk-form>
 <input type="hidden" name="csrf" value="{{.CSRFToken}}">

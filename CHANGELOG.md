@@ -18,6 +18,9 @@ and uses semantic versioning.
   `~/.fairway/views.json`, read-only team views from `.fairway/views.json`,
   "Save current view", and Cmd/Ctrl+1..9 shortcuts for the first nine personal
   views.
+- Dashboard board keyboard navigation now supports row cursor movement,
+  task-detail opening, search/menu focus, row selection, status/handoff dialogs,
+  theme toggle, wall navigation, help, and Escape close behavior.
 - Active-work reconciliation now detects monitor sessions without backing proof,
   so CI/deploy/UAT/provider monitors cannot leave fake active work behind when
   no automation, process, external poller, or bounded manual checkpoint exists.
