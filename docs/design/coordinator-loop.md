@@ -38,6 +38,16 @@ when the coordinator is deciding whether a lane may move to its next
 implementation task. The closeout guard is advisory about cleanup actions; it
 does not delete branches or worktrees automatically.
 
+If a lane has a remote branch, closeout also checks for recorded push intent:
+
+```bash
+fairway record push-intent <task-id> --intent review --branch review/<task-id>
+```
+
+Provider/thread branches without push-intent evidence remain closeout debt
+until the remote branch is deleted, a valid intent is recorded, or governance
+records an explicit exception with reason.
+
 `status` prints the current operating board:
 
 1. role lane summary,

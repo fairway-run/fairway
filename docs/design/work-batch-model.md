@@ -149,6 +149,16 @@ Absent one of those intents, a provider thread should not push its scratch
 branch or start remote CI. It should attach local validation evidence and hand
 off to the coordinator or reviewer/merge lane.
 
+Record push intent as Fairway evidence:
+
+```bash
+fairway record push-intent <task-id> --intent review --branch review/<task-id>
+fairway record push-intent <task-id> --intent exception --branch scratch/<task-id> --reason "operator requested remote backup"
+```
+
+The closeout guard treats a remote branch without matching `push-intent`
+evidence as closeout debt. `exception` intent is valid only with a reason.
+
 ## Batch And Lane Closeout
 
 A completed task or batch is not enough to release a lane for new work. The

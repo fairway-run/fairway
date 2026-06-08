@@ -78,6 +78,9 @@ func TestCloseoutPreservesUnmergedBranchWithReason(t *testing.T) {
 	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "fairway record push-intent T-001 intent=release branch=release/fairway remote=origin", Result: "pass", ArtifactType: "push-intent", ArtifactPath: "origin/release/fairway", Notes: "intent=release branch=release/fairway remote=origin"}); err != nil {
+		t.Fatal(err)
+	}
 
 	report, err := Closeout(ctx, s, CloseoutOptions{
 		TaskID:         "T-001",
@@ -151,6 +154,9 @@ func TestCloseoutSafeMergedRemoteBranchDryRunPlan(t *testing.T) {
 	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "gh run view --json conclusion", Result: "pass", ArtifactType: "ci"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "fairway record push-intent T-001 intent=main-validation branch=agent/backend remote=origin", Result: "pass", ArtifactType: "push-intent", ArtifactPath: "origin/agent/backend", Notes: "intent=main-validation branch=agent/backend remote=origin"}); err != nil {
+		t.Fatal(err)
+	}
 
 	report, err := Closeout(ctx, s, CloseoutOptions{
 		TaskID:   "T-001",
@@ -162,6 +168,124 @@ func TestCloseoutSafeMergedRemoteBranchDryRunPlan(t *testing.T) {
 	}
 	if !report.OK || !report.Apply.DeleteRemoteBranch || !hasCloseoutFinding(report, "safe_merged_remote_branch") {
 		t.Fatalf("report=%+v, want safe remote deletion dry-run plan", report)
+	}
+}
+
+func TestCloseoutScratchBranchWithoutRemoteDoesNotNeedPushIntent(t *testing.T) {
+	ctx := context.Background()
+	s := newReconcileTestStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Done", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	seedDoneState(t, ctx, s, "T-001", "scratch/fw-139", "abc123")
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Closeout(ctx, s, CloseoutOptions{
+		TaskID:   "T-001",
+		Terminal: []string{"done"},
+		Git:      CloseoutGit{Branch: "scratch/fw-139", BranchExists: true, BranchMerged: true, RemoteBranchExists: false},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK || hasCloseoutFinding(report, "remote_branch_without_push_intent") || hasCloseoutFinding(report, "invalid_push_intent") {
+		t.Fatalf("report=%+v, scratch local branch should not need push intent", report)
+	}
+}
+
+func TestCloseoutRemoteBranchWithoutPushIntentBlocks(t *testing.T) {
+	ctx := context.Background()
+	s := newReconcileTestStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Done", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	seedDoneState(t, ctx, s, "T-001", "scratch/fw-139", "abc123")
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Closeout(ctx, s, CloseoutOptions{
+		TaskID:   "T-001",
+		Terminal: []string{"done"},
+		Git:      CloseoutGit{Branch: "scratch/fw-139", BranchExists: true, BranchMerged: true, RemoteBranchExists: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.OK || !hasCloseoutFinding(report, "remote_branch_without_push_intent") || report.Summary.RemoteBranchesNoIntent != 1 {
+		t.Fatalf("report=%+v, remote branch without intent should block", report)
+	}
+}
+
+func TestCloseoutReviewPushIntentAllowsPreservedRemoteBranch(t *testing.T) {
+	ctx := context.Background()
+	s := newReconcileTestStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Done", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	seedDoneState(t, ctx, s, "T-001", "review/fw-139", "abc123")
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "fairway record push-intent T-001 intent=review branch=review/fw-139 remote=origin", Result: "pass", ArtifactType: "push-intent", ArtifactPath: "origin/review/fw-139", Notes: "intent=review branch=review/fw-139 remote=origin"}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Closeout(ctx, s, CloseoutOptions{
+		TaskID:         "T-001",
+		Terminal:       []string{"done"},
+		PreserveReason: "review branch remains available for independent reviewer",
+		Git:            CloseoutGit{Branch: "review/fw-139", BranchExists: true, BranchMerged: false, RemoteBranchExists: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK || !hasCloseoutFinding(report, "remote_push_intent") || hasCloseoutFinding(report, "remote_branch_without_push_intent") {
+		t.Fatalf("report=%+v, review intent should satisfy remote push guard", report)
+	}
+}
+
+func TestCloseoutExceptionPushIntentRequiresReason(t *testing.T) {
+	ctx := context.Background()
+	s := newReconcileTestStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Done", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	seedDoneState(t, ctx, s, "T-001", "scratch/fw-139", "abc123")
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "fairway record push-intent T-001 intent=exception branch=scratch/fw-139 remote=origin", Result: "pass", ArtifactType: "push-intent", ArtifactPath: "origin/scratch/fw-139", Notes: "intent=exception branch=scratch/fw-139 remote=origin"}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Closeout(ctx, s, CloseoutOptions{
+		TaskID:   "T-001",
+		Terminal: []string{"done"},
+		Git:      CloseoutGit{Branch: "scratch/fw-139", BranchExists: true, BranchMerged: true, RemoteBranchExists: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.OK || !hasCloseoutFinding(report, "invalid_push_intent") {
+		t.Fatalf("report=%+v, exception without reason should block", report)
+	}
+
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "fairway record push-intent T-001 intent=exception branch=scratch/fw-139 remote=origin reason=operator-approved", Result: "pass", ArtifactType: "push-intent", ArtifactPath: "origin/scratch/fw-139", Notes: "intent=exception branch=scratch/fw-139 remote=origin reason=operator-approved"}); err != nil {
+		t.Fatal(err)
+	}
+	report, err = Closeout(ctx, s, CloseoutOptions{
+		TaskID:   "T-001",
+		Terminal: []string{"done"},
+		Git:      CloseoutGit{Branch: "scratch/fw-139", BranchExists: true, BranchMerged: true, RemoteBranchExists: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK || !hasCloseoutFinding(report, "remote_push_intent") {
+		t.Fatalf("report=%+v, exception with reason should satisfy remote push guard", report)
 	}
 }
 

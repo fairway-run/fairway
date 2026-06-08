@@ -44,19 +44,20 @@ type CloseoutReport struct {
 }
 
 type CloseoutSummary struct {
-	Blockers              int `json:"blockers"`
-	Warnings              int `json:"warnings"`
-	SafeToDeleteBranches  int `json:"safe_to_delete_branches"`
-	PreservedBranches     int `json:"preserved_branches"`
-	ActiveSessions        int `json:"active_sessions"`
-	ActiveWatchers        int `json:"active_watchers"`
-	MissingReviewDomains  int `json:"missing_review_domains"`
-	DirtyWorktrees        int `json:"dirty_worktrees"`
-	UnmergedBranches      int `json:"unmerged_branches"`
-	RemoteBranchesPresent int `json:"remote_branches_present"`
-	MissingCommits        int `json:"missing_commits"`
-	VerificationEvidence  int `json:"verification_evidence"`
-	PendingVerification   int `json:"pending_verification"`
+	Blockers               int `json:"blockers"`
+	Warnings               int `json:"warnings"`
+	SafeToDeleteBranches   int `json:"safe_to_delete_branches"`
+	PreservedBranches      int `json:"preserved_branches"`
+	ActiveSessions         int `json:"active_sessions"`
+	ActiveWatchers         int `json:"active_watchers"`
+	MissingReviewDomains   int `json:"missing_review_domains"`
+	DirtyWorktrees         int `json:"dirty_worktrees"`
+	UnmergedBranches       int `json:"unmerged_branches"`
+	RemoteBranchesPresent  int `json:"remote_branches_present"`
+	RemoteBranchesNoIntent int `json:"remote_branches_without_intent"`
+	MissingCommits         int `json:"missing_commits"`
+	VerificationEvidence   int `json:"verification_evidence"`
+	PendingVerification    int `json:"pending_verification"`
 }
 
 type CloseoutFinding struct {
@@ -72,6 +73,7 @@ type CloseoutFinding struct {
 	WatcherID      string   `json:"watcher_id,omitempty"`
 	Commit         string   `json:"commit,omitempty"`
 	EvidenceType   string   `json:"evidence_type,omitempty"`
+	PushIntent     string   `json:"push_intent,omitempty"`
 	MissingDomains []string `json:"missing_domains,omitempty"`
 }
 
@@ -162,6 +164,17 @@ func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (Closeo
 	if opts.Git.WorktreeDirty {
 		add(CloseoutFinding{Kind: "dirty_worktree", Severity: "blocker", Action: "commit_stash_or_revert_local_changes", Reason: "lane worktree has uncommitted changes"})
 	}
+	if strings.TrimSpace(branch) != "" && opts.Git.RemoteBranchExists {
+		intent, ok, reason := pushIntentForBranch(evidence, branch)
+		switch {
+		case ok:
+			add(CloseoutFinding{Kind: "remote_push_intent", Severity: "info", Action: "keep_push_intent_evidence", Reason: "remote branch has recorded push intent", PushIntent: intent})
+		case reason != "":
+			add(CloseoutFinding{Kind: "invalid_push_intent", Severity: "blocker", Action: "record_valid_push_intent_or_delete_remote_branch", Reason: reason})
+		default:
+			add(CloseoutFinding{Kind: "remote_branch_without_push_intent", Severity: "blocker", Action: "record_push_intent_or_delete_remote_branch", Reason: "remote branch exists without recorded push intent"})
+		}
+	}
 	if strings.TrimSpace(branch) != "" && opts.Git.BranchExists && opts.Git.BranchMerged && !hasCloseoutBlocker(report.Findings) {
 		add(CloseoutFinding{Kind: "safe_merged_branch", Severity: "info", Action: "eligible_for_branch_cleanup", Reason: "branch is merged into base and has no closeout blockers"})
 		if opts.Git.RemoteBranchExists {
@@ -199,6 +212,8 @@ func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (Closeo
 			report.Summary.UnmergedBranches++
 		case "remote_branch_present":
 			report.Summary.RemoteBranchesPresent++
+		case "remote_branch_without_push_intent", "invalid_push_intent":
+			report.Summary.RemoteBranchesNoIntent++
 		case "missing_commit_association":
 			report.Summary.MissingCommits++
 		case "verification_evidence":
@@ -209,6 +224,64 @@ func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (Closeo
 	}
 	report.OK = report.Summary.Blockers == 0
 	return report, nil
+}
+
+func pushIntentForBranch(evidence []store.Evidence, branch string) (string, bool, string) {
+	branch = strings.TrimSpace(branch)
+	var invalidReason string
+	var invalidIntent string
+	for _, ev := range evidence {
+		if strings.ToLower(strings.TrimSpace(ev.ArtifactType)) != "push-intent" {
+			continue
+		}
+		fields := pushIntentFields(ev)
+		recordBranch := strings.TrimSpace(fields["branch"])
+		if recordBranch != "" && branch != "" && recordBranch != branch {
+			continue
+		}
+		intent := strings.TrimSpace(fields["intent"])
+		if !validPushIntent(intent) {
+			invalidIntent = intent
+			invalidReason = "push-intent evidence has unsupported intent"
+			continue
+		}
+		if intent == "exception" && strings.TrimSpace(fields["reason"]) == "" {
+			invalidIntent = intent
+			invalidReason = "exception push intent requires a recorded reason"
+			continue
+		}
+		return intent, true, ""
+	}
+	return invalidIntent, false, invalidReason
+}
+
+func pushIntentFields(ev store.Evidence) map[string]string {
+	fields := map[string]string{}
+	text := strings.Join([]string{ev.CommandText, ev.ArtifactPath, ev.Notes}, "\n")
+	for _, token := range strings.Fields(text) {
+		key, value, ok := strings.Cut(token, "=")
+		if !ok {
+			continue
+		}
+		key = strings.ToLower(strings.TrimSpace(key))
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		switch key {
+		case "intent", "remote", "branch", "reason":
+			if value != "" {
+				fields[key] = value
+			}
+		}
+	}
+	return fields
+}
+
+func validPushIntent(intent string) bool {
+	switch strings.TrimSpace(intent) {
+	case "main-validation", "integration", "review", "release", "backup", "exception":
+		return true
+	default:
+		return false
+	}
 }
 
 func verificationEvidenceKind(ev store.Evidence) string {

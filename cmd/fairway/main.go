@@ -978,7 +978,7 @@ func worktreeForBranch(root, branch string) (fairwaygit.Worktree, bool) {
 
 func printCloseoutReport(report reconcile.CloseoutReport) {
 	fmt.Printf("lane_closeout: %t\ntask: %s\nrole: %s\nbranch: %s\nworktree: %s\ncommit: %s\n", report.OK, report.TaskID, report.Role, report.Branch, report.Worktree, report.Commit)
-	fmt.Printf("summary: blockers=%d warnings=%d active_sessions=%d active_watchers=%d missing_review_domains=%d missing_commits=%d verification_evidence=%d pending_verification=%d dirty_worktrees=%d unmerged_branches=%d remote_branches=%d safe_branches=%d preserved_branches=%d\n",
+	fmt.Printf("summary: blockers=%d warnings=%d active_sessions=%d active_watchers=%d missing_review_domains=%d missing_commits=%d verification_evidence=%d pending_verification=%d dirty_worktrees=%d unmerged_branches=%d remote_branches=%d remote_branches_without_intent=%d safe_branches=%d preserved_branches=%d\n",
 		report.Summary.Blockers,
 		report.Summary.Warnings,
 		report.Summary.ActiveSessions,
@@ -990,6 +990,7 @@ func printCloseoutReport(report reconcile.CloseoutReport) {
 		report.Summary.DirtyWorktrees,
 		report.Summary.UnmergedBranches,
 		report.Summary.RemoteBranchesPresent,
+		report.Summary.RemoteBranchesNoIntent,
 		report.Summary.SafeToDeleteBranches,
 		report.Summary.PreservedBranches,
 	)
@@ -1009,6 +1010,9 @@ func printCloseoutReport(report reconcile.CloseoutReport) {
 		}
 		if finding.EvidenceType != "" {
 			extra += " evidence=" + finding.EvidenceType
+		}
+		if finding.PushIntent != "" {
+			extra += " push_intent=" + finding.PushIntent
 		}
 		fmt.Printf("- %s %s action=%s%s reason=%s\n", finding.Severity, finding.Kind, finding.Action, extra, finding.Reason)
 	}
@@ -6045,13 +6049,13 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, root string, s 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		if isHelpOnly(args) {
-			subcommandUsage("record", "evidence|guard-report|handoff|review|usage")
+			subcommandUsage("record", "evidence|guard-report|handoff|review|usage|push-intent")
 			return nil
 		}
 		return errors.New("record requires type and task id")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("record", "evidence|guard-report|handoff|review|usage")
+		subcommandUsage("record", "evidence|guard-report|handoff|review|usage|push-intent")
 		return nil
 	}
 	switch args[0] {
@@ -6065,6 +6069,8 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 		return recordReview(ctx, opts, args[1:])
 	case "usage":
 		return recordUsage(ctx, opts, args[1:])
+	case "push-intent":
+		return recordPushIntent(ctx, opts, args[1:])
 	}
 	return fmt.Errorf("unknown record type %q", args[0])
 }
@@ -6115,6 +6121,78 @@ func printEvidenceStatusPrompt(result string) {
 	default:
 		fmt.Println("next: run fairway reconcile active before leaving this work block")
 	}
+}
+
+func recordPushIntent(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("record push-intent requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("push-intent", flag.ContinueOnError)
+	intent := fs.String("intent", "", "push intent: main-validation, integration, review, release, backup, or exception")
+	branch := fs.String("branch", "", "branch being pushed; defaults to current branch")
+	remote := fs.String("remote", "origin", "remote name")
+	reason := fs.String("reason", "", "required for exception intent")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	normalizedIntent := strings.TrimSpace(*intent)
+	if !validRecordPushIntent(normalizedIntent) {
+		return fmt.Errorf("unsupported push intent %q", normalizedIntent)
+	}
+	if normalizedIntent == "exception" && strings.TrimSpace(*reason) == "" {
+		return errors.New("exception push intent requires --reason")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, root string, s *store.Store) error {
+		recordBranch := strings.TrimSpace(*branch)
+		if recordBranch == "" {
+			recordBranch = fairwaygit.CurrentBranch(root)
+		}
+		if recordBranch == "" {
+			return errors.New("branch is required when current branch cannot be detected")
+		}
+		recordRemote := strings.TrimSpace(*remote)
+		if recordRemote == "" {
+			recordRemote = "origin"
+		}
+		commandText := fmt.Sprintf("fairway record push-intent %s intent=%s branch=%s remote=%s", taskID, normalizedIntent, recordBranch, recordRemote)
+		notes := fmt.Sprintf("intent=%s branch=%s remote=%s", normalizedIntent, recordBranch, recordRemote)
+		if strings.TrimSpace(*reason) != "" {
+			commandText += " reason=" + shellToken(strings.TrimSpace(*reason))
+			notes += " reason=" + shellToken(strings.TrimSpace(*reason))
+		}
+		ev := store.Evidence{
+			CommandText:  commandText,
+			Result:       "pass",
+			ArtifactPath: recordRemote + "/" + recordBranch,
+			ArtifactType: "push-intent",
+			Notes:        notes,
+		}
+		if err := s.RecordEvidence(ctx, taskID, ev); err != nil {
+			return err
+		}
+		if !opts.JSON {
+			fmt.Printf("push intent recorded %s intent=%s branch=%s remote=%s\n", taskID, normalizedIntent, recordBranch, recordRemote)
+		}
+		return nil
+	})
+}
+
+func validRecordPushIntent(intent string) bool {
+	switch intent {
+	case "main-validation", "integration", "review", "release", "backup", "exception":
+		return true
+	default:
+		return false
+	}
+}
+
+func shellToken(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, " ", "_")
+	value = strings.ReplaceAll(value, "\t", "_")
+	value = strings.ReplaceAll(value, "\n", "_")
+	return value
 }
 
 func recordGuardReport(ctx context.Context, opts globalOptions, args []string) error {

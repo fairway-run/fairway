@@ -805,6 +805,24 @@ remotely, do not push it. If it was pushed by exception, closeout must record
 why it was pushed and whether it was merged, deleted, or intentionally
 preserved.
 
+Use the explicit intent command before pushing a worker branch remotely:
+
+```bash
+fairway record push-intent <task-id> \
+  --intent main-validation \
+  --branch main \
+  --remote origin
+
+fairway record push-intent <task-id> \
+  --intent exception \
+  --branch scratch/<task-id> \
+  --remote origin \
+  --reason "operator requested remote backup before risky rebase"
+```
+
+`workflow closeout` and `workflow check --mode close` report a remote branch
+without matching push-intent evidence as closeout debt.
+
 ## Claim Work
 
 ```bash

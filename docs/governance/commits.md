@@ -77,6 +77,17 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
   - `backup`: explicit operator-approved backup/mirror.
   - `exception`: scoped reason recorded in Fairway evidence or checkpoint.
 
+- Record intent before pushing a non-default remote branch:
+
+  ```bash
+  fairway record push-intent <task-id> \
+    --intent review \
+    --branch review/<task-id> \
+    --remote origin
+  ```
+
+  `--intent exception` also requires `--reason`.
+
 - Provider threads and ad hoc worker branches are scratch execution branches by
   default. They should run local validation, then hand off to the coordinator or
   reviewer/merge lane. They should not push remote branches or trigger remote

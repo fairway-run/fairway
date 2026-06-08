@@ -75,7 +75,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"session", "help"}, "fairway session upsert|status|end|reconcile|launch"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
-		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|review|usage"},
+		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|review|usage|push-intent"},
 		{[]string{"usage", "--help"}, "fairway usage report"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
@@ -171,12 +171,41 @@ func TestCLI_WorkflowCloseoutApplyDeletesVerifiedMergedRemoteBranch(t *testing.T
 		t.Fatal(err)
 	}
 	runOK(t, "record", "evidence", "T-001", "--command-text", "gh run view --json conclusion", "--result", "pass", "--artifact-type", "ci")
+	runOK(t, "record", "push-intent", "T-001", "--intent", "main-validation", "--branch", "agent/backend", "--remote", "origin")
 	out := runCapture(t, "workflow", "closeout", "T-001", "--dry-run")
+	assertContains(t, out, "remote_push_intent")
 	assertContains(t, out, "safe_merged_remote_branch")
 	runOK(t, "workflow", "closeout", "T-001", "--apply")
 	if err := exec.Command("git", "-C", remote, "show-ref", "--verify", "--quiet", "refs/heads/agent/backend").Run(); err == nil {
 		t.Fatal("remote branch still exists after closeout apply")
 	}
+}
+
+func TestCLI_RecordPushIntent(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Push intent", "--role", "backend")
+	out := runCapture(t, "record", "push-intent", "T-001", "--intent", "review", "--branch", "review/T-001", "--remote", "origin")
+	assertContains(t, out, "push intent recorded T-001 intent=review branch=review/T-001 remote=origin")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "push-intent")
+	assertContains(t, detail, "intent=review branch=review/T-001 remote=origin")
+	if err := run(context.Background(), []string{"record", "push-intent", "T-001", "--intent", "exception", "--branch", "scratch/T-001"}); err == nil {
+		t.Fatal("expected exception push intent to require reason")
+	}
+	runOK(t, "record", "push-intent", "T-001", "--intent", "exception", "--branch", "scratch/T-001", "--reason", "operator approved backup")
 }
 
 func TestCLI_RequiresEvidenceGate(t *testing.T) {
