@@ -3,7 +3,7 @@
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Fairway',
-  tagline: 'Traffic control for coding agents',
+  tagline: 'Coordination control plane for multi-agent engineering work',
   favicon: 'img/logo.svg',
   url: 'https://fairway.run',
   baseUrl: '/',
@@ -49,6 +49,7 @@ const config = {
         items: [
           { to: '/docs/quickstart', label: 'Docs', position: 'left' },
           { to: '/docs/agent-guide', label: 'Agent Guide', position: 'left' },
+          { to: '/docs/design/dashboard', label: 'Dashboard', position: 'left' },
           { to: '/docs/config-reference', label: 'Reference', position: 'left' },
           {
             href: 'https://github.com/fairway-run/fairway',
@@ -64,8 +65,9 @@ const config = {
             title: 'Start',
             items: [
               { label: 'Quickstart', to: '/docs/quickstart' },
-              { label: 'Concepts', to: '/docs/design/concepts' },
-              { label: 'Product', to: '/docs/product' }
+              { label: 'Product', to: '/docs/product' },
+              { label: 'Product Boundaries', to: '/docs/design/product-boundaries' },
+              { label: 'Backlog Sources', to: '/docs/design/backlog-sources' }
             ]
           },
           {
@@ -73,14 +75,16 @@ const config = {
             items: [
               { label: 'Agent Guide', to: '/docs/agent-guide' },
               { label: 'Dashboard', to: '/docs/design/dashboard' },
-              { label: 'Workstream Profiles', to: '/docs/workstream-profile-guide' }
+              { label: 'Workstream Profiles', to: '/docs/workstream-profile-guide' },
+              { label: 'Review Lanes', to: '/docs/design/review-lanes' }
             ]
           },
           {
             title: 'Project',
             items: [
               { label: 'GitHub', href: 'https://github.com/fairway-run/fairway' },
-              { label: 'Release', to: '/docs/governance/release' }
+              { label: 'Release Notes', to: '/docs/release-notes' },
+              { label: 'Release Process', to: '/docs/governance/release' }
             ]
           }
         ],

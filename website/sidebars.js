@@ -9,6 +9,8 @@ const sidebars = {
       items: [
         'quickstart',
         'product',
+        'design/product-boundaries',
+        'design/backlog-sources',
         'design/scope',
         'design/concepts',
         'release-notes',
@@ -22,12 +24,12 @@ const sidebars = {
         'agent-guide',
         'design/dashboard',
         'design/coordinator-loop',
+        'design/work-batch-model',
         'design/context-packets',
         'design/checkpoints',
         'design/review-lanes',
         'design/session-launch',
         'design/provider-usage-accounting',
-        'design/work-batch-model',
         'design/watchers'
       ]
     },
@@ -65,8 +67,8 @@ const sidebars = {
         'design/release-cuts',
         'design/implementation-roadmap',
         'design/regression-packets',
-        'design/postgres-adapter',
-        'design/issue-tracker-integrations'
+        'design/issue-tracker-integrations',
+        'design/postgres-adapter'
       ]
     },
     {

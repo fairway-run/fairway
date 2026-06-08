@@ -14,6 +14,22 @@ Release and adapter work must preserve the rules in
 
 ### What Changed
 
+- Public documentation now presents the stable adoption path first: quickstart,
+  product boundaries, backlog source authority, agent guide, dashboard,
+  workstream profiles, and release notes. Historical GPUaaS/dashboard redesign
+  material remains archived or assessment-scoped rather than the default user
+  path.
+- Remote push intent is now an explicit workflow guard. `fairway record
+  push-intent` records why a branch is pushed remotely, supports
+  `main-validation`, `integration`, `review`, `release`, `backup`, and
+  `exception` intents, and requires a reason for `exception`.
+- Lane closeout reports remote branches without valid push-intent evidence as
+  closeout debt, preserving the model where worker/provider branches are local
+  scratch by default and orchestrator or reviewer/merge lanes push integrated
+  validation units.
+- Historical review debt and dashboard performance blockers are documented as
+  explicit assessment artifacts rather than hidden coordinator-plan noise.
+
 - Provider usage accounting now records normalized usage events with provider,
   session, task, role, phase, model, token counts, source, and confidence.
   Unknown usage remains unknown rather than being reported as zero.

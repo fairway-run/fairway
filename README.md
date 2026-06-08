@@ -119,13 +119,19 @@ Public docs are available at [fairway.run](https://fairway.run).
 
 Start here:
 
-- [AGENTS.md](AGENTS.md) — orientation for any agent (Claude, Codex, Gemini, human) working in this repo
-- [Agent guide](docs/agent-guide.md) — practical command flow for agents using fairway
 - [Quickstart](docs/quickstart.md) — first local project setup
-- [Architecture](docs/architecture.md) — components, data flow, package layout
 - [Product](docs/product.md) — vision, principles, roadmap, anti-goals
-- [Workstream profile guide](docs/workstream-profile-guide.md) — user-facing guide for profile config, gates, and adoption artifacts
+- [Product boundaries](docs/design/product-boundaries.md) — what Fairway coordinates and what it deliberately does not do
+- [Backlog sources](docs/design/backlog-sources.md) — active backlog, archive, examples, and runtime DB authority
+- [Agent guide](docs/agent-guide.md) — practical command flow for agents using Fairway
+- [Dashboard](docs/design/dashboard.md) — wall, board, diagnostics, reports, and task detail
 - [Release notes](docs/release-notes.md) — current release candidate scope and known limits
+
+For maintainers and repository agents:
+
+- [AGENTS.md](AGENTS.md) — orientation for any agent (Claude, Codex, Gemini, human) working in this repo
+- [Architecture](docs/architecture.md) — components, data flow, package layout
+- [Workstream profile guide](docs/workstream-profile-guide.md) — user-facing guide for profile config, gates, and adoption artifacts
 
 Core Design:
 

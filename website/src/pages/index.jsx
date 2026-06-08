@@ -31,18 +31,18 @@ function Feature({ title, body }) {
 export default function Home() {
   return (
     <Layout
-      title="Traffic control for coding agents"
+      title="Coordination control plane for multi-agent engineering work"
       description="Fairway coordinates coding agents, worktrees, evidence, reviews, and sessions in one local-first control plane."
     >
       <main>
         <section className={styles.hero}>
           <div className={styles.heroInner}>
             <img src="/img/logo-lockup.svg" alt="Fairway" className={styles.logo} />
-            <Heading as="h1">Traffic control for coding agents</Heading>
+            <Heading as="h1">Coordination control plane for multi-agent engineering work</Heading>
             <p className={styles.lede}>
               Coordinate multiple coding agents working in parallel on one repository:
               task state, worktree lanes, provider sessions, evidence, handoffs,
-              reviews, and dashboard visibility.
+              reviews, dashboard visibility, readiness, and workflow guards.
             </p>
             <div className={styles.actions}>
               <Link className={clsx('button button--primary button--lg', styles.primary)} to="/docs/quickstart">
@@ -50,6 +50,9 @@ export default function Home() {
               </Link>
               <Link className="button button--secondary button--lg" to="/docs/agent-guide">
                 Read the agent guide
+              </Link>
+              <Link className="button button--secondary button--lg" to="/docs/design/product-boundaries">
+                See product boundaries
               </Link>
             </div>
           </div>

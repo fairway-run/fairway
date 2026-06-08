@@ -36,6 +36,10 @@ evidence exists, or who is blocking whom.
    Repeated rules such as commit boundaries, push/CI signal, deploy-run
    tracking, and active-session reconciliation should become CLI guards and
    dashboard findings.
+10. **Promotion is explicit.** Provider and thread branches are local scratch by
+    default. Remote push is a recorded promotion action with intent, normally
+    performed by the orchestrator or reviewer/merge lane after local
+    verification.
 
 ## What "done" looks like for v1.0
 
@@ -89,8 +93,10 @@ each version ships.
   batches now cover the first production lessons from GPUaaS stabilization:
   usage should be attributed without reading provider-private state, and
   multiple granular tasks should be validated as one batch when they share a
-  branch, CI run, and proof surface. GPUaaS / ARC remains the adoption example,
-  not the core product shape.
+  branch, CI run, and proof surface. Remote push intent guards now keep
+  disposable provider branches local by default and report unintentional remote
+  branches as closeout debt. GPUaaS / ARC remains the adoption example, not the
+  core product shape.
 
 ### v1.0
 - Stable schema. Migrations guaranteed forward-compatible.
