@@ -10,6 +10,32 @@ replacement, LLM provider abstraction, credential store, or provider-cost gate.
 Release and adapter work must preserve the rules in
 [Product boundaries](design/product-boundaries.md).
 
+## v0.1.4
+
+### What Changed
+
+- Public documentation now has a clearer adoption path across README,
+  Docusaurus navigation, product boundaries, backlog source authority, agent
+  guide, dashboard docs, and release notes.
+- Remote push intent is enforced through `fairway record push-intent` and
+  closeout/workflow guard findings, keeping provider/thread branches local
+  scratch branches unless a promotion intent is recorded.
+- Historical review debt is captured as an explicit assessment artifact instead
+  of being silently backfilled.
+- Dashboard performance blockers are reconciled against later FWRD-161/FWRD-162
+  evidence, with FWRD-129 and FWRD-151 preserved as historical/deferred blocked
+  tasks.
+
+### Release Checklist
+
+- `go test ./...` passes.
+- `go vet ./...` passes.
+- Docusaurus portal builds from `website/`.
+- `goreleaser check` passes.
+- `fairway release verify` remains blocked until the v0.1.4 tag, GitHub
+  release assets, Homebrew tap commit, public release state, and `brew fetch`
+  evidence exist.
+
 ## v0.1.3
 
 ### What Changed

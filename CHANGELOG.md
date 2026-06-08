@@ -7,6 +7,18 @@ and uses semantic versioning.
 
 ## Unreleased
 
+## v0.1.4
+
+### Added
+
+- Remote push intent recording with `fairway record push-intent`, including
+  closeout/workflow guard findings for remote branches without recorded intent.
+- Review-debt and dashboard-performance reconciliation assessment artifacts.
+- Public docs navigation updates for product boundaries, backlog sources,
+  dashboard, agent guide, and release notes.
+
+## v0.1.3
+
 ### Added
 
 - Dashboard v2 is now the unified dashboard system: `/` serves the wall,

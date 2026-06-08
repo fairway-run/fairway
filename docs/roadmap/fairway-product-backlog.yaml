@@ -1339,3 +1339,34 @@ tasks:
       - Workflow closeout, coordinator plan, or workflow check reports pushed remote branches without recorded intent as closeout debt.
       - Reviewer/merge lane guidance explains how a reviewer can verify worker branches, merge locally into the configured main branch, and push one integrated batch for CI when the orchestrator is not doing it.
       - Tests cover scratch branch with no remote push, approved main-validation push, review branch push, exception with reason, and remote branch without push intent reported as a blocker or warning.
+
+  - id: FW-140
+    title: Run v0.1.4 release checklist
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - docs/release-notes.md
+      - docs/governance/release.md
+      - .goreleaser.yaml
+      - website
+    target_paths:
+      - docs/release-notes.md
+      - docs/assessment
+      - .github/workflows
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: high
+    migration_type: release-run
+    depends_on:
+      - FW-136
+      - FW-139
+    acceptance_checks:
+      - Release-run packet or equivalent release evidence records version v0.1.4, source commit, intended tag, release notes, CI/docs/signing/notary/Homebrew checks, and owner.
+      - Release checklist validation commands are run and recorded, including Go tests, Go vet, Docusaurus build, goreleaser check when available, workflow/deploy guard, and release verify dry-run or documented blocker.
+      - No new feature work is added during the release-run; failures create scoped follow-up tasks.
+      - Release decision is recorded as pass, blocked, or waived with residual risk.
