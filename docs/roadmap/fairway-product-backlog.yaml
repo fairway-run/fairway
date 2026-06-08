@@ -1297,3 +1297,45 @@ tasks:
       - FWRD-129 and FWRD-151 remain blocked only if their original acceptance is intentionally historical/deferred; otherwise state and docs are updated consistently.
       - Any unresolved performance or RSS gap is recorded as a concrete follow-up instead of silently treated as passed.
       - The dashboard closeout docs explain which blocked FWRD items are historical, accepted exceptions, or still actionable.
+
+  - id: FW-139
+    title: Add remote push intent and reviewer merge-lane guard
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: workflow-closeout
+    source_paths:
+      - docs/agent-guide.md
+      - docs/governance/commits.md
+      - docs/design/work-batch-model.md
+      - docs/design/review-lanes.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - internal/reconcile
+      - internal/git
+    target_paths:
+      - docs/agent-guide.md
+      - docs/governance/commits.md
+      - docs/design/work-batch-model.md
+      - docs/design/review-lanes.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway/main.go
+      - internal/reconcile
+      - internal/git
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: high
+    migration_type: remote-push-intent-guard
+    depends_on:
+      - FW-131
+      - FW-137
+    acceptance_checks:
+      - Fairway documents that provider/thread branches are local scratch branches by default and remote push requires explicit intent.
+      - Supported push intents include main-validation, integration, review, release, backup, and exception, with exception requiring a recorded reason.
+      - Workflow closeout, coordinator plan, or workflow check reports pushed remote branches without recorded intent as closeout debt.
+      - Reviewer/merge lane guidance explains how a reviewer can verify worker branches, merge locally into the configured main branch, and push one integrated batch for CI when the orchestrator is not doing it.
+      - Tests cover scratch branch with no remote push, approved main-validation push, review branch push, exception with reason, and remote branch without push intent reported as a blocker or warning.

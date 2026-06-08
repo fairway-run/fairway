@@ -65,7 +65,24 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 
 ## Push and CI signal
 
-- Push integration-ready commits promptly so push-triggered CI can run.
+- Remote push is a promotion action, not the default end of every scratch
+  provider branch. Push integration-ready commits promptly only when the branch
+  has an explicit push intent:
+
+  - `main-validation`: merge locally to the configured main branch and push it
+    so normal CI validates the integrated batch.
+  - `integration`: shared integration branch used by multiple lanes.
+  - `review`: branch intentionally exposed for independent review.
+  - `release`: release or promotion branch.
+  - `backup`: explicit operator-approved backup/mirror.
+  - `exception`: scoped reason recorded in Fairway evidence or checkpoint.
+
+- Provider threads and ad hoc worker branches are scratch execution branches by
+  default. They should run local validation, then hand off to the coordinator or
+  reviewer/merge lane. They should not push remote branches or trigger remote
+  CI unless the push intent above is recorded.
+- If the orchestrator is not doing the merge, use a reviewer/merge lane to
+  verify, merge locally into the configured main branch, and push that branch.
 - CI itself usually does not need a Fairway task; record/link the result as
   task evidence or deploy-run evidence.
 - If the active project/profile uses `CI-FIX-*` follow-ups, create one only

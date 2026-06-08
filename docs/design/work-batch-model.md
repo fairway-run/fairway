@@ -129,6 +129,26 @@ The first implementation exposes:
 - `fairway audit work-coverage` `work_batch_candidate` findings for related
   same-domain tasks with separate CI/deploy evidence and no existing batch.
 
+## Remote Push Boundary
+
+Batch branches may be local scratch branches until the batch is ready for
+review, integration, or release validation. Remote CI should normally run on
+the configured main branch after a coordinator or reviewer/merge lane has
+verified and merged the batch locally.
+
+Allowed remote push intents are:
+
+- `main-validation`: push the configured main branch after local merge;
+- `integration`: shared integration branch for multiple lanes;
+- `review`: branch intentionally exposed for independent review;
+- `release`: release or promotion branch;
+- `backup`: explicit operator-approved mirror/backup;
+- `exception`: scoped reason recorded in evidence or checkpoint.
+
+Absent one of those intents, a provider thread should not push its scratch
+branch or start remote CI. It should attach local validation evidence and hand
+off to the coordinator or reviewer/merge lane.
+
 ## Batch And Lane Closeout
 
 A completed task or batch is not enough to release a lane for new work. The
@@ -146,6 +166,8 @@ For a batch, closeout should prove:
 - the role worktree is clean and no longer carrying unmerged batch state;
 - related sessions, watchers, and utility monitors are ended or have fresh
   intentional checkpoints.
+- any remote branch push has a recorded push intent and final disposition:
+  merged and deleted, preserved with reason, or blocked with owner/action.
 
 This prevents a successful batch from leaving behind branch cleanup work that
 is larger than the original implementation. The first closeout surface is

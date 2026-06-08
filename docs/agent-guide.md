@@ -337,6 +337,14 @@ can be grouped into a work batch with one branch, one validation command set,
 one review path, and one CI/deploy-run. Use separate runs only when ownership,
 rollback, risk, sequencing, or failure diagnosis requires it.
 
+Do not treat every provider thread branch as a remote CI branch. Local
+worktrees and scratch branches are isolation tools. Remote pushes are promotion
+events and need an explicit push intent such as `main-validation`,
+`integration`, `review`, `release`, `backup`, or `exception`. In the normal
+flow, worker/provider threads validate locally and hand off to the coordinator
+or reviewer/merge lane; that lane merges to the configured main branch and
+pushes one integrated batch for CI.
+
 ## Tool-First Operating Rule
 
 Do not route deterministic, repetitive, or pollable work through an agent just
@@ -790,6 +798,12 @@ fairway workflow closeout <task-id> --dry-run \
 remote branch when the closeout report has no blockers. It does not delete
 local branches or worktrees; operators still perform or approve those cleanup
 commands explicitly.
+
+Remote branch cleanup is downstream of push intent. If a provider thread
+created a scratch branch and it was never meant to be reviewed or validated
+remotely, do not push it. If it was pushed by exception, closeout must record
+why it was pushed and whether it was merged, deleted, or intentionally
+preserved.
 
 ## Claim Work
 
