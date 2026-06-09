@@ -1411,3 +1411,34 @@ tasks:
       - Reports can group or filter by tags for cross-cutting programs such as production-readiness, security-review, docs-portal, mfa, uat-hardening, pssm-closeout, fairway-process, environment:staging, and environment:cloudflare.
       - Workstream profiles may define recommended tag groups or display groups, but tags remain generic product metadata.
       - Tests cover YAML import/export, CLI repeated tags, store filtering, dashboard/report filtering, and backward compatibility for tasks without tags.
+
+  - id: FW-142
+    title: Clean up pending-state and historical blockers
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: process
+    source_paths:
+      - internal/coordinator
+      - docs/assessment
+      - docs/design/coordinator-loop.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - internal/coordinator
+      - docs/assessment
+      - docs/design/coordinator-loop.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+    risk_level: medium
+    migration_type: pending-state-cleanup
+    depends_on:
+      - FW-141
+    acceptance_checks:
+      - Coordinator plan ignores stale awaiting_input checkpoints superseded by later done checkpoints.
+      - Duplicate dashboard signoff blockers are consolidated under FW-135 without fabricated operator approval.
+      - Historical performance blockers are marked superseded or deferred without claiming original acceptance passed.
+      - Historical review debt closeout strategy is documented without fabricated approvals.
+      - Active reconciliation remains clean and coordinator plan noise is reduced.

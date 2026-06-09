@@ -40,8 +40,8 @@ func TestBuildPlanClassifiesReadyCompleteReviewAndApproval(t *testing.T) {
 	if plan.Summary.Ready != 3 || plan.Summary.Complete != 2 {
 		t.Fatalf("summary ready/complete = %+v", plan.Summary)
 	}
-	if plan.Summary.ReviewGated != 1 {
-		t.Fatalf("review_gated=%d, want 1", plan.Summary.ReviewGated)
+	if plan.Summary.ReviewDebt != 1 || plan.Summary.ReviewGated != 0 {
+		t.Fatalf("review_debt/review_gated=%d/%d, want 1/0", plan.Summary.ReviewDebt, plan.Summary.ReviewGated)
 	}
 	if plan.Summary.ApprovalGated != 1 || len(plan.StopConditions) == 0 {
 		t.Fatalf("approval gating not surfaced: summary=%+v stops=%+v", plan.Summary, plan.StopConditions)
@@ -49,8 +49,8 @@ func TestBuildPlanClassifiesReadyCompleteReviewAndApproval(t *testing.T) {
 	if !hasPlanAction(plan, "ready", "consider_work_batch", "") {
 		t.Fatalf("expected batch recommendation in %+v", plan.Actions)
 	}
-	if !hasPlanAction(plan, "review-gated", "record_required_reviews", "REVIEW-001") {
-		t.Fatalf("expected review-gated action in %+v", plan.Actions)
+	if !hasPlanAction(plan, "review-debt", "sweep_historical_review_debt", "REVIEW-001") {
+		t.Fatalf("expected review-debt action in %+v", plan.Actions)
 	}
 }
 
@@ -116,6 +116,66 @@ func TestBuildPlanAllWorkCompleteIsIdle(t *testing.T) {
 	}
 	if plan.Summary.Complete != 1 || plan.Summary.TopClassification != "idle" {
 		t.Fatalf("all-complete plan = %+v", plan.Summary)
+	}
+}
+
+func TestBuildPlanIgnoresAwaitingInputSupersededByDoneCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DONE-001", Title: "Complete after waiver", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "DONE-001", State: "awaiting_input", Owner: "backend", Summary: "waiting on approval before push"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "DONE-001", State: "done", Owner: "backend", Summary: "approval resolved and pushed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONE-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.ApprovalGated != 0 || plan.Summary.Waiting != 0 {
+		t.Fatalf("superseded checkpoint still gated plan: summary=%+v stops=%+v actions=%+v", plan.Summary, plan.StopConditions, plan.Actions)
+	}
+	for _, stop := range plan.StopConditions {
+		if stop.TaskID == "DONE-001" {
+			t.Fatalf("superseded checkpoint produced stop condition: %+v", plan.StopConditions)
+		}
+	}
+}
+
+func TestBuildPlanSegmentsTerminalReviewCheckpointAsReviewDebt(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DONE-001", Title: "Historical review", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "DONE-001", State: "review", Owner: "backend", Summary: "old review checkpoint"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONE-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.ReviewGated != 0 || plan.Summary.ReviewDebt != 1 {
+		t.Fatalf("terminal review checkpoint summary=%+v, want review_debt only", plan.Summary)
+	}
+	if hasPlanAction(plan, "review-gated", "complete_review_checkpoint", "DONE-001") {
+		t.Fatalf("terminal review checkpoint surfaced as active review gate: %+v", plan.Actions)
+	}
+	if !hasPlanAction(plan, "review-debt", "sweep_historical_review_debt", "DONE-001") {
+		t.Fatalf("terminal review checkpoint did not surface as review debt: %+v", plan.Actions)
 	}
 }
 

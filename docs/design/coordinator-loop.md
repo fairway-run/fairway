@@ -62,6 +62,18 @@ tasks, sessions, watchers, batches, reviews, worktrees, checkpoints, and active
 reconciliation findings, then emits typed next actions without mutating task
 state.
 
+Checkpoint interpretation uses the latest checkpoint for each task as the
+active operating decision. A later `done`, `parked`, or `abandoned` checkpoint
+closes older `awaiting_input` and `review` checkpoints for coordinator-plan
+purposes, so resolved approval waits do not keep completed work in the stop
+condition list.
+
+Historical review debt is segmented from active review gates. Tasks in explicit
+`review` state with missing required domains remain review-gated stop
+conditions. Terminal tasks that predate the current review-domain policy are
+reported as review-debt actions and should be cleared only by real review,
+artifact-backed approval, or explicit governance waiver.
+
 `tick` prints the same plan in daily operating form. It answers: "what should
 the coordinator do next?" A tick may recommend a claim, review, unblock,
 checkpoint, utility handback, batch, or merge-ready check, but it does not

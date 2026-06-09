@@ -2903,7 +2903,7 @@ func coordinatorWorktreeFacts(worktrees []worktreeStatus) []coord.WorktreeFact {
 
 func printCoordinatorPlan(plan coord.Plan) {
 	fmt.Printf("dry_run: %t\nok: %t\n", plan.DryRun, plan.OK)
-	fmt.Printf("summary: top=%s ready=%d active=%d waiting=%d blocked=%d stale=%d complete=%d review_gated=%d approval_gated=%d utility_gated=%d batch_recommended=%d\n",
+	fmt.Printf("summary: top=%s ready=%d active=%d waiting=%d blocked=%d stale=%d complete=%d review_gated=%d review_debt=%d approval_gated=%d utility_gated=%d batch_recommended=%d\n",
 		plan.Summary.TopClassification,
 		plan.Summary.Ready,
 		plan.Summary.Active,
@@ -2912,6 +2912,7 @@ func printCoordinatorPlan(plan coord.Plan) {
 		plan.Summary.Stale,
 		plan.Summary.Complete,
 		plan.Summary.ReviewGated,
+		plan.Summary.ReviewDebt,
 		plan.Summary.ApprovalGated,
 		plan.Summary.UtilityGated,
 		plan.Summary.BatchRecommended,

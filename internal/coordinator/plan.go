@@ -42,6 +42,7 @@ type Plan struct {
 	Waiting         []TaskRef              `json:"waiting,omitempty"`
 	Blocked         []TaskRef              `json:"blocked,omitempty"`
 	ReviewGated     []TaskRef              `json:"review_gated,omitempty"`
+	ReviewDebt      []TaskRef              `json:"review_debt,omitempty"`
 	UtilityGated    []TaskRef              `json:"utility_gated,omitempty"`
 	StopConditions  []PlanStopCondition    `json:"stop_conditions,omitempty"`
 	Reconcile       reconcile.ActiveReport `json:"reconcile"`
@@ -62,6 +63,7 @@ type PlanSummary struct {
 	Stale             int    `json:"stale"`
 	Complete          int    `json:"complete"`
 	ReviewGated       int    `json:"review_gated"`
+	ReviewDebt        int    `json:"review_debt"`
 	ApprovalGated     int    `json:"approval_gated"`
 	UtilityGated      int    `json:"utility_gated"`
 	BatchRecommended  int    `json:"batch_recommended"`
@@ -113,7 +115,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	if err != nil {
 		return Plan{}, err
 	}
-	checkpoints, err := s.Checkpoints(ctx, "", false)
+	checkpoints, err := s.Checkpoints(ctx, "", true)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -132,6 +134,10 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	terminal := map[string]bool{}
 	for _, status := range cfg.States.Terminal {
 		terminal[status] = true
+	}
+	taskStatusByID := map[string]string{}
+	for _, task := range tasks {
+		taskStatusByID[task.Definition.ID] = task.Status
 	}
 	if opts.ReadyLimit <= 0 {
 		opts.ReadyLimit = 10
@@ -203,7 +209,15 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		}
 		addAction(&plan, priority, classification, finding.Action, finding.Reason, finding.TaskID, finding.Role, finding.SessionID, "", nil, stop)
 	}
-	for _, checkpoint := range checkpoints {
+	for _, checkpoint := range latestOpenCheckpointsByTask(checkpoints) {
+		if terminal[taskStatusByID[checkpoint.TaskID]] {
+			if checkpoint.State == "review" {
+				plan.Summary.ReviewDebt++
+				plan.ReviewDebt = appendTaskRef(plan.ReviewDebt, TaskRef{ID: checkpoint.TaskID, Role: checkpoint.Owner, Status: checkpoint.State})
+				addAction(&plan, 45, "review-debt", "sweep_historical_review_debt", checkpoint.Summary, checkpoint.TaskID, checkpoint.Owner, "", "", nil, false)
+			}
+			continue
+		}
 		switch checkpoint.State {
 		case "awaiting_input":
 			plan.Summary.Waiting++
@@ -245,10 +259,17 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			}
 			missing := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 			if len(missing) > 0 {
-				plan.Summary.ReviewGated++
-				plan.ReviewGated = appendTaskRef(plan.ReviewGated, taskRef(task))
-				addAction(&plan, 15, "review-gated", "record_required_reviews", "missing required review domains: "+strings.Join(missing, ", "), task.Definition.ID, task.Definition.Role, "", "", nil, true)
-				addStop(&plan, "review-gated", "missing required review domains: "+strings.Join(missing, ", "), task.Definition.ID, task.Definition.Role)
+				reason := "missing required review domains: " + strings.Join(missing, ", ")
+				if terminal[task.Status] {
+					plan.Summary.ReviewDebt++
+					plan.ReviewDebt = appendTaskRef(plan.ReviewDebt, taskRef(task))
+					addAction(&plan, 45, "review-debt", "sweep_historical_review_debt", reason, task.Definition.ID, task.Definition.Role, "", "", nil, false)
+				} else {
+					plan.Summary.ReviewGated++
+					plan.ReviewGated = appendTaskRef(plan.ReviewGated, taskRef(task))
+					addAction(&plan, 15, "review-gated", "record_required_reviews", reason, task.Definition.ID, task.Definition.Role, "", "", nil, true)
+					addStop(&plan, "review-gated", reason, task.Definition.ID, task.Definition.Role)
+				}
 			}
 		}
 	}
@@ -286,7 +307,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		plan.Summary.TopReason = plan.Actions[0].Reason
 	} else {
 		plan.Summary.TopClassification = "idle"
-		plan.Summary.TopReason = "no active, ready, blocked, stale, review-gated, approval-gated, or utility-gated work found"
+		plan.Summary.TopReason = "no active, ready, blocked, stale, review-gated, approval-gated, utility-gated, or review-debt work found"
 	}
 	plan.OK = len(plan.StopConditions) == 0 && activeReport.OK
 	return plan, nil
@@ -334,6 +355,26 @@ func latestCheckpointByTask(checkpoints []store.Checkpoint) map[string]store.Che
 	return out
 }
 
+func latestOpenCheckpointsByTask(checkpoints []store.Checkpoint) []store.Checkpoint {
+	latest := latestCheckpointByTask(checkpoints)
+	out := make([]store.Checkpoint, 0, len(latest))
+	for _, checkpoint := range latest {
+		switch checkpoint.State {
+		case "done", "parked", "abandoned":
+			continue
+		default:
+			out = append(out, checkpoint)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt > out[j].CreatedAt
+		}
+		return out[i].TaskID < out[j].TaskID
+	})
+	return out
+}
+
 func taskRef(task store.Task) TaskRef {
 	return TaskRef{ID: task.Definition.ID, Title: task.Definition.Title, Role: task.Definition.Role, Kind: task.Definition.Kind, Status: task.Status}
 }
@@ -369,6 +410,10 @@ func addAction(plan *Plan, priority int, classification, action, reason, taskID,
 	case "utility-gated":
 		if taskID == "" {
 			plan.Summary.UtilityGated++
+		}
+	case "review-debt":
+		if taskID == "" {
+			plan.Summary.ReviewDebt++
 		}
 	}
 }
