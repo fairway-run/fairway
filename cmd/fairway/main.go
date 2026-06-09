@@ -3553,7 +3553,7 @@ func missingApprovedReviewDomains(domains []string, reviews []store.Review) []st
 	approved := map[string]bool{}
 	for _, review := range reviews {
 		if review.Verdict == "approve" {
-			approved[review.Reviewer] = true
+			approved[firstNonEmpty(review.Domain, review.Reviewer)] = true
 		}
 	}
 	var missing []string
@@ -6550,6 +6550,7 @@ func recordReview(ctx context.Context, opts globalOptions, args []string) error 
 	taskID := args[0]
 	fs := flag.NewFlagSet("review", flag.ContinueOnError)
 	reviewer := fs.String("reviewer", "", "reviewer")
+	domain := fs.String("domain", "", "review domain satisfied by this reviewer")
 	verdict := fs.String("verdict", "", "verdict")
 	reason := fs.String("reason", "", "reason")
 	commit := fs.String("commit", "", "commit")
@@ -6563,7 +6564,7 @@ func recordReview(ctx context.Context, opts globalOptions, args []string) error 
 		return errors.New("--verdict is required")
 	}
 	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
-		return s.RecordReview(ctx, taskID, store.Review{Reviewer: *reviewer, Verdict: *verdict, Reason: *reason, Commit: *commit})
+		return s.RecordReview(ctx, taskID, store.Review{Reviewer: *reviewer, Domain: *domain, Verdict: *verdict, Reason: *reason, Commit: *commit})
 	})
 }
 
@@ -7306,7 +7307,11 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	}
 	fmt.Println("\nreviews:")
 	for _, r := range reviews {
-		fmt.Printf("- %s by %s: %s\n", r.Verdict, r.Reviewer, r.Reason)
+		domain := ""
+		if strings.TrimSpace(r.Domain) != "" {
+			domain = " for " + strings.TrimSpace(r.Domain)
+		}
+		fmt.Printf("- %s by %s%s: %s\n", r.Verdict, r.Reviewer, domain, r.Reason)
 	}
 	if len(missingReviewDomains) > 0 {
 		fmt.Println("\nmissing review domains:")

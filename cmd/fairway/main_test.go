@@ -675,6 +675,15 @@ func TestCLI_MergeReadyRequiresReviewDomains(t *testing.T) {
 	detail = runCapture(t, "task-detail", "T-001")
 	assertContains(t, detail, "review: approved")
 	runOK(t, "merge-ready", "T-001")
+
+	runOK(t, "add", "T-002", "--title", "Ops-owned task", "--role", "ops", "--review-domains", "ops")
+	runOK(t, "--as", "ops", "claim", "T-002")
+	runCaptureAllowError(t, "record", "review", "T-002", "--reviewer", "ops", "--verdict", "approve", "--reason", "self")
+	runOK(t, "record", "review", "T-002", "--reviewer", "ops-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "independent ops review")
+	detail = runCapture(t, "task-detail", "T-002")
+	assertContains(t, detail, "review: approved")
+	assertContains(t, detail, "approve by ops-reviewer for ops")
+	runOK(t, "merge-ready", "T-002")
 }
 
 func TestCLI_WorktreeSetupStatus(t *testing.T) {

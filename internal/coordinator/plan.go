@@ -445,11 +445,20 @@ func isUtilitySession(session store.Session) bool {
 	return strings.TrimSpace(session.MonitorKind) != "" || strings.Contains(strings.ToLower(session.SessionBackend), "monitor") || strings.Contains(strings.ToLower(session.SessionBackend), "utility")
 }
 
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func missingApprovedReviewDomains(domains []string, reviews []store.Review) []string {
 	approved := map[string]bool{}
 	for _, review := range reviews {
 		if review.Verdict == "approve" {
-			approved[review.Reviewer] = true
+			approved[firstNonEmpty(review.Domain, review.Reviewer)] = true
 		}
 	}
 	var missing []string

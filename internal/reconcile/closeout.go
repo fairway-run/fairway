@@ -368,7 +368,7 @@ func missingApprovedReviewDomains(domains []string, reviews []store.Review) []st
 	approved := map[string]bool{}
 	for _, review := range reviews {
 		if review.Verdict == "approve" {
-			approved[review.Reviewer] = true
+			approved[firstNonEmpty(review.Domain, review.Reviewer)] = true
 		}
 	}
 	seen := map[string]bool{}

@@ -98,6 +98,7 @@ type Handoff struct {
 
 type Review struct {
 	Reviewer string
+	Domain   string
 	Verdict  string
 	Reason   string
 	Commit   string
@@ -1484,9 +1485,10 @@ func (s *Store) RecordReview(ctx context.Context, taskID string, r Review) error
 		return errors.New("reviewer cannot review their own task")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	domain := strings.TrimSpace(r.Domain)
 	res, err := tx.ExecContext(ctx, `
-INSERT INTO task_reviews (project_id, task_id, reviewer, verdict, reviewed_commit_sha, route_reason, notes, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, s.projectID, taskID, r.Reviewer, r.Verdict, r.Commit, r.Reason, r.Reason, now)
+INSERT INTO task_reviews (project_id, task_id, reviewer, review_domain, verdict, reviewed_commit_sha, route_reason, notes, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, s.projectID, taskID, r.Reviewer, domain, r.Verdict, r.Commit, r.Reason, r.Reason, now)
 	if err := checkWriteResult(res, err); err != nil {
 		return err
 	}
@@ -2514,7 +2516,7 @@ func (s *Store) handoffs(ctx context.Context, taskID string) ([]Handoff, error) 
 }
 
 func (s *Store) reviews(ctx context.Context, taskID string) ([]Review, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT reviewer, verdict, notes, reviewed_commit_sha FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
+	rows, err := s.db.QueryContext(ctx, `SELECT reviewer, COALESCE(review_domain, ''), verdict, notes, reviewed_commit_sha FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -2522,7 +2524,7 @@ func (s *Store) reviews(ctx context.Context, taskID string) ([]Review, error) {
 	var out []Review
 	for rows.Next() {
 		var r Review
-		if err := rows.Scan(&r.Reviewer, &r.Verdict, &r.Reason, &r.Commit); err != nil {
+		if err := rows.Scan(&r.Reviewer, &r.Domain, &r.Verdict, &r.Reason, &r.Commit); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

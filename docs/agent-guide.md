@@ -1065,6 +1065,19 @@ fairway record review T-001 \
   --reason "route and evidence look good"
 ```
 
+When the reviewer identity must differ from the required review domain, use
+`--domain`. For example, an independently assigned reviewer named
+`ops-reviewer` can satisfy an `ops` review domain without weakening
+no-self-review:
+
+```bash
+fairway record review T-001 \
+  --reviewer ops-reviewer \
+  --domain ops \
+  --verdict approve \
+  --reason "independent ops review"
+```
+
 Use `changes` rather than `approve` when more work is required. No agent should
 approve its own work.
 

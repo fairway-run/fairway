@@ -75,6 +75,16 @@ If the catch-all reviewer is the same as the claimant, route manually:
 fairway record review <task-id> --reviewer <other-role> --verdict approve --reason "manual route away from claimant"
 ```
 
+If the independent reviewer identity is not the same string as the required
+review domain, record both values:
+
+```bash
+fairway record review <task-id> --reviewer ops-reviewer --domain ops --verdict approve --reason "independent ops review"
+```
+
+The no-self-review rule applies to the reviewer identity, while merge readiness
+uses the review domain when one is recorded.
+
 ## Verdicts
 
 | Verdict | Effect |
