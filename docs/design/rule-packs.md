@@ -25,7 +25,28 @@ ops verification, provider sessions, worktrees, reviews, and release closeout.
 
 ## Rule Pack Shape
 
-A rule pack should be portable across repositories:
+Rule-pack ownership should follow the scope of the knowledge:
+
+```text
+fairway-rules-platform
+  Reusable operating rules that apply across many engineering projects.
+
+<project-org>/fairway-rules-<project>
+  Project or product-specific rules owned by that project.
+
+external security packs
+  External guidance sources, for example Project CodeGuard.
+```
+
+Everything reusable across projects belongs in `fairway-rules-platform`.
+Anything that depends on one project's domain, runtime, product contracts,
+environment topology, or UAT model belongs in that project's own rule-pack
+repository.
+
+Fairway core should not own either class of rule content. It should own the
+loader, matching, evidence, dashboard, and closeout behavior.
+
+A reusable platform pack should be portable across repositories:
 
 ```text
 fairway-rules-platform/
@@ -54,10 +75,11 @@ fairway-rules-platform/
     gpuaas.yaml
 ```
 
-GPUaaS-specific rules should live in a project/domain pack, not in Fairway core:
+GPUaaS-specific rules should live in the GPUaaS/product org, not in Fairway
+core and not in the generic platform pack:
 
 ```text
-fairway-rules-gpuaas/
+<gpuaas-org>/fairway-rules-gpuaas/
   rules/
     node-agent-task-lifecycle.md
     app-runtime-launch-contract.md
@@ -145,12 +167,14 @@ Rule sources should be explicit and versionable:
 ```toml
 [[rule_sources]]
 name = "fairway-platform"
-source = "file:../fairway-rules-platform"
+source = "github:fairway-run/fairway-rules-platform"
+version = "v0.1.0"
 mode = "advisory"
 
 [[rule_sources]]
 name = "gpuaas"
-source = "file:../fairway-rules-gpuaas"
+source = "github:<gpuaas-org>/fairway-rules-gpuaas"
+version = "v0.1.0"
 mode = "blocking"
 
 [[rule_sources]]
@@ -225,3 +249,12 @@ Evidence proves that the selected rules were handled.
 This lets Fairway support GPUaaS, security review, docs, release engineering,
 and future projects without hardcoding one project's operating model into the
 core product.
+
+The ownership story should be equally explicit:
+
+```text
+Fairway owns coordination mechanics.
+fairway-rules-platform owns reusable cross-project operating rules.
+Each project owns its project-specific rule pack.
+External sources such as CodeGuard provide imported guidance.
+```
