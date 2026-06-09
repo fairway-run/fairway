@@ -1442,3 +1442,41 @@ tasks:
       - Historical performance blockers are marked superseded or deferred without claiming original acceptance passed.
       - Historical review debt closeout strategy is documented without fabricated approvals.
       - Active reconciliation remains clean and coordinator plan noise is reduced.
+
+  - id: FW-143
+    title: Define reusable Fairway rule-pack model
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rule-packs
+    source_paths:
+      - docs/design/rule-packs.md
+      - docs/design/workstream-profiles.md
+      - docs/config-reference.md
+      - docs/product.md
+      - docs/agent-guide.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - docs/design/rule-packs.md
+      - docs/design/workstream-profiles.md
+      - docs/config-reference.md
+      - docs/product.md
+      - docs/agent-guide.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: high
+    migration_type: rule-pack-source-model
+    depends_on:
+      - FW-130
+      - FW-141
+    acceptance_checks:
+      - Design doc defines Fairway rule packs as reusable operating knowledge separate from Fairway core and project-specific task queues.
+      - Model explains relationship between rule packs, workstream profiles, tasks, evidence, reviews, and coordinator recommendations.
+      - Rule metadata shape covers applicability triggers, required evidence, recommended commands, review domains, risk floor, and stop conditions.
+      - Configuration sketch supports file and external sources with advisory, blocking, and disabled modes.
+      - Design explains how CodeGuard can be consumed as a security rule source without replacing project-specific GPUaaS rules.
+      - Follow-up implementation tasks are identified for rule-source loading, rule matching, task-detail/dashboard surfacing, merge-ready checks, and packet generation.
