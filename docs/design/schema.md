@@ -41,6 +41,7 @@ Slowly-changing task metadata. One row per task. Most fields are mutable via `fa
 | `source_paths` | TEXT | JSON array of source paths relevant to the task. |
 | `target_paths` | TEXT | JSON array of intended target paths or artifacts. |
 | `review_domains` | TEXT | JSON array of review domains expected for this task. |
+| `tags` | TEXT | JSON array of generic cross-cutting tags. Supports simple tags such as `production-readiness` and key:value tags such as `environment:staging`. |
 | `risk_level` | TEXT | Optional risk label, e.g. `low`, `medium`, `high`. |
 | `migration_type` | TEXT | Optional migration/refactor type, e.g. `facade`, `boundary-guard`, `ownership-map`. |
 | `created_at` | DATETIME NOT NULL | Immutable. |

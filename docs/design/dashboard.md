@@ -113,14 +113,15 @@ It includes:
   The board renders an actionable compact subset by default when many
   workstreams match, preserves filter/sort URL state in show-all/compact links,
   and orders active, ready, and blocked workstreams ahead of passive backlog,
-- search across task ID, title, metadata, status, owner, source paths, target
-  paths, and review domains, with the query mirrored in URL state,
-- clearable role/status/project/profile/kind/domain/risk/review-domain filter
-  chips,
+- search across task ID, title, metadata, tags, status, owner, source paths,
+  target paths, and review domains, with the query mirrored in URL state,
+- clearable role/status/project/profile/kind/domain/risk/review-domain/tag
+  filter chips,
 - in multi-project mode, the same `/board` toolbar and table are used; project
   is a normal filter chip and visible/sortable/exportable table column,
 - sortable task columns with URL state; shift-click adds a secondary sort key,
 - a column chooser with URL-backed visibility and up/down ordering controls,
+  including an optional `tags` column for cross-cutting work buckets,
 - saved views for named filter, column, and sort combinations. Personal views
   are persisted to `~/.fairway/views.json`; team views are read from
   `.fairway/views.json` and are read-only in the dashboard. The first nine

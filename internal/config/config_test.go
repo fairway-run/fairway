@@ -284,6 +284,11 @@ default = "task"
 name = "release-readiness"
 route_samples = ["cmd/api/main.go"]
 
+[[workstream_profiles.tag_groups]]
+name = "release environments"
+tags = ["environment:staging", "environment:cloudflare"]
+description = "release target environments"
+
 [[workstream_profiles.gates]]
 name = "release-owner-approval"
 group = "approval gates"
@@ -313,6 +318,9 @@ required_fields = ["risk", "owner"]
 	}
 	if !cfg.WorkstreamProfiles[0].Gates[0].ArtifactRequired {
 		t.Fatal("expected artifact_required to decode")
+	}
+	if got := cfg.WorkstreamProfiles[0].TagGroups[0].Tags[1]; got != "environment:cloudflare" {
+		t.Fatalf("tag group tag = %q", got)
 	}
 	if got := cfg.PacketTemplates[0].Profiles[0]; got != "release-readiness" {
 		t.Fatalf("packet template profile = %q", got)

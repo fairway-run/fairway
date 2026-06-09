@@ -41,6 +41,7 @@ func TestIndexRendersDashboardVisibility(t *testing.T) {
 			OwningDomain:  "platform",
 			RiskLevel:     "high",
 			ReviewDomains: []string{"architecture", "security"},
+			Tags:          []string{"production-readiness", "environment:cloudflare"},
 		},
 		{ID: "T-002", Title: "Other Task", Kind: "bug", Role: "backend", RiskLevel: "low"},
 	}); err != nil {
@@ -56,13 +57,25 @@ func TestIndexRendersDashboardVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, []WorktreeStatus{{Role: "backend", Branch: "agent/backend", Exists: true, Registered: true}})
-	req := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board?tag=production-readiness", nil)
 	rec := httptest.NewRecorder()
 	server.board(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Sessions", "Worktrees", "Watchers", "Checkpoints", "Workstreams", "E-001", "W-001"} {
+	for _, want := range []string{"Workstream Dashboard", "production-readiness", "environment:cloudflare", "T-001"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `data-task-href="/tasks/T-002"`) {
+		t.Fatalf("tag-filtered dashboard included untagged task:\n%s", body)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	rec = httptest.NewRecorder()
+	server.board(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{"Sessions", "Worktrees", "Watchers", "Checkpoints", "Workstreams", "E-001", "W-001"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("diagnostics body missing %q:\n%s", want, body)
 		}
 	}
 }
@@ -212,8 +225,8 @@ func TestReportsExportsMatchFilteredScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{
-		{ID: "DOC-FIX-001", Title: "Portal docs correction", Kind: "docs", Role: "governance", OwningDomain: "portal"},
-		{ID: "OPS-FIX-001", Title: "Release job correction", Kind: "ops", Role: "ops", OwningDomain: "release"},
+		{ID: "DOC-FIX-001", Title: "Portal docs correction", Kind: "docs", Role: "governance", OwningDomain: "portal", Tags: []string{"docs-portal", "environment:cloudflare"}},
+		{ID: "OPS-FIX-001", Title: "Release job correction", Kind: "ops", Role: "ops", OwningDomain: "release", Tags: []string{"production-readiness"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -233,6 +246,16 @@ func TestReportsExportsMatchFilteredScope(t *testing.T) {
 	}
 	if strings.Contains(body, "OPS-FIX-001") {
 		t.Fatalf("CSV export included row outside filtered scope:\n%s", body)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/reports?tag=docs-portal&format=csv", nil)
+	rec = httptest.NewRecorder()
+	server.reports(rec, req)
+	body = rec.Body.String()
+	if !strings.Contains(body, "DOC-FIX-001") || !strings.Contains(body, "docs-portal;environment:cloudflare") {
+		t.Fatalf("tag-filtered CSV export missing tagged report row:\n%s", body)
+	}
+	if strings.Contains(body, "OPS-FIX-001") {
+		t.Fatalf("tag-filtered CSV export included row outside tag scope:\n%s", body)
 	}
 }
 

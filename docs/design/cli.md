@@ -122,12 +122,15 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   skipped checks, and blocked checks can still leave an auditable row.
 - `--state-once` is for legacy migration only. Subsequent imports update task
   definitions but never overwrite DB-owned execution state.
-- Task metadata flags (`--profile`, `--owning-domain`, `--source-paths`, etc.)
+- Task metadata flags (`--profile`, `--owning-domain`, `--source-paths`,
+  `--tag`, etc.)
   are stored on task definitions and also supported by YAML/JSON imports.
-  `--acceptance`, `--source-paths`, `--target-paths`, and `--review-domains`
-  are repeatable. List flags may also contain comma-separated values; repeated
-  list flags are flattened in the order supplied and rendered as task metadata
-  in `task-detail`.
+  `--acceptance`, `--source-paths`, `--target-paths`, `--review-domains`, and
+  `--tag` are repeatable. List flags may also contain comma-separated values;
+  repeated list flags are flattened in the order supplied and rendered as task
+  metadata in `task-detail`. Tags are generic grouping metadata and may be
+  simple strings such as `production-readiness` or key:value strings such as
+  `environment:cloudflare`.
 - `session launch` is an adapter command. The queue/session model works even
   when agents are launched manually. The shell-backed path can feed a prompt
   file into a provider command, record a transcript path, and upsert a session

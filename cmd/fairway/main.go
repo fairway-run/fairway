@@ -5554,6 +5554,7 @@ type taskMetadataFlags struct {
 	SourcePaths   *multiFlag
 	TargetPaths   *multiFlag
 	ReviewDomains *multiFlag
+	Tags          *multiFlag
 	RiskLevel     *string
 	MigrationType *string
 }
@@ -5562,9 +5563,11 @@ func addTaskMetadataFlags(fs *flag.FlagSet) taskMetadataFlags {
 	var sourcePaths multiFlag
 	var targetPaths multiFlag
 	var reviewDomains multiFlag
+	var tags multiFlag
 	fs.Var(&sourcePaths, "source-paths", "comma-separated source paths; repeatable")
 	fs.Var(&targetPaths, "target-paths", "comma-separated target paths; repeatable")
 	fs.Var(&reviewDomains, "review-domains", "comma-separated review domains; repeatable")
+	fs.Var(&tags, "tag", "task tag; repeatable or comma-separated; supports key:value")
 	return taskMetadataFlags{
 		Profile:       fs.String("profile", "", "workstream profile name"),
 		OwningDomain:  fs.String("owning-domain", "", "owning domain metadata"),
@@ -5572,6 +5575,7 @@ func addTaskMetadataFlags(fs *flag.FlagSet) taskMetadataFlags {
 		SourcePaths:   &sourcePaths,
 		TargetPaths:   &targetPaths,
 		ReviewDomains: &reviewDomains,
+		Tags:          &tags,
 		RiskLevel:     fs.String("risk-level", "", "risk level metadata"),
 		MigrationType: fs.String("migration-type", "", "migration type metadata"),
 	}
@@ -5596,6 +5600,9 @@ func applyTaskMetadataFlags(task *store.TaskDefinition, metadata taskMetadataFla
 	if changed == nil || changed["review-domains"] {
 		task.ReviewDomains = splitRepeatedCSV(*metadata.ReviewDomains)
 	}
+	if changed == nil || changed["tag"] {
+		task.Tags = splitRepeatedCSV(*metadata.Tags)
+	}
 	if changed == nil || changed["risk-level"] {
 		task.RiskLevel = *metadata.RiskLevel
 	}
@@ -5611,6 +5618,7 @@ func copyTaskMetadata(task *store.TaskDefinition, source store.TaskDefinition) {
 	task.SourcePaths = append([]string(nil), source.SourcePaths...)
 	task.TargetPaths = append([]string(nil), source.TargetPaths...)
 	task.ReviewDomains = append([]string(nil), source.ReviewDomains...)
+	task.Tags = append([]string(nil), source.Tags...)
 	task.RiskLevel = source.RiskLevel
 	task.MigrationType = source.MigrationType
 }
@@ -7381,7 +7389,7 @@ func batchesForTask(ctx context.Context, s *store.Store, taskID string) ([]store
 }
 
 func printTaskMetadata(task store.TaskDefinition) {
-	if task.Profile == "" && task.OwningDomain == "" && task.OwningLayer == "" && len(task.SourcePaths) == 0 && len(task.TargetPaths) == 0 && len(task.ReviewDomains) == 0 && task.RiskLevel == "" && task.MigrationType == "" {
+	if task.Profile == "" && task.OwningDomain == "" && task.OwningLayer == "" && len(task.SourcePaths) == 0 && len(task.TargetPaths) == 0 && len(task.ReviewDomains) == 0 && len(task.Tags) == 0 && task.RiskLevel == "" && task.MigrationType == "" {
 		return
 	}
 	fmt.Println("\nmetadata:")
@@ -7402,6 +7410,9 @@ func printTaskMetadata(task store.TaskDefinition) {
 	}
 	if len(task.ReviewDomains) > 0 {
 		fmt.Printf("- review_domains: %s\n", strings.Join(task.ReviewDomains, ", "))
+	}
+	if len(task.Tags) > 0 {
+		fmt.Printf("- tags: %s\n", strings.Join(task.Tags, ", "))
 	}
 	if task.RiskLevel != "" {
 		fmt.Printf("- risk_level: %s\n", task.RiskLevel)

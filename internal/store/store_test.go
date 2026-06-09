@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -61,15 +62,48 @@ func TestTaskDetail_AllowsNullMetadataAfterMigration(t *testing.T) {
 	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Old row", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`UPDATE task_definitions SET source_paths=NULL, target_paths=NULL, review_domains=NULL WHERE id='T-001'`); err != nil {
+	if _, err := s.db.Exec(`UPDATE task_definitions SET source_paths=NULL, target_paths=NULL, review_domains=NULL, tags=NULL WHERE id='T-001'`); err != nil {
 		t.Fatal(err)
 	}
 	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(task.Definition.SourcePaths) != 0 || len(task.Definition.TargetPaths) != 0 || len(task.Definition.ReviewDomains) != 0 {
-		t.Fatalf("metadata arrays=%v/%v/%v, want empty", task.Definition.SourcePaths, task.Definition.TargetPaths, task.Definition.ReviewDomains)
+	if len(task.Definition.SourcePaths) != 0 || len(task.Definition.TargetPaths) != 0 || len(task.Definition.ReviewDomains) != 0 || len(task.Definition.Tags) != 0 {
+		t.Fatalf("metadata arrays=%v/%v/%v/%v, want empty", task.Definition.SourcePaths, task.Definition.TargetPaths, task.Definition.ReviewDomains, task.Definition.Tags)
+	}
+}
+
+func TestTasksFilteredByTagsPreservesImportedOrder(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{
+		{ID: "T-001", Title: "Production docs", Role: "backend", Tags: []string{"production-readiness", "environment:cloudflare"}},
+		{ID: "T-002", Title: "Staging UAT", Role: "backend", Tags: []string{"uat-hardening", "environment:staging"}},
+		{ID: "T-003", Title: "Untagged", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(task.Definition.Tags, ","); got != "production-readiness,environment:cloudflare" {
+		t.Fatalf("tags=%q, want imported order", got)
+	}
+	filtered, err := s.TasksFiltered(ctx, TaskFilterOptions{Tags: []string{"production-readiness", "environment:cloudflare"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].Definition.ID != "T-001" {
+		t.Fatalf("filtered=%+v, want T-001 only", filtered)
+	}
+	noTags, err := s.TasksFiltered(ctx, TaskFilterOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(noTags) != 3 {
+		t.Fatalf("no-tag filter returned %d tasks, want 3", len(noTags))
 	}
 }
 

@@ -354,6 +354,8 @@ task_kinds = ["architecture-map"]
 		"--target-paths", "packages/services/platform",
 		"--review-domains", "architecture,security",
 		"--review-domains", "governance",
+		"--tag", "production-readiness",
+		"--tag", "environment:staging,docs-portal",
 		"--acceptance", "map current owner",
 		"--acceptance", "map target owner",
 		"--risk-level", "medium",
@@ -362,6 +364,7 @@ task_kinds = ["architecture-map"]
 	assertContains(t, detail, "metadata:")
 	assertContains(t, detail, "profile: platform-foundation")
 	assertContains(t, detail, "source_paths: cmd/api, doc/api, packages/services")
+	assertContains(t, detail, "tags: production-readiness, environment:staging, docs-portal")
 	assertContains(t, detail, "- map current owner")
 	assertContains(t, detail, "- map target owner")
 
@@ -369,10 +372,14 @@ task_kinds = ["architecture-map"]
 	assertContains(t, jsonDetail, `"owning_domain": "platform"`)
 	assertContains(t, jsonDetail, `"review_domains": [`)
 	assertContains(t, jsonDetail, `"governance"`)
+	assertContains(t, jsonDetail, `"tags": [`)
+	assertContains(t, jsonDetail, `"environment:staging"`)
 
 	runOK(t, "update", "T-001", "--risk-level", "high",
 		"--source-paths", "cmd/api/routes.go",
 		"--source-paths", "doc/api/openapi.yaml,packages/services/platform",
+		"--tag", "security-review",
+		"--tag", "environment:cloudflare",
 		"--acceptance", "updated acceptance one",
 		"--acceptance", "updated acceptance two")
 	updated := runCapture(t, "--json", "task-detail", "T-001")
@@ -380,11 +387,55 @@ task_kinds = ["architecture-map"]
 	assertContains(t, updated, `"cmd/api/routes.go"`)
 	assertContains(t, updated, `"doc/api/openapi.yaml"`)
 	assertContains(t, updated, `"packages/services/platform"`)
+	assertContains(t, updated, `"security-review"`)
+	assertContains(t, updated, `"environment:cloudflare"`)
+	if strings.Contains(updated, `"production-readiness"`) {
+		t.Fatalf("update should replace tags when --tag is provided:\n%s", updated)
+	}
 	assertContains(t, updated, `"updated acceptance one"`)
 	assertContains(t, updated, `"updated acceptance two"`)
 
 	if err := run(context.Background(), []string{"add", "T-002", "--title", "Bad profile", "--role", "backend", "--profile", "missing"}); err == nil {
 		t.Fatal("expected unknown profile validation error")
+	}
+}
+
+func TestCLI_ImportExportTaskTags(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: Tagged task
+  role: backend
+  tags:
+    - production-readiness
+    - environment:cloudflare
+`)
+	runOK(t, "import", "tasks.yaml")
+	detail := runCapture(t, "--json", "task-detail", "T-001")
+	first := strings.Index(detail, `"production-readiness"`)
+	second := strings.Index(detail, `"environment:cloudflare"`)
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("task-detail tags not present in import order:\n%s", detail)
+	}
+	runOK(t, "db", "export", "snapshot.json")
+	data, err := os.ReadFile("snapshot.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := string(data)
+	first = strings.Index(snapshot, `"production-readiness"`)
+	second = strings.Index(snapshot, `"environment:cloudflare"`)
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("snapshot tags not present in import order:\n%s", snapshot)
 	}
 }
 

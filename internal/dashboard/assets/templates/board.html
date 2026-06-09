@@ -198,6 +198,13 @@
 <label>Domain<select name="owning_domain" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.OwningDomains}}<option value="{{.}}" {{if eq $.Filters.OwningDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Risk<select name="risk_level" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.RiskLevels}}<option value="{{.}}" {{if eq $.Filters.RiskLevel .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Review<select name="review_domain" form="board-filter-form"><option value="">all</option>{{range .FilterOptions.ReviewDomains}}<option value="{{.}}" {{if eq $.Filters.ReviewDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<details class="multi-select tag-filter">
+<summary><span>Tags</span><b>{{if .Filters.Tags}}{{len .Filters.Tags}} selected{{else}}all{{end}}</b></summary>
+<div class="multi-select-menu">
+{{range .FilterOptions.Tags}}<label><input type="checkbox" name="tag" value="{{.}}" form="board-filter-form" {{if contains $.Filters.Tags .}}checked{{end}}> {{.}}</label>{{end}}
+{{if not .FilterOptions.Tags}}<span>all</span>{{end}}
+</div>
+</details>
 <label>Rows<select name="table_limit" form="board-filter-form"><option value="25" {{if eq .Filters.TableLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.TableLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.TableLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.TableLimit 200}}selected{{end}}>200</option></select></label>
 <label>Page<input class="page-input" type="number" name="page" min="1" max="{{.Pagination.TotalPages}}" value="{{.Pagination.Page}}" form="board-filter-form"></label>
 <details class="column-chooser" data-keyboard-panel="columns">

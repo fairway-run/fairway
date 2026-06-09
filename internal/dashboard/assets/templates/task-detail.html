@@ -44,6 +44,7 @@
 <dt>Owning layer</dt><dd>{{if .Task.Definition.OwningLayer}}{{.Task.Definition.OwningLayer}}{{else}}none{{end}}</dd>
 <dt>Risk</dt><dd>{{if .Task.Definition.RiskLevel}}{{.Task.Definition.RiskLevel}}{{else}}none{{end}}</dd>
 <dt>Migration type</dt><dd>{{if .Task.Definition.MigrationType}}{{.Task.Definition.MigrationType}}{{else}}none{{end}}</dd>
+<dt>Tags</dt><dd>{{range .Task.Definition.Tags}}<code>{{.}}</code> {{else}}none{{end}}</dd>
 </dl>
 </article>
 <article class="detail-panel wide">

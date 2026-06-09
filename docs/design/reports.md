@@ -18,6 +18,7 @@ and what follow-up work remains.
 `/reports` opens to the local current day. The top of the page shows:
 
 - date selector with today, yesterday, last seven days, and custom range,
+- filters for role, profile, kind, domain, risk, and tags,
 - completed task count split into implementation outcomes and monitor/deploy-run
   closures,
 - moving task count,
@@ -57,6 +58,10 @@ Group completed and moved tasks by role, then domain/kind. Each group shows:
 - representative task links,
 - important blocked or follow-up tasks,
 - latest evidence artifact link when present.
+
+Reports also carry task tags into JSON/CSV exports and support `tag` query
+filters for cross-cutting programs such as production readiness, security
+review, documentation portal work, UAT hardening, or environment-specific work.
 
 Long groups are paginated or expandable. The default should show the most recent
 or highest-risk tasks first, not a complete wall of rows.

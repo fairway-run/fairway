@@ -98,9 +98,16 @@ type WorkstreamProfile struct {
 	Name            string                  `toml:"name"`
 	TaskKinds       []string                `toml:"task_kinds"`
 	DashboardGroups []string                `toml:"dashboard_groups"`
+	TagGroups       []WorkstreamTagGroup    `toml:"tag_groups"`
 	ReviewDomains   []string                `toml:"review_domains"`
 	RouteSamples    []string                `toml:"route_samples"`
 	Gates           []WorkstreamProfileGate `toml:"gates"`
+}
+
+type WorkstreamTagGroup struct {
+	Name        string   `toml:"name"`
+	Tags        []string `toml:"tags"`
+	Description string   `toml:"description"`
 }
 
 type WorkstreamProfileGate struct {
@@ -355,6 +362,22 @@ func validateWorkstreamProfiles(profiles []WorkstreamProfile, kindSet map[string
 		}
 		if err := validateStringList("[[workstream_profiles]] dashboard_groups", profile.DashboardGroups); err != nil {
 			return err
+		}
+		tagGroups := map[string]bool{}
+		for _, group := range profile.TagGroups {
+			if group.Name == "" {
+				return fmt.Errorf("[[workstream_profiles.tag_groups]] name is required for profile %q", profile.Name)
+			}
+			if tagGroups[group.Name] {
+				return fmt.Errorf("duplicate tag group %q in workstream profile %q", group.Name, profile.Name)
+			}
+			tagGroups[group.Name] = true
+			if err := validateStringList("[[workstream_profiles.tag_groups]] tags", group.Tags); err != nil {
+				return err
+			}
+			if len(group.Tags) == 0 {
+				return fmt.Errorf("[[workstream_profiles.tag_groups]] tags is required for group %q in profile %q", group.Name, profile.Name)
+			}
 		}
 		if err := validateStringList("[[workstream_profiles]] review_domains", profile.ReviewDomains); err != nil {
 			return err

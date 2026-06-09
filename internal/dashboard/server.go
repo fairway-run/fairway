@@ -196,6 +196,7 @@ type TaskFilters struct {
 	OwningDomain  string
 	RiskLevel     string
 	ReviewDomain  string
+	Tags          []string
 	Project       string
 	ActivityKind  string
 	Tab           string
@@ -243,6 +244,7 @@ type FilterOptions struct {
 	OwningDomains []string
 	RiskLevels    []string
 	ReviewDomains []string
+	Tags          []string
 	ActivityKinds []string
 }
 
@@ -814,6 +816,7 @@ func projectWallGroups(tasks []store.Task, roles []string) []ProjectWallGroup {
 func taskFiltersFromRequest(r *http.Request) TaskFilters {
 	query := r.URL.Query()
 	statuses := trimmedQueryValues(query["status"])
+	tags := splitQueryValues(query["tag"])
 	return TaskFilters{
 		Search:        strings.TrimSpace(query.Get("q")),
 		Role:          strings.TrimSpace(query.Get("role")),
@@ -826,6 +829,7 @@ func taskFiltersFromRequest(r *http.Request) TaskFilters {
 		OwningDomain:  strings.TrimSpace(query.Get("owning_domain")),
 		RiskLevel:     strings.TrimSpace(query.Get("risk_level")),
 		ReviewDomain:  strings.TrimSpace(query.Get("review_domain")),
+		Tags:          tags,
 		Project:       strings.TrimSpace(query.Get("project")),
 		ActivityKind:  strings.TrimSpace(query.Get("activity_kind")),
 		Tab:           dashboardTab(query.Get("tab")),
@@ -882,6 +886,9 @@ func boardTabHref(filters TaskFilters, tab string) string {
 	setIf("owning_domain", filters.OwningDomain)
 	setIf("risk_level", filters.RiskLevel)
 	setIf("review_domain", filters.ReviewDomain)
+	for _, tag := range filters.Tags {
+		values.Add("tag", tag)
+	}
 	setIf("project", filters.Project)
 	setIf("activity_kind", filters.ActivityKind)
 	if filters.ActivityLimit > 0 && filters.ActivityLimit != defaultActivityLimit {
@@ -991,6 +998,7 @@ var boardColumnCatalog = []BoardColumn{
 	{Key: "owning_domain", Label: "Domain", Sortable: true},
 	{Key: "risk_level", Label: "Risk", Sortable: true},
 	{Key: "review_domains", Label: "Review domains", Sortable: true},
+	{Key: "tags", Label: "Tags", Sortable: true},
 	{Key: "workstream", Label: "Workstream", Sortable: true},
 }
 
@@ -1184,7 +1192,7 @@ func normalizeBoardSort(raw string) string {
 
 func normalizeBoardSortKey(raw string) string {
 	switch strings.TrimSpace(raw) {
-	case "project", "id", "title", "role", "status", "kind", "started", "updated", "gates", "owner", "profile", "owning_domain", "risk_level", "review_domains", "workstream":
+	case "project", "id", "title", "role", "status", "kind", "started", "updated", "gates", "owner", "profile", "owning_domain", "risk_level", "review_domains", "tags", "workstream":
 		return strings.TrimSpace(raw)
 	default:
 		return ""
@@ -1210,6 +1218,9 @@ func boardFilterChips(filters TaskFilters) []FilterChip {
 	add("owning_domain", "Domain", filters.OwningDomain)
 	add("risk_level", "Risk", filters.RiskLevel)
 	add("review_domain", "Review", filters.ReviewDomain)
+	for _, tag := range filters.Tags {
+		add("tag", "Tag", tag)
+	}
 	add("project", "Project", filters.Project)
 	return chips
 }
@@ -1240,6 +1251,14 @@ func boardRemoveFilterHref(filters TaskFilters, key, value string) string {
 		filters.RiskLevel = ""
 	case "review_domain":
 		filters.ReviewDomain = ""
+	case "tag":
+		var tags []string
+		for _, tag := range filters.Tags {
+			if tag != value {
+				tags = append(tags, tag)
+			}
+		}
+		filters.Tags = tags
 	case "project":
 		filters.Project = ""
 	}
@@ -1256,6 +1275,7 @@ func boardClearFiltersHref(filters TaskFilters) string {
 	filters.OwningDomain = ""
 	filters.RiskLevel = ""
 	filters.ReviewDomain = ""
+	filters.Tags = nil
 	filters.Project = ""
 	filters.TablePage = 1
 	return boardTabHref(filters, filters.Tab)
@@ -1304,6 +1324,9 @@ func filterTasks(tasks []store.Task, filters TaskFilters, projectName string) []
 			continue
 		}
 		if filters.ReviewDomain != "" && !containsString(task.Definition.ReviewDomains, filters.ReviewDomain) {
+			continue
+		}
+		if len(filters.Tags) > 0 && !containsAllStrings(task.Definition.Tags, filters.Tags) {
 			continue
 		}
 		out = append(out, task)
@@ -1364,6 +1387,8 @@ func compareBoardTask(left, right store.Task, key string) int {
 		return strings.Compare(left.Definition.RiskLevel, right.Definition.RiskLevel)
 	case "review_domains":
 		return strings.Compare(strings.Join(left.Definition.ReviewDomains, ","), strings.Join(right.Definition.ReviewDomains, ","))
+	case "tags":
+		return strings.Compare(strings.Join(left.Definition.Tags, ","), strings.Join(right.Definition.Tags, ","))
 	case "workstream":
 		return strings.Compare(boardTaskWorkstream(left), boardTaskWorkstream(right))
 	default:
@@ -1405,6 +1430,8 @@ func boardTaskCell(task store.Task, column BoardColumn, rollups map[string]Rollu
 		return template.HTML(escape(task.Definition.RiskLevel))
 	case "review_domains":
 		return template.HTML(escape(strings.Join(task.Definition.ReviewDomains, ", ")))
+	case "tags":
+		return template.HTML(escape(strings.Join(task.Definition.Tags, ", ")))
 	case "workstream":
 		return template.HTML(escape(boardTaskWorkstream(task)))
 	default:
@@ -1443,6 +1470,8 @@ func boardTaskPlainCell(task store.Task, column BoardColumn, rollups map[string]
 		return task.Definition.RiskLevel
 	case "review_domains":
 		return strings.Join(task.Definition.ReviewDomains, ", ")
+	case "tags":
+		return strings.Join(task.Definition.Tags, ", ")
 	case "workstream":
 		return boardTaskWorkstream(task)
 	default:
@@ -1542,6 +1571,22 @@ func trimmedQueryValues(values []string) []string {
 	return out
 }
 
+func splitQueryValues(values []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" || seen[part] {
+				continue
+			}
+			seen[part] = true
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 func statusFilterValues(filters TaskFilters) []string {
 	if len(filters.Statuses) > 0 {
 		return filters.Statuses
@@ -1610,6 +1655,7 @@ func taskMatchesSearch(task store.Task, raw string) bool {
 	haystacks = append(haystacks, task.Definition.SourcePaths...)
 	haystacks = append(haystacks, task.Definition.TargetPaths...)
 	haystacks = append(haystacks, task.Definition.ReviewDomains...)
+	haystacks = append(haystacks, task.Definition.Tags...)
 	for _, value := range haystacks {
 		if strings.Contains(strings.ToLower(value), needle) {
 			return true
@@ -1627,6 +1673,7 @@ func filterOptions(tasks []store.Task, activity []store.Activity, projectName st
 	domains := map[string]bool{}
 	risks := map[string]bool{}
 	reviewDomains := map[string]bool{}
+	tags := map[string]bool{}
 	activityKinds := map[string]bool{}
 	for _, task := range tasks {
 		addFilterValue(projects, taskProject(task, projectName))
@@ -1637,6 +1684,9 @@ func filterOptions(tasks []store.Task, activity []store.Activity, projectName st
 		addFilterValue(risks, task.Definition.RiskLevel)
 		for _, domain := range task.Definition.ReviewDomains {
 			addFilterValue(reviewDomains, domain)
+		}
+		for _, tag := range task.Definition.Tags {
+			addFilterValue(tags, tag)
 		}
 	}
 	for _, item := range activity {
@@ -1649,6 +1699,7 @@ func filterOptions(tasks []store.Task, activity []store.Activity, projectName st
 	options.OwningDomains = sortedFilterValues(domains)
 	options.RiskLevels = sortedFilterValues(risks)
 	options.ReviewDomains = sortedFilterValues(reviewDomains)
+	options.Tags = sortedFilterValues(tags)
 	options.ActivityKinds = sortedFilterValues(activityKinds)
 	return options
 }
@@ -1676,6 +1727,15 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func containsAllStrings(values []string, wants []string) bool {
+	for _, want := range wants {
+		if !containsString(values, want) {
+			return false
+		}
+	}
+	return true
 }
 
 func groupWorkstreams(tasks []store.Task, readySet map[string]bool) []WorkstreamGroup {
@@ -2832,6 +2892,7 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"boardTaskCell":            boardTaskCell,
 		"statusFilterValues":       statusFilterValues,
 		"statusSelected":           statusSelected,
+		"contains":                 containsString,
 		"statusClass":              safeDashboardClass,
 		"safeClass":                safeDashboardClass,
 		"dict":                     templateDict,

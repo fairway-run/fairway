@@ -178,12 +178,30 @@ Architecture-aware work needs metadata that is useful across profiles:
 - `source_paths`,
 - `target_paths`,
 - `review_domains`,
+- `tags`,
 - `risk_level`,
 - `migration_type`.
 
 This metadata attaches to task definitions and stays generic enough for
 platform foundations, frontend migrations, service extractions, security
 hardening, and SDK readiness.
+
+Tags are cross-cutting grouping metadata. Use them when a task belongs to a
+program or environment that cuts across profile, kind, owner, and review domain:
+`production-readiness`, `security-review`, `docs-portal`, `mfa`,
+`uat-hardening`, `pssm-closeout`, `fairway-process`, `environment:staging`, or
+`environment:cloudflare`. Tags do not replace `profile`, `kind`,
+`owning_domain`, `risk_level`, or `review_domains`; they add a secondary
+grouping/filtering axis.
+
+Profiles may recommend tag display groups:
+
+```toml
+[[workstream_profiles.tag_groups]]
+name = "environments"
+tags = ["environment:staging", "environment:cloudflare"]
+description = "Deployment or validation environment buckets used by this profile."
+```
 
 ## Guard Reports As Evidence
 

@@ -1370,3 +1370,44 @@ tasks:
       - Release checklist validation commands are run and recorded, including Go tests, Go vet, Docusaurus build, goreleaser check when available, workflow/deploy guard, and release verify dry-run or documented blocker.
       - No new feature work is added during the release-run; failures create scoped follow-up tasks.
       - Release decision is recorded as pass, blocked, or waived with residual risk.
+
+  - id: FW-141
+    title: Add first-class task tags for cross-cutting work grouping
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: task-metadata
+    source_paths:
+      - docs/design/workstream-profiles.md
+      - docs/design/cli.md
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - docs/design/workstream-profiles.md
+      - docs/design/cli.md
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - cmd/fairway/main.go
+      - internal/store
+      - internal/dashboard
+    review_domains:
+      - arch
+      - governance
+      - frontend
+    risk_level: medium
+    migration_type: task-tags
+    depends_on:
+      - FW-133
+      - FW-134
+    acceptance_checks:
+      - Task definitions support first-class tags as generic strings or key:value pairs without replacing profile, kind, owning-domain, risk, or review-domain metadata.
+      - YAML import/export preserves tag order and supports repeated tags.
+      - CLI add, spawn, update, and task-detail support repeatable tag metadata and render tags consistently.
+      - Store and dashboard filters can query tasks by one or more tags.
+      - Reports can group or filter by tags for cross-cutting programs such as production-readiness, security-review, docs-portal, mfa, uat-hardening, pssm-closeout, fairway-process, environment:staging, and environment:cloudflare.
+      - Workstream profiles may define recommended tag groups or display groups, but tags remain generic product metadata.
+      - Tests cover YAML import/export, CLI repeated tags, store filtering, dashboard/report filtering, and backward compatibility for tasks without tags.

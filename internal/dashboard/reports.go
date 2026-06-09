@@ -54,6 +54,7 @@ type ReportFilters struct {
 	Kind               string
 	OwningDomain       string
 	RiskLevel          string
+	Tags               []string
 	IncludeBookkeeping bool
 	TableLimit         int
 	TablePage          int
@@ -147,6 +148,7 @@ type ReportTaskRow struct {
 	Profile          string   `json:"profile,omitempty"`
 	OwningDomain     string   `json:"owning_domain,omitempty"`
 	RiskLevel        string   `json:"risk_level,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
 	DeliveryClass    string   `json:"delivery_class"`
 	Completed        bool     `json:"completed"`
 	Moving           bool     `json:"moving"`
@@ -353,6 +355,7 @@ func reportFiltersFromRequest(r *http.Request) ReportFilters {
 		Kind:               strings.TrimSpace(query.Get("kind")),
 		OwningDomain:       strings.TrimSpace(query.Get("owning_domain")),
 		RiskLevel:          strings.TrimSpace(query.Get("risk_level")),
+		Tags:               splitQueryValues(query["tag"]),
 		IncludeBookkeeping: query.Get("include_bookkeeping") == "1" || query.Get("include_bookkeeping") == "true",
 		TableLimit:         boundedQueryInt(query.Get("table_limit"), defaultReportTableLimit, maxReportTableLimit),
 		TablePage:          boundedQueryInt(query.Get("page"), 1, 999999),
@@ -441,6 +444,9 @@ func reportRowsFromFacts(facts []reportTaskFacts, filters ReportFilters) []Repor
 		if filters.RiskLevel != "" && row.RiskLevel != filters.RiskLevel {
 			continue
 		}
+		if len(filters.Tags) > 0 && !containsAllStrings(row.Tags, filters.Tags) {
+			continue
+		}
 		rows = append(rows, row)
 	}
 	return rows
@@ -458,6 +464,7 @@ func reportRowFromFact(fact reportTaskFacts) ReportTaskRow {
 		Profile:          task.Definition.Profile,
 		OwningDomain:     task.Definition.OwningDomain,
 		RiskLevel:        task.Definition.RiskLevel,
+		Tags:             append([]string(nil), task.Definition.Tags...),
 		DeliveryClass:    reportDeliveryClass(task),
 		Completed:        fact.Completed,
 		Moving:           fact.Moving,
@@ -494,7 +501,9 @@ func reportRowMatchesSearch(row ReportTaskRow, raw string) bool {
 	if needle == "" {
 		return true
 	}
-	hay := strings.Join([]string{row.ID, row.Title, row.Role, row.Status, row.Kind, row.Profile, row.OwningDomain, row.RiskLevel, row.DeliveryClass, row.FollowUpTaxonomy}, " ")
+	haystacks := []string{row.ID, row.Title, row.Role, row.Status, row.Kind, row.Profile, row.OwningDomain, row.RiskLevel, row.DeliveryClass, row.FollowUpTaxonomy}
+	haystacks = append(haystacks, row.Tags...)
+	hay := strings.Join(haystacks, " ")
 	return strings.Contains(strings.ToLower(hay), needle)
 }
 
@@ -810,6 +819,9 @@ func reportFilterValues(filters ReportFilters) url.Values {
 	setIf("kind", filters.Kind)
 	setIf("owning_domain", filters.OwningDomain)
 	setIf("risk_level", filters.RiskLevel)
+	for _, tag := range filters.Tags {
+		values.Add("tag", tag)
+	}
 	if filters.IncludeBookkeeping {
 		values.Set("include_bookkeeping", "1")
 	}
@@ -844,9 +856,9 @@ func writeReportCSV(w http.ResponseWriter, data ReportViewData) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", `attachment; filename="fairway-report.csv"`)
 	writer := csv.NewWriter(w)
-	_ = writer.Write([]string{"id", "title", "role", "status", "kind", "profile", "domain", "risk", "class", "completed", "moving", "created", "evidence", "reviews", "missing_reviews", "latest_evidence", "last_activity"})
+	_ = writer.Write([]string{"id", "title", "role", "status", "kind", "profile", "domain", "risk", "tags", "class", "completed", "moving", "created", "evidence", "reviews", "missing_reviews", "latest_evidence", "last_activity"})
 	for _, row := range data.Rows {
-		_ = writer.Write([]string{row.ID, row.Title, row.Role, row.Status, row.Kind, row.Profile, row.OwningDomain, row.RiskLevel, row.DeliveryClass, strconv.FormatBool(row.Completed), strconv.FormatBool(row.Moving), strconv.FormatBool(row.Created), strconv.Itoa(row.EvidenceCount), strconv.Itoa(row.ReviewCount), strings.Join(row.MissingReviews, ";"), row.LatestEvidence, row.LastActivityAt})
+		_ = writer.Write([]string{row.ID, row.Title, row.Role, row.Status, row.Kind, row.Profile, row.OwningDomain, row.RiskLevel, strings.Join(row.Tags, ";"), row.DeliveryClass, strconv.FormatBool(row.Completed), strconv.FormatBool(row.Moving), strconv.FormatBool(row.Created), strconv.Itoa(row.EvidenceCount), strconv.Itoa(row.ReviewCount), strings.Join(row.MissingReviews, ";"), row.LatestEvidence, row.LastActivityAt})
 	}
 	writer.Flush()
 }

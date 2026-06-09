@@ -26,6 +26,7 @@
 <label>Profile<select name="profile"><option value="">all</option>{{range .FilterOptions.Profiles}}<option value="{{.}}" {{if eq $.Filters.Profile .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Kind<select name="kind"><option value="">all</option>{{range .FilterOptions.Kinds}}<option value="{{.}}" {{if eq $.Filters.Kind .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Domain<select name="owning_domain"><option value="">all</option>{{range .FilterOptions.OwningDomains}}<option value="{{.}}" {{if eq $.Filters.OwningDomain .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Tag<select name="tag"><option value="">all</option>{{range .FilterOptions.Tags}}<option value="{{.}}" {{if contains $.Filters.Tags .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label class="check-row"><input type="checkbox" name="include_bookkeeping" value="1" {{if .Filters.IncludeBookkeeping}}checked{{end}}> include monitor/deploy-run bookkeeping</label>
 <label>Rows<select name="table_limit"><option value="25" {{if eq .Filters.TableLimit 25}}selected{{end}}>25</option><option value="50" {{if eq .Filters.TableLimit 50}}selected{{end}}>50</option><option value="100" {{if eq .Filters.TableLimit 100}}selected{{end}}>100</option><option value="200" {{if eq .Filters.TableLimit 200}}selected{{end}}>200</option></select></label>
 <button class="btn" type="submit">Apply</button>
@@ -124,7 +125,7 @@
 <section class="report-section">
 <header class="section-head"><h2>Drill-Down Table</h2><span>bounded, filtered rows for the selected report scope</span></header>
 <table class="board-table report-table" data-sortable>
-<thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Title</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Class</button></th><th><button type="button" data-sort="text">Evidence</button></th><th><button type="button" data-sort="text">Reviews</button></th><th><button type="button" data-sort="text">Last activity</button></th></tr></thead>
+<thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Title</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Tags</button></th><th><button type="button" data-sort="text">Class</button></th><th><button type="button" data-sort="text">Evidence</button></th><th><button type="button" data-sort="text">Reviews</button></th><th><button type="button" data-sort="text">Last activity</button></th></tr></thead>
 <tbody>
 {{range .TableRows}}
 <tr>
@@ -133,12 +134,13 @@
 <td>{{.Role}}</td>
 <td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td>
 <td>{{.Kind}}</td>
+<td>{{range .Tags}}<code>{{.}}</code> {{else}}none{{end}}</td>
 <td><span class="status-pill {{safeClass .DeliveryClass}}">{{.DeliveryClass}}</span></td>
 <td>{{.EvidenceCount}}{{if .LatestEvidence}} · <code>{{.LatestEvidence}}</code>{{end}}</td>
 <td>{{.ReviewCount}}{{if .MissingReviews}} · missing {{range .MissingReviews}}{{.}} {{end}}{{end}}</td>
 <td>{{.LastActivityAt}}</td>
 </tr>
-{{else}}<tr><td colspan="9">no report rows match this scope</td></tr>{{end}}
+{{else}}<tr><td colspan="10">no report rows match this scope</td></tr>{{end}}
 </tbody>
 </table>
 <footer class="board-footer">

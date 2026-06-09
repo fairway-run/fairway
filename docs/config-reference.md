@@ -186,8 +186,20 @@ metadata without changing the file shape.
 | `name` | string | — | Stable profile name, for example `platform-foundation`, `release-readiness`, or `sdk-readiness`. Must be unique. |
 | `task_kinds` | []string | — | Task kinds associated with this profile. If `[task_kinds].allowed` is configured, every profile kind must appear there. |
 | `dashboard_groups` | []string | — | Human-facing groups a dashboard can use to cluster tasks for this profile. |
+| `tag_groups` | []table | — | Optional recommended tag display groups for dashboards/reports. These are advisory; task tags remain generic task metadata. |
 | `review_domains` | []string | — | Review domains that may be required for readiness, distinct from first-match assignment routes. |
 | `route_samples` | []string | — | Paths sampled by `fairway adoption artifact` when no `--route` flags are provided. |
+
+#### `[[workstream_profiles.tag_groups]]`
+
+Recommended tag groups under the preceding profile. They document common
+cross-cutting tags without making those tags core Fairway grammar.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | — | Human-facing group name, for example `release environments` or `security programs`. Must be unique within the profile. |
+| `tags` | []string | — | Recommended tags in display order. Supports simple and key:value tags. |
+| `description` | string | — | Optional explanation for operators and profile authors. |
 
 #### `[[workstream_profiles.gates]]`
 
@@ -282,6 +294,7 @@ Tasks may carry profile-aware metadata in YAML/JSON imports and through
 | `source_paths` / `--source-paths` | []string / CSV | Current paths, inputs, or surfaces affected by the task. |
 | `target_paths` / `--target-paths` | []string / CSV | Target paths, outputs, or artifacts expected from the task. |
 | `review_domains` / `--review-domains` | []string / CSV | Review domains expected for the task. |
+| `tags` / `--tag` | []string / CSV | Generic cross-cutting tags. Supports simple tags and key:value tags such as `environment:staging`. |
 | `risk_level` / `--risk-level` | string | Lightweight risk label. Fairway does not hardcode allowed values. |
 | `migration_type` / `--migration-type` | string | Shape of the work, such as `facade`, `boundary-guard`, or `ownership-map`. |
 
