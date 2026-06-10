@@ -245,6 +245,27 @@ fairway packet template architecture-map T-010 \
   --field acceptance="owners and review routes are explicit"
 ```
 
+### `[[rule_sources]]` draft
+
+Rule sources are planned configuration for reusable operating rule packs. They
+are documented in [Rule packs](design/rule-packs.md). The intended shape is:
+
+```toml
+[[rule_sources]]
+name = "fairway-platform"
+source = "github:fairway-run/fairway-rules-platform"
+version = "v0.1.0"
+mode = "advisory"
+```
+
+Modes:
+
+- `advisory`: recommend rules and evidence without blocking closeout.
+- `blocking`: missing required evidence blocks configured readiness checks.
+- `disabled`: keep the source configured but do not evaluate it.
+
+This section is a design target until the rule-source loader lands.
+
 ### `[states]`
 
 | Key | Type | Default | Description |

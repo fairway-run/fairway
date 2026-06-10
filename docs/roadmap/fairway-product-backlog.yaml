@@ -1480,3 +1480,189 @@ tasks:
       - Configuration sketch supports file and external sources with advisory, blocking, and disabled modes.
       - Design explains how CodeGuard can be consumed as a security rule source without replacing project-specific GPUaaS rules.
       - Follow-up implementation tasks are identified for rule-source loading, rule matching, task-detail/dashboard surfacing, merge-ready checks, and packet generation.
+
+  - id: FW-144
+    title: Add rule source config model
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rule-packs
+    source_paths:
+      - docs/design/rule-packs.md
+      - docs/config-reference.md
+      - internal/config
+      - cmd/fairway
+    target_paths:
+      - docs/design/rule-packs.md
+      - docs/config-reference.md
+      - internal/config
+      - cmd/fairway
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: high
+    migration_type: rule-source-config-model
+    depends_on:
+      - FW-143
+    acceptance_checks:
+      - Config supports `[[rule_sources]]` with name, source, optional version, and mode.
+      - Supported modes include advisory, blocking, and disabled.
+      - Config validation catches duplicate names, unknown modes, empty sources, and malformed source schemes.
+      - Documentation explains local file and external source examples without enabling network fetch by default.
+
+  - id: FW-145
+    title: Add rule pack loader and validator
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rule-packs
+    source_paths:
+      - docs/design/rule-packs.md
+      - internal/rules
+      - cmd/fairway
+    target_paths:
+      - internal/rules
+      - cmd/fairway
+      - docs/design/rule-packs.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: high
+    migration_type: rule-pack-loader
+    depends_on:
+      - FW-144
+    acceptance_checks:
+      - Loader reads local rule-pack directories with Markdown files containing YAML front matter.
+      - Validator checks required rule fields, duplicate ids, status values, risk floor, evidence names, review domains, and applicability metadata.
+      - External GitHub sources are represented in config but remain fetch-disabled or explicitly documented until safe fetch/cache policy is implemented.
+      - CLI command or config validation output reports loaded rule counts and validation findings.
+
+  - id: FW-146
+    title: Match rule packs to tasks by paths tags kind and risk
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rule-packs
+    source_paths:
+      - internal/rules
+      - internal/store
+      - cmd/fairway
+    target_paths:
+      - internal/rules
+      - internal/store
+      - cmd/fairway
+      - docs/design/rule-packs.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: high
+    migration_type: rule-task-matching
+    depends_on:
+      - FW-145
+      - FW-141
+    acceptance_checks:
+      - Rule matcher evaluates task source paths, target paths, tags, kind, profile, risk level, and review domains.
+      - Match output distinguishes selected, considered, disabled, and non-applicable rules.
+      - CLI can show applicable rules for a task in human and JSON output.
+      - Tests cover path glob matches, tag matches, risk-floor behavior, disabled sources, and no-match tasks.
+
+  - id: FW-147
+    title: Surface applicable rules in task detail dashboard and reports
+    kind: task
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - docs/design/rule-packs.md
+    target_paths:
+      - internal/dashboard
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - docs/design/rule-packs.md
+    review_domains:
+      - arch
+      - governance
+      - frontend
+      - backend
+    risk_level: high
+    migration_type: rule-dashboard-surfacing
+    depends_on:
+      - FW-146
+    acceptance_checks:
+      - Task detail shows applicable rules, mode, required evidence, review domains, and stop conditions.
+      - Board or reports surface missing rule evidence without crowding the main task table.
+      - Dashboard output distinguishes advisory and blocking rule gaps.
+      - Tests cover task detail rendering and dashboard/report rule-gap summaries.
+
+  - id: FW-148
+    title: Add rule evidence checks to merge-ready and workflow check
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: merge-ready
+    source_paths:
+      - internal/rules
+      - internal/reconcile
+      - cmd/fairway
+      - docs/design/rule-packs.md
+    target_paths:
+      - internal/rules
+      - internal/reconcile
+      - cmd/fairway
+      - docs/design/rule-packs.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: high
+    migration_type: rule-evidence-merge-ready
+    depends_on:
+      - FW-146
+    acceptance_checks:
+      - Blocking rule sources can require matching evidence before merge-ready passes.
+      - Advisory rule gaps appear as warnings and do not block.
+      - Workflow check reports missing rule evidence with rule id, evidence type, mode, and task id.
+      - Tests cover blocking, advisory, disabled, satisfied, and missing evidence cases.
+
+  - id: FW-149
+    title: Add selected rule packet template integration
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: packets
+    source_paths:
+      - internal/rules
+      - cmd/fairway
+      - docs/design/rule-packs.md
+      - docs/design/cli.md
+    target_paths:
+      - internal/rules
+      - cmd/fairway
+      - docs/design/rule-packs.md
+      - docs/design/cli.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: rule-packet-template-integration
+    depends_on:
+      - FW-146
+    acceptance_checks:
+      - Packet command can render selected applicable rules for a task.
+      - Packet output includes selected rules, non-applicable rationale fields, required evidence, recommended commands, review domains, and residual risk fields.
+      - Rule packets can be recorded as evidence but do not approve reviews or close tasks.
+      - Tests cover human and JSON packet output for selected rules.

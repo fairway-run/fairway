@@ -32,11 +32,17 @@ evidence exists, or who is blocking whom.
 8. **Profiles over project-specific workflow.** Workstream profiles can define
    task kinds, packet templates, review domains, evidence expectations, and
    dashboard grouping without baking one product's process into core.
-9. **Automate the repeated checks.** The operating model should stay short.
+9. **Rule packs over copied process docs.** Reusable operating knowledge belongs
+   in versioned rule-pack repositories, such as
+   `fairway-run/fairway-rules-platform`. Project/domain-specific rules belong
+   in that project's own rule-pack repository. Fairway core owns loading,
+   matching, evidence, dashboard, and closeout behavior; it does not hardcode
+   one project's rules.
+10. **Automate the repeated checks.** The operating model should stay short.
    Repeated rules such as commit boundaries, push/CI signal, deploy-run
    tracking, and active-session reconciliation should become CLI guards and
    dashboard findings.
-10. **Promotion is explicit.** Provider and thread branches are local scratch by
+11. **Promotion is explicit.** Provider and thread branches are local scratch by
     default. Remote push is a recorded promotion action with intent, normally
     performed by the orchestrator or reviewer/merge lane after local
     verification.

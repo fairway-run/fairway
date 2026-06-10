@@ -125,6 +125,7 @@ Start here:
 - [Backlog sources](docs/design/backlog-sources.md) — active backlog, archive, examples, and runtime DB authority
 - [Agent guide](docs/agent-guide.md) — practical command flow for agents using Fairway
 - [Dashboard](docs/design/dashboard.md) — wall, board, diagnostics, reports, and task detail
+- [Rule packs](docs/design/rule-packs.md) — reusable operating knowledge that Fairway can load, recommend, and turn into evidence expectations
 - [Release notes](docs/release-notes.md) — current release candidate scope and known limits
 
 For maintainers and repository agents:
@@ -142,6 +143,7 @@ Core Design:
 - [Release cuts](docs/design/release-cuts.md)
 - [Implementation roadmap](docs/design/implementation-roadmap.md)
 - [Workstream profiles](docs/design/workstream-profiles.md)
+- [Rule packs](docs/design/rule-packs.md)
 - [Schema](docs/design/schema.md)
 - [State machine](docs/design/state-machine.md)
 - [Hierarchy (epics, stories, spawn)](docs/design/hierarchy.md)

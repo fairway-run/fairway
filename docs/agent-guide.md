@@ -568,6 +568,12 @@ the profile gates for the target task: missing `blocking` gates fail readiness,
 while missing `advisory` and `report_only` gates appear as warnings. Treat
 advisory gates as evidence expectations, not as optional background noise.
 
+If your repo uses rule packs, treat them as reusable operating knowledge for
+the task. Rule packs do not approve work by themselves. They identify applicable
+rules, expected evidence, review domains, recommended commands, and stop
+conditions. Record selected rules and non-applicable rationale as evidence when
+the project requires it.
+
 Profile-shaped work should carry task metadata when the coordinator or dashboard
 needs architecture context:
 
