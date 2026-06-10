@@ -1728,3 +1728,35 @@ tasks:
       - Notification delivery never grants review approval, task completion, merge, push, deploy, or release authority by itself.
       - Stale notification/watchdog output identifies task id, target domain, provider target, last handoff, last notification attempt, and recommended next action.
       - Docs explain when to use Codex app thread steering versus tmux/CLI provider sessions, including the distinction between Fairway handoff and actual thread notification.
+
+  - id: FW-151
+    title: Execute historical review-debt sweep cleanup
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator
+    source_paths:
+      - internal/coordinator
+      - docs/assessment/fairway-review-debt-sweep-2026-06-07.md
+      - docs/assessment/fairway-review-debt-execution-2026-06-10.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - internal/coordinator
+      - docs/assessment/fairway-review-debt-execution-2026-06-10.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: review-debt-execution
+    depends_on:
+      - FW-137
+      - FW-142
+    acceptance_checks:
+      - Coordinator plan does not report historical review-debt for terminal tasks whose required review domains are already approved.
+      - Historical review-debt remains sourced from missing required review domains, not stale review checkpoints alone.
+      - Sweep assessment records before/after debt counts and the remaining real debt inventory.
+      - No historical approvals are fabricated; remaining debt is left pending for real review or explicit governance waiver.
+      - Tests cover both terminal tasks with missing review domains and terminal tasks with approved review domains plus stale review checkpoints.

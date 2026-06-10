@@ -230,11 +230,6 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	}
 	for _, checkpoint := range latestOpenCheckpointsByTask(checkpoints) {
 		if terminal[taskStatusByID[checkpoint.TaskID]] {
-			if checkpoint.State == "review" {
-				plan.Summary.ReviewDebt++
-				plan.ReviewDebt = appendTaskRef(plan.ReviewDebt, TaskRef{ID: checkpoint.TaskID, Role: checkpoint.Owner, Status: checkpoint.State})
-				addAction(&plan, 45, "review-debt", "sweep_historical_review_debt", checkpoint.Summary, checkpoint.TaskID, checkpoint.Owner, "", "", nil, false)
-			}
 			continue
 		}
 		switch checkpoint.State {

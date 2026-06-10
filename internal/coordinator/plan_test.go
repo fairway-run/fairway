@@ -185,12 +185,12 @@ func TestBuildPlanIgnoresAwaitingInputSupersededByDoneCheckpoint(t *testing.T) {
 	}
 }
 
-func TestBuildPlanSegmentsTerminalReviewCheckpointAsReviewDebt(t *testing.T) {
+func TestBuildPlanSegmentsTerminalMissingReviewDomainsAsReviewDebt(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)
 	cfg := config.Defaults(t.TempDir())
 	cfg.States.Terminal = []string{"done"}
-	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DONE-001", Title: "Historical review", Kind: "task", Role: "backend"}}); err != nil {
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DONE-001", Title: "Historical review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "DONE-001", State: "review", Owner: "backend", Summary: "old review checkpoint"}); err != nil {
@@ -204,13 +204,42 @@ func TestBuildPlanSegmentsTerminalReviewCheckpointAsReviewDebt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if plan.Summary.ReviewGated != 0 || plan.Summary.ReviewDebt != 1 {
-		t.Fatalf("terminal review checkpoint summary=%+v, want review_debt only", plan.Summary)
+		t.Fatalf("terminal missing review domain summary=%+v, want review_debt only", plan.Summary)
 	}
 	if hasPlanAction(plan, "review-gated", "complete_review_checkpoint", "DONE-001") {
 		t.Fatalf("terminal review checkpoint surfaced as active review gate: %+v", plan.Actions)
 	}
 	if !hasPlanAction(plan, "review-debt", "sweep_historical_review_debt", "DONE-001") {
-		t.Fatalf("terminal review checkpoint did not surface as review debt: %+v", plan.Actions)
+		t.Fatalf("terminal missing review domain did not surface as review debt: %+v", plan.Actions)
+	}
+}
+
+func TestBuildPlanIgnoresTerminalReviewCheckpointWhenReviewsApproved(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DONE-001", Title: "Reviewed historical task", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "DONE-001", State: "review", Owner: "backend", Summary: "old review checkpoint"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "DONE-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "reviewed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONE-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.ReviewGated != 0 || plan.Summary.ReviewDebt != 0 {
+		t.Fatalf("approved terminal review checkpoint still produced review debt: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+	if hasPlanAction(plan, "review-debt", "sweep_historical_review_debt", "DONE-001") {
+		t.Fatalf("approved terminal review checkpoint surfaced as debt: %+v", plan.Actions)
 	}
 }
 
