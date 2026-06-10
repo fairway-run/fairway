@@ -213,11 +213,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   workstream profile `route_samples` when no `--route` flags are provided and
   reports named profile gates plus evidence-backed gate evaluation. `parity
   artifact` remains a compatibility alias for GPUaaS-style comparisons.
-- `merge-ready` evaluates profile gates for the target task. Missing
-  `blocking` gates fail readiness; missing `advisory` and `report_only` gates
-  are reported as warnings. If task metadata declares `review_domains`,
-  `merge-ready` also requires an approved review whose reviewer matches each
-  domain.
+- `merge-ready` evaluates profile gates and selected rule-pack requirements for
+  the target task. Missing `blocking` profile gates or blocking rule evidence
+  fail readiness; missing `advisory` and `report_only` gates or advisory rule
+  evidence are reported as warnings. If task metadata declares
+  `review_domains`, `merge-ready` also requires an approved review whose
+  reviewer matches each domain. `workflow check --mode close --task-id <id>`
+  reports the same selected rule evidence gaps during lane closeout.
 - `readiness report` evaluates configured profile gates across a workstream or
   all profiles. Missing blocking gates make the report fail in human mode;
   `--json` returns the full report for automation.

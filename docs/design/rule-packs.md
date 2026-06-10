@@ -342,6 +342,11 @@ Initial Fairway support should be advisory and evidence-oriented:
 - report missing required rule evidence in `merge-ready` or `workflow check`
   when configured as blocking.
 
+`merge-ready` and `workflow check --mode close --task-id <id>` evaluate selected
+rules against the task's recorded evidence artifact types. Missing evidence from
+`blocking` rule sources is a blocker. Missing evidence from `advisory` rule
+sources is a warning. Disabled and non-applicable rules do not affect readiness.
+
 Fairway should not treat a rule match as automatic approval. A rule match only
 states what evidence and review are expected.
 

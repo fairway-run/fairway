@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -618,6 +619,78 @@ artifact_required = true
 	jsonReport := runCapture(t, "--json", "merge-ready", "T-001")
 	assertContains(t, jsonReport, `"gate_evaluations"`)
 	assertContains(t, jsonReport, `"status": "satisfied"`)
+}
+
+func TestCLI_MergeReadyAndWorkflowCheckEvaluateRuleEvidence(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	writeRulePack(t, "rules-blocking", "blocking.contract", "generated-artifacts-clean")
+	writeRulePack(t, "rules-advisory", "advisory.contract", "generated-artifacts-clean")
+	writeRulePack(t, "rules-disabled", "disabled.contract", "generated-artifacts-clean")
+	appendFile(t, ".fairway/config.toml", `
+[[rule_sources]]
+name = "blocking"
+source = "path:rules-blocking"
+mode = "blocking"
+
+[[rule_sources]]
+name = "advisory"
+source = "path:rules-advisory"
+mode = "advisory"
+
+[[rule_sources]]
+name = "disabled"
+source = "path:rules-disabled"
+mode = "disabled"
+
+[[workstream_profiles]]
+name = "blocking-profile"
+rule_groups = ["blocking.core", "advisory.core", "disabled.core"]
+review_domains = ["backend"]
+
+[[workstream_profiles]]
+name = "advisory-profile"
+rule_groups = ["advisory.core", "disabled.core"]
+review_domains = ["backend"]
+`)
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+
+	runOK(t, "add", "T-001", "--title", "Blocking rule", "--role", "backend", "--profile", "blocking-profile", "--source-paths", "doc/api/openapi.yaml", "--tag", "surface:api", "--risk-level", "medium")
+	failed := runCaptureAllowError(t, "merge-ready", "T-001")
+	assertContains(t, failed, "rule evidence missing task=T-001 rule=blocking.contract mode=blocking evidence=generated-artifacts-clean")
+	assertContains(t, failed, "rule evidence missing task=T-001 rule=advisory.contract mode=advisory evidence=generated-artifacts-clean")
+	if strings.Contains(failed, "disabled.contract") {
+		t.Fatalf("disabled rule source produced merge-ready evidence finding:\n%s", failed)
+	}
+
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass", "--artifact-type", "local-test")
+	runOK(t, "set-status", "T-001", "done")
+	closeReport := runCaptureAllowError(t, "workflow", "check", "--mode", "close", "--task-id", "T-001")
+	assertContains(t, closeReport, "rule evidence missing task=T-001 rule=blocking.contract mode=blocking evidence=generated-artifacts-clean")
+
+	runOK(t, "record", "evidence", "T-001", "--command-text", "make codegen", "--result", "pass", "--artifact-type", "generated-artifacts-clean")
+	runOK(t, "merge-ready", "T-001")
+	jsonReport := runCapture(t, "--json", "merge-ready", "T-001")
+	assertContains(t, jsonReport, `"rule_evaluations"`)
+	assertContains(t, jsonReport, `"status": "satisfied"`)
+
+	runOK(t, "add", "T-002", "--title", "Advisory rule", "--role", "backend", "--profile", "advisory-profile", "--source-paths", "doc/api/openapi.yaml", "--tag", "surface:api", "--risk-level", "medium")
+	advisory := runCapture(t, "merge-ready", "T-002")
+	assertContains(t, advisory, "warnings:")
+	assertContains(t, advisory, "rule evidence missing task=T-002 rule=advisory.contract mode=advisory evidence=generated-artifacts-clean")
 }
 
 func TestCLI_ReadinessReportEvaluatesProfileGates(t *testing.T) {
@@ -2382,6 +2455,36 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(clean, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeRulePack(t *testing.T, dir, ruleID, evidenceType string) {
+	t.Helper()
+	writeFile(t, filepath.Join(dir, "schemas", "rule.schema.yaml"), `type: object
+required:
+  - id
+  - title
+  - status
+`)
+	writeFile(t, filepath.Join(dir, "rules", "core", "contract.md"), fmt.Sprintf(`---
+id: %s
+title: Contract rule
+status: draft
+applies_when:
+  source_paths:
+    - doc/api/**
+  tags:
+    - surface:api
+  task_kinds:
+    - task
+risk_floor: medium
+required_evidence:
+  - %s
+review_domains:
+  - backend
+---
+
+body
+`, ruleID, evidenceType))
 }
 
 func appendFile(t *testing.T, path, content string) {

@@ -634,6 +634,7 @@ type workflowCheckReport struct {
 	Git             fairwaygit.Status        `json:"git"`
 	Reconcile       reconcile.ActiveReport   `json:"reconcile"`
 	Closeout        reconcile.CloseoutReport `json:"closeout,omitempty"`
+	RuleEvaluations []ruleEvidenceEvaluation `json:"rule_evaluations,omitempty"`
 	Issues          []string                 `json:"issues"`
 	Warnings        []string                 `json:"warnings,omitempty"`
 	Recommendations []string                 `json:"recommendations,omitempty"`
@@ -769,7 +770,7 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 			if *taskID == "" {
 				report.Issues = append(report.Issues, "close mode requires --task-id")
 			} else {
-				task, _, _, _, _, err := s.TaskDetail(ctx, *taskID)
+				task, _, evidence, _, _, err := s.TaskDetail(ctx, *taskID)
 				if err != nil {
 					return err
 				}
@@ -788,6 +789,22 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 				if !closeoutReport.OK {
 					report.Issues = append(report.Issues, fmt.Sprintf("lane closeout has %d blocker(s)", closeoutReport.Summary.Blockers))
 					report.Recommendations = append(report.Recommendations, "run fairway workflow closeout "+*taskID+" --dry-run and resolve lane closeout debt")
+				}
+				ruleEvaluations, err := ruleEvidenceEvaluations(cfg, root, task, evidence)
+				if err != nil {
+					return err
+				}
+				report.RuleEvaluations = ruleEvaluations
+				for _, evaluation := range ruleEvaluations {
+					if evaluation.Status != "missing" {
+						continue
+					}
+					message := ruleEvidenceMessage(evaluation)
+					if evaluation.Mode == "blocking" {
+						report.Issues = append(report.Issues, message)
+					} else {
+						report.Warnings = append(report.Warnings, message)
+					}
 				}
 			}
 		}
@@ -866,6 +883,12 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 				fmt.Println("recommendations:")
 				for _, recommendation := range uniqueStrings(report.Recommendations) {
 					fmt.Printf("- %s\n", recommendation)
+				}
+			}
+			if len(report.RuleEvaluations) > 0 {
+				fmt.Println("rule_evidence:")
+				for _, evaluation := range report.RuleEvaluations {
+					fmt.Printf("- %s: %s mode=%s evidence=%s\n", evaluation.RuleID, evaluation.Status, evaluation.Mode, strings.Join(evaluation.RequiredEvidence, ","))
 				}
 			}
 			if *mode == "close" && closeoutReport.TaskID != "" {
@@ -1446,6 +1469,7 @@ type mergeReadyReport struct {
 	Warnings             []string                 `json:"warnings,omitempty"`
 	MissingReviewDomains []string                 `json:"missing_review_domains,omitempty"`
 	GateEvaluations      []adoptionGateEvaluation `json:"gate_evaluations,omitempty"`
+	RuleEvaluations      []ruleEvidenceEvaluation `json:"rule_evaluations,omitempty"`
 }
 
 func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error {
@@ -1523,6 +1547,22 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 				report.Warnings = append(report.Warnings, message)
 			}
 		}
+		ruleEvaluations, err := ruleEvidenceEvaluations(cfg, root, task, evidence)
+		if err != nil {
+			return err
+		}
+		report.RuleEvaluations = ruleEvaluations
+		for _, evaluation := range ruleEvaluations {
+			if evaluation.Status != "missing" {
+				continue
+			}
+			message := ruleEvidenceMessage(evaluation)
+			if evaluation.Mode == "blocking" {
+				report.Issues = append(report.Issues, message)
+			} else {
+				report.Warnings = append(report.Warnings, message)
+			}
+		}
 		report.OK = len(report.Issues) == 0
 		if opts.JSON {
 			if err := printJSON(report); err != nil {
@@ -1546,6 +1586,12 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 				fmt.Println("profile_gates:")
 				for _, evaluation := range report.GateEvaluations {
 					fmt.Printf("- %s/%s: %s (%d/%d satisfied)\n", evaluation.Profile, evaluation.Gate, evaluation.Status, evaluation.SatisfiedCount, evaluation.TaskCount)
+				}
+			}
+			if len(report.RuleEvaluations) > 0 {
+				fmt.Println("rule_evidence:")
+				for _, evaluation := range report.RuleEvaluations {
+					fmt.Printf("- %s: %s mode=%s evidence=%s\n", evaluation.RuleID, evaluation.Status, evaluation.Mode, strings.Join(evaluation.RequiredEvidence, ","))
 				}
 			}
 		}
@@ -3547,6 +3593,61 @@ func mergeReadyGateMessage(evaluation adoptionGateEvaluation) string {
 		return "profile gate " + label + " missing"
 	}
 	return fmt.Sprintf("profile gate %s missing for %s: %s", label, evaluation.Missing[0].TaskID, strings.Join(evaluation.Missing[0].Reasons, "; "))
+}
+
+type ruleEvidenceEvaluation struct {
+	TaskID           string   `json:"task_id"`
+	RuleID           string   `json:"rule_id"`
+	Mode             string   `json:"mode"`
+	Status           string   `json:"status"`
+	RequiredEvidence []string `json:"required_evidence,omitempty"`
+	MissingEvidence  []string `json:"missing_evidence,omitempty"`
+}
+
+func ruleEvidenceEvaluations(cfg config.Config, root string, task store.Task, evidence []store.Evidence) ([]ruleEvidenceEvaluation, error) {
+	packs, err := rules.LoadConfigured(cfg, root, rules.LoadOptions{
+		Root:            root,
+		KnownDomains:    rules.ReviewDomainSet(cfg),
+		KnownEvidence:   rules.ConfigGateEvidenceSet(cfg),
+		IncludeDisabled: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	recorded := map[string]bool{}
+	for _, row := range evidence {
+		evidenceType := strings.TrimSpace(row.ArtifactType)
+		if evidenceType != "" {
+			recorded[evidenceType] = true
+		}
+	}
+	var evaluations []ruleEvidenceEvaluation
+	for _, match := range rules.MatchTask(cfg, packs, task) {
+		if match.Status != "selected" {
+			continue
+		}
+		evaluation := ruleEvidenceEvaluation{
+			TaskID:           task.Definition.ID,
+			RuleID:           match.Rule.ID,
+			Mode:             firstNonEmpty(match.Rule.Mode, "advisory"),
+			Status:           "satisfied",
+			RequiredEvidence: append([]string(nil), match.Rule.RequiredEvidence...),
+		}
+		for _, evidenceType := range match.Rule.RequiredEvidence {
+			if !recorded[evidenceType] {
+				evaluation.MissingEvidence = append(evaluation.MissingEvidence, evidenceType)
+			}
+		}
+		if len(evaluation.MissingEvidence) > 0 {
+			evaluation.Status = "missing"
+		}
+		evaluations = append(evaluations, evaluation)
+	}
+	return evaluations, nil
+}
+
+func ruleEvidenceMessage(evaluation ruleEvidenceEvaluation) string {
+	return fmt.Sprintf("rule evidence missing task=%s rule=%s mode=%s evidence=%s", evaluation.TaskID, evaluation.RuleID, evaluation.Mode, strings.Join(evaluation.MissingEvidence, ","))
 }
 
 func missingApprovedReviewDomains(domains []string, reviews []store.Review) []string {
