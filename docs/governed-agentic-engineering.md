@@ -36,6 +36,7 @@ exists.
 | No self-review | The author approving their own work | Reviewer identity separated from review domain; merge readiness checks domains |
 | Independent review domains | One lane vouching for areas it does not own | Review routes, required domains, risk-based review rules |
 | Explicit handoff delivery | Work waiting silently on a lane that was never told | Handoff records, notification states, coordinator findings |
+| Orchestrator owns task shape | Agents splitting, merging, or re-scoping work without shared agreement | Work batches, task hierarchy, source backlog authority |
 | Provider edges fail closed | A confused session corrupting durable state | Adapter trust boundary and session/task checks |
 | Push is promotion | Remote branch sprawl and unreviewed CI triggers | Push-intent evidence and lane closeout checks |
 | Debt is named | Historical gaps silently blessed later | Review-debt inventory, artifact-backed review, explicit waivers |
@@ -45,6 +46,20 @@ exists.
 These rules are not meant to add ceremony for its own sake. They encode the
 checks teams already need when several implementation lanes move faster than a
 single person can manually supervise in real time.
+
+## Adjacent Practices
+
+The important distinction is not whether agents are involved. It is whether the
+work is verified and governed.
+
+| | Low verification | High verification |
+|---|---|---|
+| High agent delegation | Fast intent-driven work, but weak auditability and unclear promotion boundaries | Governed agentic engineering: delegated implementation with evidence, review, and explicit promotion |
+| Low agent delegation | Manual or semi-manual work that can still bypass evidence and review | Conventional disciplined engineering: lower delegation, but strong checks and ownership |
+
+Fairway is built for the upper-right cell. It assumes high delegation can be
+safe only when verification, review, task ownership, and promotion are part of
+the workflow rather than optional cleanup after the work appears finished.
 
 ## The Human Comprehension Anchor
 
@@ -120,6 +135,36 @@ Governed agentic engineering treats those as promotion events:
 - merge to main;
 - CI/deploy monitor;
 - closeout.
+
+### The Orchestrator Defines Granularity
+
+Execution agents should not independently split, merge, or re-scope tasks just
+because the local implementation path looks convenient. The orchestrator or
+control lane owns task granularity because it can see review routing,
+dependencies, CI cost, deploy risk, and parallel lane conflicts.
+
+When a task is too large, too small, or discovered to contain separate
+concerns, the right action is to record the boundary change in Fairway: create
+or update child tasks, attach rationale, preserve dependencies, and route the
+new review domains. This avoids hidden work, orphan branches, and task records
+that no longer match the code being merged.
+
+### Adopt Rules In Stages
+
+Rules should usually start advisory. Once a project has enough signal about
+false positives, ownership, review cost, and operational value, the same rule
+can become blocking for the surfaces where it has proven useful.
+
+That staged path is how governed agentic engineering avoids becoming ceremony:
+
+- advisory rule pack or profile check;
+- evidence collection and reviewer feedback;
+- false-positive cleanup and ownership assignment;
+- blocking enforcement for high-risk or high-confidence cases;
+- periodic review of waivers, debt, and stale rules.
+
+The goal is not to block more work. The goal is to make the checks that already
+matter repeatable and visible.
 
 ### Disagreement Is Healthy
 
