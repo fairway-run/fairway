@@ -295,6 +295,12 @@ Rule sources configure reusable operating rule packs. They are documented in
 [Rule packs](design/rule-packs.md). The first implementation is local-first:
 enabled sources must use `path:` or `file:`.
 
+The examples below show possible shapes, not automatic adoption. A source is
+live only when the active project config points at a local path that exists and
+the project has completed the adoption checklist in
+[Rule packs](design/rule-packs.md#project-adoption-checklist). Keep optional
+or future remote sources `disabled` until fetch/cache policy exists.
+
 ```toml
 [[rule_sources]]
 name = "fairway-platform"
@@ -304,7 +310,7 @@ mode = "advisory"
 [[rule_sources]]
 name = "gpuaas"
 source = "path:../fairway-rules-gpuaas"
-mode = "blocking"
+mode = "disabled" # enable only after local path and vocabulary validation
 
 [[rule_sources]]
 name = "codeguard"

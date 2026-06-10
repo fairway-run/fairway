@@ -207,12 +207,12 @@ mode = "advisory"
 [[rule_sources]]
 name = "gpuaas"
 source = "path:../fairway-rules-gpuaas"
-mode = "blocking"
+mode = "disabled" # enable only after local path and vocabulary validation
 
 [[rule_sources]]
 name = "codeguard"
 source = "path:../fairway-rules-codeguard"
-mode = "advisory"
+mode = "disabled" # represented for future adoption; not fetched
 ```
 
 Initial loader support is limited to local `path:` or `file:` sources. Network
@@ -418,6 +418,38 @@ example, a platform pack may mention `security` while a project config only
 defines `appsec`. Treat that as a project adoption/configuration finding unless
 the source is configured as blocking and the project has agreed to enforce the
 pack as-is.
+
+## Project Adoption Checklist
+
+Do not treat an example `[[rule_sources]]` block as live project adoption. A
+project has adopted a rule source only when the active `.fairway/config.toml` or
+another reviewed project config points at a local source and the rollout state
+is recorded.
+
+Before enabling a project rule source:
+
+1. Confirm the local source path exists in the checkout or adjacent workspace.
+   Enabled `path:` and `file:` sources are local only; Fairway does not fetch
+   `github:` or other remote sources.
+2. Choose the mode deliberately:
+   `advisory` for first rollout and learning, `blocking` only after the project
+   agrees the evidence requirements are enforceable, `disabled` for represented
+   but inactive future sources.
+3. Compare the pack's review domains with the project vocabulary in config.
+   Record expected vocabulary warnings as adoption findings instead of treating
+   them as review approvals or failures.
+4. Run `fairway config validate` and `fairway rules validate <pack-dir>`.
+5. Add CI validation using the snippets under `examples/rule-pack-ci/` or an
+   equivalent local command.
+6. Run the first rollout in advisory mode, inspect `fairway rules match
+   <task-id>`, `fairway packet rules <task-id>`, and `fairway merge-ready
+   <task-id>` warnings, then decide whether to promote specific sources or
+   groups to blocking.
+7. Record the adoption decision as Fairway evidence or a governance checkpoint,
+   including source path, mode, known warnings, and the command output used.
+
+GPUaaS and other projects should reference this checklist rather than assuming
+remote fetch support or copying example paths that may not exist locally.
 
 ## Reference Rule Groups
 

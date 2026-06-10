@@ -580,6 +580,12 @@ rules, expected evidence, review domains, recommended commands, and stop
 conditions. Record selected rules and non-applicable rationale as evidence when
 the project requires it.
 
+When adopting a new project rule source, follow the checklist in
+`docs/design/rule-packs.md#project-adoption-checklist`: verify the local path,
+choose advisory/blocking/disabled mode deliberately, check review-domain
+vocabulary, run `fairway config validate` and `fairway rules validate`, add CI
+validation, and start advisory before promoting a source to blocking.
+
 Profile-shaped work should carry task metadata when the coordinator or dashboard
 needs architecture context:
 
