@@ -324,6 +324,10 @@ Modes:
 - `blocking`: missing required evidence blocks configured readiness checks.
 - `disabled`: keep the source configured but do not evaluate it.
 
+Missing or unreadable local sources are mode-sensitive. Advisory sources become
+error-severity load findings in rule CLI JSON/human output while other valid
+sources still load. Blocking sources fail closed and stop the command.
+
 Remote `github:` sources must remain `disabled` until safe fetch/cache support
 lands. They must include both `commit_sha` and `checksum` so mutable branch/tag
 references do not become blocking authority by accident.

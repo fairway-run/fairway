@@ -695,6 +695,122 @@ review_domains = ["backend"]
 	assertContains(t, advisory, "rule evidence missing task=T-002 rule=advisory.contract mode=advisory evidence=generated-artifacts-clean")
 }
 
+func TestCLI_RulesEvidenceTypesReportsMissingAdvisorySource(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeRulePack(t, "rules-one", "one.contract", "one-evidence")
+	writeRulePack(t, "rules-two", "two.contract", "two-evidence")
+	appendFile(t, ".fairway/config.toml", `
+[[rule_sources]]
+name = "one"
+source = "path:rules-one"
+mode = "advisory"
+
+[[rule_sources]]
+name = "missing"
+source = "path:missing-rules"
+mode = "advisory"
+
+[[rule_sources]]
+name = "two"
+source = "path:rules-two"
+mode = "advisory"
+`)
+
+	out := runCapture(t, "rules", "evidence-types")
+	assertContains(t, out, "rule pack one: rules=1")
+	assertContains(t, out, "rule pack missing: rules=0 groups=0 findings=1")
+	assertContains(t, out, "error:")
+	assertContains(t, out, `rule source "missing" mode=advisory`)
+	assertContains(t, out, "rule pack two: rules=1")
+
+	jsonOut := runCapture(t, "--json", "rules", "evidence-types")
+	for _, want := range []string{
+		`"source_name":"one"`,
+		`"source_name":"missing"`,
+		`"mode":"advisory"`,
+		`"path":`,
+		`rule source \"missing\" mode=advisory`,
+		`"source_name":"two"`,
+		`"evidence_type":"one-evidence"`,
+		`"evidence_type":"two-evidence"`,
+	} {
+		assertContains(t, jsonOut, want)
+	}
+}
+
+func TestCLI_RulesEvidenceTypesFailsClosedForMissingBlockingSource(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeRulePack(t, "rules-valid", "valid.contract", "valid-evidence")
+	appendFile(t, ".fairway/config.toml", `
+[[rule_sources]]
+name = "valid"
+source = "path:rules-valid"
+mode = "advisory"
+
+[[rule_sources]]
+name = "blocking-missing"
+source = "path:missing-rules"
+mode = "blocking"
+`)
+
+	if err := run(context.Background(), []string{"rules", "evidence-types"}); err == nil {
+		t.Fatal("rules evidence-types succeeded, want missing blocking source error")
+	} else {
+		if !strings.Contains(err.Error(), `rule source "blocking-missing" mode=blocking`) || !strings.Contains(err.Error(), "missing-rules") {
+			t.Fatalf("error=%v, want blocking source name/mode/path", err)
+		}
+	}
+}
+
+func TestCLI_RulesEvidenceTypesFailsClosedForUnreadableBlockingSource(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	if err := os.MkdirAll(filepath.Join(repo, "rules-unreadable", "rules", "core"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	appendFile(t, ".fairway/config.toml", `
+[[rule_sources]]
+name = "blocking-unreadable"
+source = "path:rules-unreadable"
+mode = "blocking"
+`)
+
+	if err := run(context.Background(), []string{"rules", "evidence-types"}); err == nil {
+		t.Fatal("rules evidence-types succeeded, want unreadable blocking source error")
+	} else if !strings.Contains(err.Error(), `rule source "blocking-unreadable" mode=blocking`) || !strings.Contains(err.Error(), "rule.schema.yaml") {
+		t.Fatalf("error=%v, want unreadable blocking source name/mode/schema path", err)
+	}
+}
+
 func TestCLI_ReadinessReportEvaluatesProfileGates(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

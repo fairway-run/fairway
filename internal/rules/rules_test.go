@@ -80,6 +80,95 @@ body
 	}
 }
 
+func TestLoadConfiguredDegradesMissingAdvisorySource(t *testing.T) {
+	root := t.TempDir()
+	writeMinimalRulePack(t, root, "rules-one", "one.contract")
+	writeMinimalRulePack(t, root, "rules-two", "two.contract")
+	cfg := config.Defaults(root)
+	cfg.RuleSources = []config.RuleSource{
+		{Name: "one", Source: "path:rules-one", Mode: "advisory"},
+		{Name: "missing", Source: "path:missing-rules", Mode: "advisory"},
+		{Name: "two", Source: "path:rules-two", Mode: "advisory"},
+	}
+
+	packs, err := LoadConfigured(cfg, root, LoadOptions{Root: root})
+	if err != nil {
+		t.Fatalf("LoadConfigured() error = %v", err)
+	}
+	if len(packs) != 3 {
+		t.Fatalf("packs=%d, want valid one + missing advisory + valid two", len(packs))
+	}
+	byName := map[string]Pack{}
+	for _, pack := range packs {
+		byName[pack.SourceName] = pack
+	}
+	if len(byName["one"].Rules) != 1 || len(byName["two"].Rules) != 1 {
+		t.Fatalf("valid packs did not load: %+v", packs)
+	}
+	missing := byName["missing"]
+	if missing.Mode != "advisory" || len(missing.Rules) != 0 || len(missing.Findings) != 1 {
+		t.Fatalf("missing advisory pack=%+v, want one error finding and no rules", missing)
+	}
+	finding := missing.Findings[0]
+	if finding.Severity != "error" || finding.Path == "" || !strings.Contains(finding.Message, `rule source "missing" mode=advisory`) {
+		t.Fatalf("missing advisory finding=%+v, want source/mode/path context", finding)
+	}
+}
+
+func TestLoadConfiguredFailsClosedForMissingBlockingSource(t *testing.T) {
+	root := t.TempDir()
+	writeMinimalRulePack(t, root, "rules-valid", "valid.contract")
+	cfg := config.Defaults(root)
+	cfg.RuleSources = []config.RuleSource{
+		{Name: "valid", Source: "path:rules-valid", Mode: "advisory"},
+		{Name: "blocking-missing", Source: "path:missing-rules", Mode: "blocking"},
+	}
+
+	_, err := LoadConfigured(cfg, root, LoadOptions{Root: root})
+	if err == nil {
+		t.Fatal("LoadConfigured() succeeded, want missing blocking source error")
+	}
+	if !strings.Contains(err.Error(), `rule source "blocking-missing" mode=blocking`) || !strings.Contains(err.Error(), "missing-rules") {
+		t.Fatalf("error=%v, want source name/mode/path", err)
+	}
+}
+
+func TestLoadConfiguredHandlesUnreadableExistingSourcesByMode(t *testing.T) {
+	root := t.TempDir()
+	writeMinimalRulePack(t, root, "rules-valid", "valid.contract")
+	if err := os.MkdirAll(filepath.Join(root, "rules-unreadable", "rules", "core"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	advisory := config.Defaults(root)
+	advisory.RuleSources = []config.RuleSource{
+		{Name: "valid", Source: "path:rules-valid", Mode: "advisory"},
+		{Name: "unreadable", Source: "path:rules-unreadable", Mode: "advisory"},
+	}
+	packs, err := LoadConfigured(advisory, root, LoadOptions{Root: root})
+	if err != nil {
+		t.Fatalf("advisory LoadConfigured() error = %v", err)
+	}
+	if len(packs) != 2 {
+		t.Fatalf("packs=%d, want valid plus unreadable advisory finding", len(packs))
+	}
+	if len(packs[1].Findings) != 1 || !strings.Contains(packs[1].Findings[0].Message, "no such file or directory") {
+		t.Fatalf("unreadable advisory findings=%+v", packs[1].Findings)
+	}
+
+	blocking := config.Defaults(root)
+	blocking.RuleSources = []config.RuleSource{
+		{Name: "unreadable", Source: "path:rules-unreadable", Mode: "blocking"},
+	}
+	_, err = LoadConfigured(blocking, root, LoadOptions{Root: root})
+	if err == nil {
+		t.Fatal("blocking LoadConfigured() succeeded, want unreadable source error")
+	}
+	if !strings.Contains(err.Error(), `rule source "unreadable" mode=blocking`) || !strings.Contains(err.Error(), "rule.schema.yaml") {
+		t.Fatalf("error=%v, want unreadable blocking source name/mode/schema path", err)
+	}
+}
+
 func writeRulePackFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, rel)
@@ -89,6 +178,24 @@ func writeRulePackFile(t *testing.T, root, rel, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeMinimalRulePack(t *testing.T, root, rel, ruleID string) {
+	t.Helper()
+	writeRulePackFile(t, root, filepath.Join(rel, "schemas/rule.schema.yaml"), `type: object
+required:
+  - id
+  - title
+  - status
+`)
+	writeRulePackFile(t, root, filepath.Join(rel, "rules/core/rule.md"), `---
+id: `+ruleID+`
+title: Minimal rule
+status: active
+---
+
+body
+`)
 }
 
 func TestMatchTaskUsesAxesRiskAndProfileBinding(t *testing.T) {

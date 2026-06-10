@@ -229,6 +229,14 @@ Modes:
 - `blocking`: missing required evidence blocks configured readiness checks.
 - `disabled`: source remains configured but is not evaluated.
 
+Missing or unreadable local sources are treated according to mode. In
+`advisory` mode, Fairway emits an error-severity load finding that includes the
+source name, resolved path, and mode, then continues loading other valid rule
+sources. In `blocking` mode, the same missing or unreadable source fails closed
+and stops the command. This lets projects keep optional advisory packs in local
+configs without losing all rule visibility, while preserving blocking sources as
+real policy authority.
+
 ## Group Resolution
 
 Rule groups are derived from the configured source name plus the `rules/`

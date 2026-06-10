@@ -41,18 +41,18 @@ type AppliesWhen struct {
 }
 
 type Pack struct {
-	Root       string
-	SourceName string
-	Mode       string
-	Rules      []Rule
-	Groups     []string
-	Findings   []Finding
+	Root       string    `json:"root"`
+	SourceName string    `json:"source_name"`
+	Mode       string    `json:"mode"`
+	Rules      []Rule    `json:"rules"`
+	Groups     []string  `json:"groups"`
+	Findings   []Finding `json:"findings"`
 }
 
 type Finding struct {
-	Severity string
-	Path     string
-	Message  string
+	Severity string `json:"severity"`
+	Path     string `json:"path"`
+	Message  string `json:"message"`
 }
 
 type LoadOptions struct {
@@ -100,13 +100,75 @@ func LoadConfigured(cfg config.Config, root string, opts LoadOptions) ([]Pack, e
 		if err != nil {
 			return nil, fmt.Errorf("rule source %q: %w", source.Name, err)
 		}
+		if finding := sourceReadabilityFinding(dir); finding != nil {
+			finding.Message = fmt.Sprintf("rule source %q mode=%s: %s", source.Name, mode, finding.Message)
+			if mode == "blocking" {
+				return nil, fmt.Errorf("rule source %q mode=%s path=%s: %s", source.Name, mode, dir, finding.Message)
+			}
+			packs = append(packs, Pack{
+				Root:       dir,
+				SourceName: source.Name,
+				Mode:       mode,
+				Findings:   []Finding{*finding},
+			})
+			continue
+		}
 		pack, err := LoadDir(dir, source.Name, mode, opts)
 		if err != nil {
 			return nil, err
 		}
+		if mode == "blocking" {
+			if finding, ok := firstSourceLoadError(pack.Findings, dir); ok {
+				return nil, fmt.Errorf("rule source %q mode=%s path=%s: %s", source.Name, mode, finding.Path, finding.Message)
+			}
+		}
 		packs = append(packs, pack)
 	}
 	return packs, nil
+}
+
+func sourceReadabilityFinding(dir string) *Finding {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return &Finding{Severity: "error", Path: dir, Message: err.Error()}
+	}
+	if !info.IsDir() {
+		return &Finding{Severity: "error", Path: dir, Message: "rule source path is not a directory"}
+	}
+	return nil
+}
+
+func firstSourceLoadError(findings []Finding, root string) (Finding, bool) {
+	for _, finding := range findings {
+		if finding.Severity != "error" {
+			continue
+		}
+		if sameOrUnderPath(finding.Path, root) && sourceLoadErrorMessage(finding.Message) {
+			return finding, true
+		}
+	}
+	return Finding{}, false
+}
+
+func sameOrUnderPath(candidate, root string) bool {
+	candidate = filepath.Clean(candidate)
+	root = filepath.Clean(root)
+	if candidate == root {
+		return true
+	}
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func sourceLoadErrorMessage(message string) bool {
+	message = strings.ToLower(message)
+	return strings.Contains(message, "no such file or directory") ||
+		strings.Contains(message, "permission denied") ||
+		strings.Contains(message, "not a directory") ||
+		strings.Contains(message, "is a directory")
 }
 
 func ResolveSourcePath(source, root string) (string, error) {

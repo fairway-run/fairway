@@ -6455,7 +6455,10 @@ func cmdRulesEvidenceTypes(ctx context.Context, opts globalOptions, args []strin
 			})
 		}
 		if opts.JSON {
-			return json.NewEncoder(os.Stdout).Encode(rows)
+			return json.NewEncoder(os.Stdout).Encode(struct {
+				Packs         []rules.Pack `json:"packs"`
+				EvidenceTypes []row        `json:"evidence_types"`
+			}{Packs: packs, EvidenceTypes: rows})
 		}
 		for _, pack := range packs {
 			printRulePackSummary(pack)
