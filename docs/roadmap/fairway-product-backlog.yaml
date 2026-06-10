@@ -2189,3 +2189,56 @@ tasks:
       - Recently completed review handbacks remain visible until the coordinator records the merge/push/closeout decision or equivalent acknowledgement.
       - Tests cover fresh review-complete action, already-pushed closed task suppression, historical done task suppression, and acknowledged handback suppression.
       - Docs explain the difference between review debt, fresh review-complete handback, and historical completed-task audit state.
+
+  - id: FW-165
+    title: Normalize Homebrew version comparison in release verifier
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - cmd/fairway
+      - docs/governance/release.md
+      - docs/assessment/fairway-v0.1.5-release-run.md
+    target_paths:
+      - cmd/fairway
+      - cmd/fairway/main_test.go
+      - docs/governance/release.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: low
+    migration_type: release-verify-homebrew-version-normalization
+    acceptance_checks:
+      - "`fairway release verify --version v0.1.5 --homebrew-version 0.1.5` passes when all other release checks pass."
+      - "`fairway release verify` still fails when the Homebrew cask version points at a different semantic version."
+      - Docs explain that Git tags include the `v` prefix while Homebrew cask versions normally omit it.
+      - Regression tests cover exact tag match, prefix-normalized match, and real mismatch.
+
+  - id: FW-166
+    title: Update release and docs workflows for GitHub Node runtime deprecation
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - .github/workflows
+      - docs/governance/release.md
+      - docs/assessment/fairway-v0.1.5-release-run.md
+    target_paths:
+      - .github/workflows
+      - docs/governance/release.md
+    review_domains:
+      - governance
+      - ops
+    risk_level: low
+    migration_type: github-actions-node-runtime-deprecation
+    acceptance_checks:
+      - Release, CI, and Docs Portal workflows no longer emit GitHub Actions Node.js 20 deprecation warnings.
+      - Updated workflow posture is documented with the relevant GitHub Actions runtime setting or action version change.
+      - Release workflow still passes `goreleaser check` and a dry-run or documented safe validation path before the next tag.
+      - Docs Portal workflow still builds and deploys successfully after the runtime posture change.

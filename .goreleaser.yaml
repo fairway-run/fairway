@@ -71,5 +71,5 @@ homebrew_casks:
     commit_msg_template: "Update fairway cask to {{ .Tag }}"
     directory: Casks
     homepage: "https://fairway.run"
-    description: "Traffic control for coding agents"
+    description: "Coordination control plane for governed agentic engineering"
     license: "Apache-2.0"
