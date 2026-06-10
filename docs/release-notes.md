@@ -24,6 +24,9 @@ Release and adapter work must preserve the rules in
 - Rule packets are read-only review/handoff artifacts. Rendering a packet does
   not approve reviews, close tasks, or mutate state; agents must explicitly
   record the packet as evidence when used.
+- Rule-pack validation CI examples document `fairway rules validate` for both
+  reusable platform packs and project-local packs before a pack is treated as
+  reusable.
 
 ### Release Checklist
 

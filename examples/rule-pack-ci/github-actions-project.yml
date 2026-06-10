@@ -1,0 +1,35 @@
+name: Project Rule Pack Validation
+
+on:
+  pull_request:
+    paths:
+      - ".fairway/config.toml"
+      - "rules/**"
+      - "fairway-rules/**"
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Install Fairway
+        run: go install github.com/subashram/fairway/cmd/fairway@latest
+
+      - name: Validate Fairway config
+        run: fairway config validate
+
+      - name: Validate project-local rule packs
+        run: |
+          if [ -d rules ]; then
+            fairway rules validate rules
+          fi
+          if [ -d fairway-rules ]; then
+            fairway rules validate fairway-rules
+          fi

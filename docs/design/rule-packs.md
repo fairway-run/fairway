@@ -376,6 +376,37 @@ sources is a warning. Disabled and non-applicable rules do not affect readiness.
 Fairway should not treat a rule match as automatic approval. A rule match only
 states what evidence and review are expected.
 
+## CI Validation
+
+Reusable rule-pack repositories should run validation before a pack is treated
+as reusable:
+
+```bash
+fairway rules validate .
+```
+
+Project repositories with local packs should validate both the Fairway config
+and each local pack:
+
+```bash
+fairway config validate
+fairway rules validate rules
+```
+
+Example GitHub Actions snippets live in
+`examples/rule-pack-ci/github-actions-platform.yml` for a standalone
+`fairway-rules-platform` style repository and
+`examples/rule-pack-ci/github-actions-project.yml` for project-local packs. The
+helper script `scripts/validate-rule-packs.sh <dir>...` is intentionally
+local-only; it does not fetch remote rule sources.
+
+Validation warnings are expected when a reusable platform pack is run inside a
+project whose review-domain vocabulary differs from the pack's vocabulary. For
+example, a platform pack may mention `security` while a project config only
+defines `appsec`. Treat that as a project adoption/configuration finding unless
+the source is configured as blocking and the project has agreed to enforce the
+pack as-is.
+
 ## Reference Rule Groups
 
 The first reusable platform rule pack should include a small set of high-signal
