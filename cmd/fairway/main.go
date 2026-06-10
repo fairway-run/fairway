@@ -4056,10 +4056,10 @@ func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string,
 
 func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("packet requires subcommand: context, bugfix, watcher, release-run, template, architecture-map, boundary-guard, vertical-slice")
+		return errors.New("packet requires subcommand: context, bugfix, watcher, release-run, template, rules, architecture-map, boundary-guard, vertical-slice")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("packet", "context|bugfix|watcher|release-run|template|architecture-map|boundary-guard|vertical-slice")
+		subcommandUsage("packet", "context|bugfix|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice")
 		return nil
 	}
 	switch args[0] {
@@ -4073,6 +4073,8 @@ func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdPacketReleaseRun(ctx, opts, args[1:])
 	case "template":
 		return cmdPacketTemplate(ctx, opts, args[1:])
+	case "rules":
+		return cmdPacketRules(ctx, opts, args[1:])
 	case "architecture-map":
 		return cmdPacketArchitectureMap(ctx, opts, args[1:])
 	case "boundary-guard":
@@ -4141,6 +4143,132 @@ func cmdPacketTemplate(ctx context.Context, opts globalOptions, args []string) e
 		}
 		return nil
 	})
+}
+
+type rulePacket struct {
+	TaskID        string           `json:"task_id"`
+	Title         string           `json:"title"`
+	Status        string           `json:"status"`
+	Profile       string           `json:"profile,omitempty"`
+	Risk          string           `json:"risk,omitempty"`
+	Selected      []rulePacketRule `json:"selected"`
+	NonApplicable []rulePacketRule `json:"non_applicable,omitempty"`
+}
+
+type rulePacketRule struct {
+	ID                  string   `json:"id"`
+	Title               string   `json:"title,omitempty"`
+	Group               string   `json:"group,omitempty"`
+	Source              string   `json:"source,omitempty"`
+	Mode                string   `json:"mode,omitempty"`
+	Status              string   `json:"status"`
+	Reasons             []string `json:"reasons,omitempty"`
+	RequiredEvidence    []string `json:"required_evidence,omitempty"`
+	RecommendedCommands []string `json:"recommended_commands,omitempty"`
+	ReviewDomains       []string `json:"review_domains,omitempty"`
+	StopConditions      []string `json:"stop_conditions,omitempty"`
+	ResidualRiskFields  []string `json:"residual_risk_fields,omitempty"`
+}
+
+func cmdPacketRules(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("packet rules requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("packet rules", flag.ContinueOnError)
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet rules arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		packs, err := rules.LoadConfigured(cfg, root, rules.LoadOptions{
+			Root:            root,
+			KnownDomains:    rules.ReviewDomainSet(cfg),
+			KnownEvidence:   rules.ConfigGateEvidenceSet(cfg),
+			IncludeDisabled: true,
+		})
+		if err != nil {
+			return err
+		}
+		packet := rulePacket{
+			TaskID:  task.Definition.ID,
+			Title:   task.Definition.Title,
+			Status:  task.Status,
+			Profile: task.Definition.Profile,
+			Risk:    task.Definition.RiskLevel,
+		}
+		for _, match := range rules.MatchTask(cfg, packs, task) {
+			rule := rulePacketRule{
+				ID:                  match.Rule.ID,
+				Title:               match.Rule.Title,
+				Group:               match.Rule.Group,
+				Source:              match.Rule.SourceName,
+				Mode:                firstNonEmpty(match.Rule.Mode, "advisory"),
+				Status:              match.Status,
+				Reasons:             append([]string(nil), match.Reasons...),
+				RequiredEvidence:    append([]string(nil), match.Rule.RequiredEvidence...),
+				RecommendedCommands: append([]string(nil), match.Rule.RecommendedCommands...),
+				ReviewDomains:       append([]string(nil), match.Rule.ReviewDomains...),
+				StopConditions:      append([]string(nil), match.Rule.StopConditions...),
+				ResidualRiskFields:  append([]string(nil), match.Rule.StopConditions...),
+			}
+			if match.Status == "selected" {
+				packet.Selected = append(packet.Selected, rule)
+			} else {
+				packet.NonApplicable = append(packet.NonApplicable, rule)
+			}
+		}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		fmt.Printf("# Rule Packet: %s\n\n", packet.TaskID)
+		fmt.Printf("title: %s\nstatus: %s\nprofile: %s\nrisk: %s\n", packet.Title, packet.Status, packet.Profile, packet.Risk)
+		fmt.Println("\n## Selected Rules")
+		if len(packet.Selected) == 0 {
+			fmt.Println("- none")
+		}
+		for _, rule := range packet.Selected {
+			printRulePacketRule(rule)
+		}
+		fmt.Println("\n## Non-Applicable Rules")
+		if len(packet.NonApplicable) == 0 {
+			fmt.Println("- none")
+		}
+		for _, rule := range packet.NonApplicable {
+			printRulePacketRule(rule)
+		}
+		fmt.Println("\n## Evidence Recording")
+		fmt.Printf("- fairway record evidence %s --artifact-type rule-packet --artifact <path> --result pass --command-text \"fairway packet rules %s\"\n", packet.TaskID, packet.TaskID)
+		return nil
+	})
+}
+
+func printRulePacketRule(rule rulePacketRule) {
+	fmt.Printf("- %s (%s, %s)\n", rule.ID, rule.Status, rule.Mode)
+	if rule.Title != "" {
+		fmt.Printf("  - title: %s\n", rule.Title)
+	}
+	if rule.Group != "" {
+		fmt.Printf("  - group: %s\n", rule.Group)
+	}
+	printIndentedList("required evidence", rule.RequiredEvidence)
+	printIndentedList("recommended commands", rule.RecommendedCommands)
+	printIndentedList("review domains", rule.ReviewDomains)
+	printIndentedList("residual risk / stop conditions", rule.ResidualRiskFields)
+	printIndentedList("rationale", rule.Reasons)
+}
+
+func printIndentedList(label string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	fmt.Printf("  - %s: %s\n", label, strings.Join(values, "; "))
 }
 
 func cmdPacketContext(ctx context.Context, opts globalOptions, args []string) error {

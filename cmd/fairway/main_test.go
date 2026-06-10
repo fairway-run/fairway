@@ -1927,6 +1927,68 @@ optional_fields = ["owner", "proof_command"]
 	}
 }
 
+func TestCLI_PacketRules(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeRulePack(t, "rules-platform", "platform.contract-first", "generated-artifacts-clean")
+	writeFile(t, filepath.Join("rules-platform", "rules", "core", "docs.md"), `---
+id: platform.docs-only
+title: Docs-only rule
+status: draft
+applies_when:
+  source_paths:
+    - docs/**
+required_evidence:
+  - docs-review
+review_domains:
+  - governance
+stop_conditions:
+  - docs are stale
+---
+
+body
+`)
+	appendFile(t, ".fairway/config.toml", `
+[[rule_sources]]
+name = "platform"
+source = "path:rules-platform"
+mode = "advisory"
+
+[[workstream_profiles]]
+name = "platform-foundation"
+rule_groups = ["platform.core"]
+review_domains = ["backend", "governance"]
+`)
+	runOK(t, "add", "T-001", "--title", "Rules packet", "--role", "backend", "--profile", "platform-foundation", "--source-paths", "doc/api/openapi.yaml", "--tag", "surface:api", "--risk-level", "medium")
+	packet := runCapture(t, "packet", "rules", "T-001")
+	assertContains(t, packet, "# Rule Packet: T-001")
+	assertContains(t, packet, "## Selected Rules")
+	assertContains(t, packet, "platform.contract-first")
+	assertContains(t, packet, "required evidence: generated-artifacts-clean")
+	assertContains(t, packet, "review domains: backend")
+	assertContains(t, packet, "residual risk / stop conditions")
+	assertContains(t, packet, "## Non-Applicable Rules")
+	assertContains(t, packet, "platform.docs-only")
+	assertContains(t, packet, "rationale: source paths do not match")
+	assertContains(t, packet, "--artifact-type rule-packet")
+
+	jsonPacket := runCapture(t, "--json", "packet", "rules", "T-001")
+	assertContains(t, jsonPacket, `"task_id": "T-001"`)
+	assertContains(t, jsonPacket, `"selected"`)
+	assertContains(t, jsonPacket, `"non_applicable"`)
+	assertContains(t, jsonPacket, `"required_evidence"`)
+	assertContains(t, jsonPacket, `"residual_risk_fields"`)
+}
+
 func TestCLI_RegressionPacks(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

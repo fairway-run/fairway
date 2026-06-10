@@ -188,6 +188,12 @@ The Markdown rule body explains intent, examples, anti-patterns, required
 evidence, and review notes. The structured header drives matching, dashboard
 display, packet templates, and closeout checks.
 
+Rule packets are rendered with `fairway packet rules <task-id>`. The packet is
+read-only and includes selected rules, non-applicable rationale, required
+evidence, recommended commands, review domains, and residual-risk/stop-condition
+fields. Recording the rendered packet as evidence is an explicit operator or
+agent action; packet rendering does not approve reviews or close tasks.
+
 ## Source Resolution
 
 The first Fairway implementation should be local-first:

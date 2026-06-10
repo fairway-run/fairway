@@ -54,6 +54,7 @@ fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> [--owni
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
 fairway packet release-run <task-id> --version <vX.Y.Z> --tag <vX.Y.Z> --source-sha <sha> --release-notes <path-or-status> --changelog-state <text> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-url <url> --homebrew-tap-commit <sha> [--verification-command <cmd>]...
 fairway packet template <name> <task-id> --field <key=value>...
+fairway packet rules <task-id>
 fairway packet architecture-map <task-id> --scope <text> --current-owner <role> --target-owner <role> --migration-risk <text> [--source-doc <path>]... --acceptance <text>
 fairway packet boundary-guard <task-id> --guard-intent <text> [--finding <text>]... [--false-positive <text>]... --graduation-criteria <text> [--proof-command <cmd>]...
 fairway packet vertical-slice <task-id> --target-seam <text> --old-path <path> --new-path <path> --adapter <text> [--proof-command <cmd>]... --rollback-plan <text>
@@ -229,9 +230,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `--open` is passed. They write `.fairway/dashboard.pid` and
   `.fairway/dashboard.log` by default; multi-project mode uses
   `.fairway/dashboard-multi.*`.
-- `packet bugfix`, platform-foundation packets, `packet template`, and
-  `regression-pack` are quality surfaces. They render and validate review
-  context; they do not execute product test suites.
+- `packet bugfix`, platform-foundation packets, `packet template`,
+  `packet rules`, and `regression-pack` are quality surfaces. They render and
+  validate review context; they do not execute product test suites. `packet
+  rules <task-id>` renders selected and non-applicable rule-pack context,
+  required evidence, recommended commands, review domains, rationale, and
+  residual-risk/stop-condition fields; record that packet as evidence
+  explicitly when it is used for review or handoff.
 - `db compat --backend postgres` is a planned adapter harness, not the default
   v1 runtime.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that
