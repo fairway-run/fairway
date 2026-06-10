@@ -2154,3 +2154,38 @@ tasks:
       - Tasks with unresolved changes-requested verdicts, missing required domains, or failed merge-ready gates do not produce a false review-complete handback.
       - Dashboard or task detail exposes the review-complete/merge-ready handback state so an orchestrator does not need to poll reviewer chats.
       - Tests cover no reviews, partial approvals, changes requested then approved, all domains approved, and merge-ready blocked by a non-review gate.
+
+  - id: FW-164
+    title: Suppress stale review-complete handbacks for closed tasks
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator
+    source_paths:
+      - internal/coordinator
+      - internal/store
+      - cmd/fairway
+      - docs/design/coordinator-loop.md
+      - docs/design/review-lanes.md
+    target_paths:
+      - internal/coordinator
+      - internal/store
+      - cmd/fairway
+      - docs/design/coordinator-loop.md
+      - docs/design/review-lanes.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: review-completion-handback-noise
+    depends_on:
+      - FW-163
+    acceptance_checks:
+      - Coordinator plan does not surface `review-complete` actions for tasks that are already closed, pushed, or previously processed by the coordinator.
+      - Historical done tasks with complete reviews remain visible through reports/audit views without creating next-action noise.
+      - Recently completed review handbacks remain visible until the coordinator records the merge/push/closeout decision or equivalent acknowledgement.
+      - Tests cover fresh review-complete action, already-pushed closed task suppression, historical done task suppression, and acknowledged handback suppression.
+      - Docs explain the difference between review debt, fresh review-complete handback, and historical completed-task audit state.
