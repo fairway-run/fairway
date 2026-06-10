@@ -35,6 +35,34 @@ func TestCheckReportsDirtyFiles(t *testing.T) {
 	}
 }
 
+func TestCheckPreservesUnstagedTrackedPath(t *testing.T) {
+	repo := t.TempDir()
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	writeFile(t, filepath.Join(repo, "tracked.txt"), "hello\n")
+	git(t, repo, "add", "tracked.txt")
+	git(t, repo, "commit", "-m", "init")
+	writeFile(t, filepath.Join(repo, "tracked.txt"), "changed\n")
+
+	status, err := Check(repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Dirty {
+		t.Fatalf("status=%+v, want dirty", status)
+	}
+	if status.Staged {
+		t.Fatalf("status=%+v, want unstaged tracked change to remain unstaged", status)
+	}
+	if len(status.TrackedChangedFiles) != 1 || status.TrackedChangedFiles[0] != "tracked.txt" {
+		t.Fatalf("tracked changed files=%v, want tracked.txt", status.TrackedChangedFiles)
+	}
+	if len(status.ChangedFiles) != 1 || status.ChangedFiles[0] != "tracked.txt" {
+		t.Fatalf("changed files=%v, want tracked.txt", status.ChangedFiles)
+	}
+}
+
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

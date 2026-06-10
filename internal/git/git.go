@@ -190,10 +190,11 @@ func Check(root, base string) (Status, error) {
 		return Status{}, err
 	}
 	status := Status{Root: repoRoot, Branch: CurrentBranch(repoRoot), Base: base}
-	porcelain, err := output(repoRoot, "status", "--porcelain", "-uall")
+	porcelain, err := outputRaw(repoRoot, "status", "--porcelain", "-uall")
 	if err != nil {
 		return Status{}, err
 	}
+	porcelain = strings.TrimSuffix(porcelain, "\n")
 	for _, line := range strings.Split(porcelain, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -373,13 +374,21 @@ func parent(path string) string {
 }
 
 func output(root string, args ...string) (string, error) {
+	out, err := outputRaw(root, args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func outputRaw(root string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	return string(out), nil
 }
 
 func run(root string, args ...string) error {

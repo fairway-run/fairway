@@ -1603,7 +1603,7 @@ SELECT hf.task_id, d.role, hf.to_role, hf.id, hf.created_at,
          FROM task_reviews r
          WHERE r.project_id=hf.project_id
            AND r.task_id=hf.task_id
-           AND r.reviewer=hf.to_role
+           AND (r.review_domain=hf.to_role OR (COALESCE(r.review_domain, '') = '' AND r.reviewer=hf.to_role))
        ) AS review_count,
        COUNT(n.id) AS notification_count
 FROM task_handoffs hf

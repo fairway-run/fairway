@@ -466,7 +466,7 @@ func TestHandoffNotificationGapsEscalateStaleSentNotifications(t *testing.T) {
 	if _, err := s.RecordNotification(ctx, Notification{TaskID: "ACK-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "acknowledged"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordReview(ctx, "REVIEW-001", Review{Reviewer: "security", Domain: "security", Verdict: "approve", Reason: "reviewed"}); err != nil {
+	if err := s.RecordReview(ctx, "REVIEW-001", Review{Reviewer: "fairway-reviewer", Domain: "security", Verdict: "approve", Reason: "reviewed"}); err != nil {
 		t.Fatal(err)
 	}
 
