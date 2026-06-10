@@ -1760,3 +1760,359 @@ tasks:
       - Sweep assessment records before/after debt counts and the remaining real debt inventory.
       - No historical approvals are fabricated; remaining debt is left pending for real review or explicit governance waiver.
       - Tests cover both terminal tasks with missing review domains and terminal tasks with approved review domains plus stale review checkpoints.
+
+  - id: FW-152
+    title: Add status-filtered task listing with dependency visibility
+    kind: cli-hardening
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli
+    source_paths:
+      - cmd/fairway
+      - internal/store
+      - docs/design/cli.md
+      - docs/agent-guide.md
+    target_paths:
+      - cmd/fairway
+      - cmd/fairway/main_test.go
+      - internal/store
+      - docs/design/cli.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: task-list-status-filter
+    acceptance_checks:
+      - CLI can list tasks by status without direct SQLite access, for example todo, blocked, in_progress, done, and review states.
+      - Human output includes task id, title, role, kind, status, owner or claimant, and dependency summary.
+      - JSON output exposes the same fields for scripts and orchestrator handoff prompts.
+      - Status-filtered listing distinguishes todo-but-not-ready tasks from claimable ready tasks.
+      - Tests cover status filters, combined status filters, no-match output, and tasks with missing or blocked dependencies.
+
+  - id: FW-153
+    title: Explain empty ready queues with blocker summaries
+    kind: cli-hardening
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: readiness
+    source_paths:
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - docs/design/cli.md
+      - docs/design/coordinator-loop.md
+    target_paths:
+      - cmd/fairway
+      - cmd/fairway/main_test.go
+      - internal/coordinator
+      - internal/store
+      - docs/design/cli.md
+      - docs/design/coordinator-loop.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: ready-empty-explanation
+    acceptance_checks:
+      - When `fairway ready` returns no claimable tasks but todo tasks remain, CLI explains why ready is empty.
+      - Output groups non-ready todo work by dependency-blocked, review-gated, approval-gated, profile-gated, session-gated, and unknown categories.
+      - Output highlights top blocking dependency task ids and suggested next inspection command.
+      - JSON ready output includes claimable count, non-ready todo count, blocker categories, and blocker task ids.
+      - Coordinator plan uses the same readiness explanation instead of requiring operators to inspect the database directly.
+
+  - id: FW-154
+    title: Respect configured local artifact paths in clean-worktree gates
+    kind: workflow-guard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: merge-ready
+    source_paths:
+      - cmd/fairway
+      - internal/git
+      - internal/reconcile
+      - docs/config-reference.md
+      - docs/design/cli.md
+    target_paths:
+      - cmd/fairway
+      - cmd/fairway/main_test.go
+      - internal/git
+      - internal/reconcile
+      - docs/config-reference.md
+      - docs/design/cli.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: artifact-cleanliness-policy
+    acceptance_checks:
+      - Merge-ready and workflow closeout can treat configured local evidence artifact directories as allowed untracked operational artifacts.
+      - Default behavior remains conservative for arbitrary untracked source files.
+      - Config documents the difference between tracked durable evidence, local untracked evidence, and ignored scratch output.
+      - CLI output names ignored artifact paths separately from true dirty-worktree findings.
+      - Tests cover clean source with untracked allowed artifacts, dirty source files, ignored scratch paths, and artifact paths referenced by Fairway evidence.
+
+  - id: FW-155
+    title: Harden rule source globstar matching and validation
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rules
+    source_paths:
+      - internal/rules
+      - docs/design/rule-packs.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - internal/rules
+      - internal/rules/rules_test.go
+      - docs/design/rule-packs.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: rule-pack-globstar-hardening
+    depends_on:
+      - FW-146
+    acceptance_checks:
+      - Rule source path matching either supports mid-pattern `**` globs such as `packages/**/gen/**` or validator rejects them with a clear error.
+      - Platform rule-pack patterns that currently rely on mid-pattern globstar are covered by tests against representative paths.
+      - Validator output identifies unsupported glob syntax before authors assume a dead pattern is active.
+      - Rule-pack docs define the supported glob grammar and examples.
+
+  - id: FW-156
+    title: Degrade missing advisory rule sources to findings
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rules
+    source_paths:
+      - internal/rules
+      - internal/config
+      - cmd/fairway
+      - docs/design/rule-packs.md
+      - docs/config-reference.md
+    target_paths:
+      - internal/rules
+      - internal/rules/rules_test.go
+      - cmd/fairway/main_test.go
+      - docs/design/rule-packs.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: advisory-rule-source-load
+    depends_on:
+      - FW-144
+    acceptance_checks:
+      - Missing or unreadable advisory-mode rule sources become error-severity findings without preventing other valid sources from loading.
+      - Missing blocking/enforce-mode rule sources still fail closed unless explicitly configured otherwise.
+      - CLI output and JSON output identify the source name, path, mode, and load finding.
+      - Tests cover one missing advisory source plus two valid local sources, and one missing blocking source.
+
+  - id: FW-157
+    title: Add rule-pack validation CI templates
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rule-pack-ci
+    source_paths:
+      - docs/design/rule-packs.md
+      - docs/release-notes.md
+      - examples
+      - scripts
+    target_paths:
+      - docs/design/rule-packs.md
+      - docs/release-notes.md
+      - examples
+      - scripts
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: low
+    migration_type: rule-pack-ci-validation
+    depends_on:
+      - FW-144
+    acceptance_checks:
+      - Fairway documents a minimal CI command for rule-pack repos to run `fairway rules validate`.
+      - Example CI snippets or scripts cover `fairway-rules-platform` and project-specific packs without requiring remote fetch support.
+      - Validation examples show expected warning behavior when run under a project with a different review-domain vocabulary.
+      - Release notes or docs identify rule-pack CI validation as required before treating a pack as reusable.
+
+  - id: FW-158
+    title: Filter notification gaps by acknowledgement and terminal task state
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator
+    source_paths:
+      - internal/store
+      - internal/coordinator
+      - cmd/fairway
+      - docs/design/coordinator-loop.md
+    target_paths:
+      - internal/store
+      - internal/store/store_test.go
+      - internal/coordinator
+      - internal/coordinator/plan_test.go
+      - docs/design/coordinator-loop.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: high
+    migration_type: notification-gap-noise-reduction
+    depends_on:
+      - FW-150
+    acceptance_checks:
+      - Notification-gap queries exclude acknowledged handoffs that no longer need delivery.
+      - Notification-gap queries exclude terminal tasks unless the task has an explicit pending review or unresolved notification requirement.
+      - Coordinator plan does not flood upgraded projects with historical handoffs on done tasks.
+      - Tests cover unacknowledged active handoff, acknowledged active handoff, terminal done task, and terminal task with unresolved review routing.
+
+  - id: FW-159
+    title: Add stale sent-notification escalation
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator
+    source_paths:
+      - internal/store
+      - internal/coordinator
+      - docs/design/coordinator-loop.md
+      - docs/config-reference.md
+    target_paths:
+      - internal/store
+      - internal/store/store_test.go
+      - internal/coordinator
+      - internal/coordinator/plan_test.go
+      - docs/design/coordinator-loop.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: notification-ack-timeout
+    depends_on:
+      - FW-150
+    acceptance_checks:
+      - A notification in `sent` state does not suppress coordinator action forever when no acknowledgement or review arrives within the configured window.
+      - Coordinator plan distinguishes never-sent, sent-awaiting-ack, stale-sent, acknowledged, and review-recorded states.
+      - Config documents the acknowledgement timeout and default behavior.
+      - Tests cover fresh sent notification, stale sent notification, acknowledged notification, and review-recorded notification.
+
+  - id: FW-160
+    title: Make provider and utility adapters parse sessions fail-closed
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: session-adapters
+    source_paths:
+      - examples/session-adapters/provider-event.sh
+      - examples/session-adapters/utility-event.sh
+      - cmd/fairway
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+    target_paths:
+      - examples/session-adapters/provider-event.sh
+      - examples/session-adapters/utility-event.sh
+      - cmd/fairway/main_test.go
+      - docs/design/session-launch.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - security
+    risk_level: high
+    migration_type: adapter-fail-closed-session-parse
+    depends_on:
+      - FW-109
+      - FW-150
+    acceptance_checks:
+      - Provider and utility event adapters read session state from structured JSON output instead of column-position parsing.
+      - If session-state parsing fails, adapter refuses the event rather than treating missing fields as permission to proceed.
+      - Existing session/task mismatch and terminal-session guards remain enforced.
+      - Tests or smoke fixtures cover malformed session output, missing session, mismatched task, ended session, and valid event.
+
+  - id: FW-161
+    title: Reconcile rule match status terminology
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rules
+    source_paths:
+      - docs/design/rule-packs.md
+      - docs/roadmap/fairway-product-backlog.yaml
+      - cmd/fairway
+      - internal/rules
+    target_paths:
+      - docs/design/rule-packs.md
+      - docs/roadmap/fairway-product-backlog.yaml
+      - cmd/fairway
+      - internal/rules
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: low
+    migration_type: rule-status-terminology
+    depends_on:
+      - FW-146
+    acceptance_checks:
+      - Rule matching docs and backlog acceptance use the implemented selected, non-applicable, and disabled statuses, or code restores an explicit considered status.
+      - Historical FW-146 acceptance drift is documented without fabricating a re-review.
+      - CLI help, design docs, and tests agree on the final status vocabulary.
+
+  - id: FW-162
+    title: Add project rule-source adoption checklist
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: rule-pack-adoption
+    source_paths:
+      - docs/design/rule-packs.md
+      - docs/config-reference.md
+      - docs/agent-guide.md
+      - examples
+    target_paths:
+      - docs/design/rule-packs.md
+      - docs/config-reference.md
+      - docs/agent-guide.md
+      - examples
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: low
+    migration_type: project-rule-source-adoption
+    depends_on:
+      - FW-144
+      - FW-156
+    acceptance_checks:
+      - Docs define the difference between example `[[rule_sources]]` and live project adoption in `.fairway/*.toml`.
+      - Adoption checklist covers local path existence, mode selection, review-domain vocabulary, validation command, CI validation, and first advisory rollout.
+      - Example configs avoid hard references to absent optional packs unless the resulting missing-source behavior is documented and validated.
+      - GPUaaS adoption can reference the checklist without assuming remote fetch support.
