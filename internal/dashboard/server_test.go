@@ -214,6 +214,53 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	}
 }
 
+func TestReportsRendersRulePackSignals(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	rulePack := filepath.Join(root, "rules-platform")
+	writeDashboardRulePack(t, rulePack)
+	s, err := store.Open(ctx, filepath.Join(root, "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{
+		ID:          "T-001",
+		Title:       "API contract",
+		Kind:        "task",
+		Role:        "backend",
+		Profile:     "platform-foundation",
+		SourcePaths: []string{"doc/api/openapi.yaml"},
+		Tags:        []string{"surface:api"},
+		RiskLevel:   "medium",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "done", "done", false); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(root)
+	cfg.RuleSources = []config.RuleSource{{Name: "platform", Source: "path:rules-platform", Mode: "advisory"}}
+	cfg.WorkstreamProfiles = []config.WorkstreamProfile{{Name: "platform-foundation", RuleGroups: []string{"platform.core"}, ReviewDomains: []string{"backend"}}}
+	server := NewWithRoot(s, cfg, []string{"backend"}, nil, root)
+	req := httptest.NewRequest(http.MethodGet, "/reports", nil)
+	rec := httptest.NewRecorder()
+	server.reports(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Rule Pack Signals",
+		"selected rule matches",
+		"tasks with rule gaps",
+		"blocking gaps",
+		"advisory gaps",
+		"non-applicable checks",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("report rule summary missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestReportsExportsMatchFilteredScope(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
@@ -846,6 +893,50 @@ func TestTaskDetailRendersProfileGateReadiness(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing task gate detail missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestTaskDetailRendersApplicableRules(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	rulePack := filepath.Join(root, "rules-platform")
+	writeDashboardRulePack(t, rulePack)
+	s, err := store.Open(ctx, filepath.Join(root, "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{
+		ID:          "T-001",
+		Title:       "API contract",
+		Kind:        "task",
+		Role:        "backend",
+		Profile:     "platform-foundation",
+		SourcePaths: []string{"doc/api/openapi.yaml"},
+		Tags:        []string{"surface:api"},
+		RiskLevel:   "medium",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(root)
+	cfg.RuleSources = []config.RuleSource{{Name: "platform", Source: "path:rules-platform", Mode: "advisory"}}
+	cfg.WorkstreamProfiles = []config.WorkstreamProfile{{Name: "platform-foundation", RuleGroups: []string{"platform.core"}, ReviewDomains: []string{"backend"}}}
+	server := NewWithRoot(s, cfg, []string{"backend"}, nil, root)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Applicable Rules",
+		"platform.contract-first",
+		"Contract first",
+		"generated-artifacts-clean",
+		"missing",
+		"contract behavior is ambiguous",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("rule detail missing %q:\n%s", want, body)
 		}
 	}
 }
@@ -1901,6 +1992,38 @@ func writeDashboardGitFile(t *testing.T, root, name, contents string) {
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeDashboardRulePack(t *testing.T, root string) {
+	t.Helper()
+	writeDashboardGitFile(t, root, "schemas/rule.schema.yaml", `type: object
+required:
+  - id
+  - title
+  - status
+`)
+	writeDashboardGitFile(t, root, "rules/core/contract.md", `---
+id: platform.contract-first
+title: Contract first
+status: draft
+applies_when:
+  source_paths:
+    - doc/api/**
+  tags:
+    - surface:api
+  task_kinds:
+    - task
+risk_floor: medium
+required_evidence:
+  - generated-artifacts-clean
+review_domains:
+  - backend
+stop_conditions:
+  - contract behavior is ambiguous
+---
+
+body
+`)
 }
 
 func runDashboardGit(t *testing.T, root string, args ...string) {

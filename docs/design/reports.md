@@ -92,6 +92,21 @@ Show:
 This should use the same review-domain and gate logic as the board and
 `merge-ready` checks.
 
+### Rule Pack Signals
+
+Show rule-pack applicability without turning the report into a rule dump:
+
+- selected rule matches across the report scope,
+- tasks that selected at least one rule but are missing required evidence,
+- blocking rule gaps,
+- advisory rule gaps,
+- non-applicable rule checks.
+
+The summary should use the same configured rule sources, profile rule groups,
+task metadata, and evidence artifact types as task detail and merge-readiness
+logic. Blocking and advisory gaps must be visually distinct so coordinators can
+separate stop-the-line work from improvement guidance.
+
 ### Drill-Down Table
 
 The table is last, not first. It supports:

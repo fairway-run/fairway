@@ -64,6 +64,14 @@
 {{else}}<p class="muted">no profile gates apply to this task</p>{{end}}
 </article>
 <article class="detail-panel wide">
+<h2>Applicable Rules</h2>
+{{if .TaskRules}}
+<table class="detail-table"><thead><tr><th>Rule</th><th>Mode</th><th>Status</th><th>Evidence</th><th>Reviews</th><th>Stop Conditions</th></tr></thead><tbody>
+{{range .TaskRules}}<tr><td><b>{{.ID}}</b>{{if .Title}}<br><span class="muted">{{.Title}}</span>{{end}}<br><code>{{.Group}}</code></td><td>{{.Mode}}</td><td><span class="status-pill {{statusClass .MatchStatus}}">{{.MatchStatus}}</span>{{if .Reasons}}<br><span class="muted">{{range .Reasons}}{{.}} {{end}}</span>{{end}}</td><td>{{if .RequiredEvidence}}{{range .RequiredEvidence}}<code>{{.}}</code> {{end}}{{else}}none{{end}}{{if .MissingEvidence}}<br><b>missing</b> {{range .MissingEvidence}}<code>{{.}}</code> {{end}}{{end}}</td><td>{{range .ReviewDomains}}<code>{{.}}</code> {{else}}none{{end}}</td><td>{{range .StopConditions}}{{.}} {{else}}none{{end}}</td></tr>{{end}}
+</tbody></table>
+{{else}}<p class="muted">no rule packs are configured for this task</p>{{end}}
+</article>
+<article class="detail-panel wide">
 <h2>Coverage Diagnostics</h2>
 {{if .Audit.WorkCoverageError}}<p class="muted">work coverage audit unavailable: {{.Audit.WorkCoverageError}}</p>{{else}}
 {{if .Audit.WorkCoverage.Findings}}

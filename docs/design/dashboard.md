@@ -206,6 +206,9 @@ The page layout should be scannable:
   `HARNESS-FIX`, and `DOC-FIX`,
 - a review/evidence section showing newly satisfied gates and missing required
   review domains,
+- a rule-pack signal section showing selected task-rule matches, tasks with
+  missing rule evidence, blocking gaps, advisory gaps, and non-applicable
+  rules,
 - a bounded task table for drill-down, with pagination and export.
 
 Visual density should match the board: restrained cards, clear section rhythm,
@@ -230,6 +233,9 @@ shows:
 - task-scoped profile gate readiness, including matching evidence counts and
   missing evidence reasons from the same evaluator used by `merge-ready` and
   board gate rollups,
+- applicable rule-pack checks, including rule mode, match status, required and
+  missing evidence types, review domains, stop conditions, and non-applicable
+  rationale,
 - notes, dependencies, and acceptance checks,
 - transition history,
 - evidence,

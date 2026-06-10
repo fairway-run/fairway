@@ -309,6 +309,7 @@ type TaskDetailViewData struct {
 	UsageRollups         []store.UsageRollup
 	Batches              []store.WorkBatch
 	TaskGates            []TaskGateStatus
+	TaskRules            []TaskRuleStatus
 	Rollup               Rollup
 	CSRFToken            string
 	States               []string
@@ -2296,6 +2297,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		UsageRollups:         usageRollups,
 		Batches:              batches,
 		TaskGates:            s.taskGateStatuses(task, evidence),
+		TaskRules:            s.taskRuleStatuses(r.Context(), task, evidence),
 		Rollup:               rollups[task.Definition.ID],
 		CSRFToken:            s.csrfToken,
 		States:               dashboardMutableStates(s.cfg),

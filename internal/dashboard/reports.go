@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/rules"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -21,22 +22,23 @@ const (
 )
 
 type ReportViewData struct {
-	View          string           `json:"-"`
-	Window        ReportWindow     `json:"window"`
-	Filters       ReportFilters    `json:"filters"`
-	FilterOptions FilterOptions    `json:"filter_options"`
-	Summary       ReportSummary    `json:"summary"`
-	Lanes         []ReportLane     `json:"lanes"`
-	Timeline      []ReportRun      `json:"timeline"`
-	FollowUps     []ReportBucket   `json:"follow_ups"`
-	ReviewSummary ReportReview     `json:"review_summary"`
-	Usage         ReportUsage      `json:"usage"`
-	Rows          []ReportTaskRow  `json:"rows"`
-	TableRows     []ReportTaskRow  `json:"-"`
-	Pagination    TablePagination  `json:"pagination"`
-	Sessions      []store.Session  `json:"-"`
-	Activity      []store.Activity `json:"-"`
-	Groups        []RoleGroup      `json:"-"`
+	View          string            `json:"-"`
+	Window        ReportWindow      `json:"window"`
+	Filters       ReportFilters     `json:"filters"`
+	FilterOptions FilterOptions     `json:"filter_options"`
+	Summary       ReportSummary     `json:"summary"`
+	Lanes         []ReportLane      `json:"lanes"`
+	Timeline      []ReportRun       `json:"timeline"`
+	FollowUps     []ReportBucket    `json:"follow_ups"`
+	ReviewSummary ReportReview      `json:"review_summary"`
+	RuleSummary   ReportRuleSummary `json:"rule_summary"`
+	Usage         ReportUsage       `json:"usage"`
+	Rows          []ReportTaskRow   `json:"rows"`
+	TableRows     []ReportTaskRow   `json:"-"`
+	Pagination    TablePagination   `json:"pagination"`
+	Sessions      []store.Session   `json:"-"`
+	Activity      []store.Activity  `json:"-"`
+	Groups        []RoleGroup       `json:"-"`
 	TaskRoles     map[string]string
 	ExportBase    string `json:"-"`
 }
@@ -222,6 +224,15 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		}
 	}
 	rows := reportRowsFromFacts(facts, filters)
+	packs, err := rules.LoadConfigured(s.cfg, s.root, rules.LoadOptions{
+		Root:            s.root,
+		KnownDomains:    rules.ReviewDomainSet(s.cfg),
+		KnownEvidence:   rules.ConfigGateEvidenceSet(s.cfg),
+		IncludeDisabled: true,
+	})
+	if err != nil {
+		return ReportViewData{}, err
+	}
 	summaryFilters := filters
 	summaryFilters.IncludeBookkeeping = true
 	summaryRows := reportRowsFromFacts(facts, summaryFilters)
@@ -242,6 +253,7 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		Timeline:      reportTimeline(facts, watchers, rows, start, end),
 		FollowUps:     reportFollowUps(rows),
 		ReviewSummary: reportReviewSummary(facts, rows),
+		RuleSummary:   reportRuleSummary(s.cfg, packs, facts),
 		Usage:         usage,
 		Rows:          rows,
 		TableRows:     tableRows,

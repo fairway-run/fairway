@@ -109,6 +109,17 @@
 </section>
 
 <section class="report-section">
+<header class="section-head"><h2>Rule Pack Signals</h2><span>advisory and blocking rule evidence visibility</span></header>
+<section class="mini-stats">
+<div><b>{{.RuleSummary.SelectedRules}}</b><span>selected rule matches</span></div>
+<div><b>{{.RuleSummary.TasksWithRuleGaps}}</b><span>tasks with rule gaps</span></div>
+<div><b>{{.RuleSummary.BlockingRuleGaps}}</b><span>blocking gaps</span></div>
+<div><b>{{.RuleSummary.AdvisoryRuleGaps}}</b><span>advisory gaps</span></div>
+<div><b>{{.RuleSummary.NonApplicableRules}}</b><span>non-applicable checks</span></div>
+</section>
+</section>
+
+<section class="report-section">
 <header class="section-head"><h2>Provider Usage Attribution</h2><span>planning telemetry; not a completion gate</span></header>
 <div class="taxonomy-grid">
 {{range .Usage.ByProvider}}
