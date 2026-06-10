@@ -98,6 +98,15 @@ case "$result_override" in
   *) echo "unsupported result: $result_override" >&2; exit 2 ;;
 esac
 
+case "$state" in
+  completed|failed|timeout|stale)
+    if [[ -z "$artifact" && -z "$external_run_id" ]]; then
+      echo "terminal utility events require --artifact or --external-run-id as backing evidence" >&2
+      exit 2
+    fi
+    ;;
+esac
+
 sanitize_id() {
   printf '%s' "$1" | tr -c 'A-Za-z0-9_.:-' '-'
 }
@@ -133,6 +142,37 @@ run_cmd() {
     return 0
   fi
   "$@"
+}
+
+existing_session_field() {
+  local field="$1"
+  if [[ "$dry_run" == true ]]; then
+    return 0
+  fi
+  "$fairway_bin" session status --all 2>/dev/null | awk -v id="$session_id" -v field="$field" '
+    $1 == id {
+      if (field == "status") print $3;
+      if (field == "task") print $5;
+      exit
+    }
+  '
+}
+
+validate_session_boundary() {
+  local existing_status
+  local existing_task_id
+  existing_status="$(existing_session_field status)"
+  existing_task_id="$(existing_session_field task)"
+  if [[ -n "$existing_task_id" && "$existing_task_id" != "$task_id" ]]; then
+    echo "session/task mismatch for ${session_id}: existing task ${existing_task_id}, event task ${task_id}" >&2
+    exit 2
+  fi
+  case "$existing_status:$state" in
+    ended:*|failed:*|stale:*)
+      echo "refusing utility event ${state} for terminal session ${session_id} (${existing_status})" >&2
+      exit 2
+      ;;
+  esac
 }
 
 upsert_session() {
@@ -211,6 +251,7 @@ emit_handback() {
   run_cmd "$fairway_bin" reconcile active --dry-run
 }
 
+validate_session_boundary
 upsert_session
 
 case "$state" in

@@ -39,6 +39,7 @@ Options:
 USAGE
 }
 
+fairway_bin="${FAIRWAY_BIN:-fairway}"
 provider=""
 external_session_id=""
 role=""
@@ -109,6 +110,11 @@ case "$runtime_state" in
   *) echo "unsupported runtime state: $runtime_state" >&2; exit 2 ;;
 esac
 
+if [[ "$runtime_state" == "completed" && -z "$artifact" && -z "$handoff_to" ]]; then
+  echo "completed provider events require --artifact or --handoff-to; transcript alone is not completion evidence" >&2
+  exit 2
+fi
+
 session_id="${provider}-${external_session_id}"
 
 run_cmd() {
@@ -121,7 +127,34 @@ run_cmd() {
   "$@"
 }
 
-upsert_args=(fairway session upsert --id "$session_id" --role "$role" --provider "$provider" --backend "$backend" --name "$external_session_id" --task-id "$task_id" --worktree "$worktree" --branch "$branch")
+existing_session_field() {
+  local field="$1"
+  if [[ "$dry_run" == true ]]; then
+    return 0
+  fi
+  "$fairway_bin" session status --all 2>/dev/null | awk -v id="$session_id" -v field="$field" '
+    $1 == id {
+      if (field == "status") print $3;
+      if (field == "task") print $5;
+      exit
+    }
+  '
+}
+
+existing_status="$(existing_session_field status)"
+existing_task_id="$(existing_session_field task)"
+if [[ -n "$existing_task_id" && "$existing_task_id" != "$task_id" ]]; then
+  echo "session/task mismatch for ${session_id}: existing task ${existing_task_id}, event task ${task_id}" >&2
+  exit 2
+fi
+case "$existing_status:$runtime_state" in
+  ended:*|failed:*|stale:*)
+    echo "refusing provider event ${runtime_state} for terminal session ${session_id} (${existing_status})" >&2
+    exit 2
+    ;;
+esac
+
+upsert_args=("$fairway_bin" session upsert --id "$session_id" --role "$role" --provider "$provider" --backend "$backend" --name "$external_session_id" --task-id "$task_id" --worktree "$worktree" --branch "$branch")
 if [[ -n "$transcript" ]]; then
   upsert_args+=(--transcript "$transcript")
 fi
@@ -135,7 +168,7 @@ for usage_value in "$usage_source" "$usage_confidence" "$usage_phase" "$usage_mo
   fi
 done
 if [[ "$usage_present" == true ]]; then
-  usage_args=(fairway record usage "$task_id" --provider "$provider" --external-session-id "$external_session_id" --session-id "$session_id" --role "$role")
+  usage_args=("$fairway_bin" record usage "$task_id" --provider "$provider" --external-session-id "$external_session_id" --session-id "$session_id" --role "$role")
   if [[ -n "$usage_source" ]]; then usage_args+=(--source "$usage_source"); fi
   if [[ -n "$usage_confidence" ]]; then usage_args+=(--confidence "$usage_confidence"); fi
   if [[ -n "$usage_phase" ]]; then usage_args+=(--phase "$usage_phase"); fi
@@ -154,7 +187,7 @@ fi
 
 case "$runtime_state" in
   started)
-    checkpoint_args=(fairway checkpoint record "$task_id" --state active --owner "$role" --summary "Provider session ${session_id} started: ${summary}")
+    checkpoint_args=("$fairway_bin" checkpoint record "$task_id" --state active --owner "$role" --summary "Provider session ${session_id} started: ${summary}")
     if [[ -n "$artifact" ]]; then
       checkpoint_args+=(--artifact "$artifact")
     elif [[ -n "$transcript" ]]; then
@@ -165,7 +198,7 @@ case "$runtime_state" in
   running)
     ;;
   waiting_on_approval)
-    checkpoint_args=(fairway checkpoint record "$task_id" --state awaiting_input --owner "$role" --summary "Provider session ${session_id} waiting on approval: ${summary}")
+    checkpoint_args=("$fairway_bin" checkpoint record "$task_id" --state awaiting_input --owner "$role" --summary "Provider session ${session_id} waiting on approval: ${summary}")
     if [[ -n "$artifact" ]]; then
       checkpoint_args+=(--artifact "$artifact")
     elif [[ -n "$transcript" ]]; then
@@ -174,7 +207,7 @@ case "$runtime_state" in
     run_cmd "${checkpoint_args[@]}"
     ;;
   waiting_on_input)
-    checkpoint_args=(fairway checkpoint record "$task_id" --state awaiting_input --owner "$role" --summary "Provider session ${session_id} waiting on input: ${summary}")
+    checkpoint_args=("$fairway_bin" checkpoint record "$task_id" --state awaiting_input --owner "$role" --summary "Provider session ${session_id} waiting on input: ${summary}")
     if [[ -n "$artifact" ]]; then
       checkpoint_args+=(--artifact "$artifact")
     elif [[ -n "$transcript" ]]; then
@@ -183,7 +216,7 @@ case "$runtime_state" in
     run_cmd "${checkpoint_args[@]}"
     ;;
   completed)
-    checkpoint_args=(fairway checkpoint record "$task_id" --state done --owner "$role" --summary "Provider session ${session_id} completed: ${summary}")
+    checkpoint_args=("$fairway_bin" checkpoint record "$task_id" --state done --owner "$role" --summary "Provider session ${session_id} completed: ${summary}")
     if [[ -n "$artifact" ]]; then
       checkpoint_args+=(--artifact "$artifact")
     elif [[ -n "$transcript" ]]; then
@@ -191,29 +224,26 @@ case "$runtime_state" in
     fi
     run_cmd "${checkpoint_args[@]}"
     if [[ -n "$handoff_to" ]]; then
-      run_cmd fairway record handoff "$task_id" --to "$handoff_to" --payload "Provider session ${session_id} completed: ${summary}"
+      run_cmd "$fairway_bin" record handoff "$task_id" --to "$handoff_to" --payload "Provider session ${session_id} completed: ${summary}"
     else
-      evidence_args=(fairway record evidence "$task_id" --command-text "provider session ${session_id} completed: ${summary}" --result pass --artifact-type provider-session)
-      if [[ -n "$artifact" ]]; then
-        evidence_args+=(--artifact "$artifact")
-      elif [[ -n "$transcript" ]]; then
-        evidence_args+=(--artifact "$transcript")
-      fi
+      evidence_args=("$fairway_bin" record evidence "$task_id" --command-text "provider session ${session_id} completed: ${summary}" --result pass --artifact-type provider-session --artifact "$artifact")
       run_cmd "${evidence_args[@]}"
     fi
+    run_cmd "$fairway_bin" session end "$session_id" --status ended --reason "provider completed"
     ;;
   failed)
-    checkpoint_args=(fairway checkpoint record "$task_id" --state awaiting_input --owner "$role" --summary "Provider session ${session_id} failed: ${summary}")
+    checkpoint_args=("$fairway_bin" checkpoint record "$task_id" --state awaiting_input --owner "$role" --summary "Provider session ${session_id} failed: ${summary}")
     if [[ -n "$artifact" ]]; then
       checkpoint_args+=(--artifact "$artifact")
     elif [[ -n "$transcript" ]]; then
       checkpoint_args+=(--artifact "$transcript")
     fi
     run_cmd "${checkpoint_args[@]}"
+    run_cmd "$fairway_bin" session end "$session_id" --status failed --reason "provider failed: $summary" --exit-code 1
     ;;
   stale|no_progress)
-    run_cmd fairway session end "$session_id" --status stale --reason "$runtime_state: $summary"
-    checkpoint_args=(fairway checkpoint record "$task_id" --state awaiting_input --owner "$role" --summary "Provider session ${session_id} ${runtime_state}: ${summary}")
+    run_cmd "$fairway_bin" session end "$session_id" --status stale --reason "$runtime_state: $summary"
+    checkpoint_args=("$fairway_bin" checkpoint record "$task_id" --state awaiting_input --owner "$role" --summary "Provider session ${session_id} ${runtime_state}: ${summary}")
     if [[ -n "$artifact" ]]; then
       checkpoint_args+=(--artifact "$artifact")
     elif [[ -n "$transcript" ]]; then
