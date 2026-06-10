@@ -45,6 +45,7 @@ type Plan struct {
 	ReviewDebt        []TaskRef              `json:"review_debt,omitempty"`
 	NotificationGated []TaskRef              `json:"notification_gated,omitempty"`
 	UtilityGated      []TaskRef              `json:"utility_gated,omitempty"`
+	Readiness         ReadinessExplanation   `json:"readiness"`
 	StopConditions    []PlanStopCondition    `json:"stop_conditions,omitempty"`
 	Reconcile         reconcile.ActiveReport `json:"reconcile"`
 	SessionCount      int                    `json:"session_count"`
@@ -251,6 +252,17 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	}
 	plan.Ready = limitTaskRefs(readyRefs, opts.ReadyLimit)
 	plan.Summary.Ready = len(ready)
+	plan.Readiness = ExplainReadyQueue(tasks, ready, sessions, checkpoints, cfg.States.Terminal)
+	if len(ready) == 0 && plan.Readiness.NonReadyTodoCount > 0 {
+		reason := fmt.Sprintf("ready queue empty; %d non-ready todo task(s) remain", plan.Readiness.NonReadyTodoCount)
+		var taskIDs []string
+		if len(plan.Readiness.Blockers) > 0 {
+			top := plan.Readiness.Blockers[0]
+			reason += fmt.Sprintf("; top blocker %s=%d", top.Category, top.Count)
+			taskIDs = top.TaskIDs
+		}
+		addAction(&plan, 55, "blocked", "inspect_ready_blockers", reason, "", "", "", "", taskIDs, false)
+	}
 	for _, task := range tasks {
 		switch {
 		case task.Status == "in_progress":

@@ -55,6 +55,35 @@ func TestBuildPlanClassifiesReadyCompleteReviewAndApproval(t *testing.T) {
 	}
 }
 
+func TestBuildPlanExplainsEmptyReadyQueue(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "DEP-001", Title: "Dependency", Kind: "task", Role: "backend"},
+		{ID: "TODO-001", Title: "Blocked todo", Kind: "task", Role: "backend", Dependencies: []string{"DEP-001"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DEP-001", "in_progress", "", false); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Readiness.ClaimableCount != 0 || plan.Readiness.NonReadyTodoCount != 1 {
+		t.Fatalf("readiness=%+v", plan.Readiness)
+	}
+	if len(plan.Readiness.Blockers) != 1 || plan.Readiness.Blockers[0].Category != "dependency-blocked" {
+		t.Fatalf("blockers=%+v", plan.Readiness.Blockers)
+	}
+	if !hasPlanAction(plan, "blocked", "inspect_ready_blockers", "") {
+		t.Fatalf("expected empty-ready blocker action in %+v", plan.Actions)
+	}
+}
+
 func TestBuildPlanClassifiesStaleSessionUtilityAndDryRunNoMutation(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)

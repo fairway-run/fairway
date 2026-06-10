@@ -62,6 +62,12 @@ tasks, sessions, watchers, batches, reviews, worktrees, checkpoints, and active
 reconciliation findings, then emits typed next actions without mutating task
 state.
 
+When the ready queue is empty but todo work remains, `plan` includes the same
+readiness explanation used by `fairway ready`: non-ready todo count, blocker
+categories, top task ids, dependency blocker ids, and suggested inspection
+commands. This keeps empty ready queues operationally explainable without
+direct SQLite inspection.
+
 Checkpoint interpretation uses the latest checkpoint for each task as the
 active operating decision. A later `done`, `parked`, or `abandoned` checkpoint
 closes older `awaiting_input` and `review` checkpoints for coordinator-plan

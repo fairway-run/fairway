@@ -252,6 +252,41 @@ func TestTaskListRowsReportsMissingDependencies(t *testing.T) {
 	}
 }
 
+func TestCLI_ReadyExplainsEmptyQueue(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Dependency in progress", "--role", "backend")
+	runOK(t, "add", "T-002", "--title", "Blocked todo", "--role", "backend", "--dependencies", "T-001")
+	runOK(t, "set-status", "T-001", "in_progress")
+
+	out := runCapture(t, "ready")
+	assertContains(t, out, "no ready tasks; non-ready todo tasks: 1")
+	assertContains(t, out, "dependency-blocked: count=1 tasks=T-002 blocker_tasks=T-001")
+	assertContains(t, out, `next="fairway task-detail T-001"`)
+
+	jsonOut := runCapture(t, "--json", "ready")
+	for _, want := range []string{
+		`"claimable_count": 0`,
+		`"non_ready_todo_count": 1`,
+		`"category": "dependency-blocked"`,
+		`"task_ids": [`,
+		`"T-002"`,
+		`"blocker_task_ids": [`,
+		`"T-001"`,
+	} {
+		assertContains(t, jsonOut, want)
+	}
+}
+
 func TestCLI_WorkflowCloseoutCleanTask(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

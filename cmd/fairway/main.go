@@ -6025,22 +6025,46 @@ func cmdReady(ctx context.Context, opts globalOptions, args []string) error {
 		if err != nil {
 			return err
 		}
+		allTasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		explainTasks := filterReadyExplanationTasks(allTasks, role)
 		if *priority >= 0 {
 			tasks = filterByPriority(tasks, *priority)
+			explainTasks = filterByPriority(explainTasks, *priority)
 		}
 		if *within != "" {
-			all, err := s.AllTasks(ctx)
-			if err != nil {
-				return err
-			}
-			tasks = filterByAncestor(tasks, all, *within)
+			tasks = filterByAncestor(tasks, allTasks, *within)
+			explainTasks = filterByAncestor(explainTasks, allTasks, *within)
 		}
+		sessions, err := s.Sessions(ctx, false)
+		if err != nil {
+			return err
+		}
+		checkpoints, err := s.Checkpoints(ctx, "", true)
+		if err != nil {
+			return err
+		}
+		explanation := coord.ExplainReadyQueue(explainTasks, tasks, sessions, checkpoints, cfg.States.Terminal)
+		report := readyReport{Tasks: tasks, Readiness: explanation, ClaimableCount: explanation.ClaimableCount, NonReadyTodoCount: explanation.NonReadyTodoCount, Blockers: explanation.Blockers}
 		if opts.JSON {
-			return printJSON(tasks)
+			return printJSON(report)
 		}
 		printTasks(tasks)
+		if len(tasks) == 0 && explanation.NonReadyTodoCount > 0 {
+			printReadyExplanation(explanation)
+		}
 		return nil
 	})
+}
+
+type readyReport struct {
+	Tasks             []store.Task                     `json:"tasks"`
+	ClaimableCount    int                              `json:"claimable_count"`
+	NonReadyTodoCount int                              `json:"non_ready_todo_count"`
+	Blockers          []coord.ReadinessBlockerCategory `json:"blocker_categories,omitempty"`
+	Readiness         coord.ReadinessExplanation       `json:"readiness_explanation"`
 }
 
 func parseGlobalFlags(args []string) (globalOptions, []string, error) {
@@ -7681,6 +7705,37 @@ func printTasks(tasks []store.Task) {
 	for _, task := range tasks {
 		fmt.Printf("%s\t%s\t%s\t%s\n", task.Definition.ID, task.Definition.Role, task.Status, task.Definition.Title)
 	}
+}
+
+func printReadyExplanation(explanation coord.ReadinessExplanation) {
+	fmt.Printf("no ready tasks; non-ready todo tasks: %d\n", explanation.NonReadyTodoCount)
+	if len(explanation.Blockers) == 0 {
+		fmt.Println("blockers: none classified")
+		fmt.Println("next: fairway list --status todo")
+		return
+	}
+	fmt.Println("blockers:")
+	for _, blocker := range explanation.Blockers {
+		fmt.Printf("- %s: count=%d tasks=%s", blocker.Category, blocker.Count, strings.Join(blocker.TaskIDs, ","))
+		if len(blocker.BlockerIDs) > 0 {
+			fmt.Printf(" blocker_tasks=%s", strings.Join(blocker.BlockerIDs, ","))
+		}
+		if blocker.Suggested != "" {
+			fmt.Printf(" next=%q", blocker.Suggested)
+		}
+		fmt.Println()
+	}
+}
+
+func filterReadyExplanationTasks(tasks []store.Task, role string) []store.Task {
+	filtered := make([]store.Task, 0, len(tasks))
+	for _, task := range tasks {
+		if role != "" && task.Definition.Role != role {
+			continue
+		}
+		filtered = append(filtered, task)
+	}
+	return filtered
 }
 
 func taskListRows(tasks []store.Task, terminal []string) []taskListRow {

@@ -130,6 +130,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `fairway task-detail <task-id>`, `fairway tree`, or readiness output. Watcher
   rows are inspected with `fairway watcher status [--include-done]`; there is
   no `fairway watcher list` command.
+- `fairway ready` prints claimable ready tasks. If no ready tasks are claimable
+  but todo tasks remain in the filtered scope, it prints a blocker summary by
+  dependency-blocked, review-gated, approval-gated, profile-gated,
+  session-gated, or unknown category with a suggested inspection command.
+  `fairway --json ready` returns a report object with `tasks`,
+  `claimable_count`, `non_ready_todo_count`, and `blocker_categories`.
 - The caller's role is determined by (in order): `--as <role>` flag, `FAIRWAY_ROLE` env var, current worktree's configured role, prompt if ambiguous.
 - Evidence records are command-oriented. `artifact` is optional so "no-op" checks,
   skipped checks, and blocked checks can still leave an auditable row.
