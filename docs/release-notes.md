@@ -4,16 +4,19 @@ Fairway `v0.1.1` is the first public release with signed/notarized macOS
 artifacts and a Homebrew cask. The initial `v0.1.0` release artifact was yanked
 because its CLI version metadata still reported the development version.
 
-Product boundary reminder for current releases: Fairway is a coordination
-control plane, not an autonomous workflow engine, CI runner, issue tracker
-replacement, LLM provider abstraction, credential store, or provider-cost gate.
-Release and adapter work must preserve the rules in
-[Product boundaries](design/product-boundaries.md).
+Product boundary reminder for current releases: Fairway supports governed
+agentic engineering as a coordination control plane. It is not an autonomous
+workflow engine, CI runner, issue tracker replacement, LLM provider
+abstraction, credential store, or provider-cost gate. Release and adapter work
+must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
 ## Unreleased
 
 ### What Changed
 
+- Public positioning now leads with Governed Agentic Engineering as the
+  operating model and describes Fairway as the coordination control plane for
+  that model.
 - Rule packs can now be configured as local sources, validated, matched against
   task metadata, surfaced on task detail and reports, enforced by
   `merge-ready` / `workflow check --mode close`, and rendered through

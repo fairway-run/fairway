@@ -4,15 +4,17 @@
 
 # Fairway
 
-**Coordination control plane for multi-agent engineering work.**
+**Governed Agentic Engineering for multi-agent software delivery.**
 
-Fairway is a local-first coordination tool for teams running multiple coding
-agents in parallel on one repository. Traffic-control lane coordination was the
-original primitive: each lane has a task queue, state machine, worktree,
-evidence trail, handoff/review flow, session record, and live dashboard. The
-product has grown from that primitive into a coordination control plane for
-ownership, evidence, reviews, readiness, risk, usage attribution, utility
-handbacks, and release posture.
+Fairway is the coordination control plane for governed agentic engineering:
+teams running multiple coding agents in parallel while keeping ownership,
+evidence, reviews, readiness, risk, usage attribution, utility handbacks, and
+release posture explicit.
+
+Traffic-control lane coordination was the original primitive: each lane has a
+task queue, state machine, worktree, evidence trail, handoff/review flow,
+session record, and live dashboard. The product has grown from that primitive
+into the local execution record for agentic engineering work.
 
 Use it when the problem is not "can an agent write code?" but "can several
 agents work at once without losing ownership, context, review state, or proof of
@@ -44,9 +46,10 @@ Multi-agent engineering breaks down when coordination lives in chat threads:
 - a reviewer cannot tell which domain still needs approval,
 - long UAT or deployment work leaves stale state behind.
 
-Fairway keeps those facts in a local execution store instead of depending on
-provider memory, issue tracker comments, or CI logs as the coordination source
-of truth.
+Governed agentic engineering keeps those facts in a local execution store
+instead of depending on provider memory, issue tracker comments, or CI logs as
+the coordination source of truth. Fairway is the tool that makes that operating
+model practical.
 
 ## What It Is
 

@@ -1,8 +1,10 @@
 # Product Boundaries
 
-Fairway is a coordination control plane for multi-agent engineering work. It
-keeps execution state visible, auditable, and reviewable. It is not an
-autonomous workflow engine.
+Fairway supports governed agentic engineering: high-delegation software
+delivery where agents can do real work while ownership, evidence, review,
+promotion, and human accountability remain explicit. Fairway is the
+coordination control plane for that operating model. It keeps execution state
+visible, auditable, and reviewable. It is not an autonomous workflow engine.
 
 This page defines the product boundary so orchestration, adapters, usage
 accounting, and dashboard features do not drift into hidden decision-making.

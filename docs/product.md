@@ -2,18 +2,16 @@
 
 ## Vision
 
-Fairway is the smallest tool that makes running 2-6 coding agents in parallel
-feel coordinated rather than chaotic.
-
-Fairway is a local-first coordination control plane for multi-agent engineering
-work: tasks, ownership, evidence, reviews, handoffs, sessions, readiness, and
-risk.
+Fairway is the smallest tool that makes governed agentic engineering practical:
+2-6 coding agents can work in parallel while task ownership, evidence, reviews,
+handoffs, sessions, readiness, and risk stay visible.
 
 The operating model is
 [governed agentic engineering](governed-agentic-engineering.md): agents can do
 substantial implementation work, but evidence, review, ownership, promotion,
 and human comprehension remain first-class engineering controls.
 
+Fairway is the local-first coordination control plane for that model.
 Traffic-control lanes were the first useful primitive: one lane, one role, one
 worktree, one visible task state. The product direction is broader but still
 bounded: Fairway coordinates the facts around multi-agent engineering work

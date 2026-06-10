@@ -3,7 +3,7 @@
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Fairway',
-  tagline: 'Coordination control plane for multi-agent engineering work',
+  tagline: 'Governed Agentic Engineering',
   favicon: 'img/logo.svg',
   url: 'https://fairway.run',
   baseUrl: '/',
@@ -48,6 +48,7 @@ const config = {
         },
         items: [
           { to: '/docs/quickstart', label: 'Docs', position: 'left' },
+          { to: '/docs/governed-agentic-engineering', label: 'Model', position: 'left' },
           { to: '/docs/agent-guide', label: 'Agent Guide', position: 'left' },
           { to: '/docs/design/dashboard', label: 'Dashboard', position: 'left' },
           { to: '/docs/config-reference', label: 'Reference', position: 'left' },

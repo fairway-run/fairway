@@ -8,9 +8,9 @@ tool, scanner, docs portal, or agent runner.
 
 ## Product Framing
 
-Fairway is a local-first coordination control plane for multi-agent engineering
-work: tasks, ownership, evidence, reviews, handoffs, sessions, readiness, and
-risk.
+Fairway supports governed agentic engineering with a local-first coordination
+control plane: tasks, ownership, evidence, reviews, handoffs, sessions,
+readiness, and risk.
 
 Profiles should make that control plane more precise. They should not execute
 builds, tests, scans, deployments, or documentation hosting.

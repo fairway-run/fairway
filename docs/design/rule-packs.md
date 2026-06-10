@@ -11,7 +11,8 @@ and shows gaps.
 ## Positioning
 
 ```text
-Fairway = coordination control plane
+Governed agentic engineering = operating model
+Fairway = coordination control plane for that model
 Workstream profiles = project operating shape
 Rule packs = reusable operating knowledge
 Tasks = concrete work

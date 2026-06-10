@@ -19,6 +19,12 @@ and uses semantic versioning.
   review packets with required evidence, recommended commands, review domains,
   and residual-risk fields.
 
+### Changed
+
+- Public positioning now leads with Governed Agentic Engineering as the
+  operating model and describes Fairway as the coordination control plane for
+  that model.
+
 ## v0.1.4
 
 ### Added

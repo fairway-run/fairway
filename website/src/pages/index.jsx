@@ -31,28 +31,29 @@ function Feature({ title, body }) {
 export default function Home() {
   return (
     <Layout
-      title="Coordination control plane for multi-agent engineering work"
-      description="Fairway coordinates coding agents, worktrees, evidence, reviews, and sessions in one local-first control plane."
+      title="Governed Agentic Engineering"
+      description="Fairway is the coordination control plane for governed agentic engineering: coding agents, worktrees, evidence, reviews, sessions, and release gates in one local-first execution record."
     >
       <main>
         <section className={styles.hero}>
           <div className={styles.heroInner}>
             <img src="/img/logo-lockup.svg" alt="Fairway" className={styles.logo} />
-            <Heading as="h1">Coordination control plane for multi-agent engineering work</Heading>
+            <Heading as="h1">Governed Agentic Engineering</Heading>
             <p className={styles.lede}>
-              Coordinate multiple coding agents working in parallel on one repository:
-              task state, worktree lanes, provider sessions, evidence, handoffs,
-              reviews, dashboard visibility, readiness, and workflow guards.
+              Fairway is the coordination control plane for teams delegating
+              real software work to coding agents while preserving task
+              ownership, worktree lanes, provider sessions, evidence, reviews,
+              readiness, and release gates.
             </p>
             <div className={styles.actions}>
               <Link className={clsx('button button--primary button--lg', styles.primary)} to="/docs/quickstart">
                 Start with the quickstart
               </Link>
+              <Link className="button button--secondary button--lg" to="/docs/governed-agentic-engineering">
+                Read the model
+              </Link>
               <Link className="button button--secondary button--lg" to="/docs/agent-guide">
                 Read the agent guide
-              </Link>
-              <Link className="button button--secondary button--lg" to="/docs/design/product-boundaries">
-                See product boundaries
               </Link>
             </div>
           </div>
