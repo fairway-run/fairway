@@ -322,6 +322,18 @@ Matched rules should be ordered deterministically:
 `risk_floor` means the rule applies only to tasks whose risk is at or above the
 floor. It does not raise the task's risk level.
 
+Rule match output uses three status values:
+
+- `selected`: the rule applies to the task and its evidence/review expectations
+  should be considered for packets, reports, and readiness checks;
+- `non_applicable`: the rule was loaded but did not apply to the task after
+  group, path, tag, kind, profile, risk, or review-domain matching;
+- `disabled`: the rule source is configured as disabled and is not evaluated.
+
+Earlier FW-146 planning text used `considered` as a possible match status. The
+implemented vocabulary does not include that fourth state; this FW-161
+reconciliation records the drift without changing historical review outcomes.
+
 Non-applicability rationale is first-class. When a rule appears close but is
 not applicable, the packet or review should be able to record why.
 

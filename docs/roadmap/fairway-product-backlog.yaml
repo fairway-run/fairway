@@ -1582,7 +1582,7 @@ tasks:
       - "`risk_floor` is treated as an applicability floor for task risk and does not raise or mutate the task risk level."
       - Project config `rule_groups` binds rule groups to workstream profiles; pack-local profiles are examples unless imported.
       - "`applies_when.profiles` narrows an already-bound rule and does not bind the source by itself."
-      - Match output distinguishes selected, considered, disabled, and non-applicable rules.
+      - Match output distinguishes selected, non-applicable, and disabled rules.
       - Non-applicable rule rationale is available in human and JSON output.
       - CLI can show applicable rules for a task in human and JSON output.
       - Tests cover path glob matches, tag matches, task kind, profile binding, risk-floor behavior, disabled sources, multi-axis AND behavior, and no-match tasks.
@@ -2081,7 +2081,7 @@ tasks:
     depends_on:
       - FW-146
     acceptance_checks:
-      - Rule matching docs and backlog acceptance use the implemented selected, non-applicable, and disabled statuses, or code restores an explicit considered status.
+      - Rule matching docs and backlog acceptance use the implemented selected, non-applicable, and disabled statuses.
       - Historical FW-146 acceptance drift is documented without fabricating a re-review.
       - CLI help, design docs, and tests agree on the final status vocabulary.
 
