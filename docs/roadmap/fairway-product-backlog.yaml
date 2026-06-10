@@ -1681,3 +1681,50 @@ tasks:
       - Packet output includes selected rules, non-applicable rationale fields, required evidence, recommended commands, review domains, and residual risk fields.
       - Rule packets can be recorded as evidence but do not approve reviews or close tasks.
       - Tests cover human and JSON packet output for selected rules.
+
+  - id: FW-150
+    title: Add provider notification router and handoff delivery states
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator
+    source_paths:
+      - docs/design/coordinator-loop.md
+      - docs/design/session-launch.md
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - examples/session-adapters
+    target_paths:
+      - docs/design/coordinator-loop.md
+      - docs/design/session-launch.md
+      - docs/design/watchers.md
+      - docs/agent-guide.md
+      - docs/config-reference.md
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - examples/session-adapters
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+      - security
+    risk_level: high
+    migration_type: provider-notification-orchestrator
+    depends_on:
+      - FW-109
+      - FW-118
+      - FW-130
+    acceptance_checks:
+      - Fairway distinguishes handoff recorded, notification sent, reviewer acknowledged, review recorded, and notification failed states.
+      - Provider or review-domain registry maps domains such as architecture, security, governance, backend, frontend, and ops to configured provider targets without hardcoding project-specific thread ids.
+      - Coordinator plan reports review-ready work that has Fairway handoff but no delivered provider/thread notification.
+      - First implementation can send provider-neutral notification intents through an adapter boundary while preserving Fairway as the durable source of truth.
+      - Notification delivery never grants review approval, task completion, merge, push, deploy, or release authority by itself.
+      - Stale notification/watchdog output identifies task id, target domain, provider target, last handoff, last notification attempt, and recommended next action.
+      - Docs explain when to use Codex app thread steering versus tmux/CLI provider sessions, including the distinction between Fairway handoff and actual thread notification.
