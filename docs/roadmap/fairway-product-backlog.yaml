@@ -2116,3 +2116,41 @@ tasks:
       - Adoption checklist covers local path existence, mode selection, review-domain vocabulary, validation command, CI validation, and first advisory rollout.
       - Example configs avoid hard references to absent optional packs unless the resulting missing-source behavior is documented and validated.
       - GPUaaS adoption can reference the checklist without assuming remote fetch support.
+
+  - id: FW-163
+    title: Add review completion handback to coordinator plan
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator
+    source_paths:
+      - internal/store
+      - internal/coordinator
+      - cmd/fairway
+      - docs/design/coordinator-loop.md
+      - docs/design/review-lanes.md
+      - docs/agent-guide.md
+    target_paths:
+      - internal/store
+      - internal/coordinator
+      - cmd/fairway
+      - docs/design/coordinator-loop.md
+      - docs/design/review-lanes.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: review-completion-handback
+    depends_on:
+      - FW-150
+    acceptance_checks:
+      - Recording a review re-evaluates the affected task's required review domains and latest verdicts without relying on provider chat context.
+      - Coordinator plan surfaces a review-complete handback action when all required review domains are approved and `merge-ready` passes or is expected to be the next action.
+      - The handback includes task id, required domains, approved domains, latest verdicts, merge-ready status, and recommended next action.
+      - Tasks with unresolved changes-requested verdicts, missing required domains, or failed merge-ready gates do not produce a false review-complete handback.
+      - Dashboard or task detail exposes the review-complete/merge-ready handback state so an orchestrator does not need to poll reviewer chats.
+      - Tests cover no reviews, partial approvals, changes requested then approved, all domains approved, and merge-ready blocked by a non-review gate.
