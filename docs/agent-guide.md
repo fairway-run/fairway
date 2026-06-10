@@ -885,6 +885,7 @@ track:
 fairway session status
 fairway status-report
 fairway ready
+fairway list --status todo,in_progress,blocked
 fairway watcher status
 fairway reconcile active --dry-run
 ```
@@ -893,9 +894,11 @@ Do not guess CLI subcommands from natural language. Check `fairway --help` or
 the group help first (`fairway session --help`, `fairway watcher --help`,
 `fairway workflow --help`). Use `fairway watcher status [--include-done]` for
 watcher rows; there is no `fairway watcher list`. Use `fairway task-detail`,
-`fairway tree`, `fairway ready`, and `fairway update --dependencies` for task
-and dependency inspection/update; there is no grouped `task` command or
-`depends` shortcut in the current CLI.
+`fairway tree`, `fairway ready`, `fairway list --status <state>`, and
+`fairway update --dependencies` for task and dependency inspection/update;
+there is no grouped `task` command or `depends` shortcut in the current CLI.
+Use `fairway list --status todo --ready` when an empty or surprising ready queue
+needs dependency context.
 
 Use `fairway session reconcile --dry-run` when you specifically want to inspect
 session-local cleanup such as dead PIDs, missing tmux panes, or stale sessions.

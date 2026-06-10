@@ -163,6 +163,95 @@ accepted_results = ["pass"]
 	assertContains(t, out, "group=platform.core")
 }
 
+func TestCLI_ListStatusFiltersAndDependencyVisibility(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Complete dependency", "--role", "backend")
+	runOK(t, "add", "T-002", "--title", "Blocked dependency", "--role", "backend")
+	runOK(t, "add", "T-003", "--title", "Ready todo", "--role", "backend", "--dependencies", "T-001")
+	runOK(t, "add", "T-004", "--title", "Blocked todo", "--role", "backend", "--dependencies", "T-002")
+	runOK(t, "set-status", "T-001", "done")
+	runOK(t, "set-status", "T-002", "in_progress")
+
+	todo := runCapture(t, "list", "--status", "todo")
+	assertContains(t, todo, "T-003")
+	assertContains(t, todo, "ready")
+	assertContains(t, todo, "deps=1 blocked=0 missing=0")
+	assertContains(t, todo, "T-004")
+	assertContains(t, todo, "not_ready")
+	assertContains(t, todo, "deps=1 blocked=1 missing=0")
+	if strings.Contains(todo, "T-001") {
+		t.Fatalf("done task appeared in todo list:\n%s", todo)
+	}
+
+	combined := runCapture(t, "list", "--status", "done,in_progress")
+	assertContains(t, combined, "T-001")
+	assertContains(t, combined, "done")
+	assertContains(t, combined, "T-002")
+	assertContains(t, combined, "in_progress")
+	if strings.Contains(combined, "T-003") {
+		t.Fatalf("todo task appeared in combined done/in_progress list:\n%s", combined)
+	}
+
+	ready := runCapture(t, "list", "--status", "todo", "--ready")
+	assertContains(t, ready, "T-003")
+	if strings.Contains(ready, "T-004") {
+		t.Fatalf("not-ready tasks appeared in ready-only list:\n%s", ready)
+	}
+
+	none := runCapture(t, "list", "--status", "review")
+	assertContains(t, none, "no tasks matched filters")
+
+	jsonOut := runCapture(t, "--json", "list", "--status", "todo")
+	for _, want := range []string{
+		`"id": "T-003"`,
+		`"ready": true`,
+		`"dependency_summary": "deps=1 blocked=0 missing=0"`,
+		`"id": "T-004"`,
+		`"blocked_dependencies": [`,
+		`"T-002:in_progress"`,
+	} {
+		assertContains(t, jsonOut, want)
+	}
+}
+
+func TestTaskListRowsReportsMissingDependencies(t *testing.T) {
+	rows := taskListRows([]store.Task{
+		{
+			Definition: store.TaskDefinition{
+				ID:           "T-001",
+				Title:        "Missing dependency",
+				Role:         "backend",
+				Kind:         "feature",
+				Dependencies: []string{"T-999"},
+			},
+			Status: "todo",
+		},
+	}, []string{"done"})
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.Ready {
+		t.Fatalf("row is ready with missing dependency: %+v", row)
+	}
+	if row.DependencySummary != "deps=1 blocked=0 missing=1" {
+		t.Fatalf("dependency summary=%q", row.DependencySummary)
+	}
+	if !reflect.DeepEqual([]string{"T-999"}, row.MissingDependencies) {
+		t.Fatalf("missing dependencies=%v", row.MissingDependencies)
+	}
+}
+
 func TestCLI_WorkflowCloseoutCleanTask(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

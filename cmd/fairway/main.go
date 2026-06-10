@@ -80,6 +80,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdUpdate(ctx, opts, args[1:])
 	case "tree":
 		return cmdTree(ctx, opts, args[1:])
+	case "list":
+		return cmdList(ctx, opts, args[1:])
 	case "ready":
 		return cmdReady(ctx, opts, args[1:])
 	case "claim":
@@ -483,6 +485,76 @@ func cmdTree(ctx context.Context, opts globalOptions, args []string) error {
 			return printJSON(node)
 		}
 		printTree(node, 0)
+		return nil
+	})
+}
+
+type taskListRow struct {
+	ID                  string   `json:"id"`
+	Title               string   `json:"title"`
+	Role                string   `json:"role"`
+	Kind                string   `json:"kind"`
+	Status              string   `json:"status"`
+	Owner               string   `json:"owner,omitempty"`
+	Claimant            string   `json:"claimant,omitempty"`
+	Ready               bool     `json:"ready"`
+	Dependencies        []string `json:"dependencies,omitempty"`
+	DependencySummary   string   `json:"dependency_summary"`
+	BlockedDependencies []string `json:"blocked_dependencies,omitempty"`
+	MissingDependencies []string `json:"missing_dependencies,omitempty"`
+}
+
+func cmdList(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("list", flag.ContinueOnError)
+	var statuses multiFlag
+	fs.Var(&statuses, "status", "comma-separated status filter; repeatable")
+	role := fs.String("role", "", "role filter; defaults to --as when omitted")
+	readyOnly := fs.Bool("ready", false, "only include claimable ready tasks")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected list arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		statusFilter := stringSet(splitRepeatedCSV(statuses))
+		roleFilter := strings.TrimSpace(*role)
+		if roleFilter == "" {
+			roleFilter = resolveRole(opts)
+		}
+		rows := taskListRows(tasks, cfg.States.Terminal)
+		var filtered []taskListRow
+		for _, row := range rows {
+			if len(statusFilter) > 0 && !statusFilter[row.Status] {
+				continue
+			}
+			if roleFilter != "" && row.Role != roleFilter {
+				continue
+			}
+			if *readyOnly && !row.Ready {
+				continue
+			}
+			filtered = append(filtered, row)
+		}
+		if opts.JSON {
+			return printJSON(filtered)
+		}
+		if len(filtered) == 0 {
+			fmt.Println("no tasks matched filters")
+			return nil
+		}
+		for _, row := range filtered {
+			owner := firstNonEmpty(row.Claimant, row.Owner, "-")
+			ready := "not_ready"
+			if row.Ready {
+				ready = "ready"
+			}
+			fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", row.ID, row.Role, firstNonEmpty(row.Kind, "task"), row.Status, owner, ready, row.DependencySummary, row.Title)
+		}
 		return nil
 	})
 }
@@ -7611,6 +7683,67 @@ func printTasks(tasks []store.Task) {
 	}
 }
 
+func taskListRows(tasks []store.Task, terminal []string) []taskListRow {
+	statuses := map[string]string{}
+	if len(terminal) == 0 {
+		terminal = []string{"done"}
+	}
+	terminalSet := stringSet(terminal)
+	for _, task := range tasks {
+		statuses[task.Definition.ID] = task.Status
+	}
+	rows := make([]taskListRow, 0, len(tasks))
+	for _, task := range tasks {
+		blocked, missing := dependencyGaps(task.Definition.Dependencies, statuses, terminalSet)
+		summary := "deps=none"
+		if len(task.Definition.Dependencies) > 0 {
+			summary = fmt.Sprintf("deps=%d blocked=%d missing=%d", len(task.Definition.Dependencies), len(blocked), len(missing))
+		}
+		rows = append(rows, taskListRow{
+			ID:                  task.Definition.ID,
+			Title:               task.Definition.Title,
+			Role:                task.Definition.Role,
+			Kind:                firstNonEmpty(task.Definition.Kind, "task"),
+			Status:              task.Status,
+			Owner:               task.Owner,
+			Claimant:            task.Claimant,
+			Ready:               task.Status == "todo" && len(blocked) == 0 && len(missing) == 0,
+			Dependencies:        append([]string(nil), task.Definition.Dependencies...),
+			DependencySummary:   summary,
+			BlockedDependencies: blocked,
+			MissingDependencies: missing,
+		})
+	}
+	return rows
+}
+
+func dependencyGaps(deps []string, statuses map[string]string, terminal map[string]bool) ([]string, []string) {
+	var blocked []string
+	var missing []string
+	for _, dep := range deps {
+		status, ok := statuses[dep]
+		if !ok {
+			missing = append(missing, dep)
+			continue
+		}
+		if !terminal[status] {
+			blocked = append(blocked, dep+":"+status)
+		}
+	}
+	return blocked, missing
+}
+
+func stringSet(values []string) map[string]bool {
+	out := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out[value] = true
+		}
+	}
+	return out
+}
+
 func filterByPriority(tasks []store.Task, maxPriority int) []store.Task {
 	filtered := tasks[:0]
 	for _, task := range tasks {
@@ -7920,7 +8053,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|rules validate|evidence-types|match|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|list|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|rules validate|evidence-types|match|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {
