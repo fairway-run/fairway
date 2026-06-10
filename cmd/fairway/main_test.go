@@ -89,10 +89,71 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"batch", "list", "--help"}, "fairway batch list"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning"},
 		{[]string{"release", "--help"}, "fairway release verify"},
+		{[]string{"rules", "--help"}, "fairway rules validate <dir>|evidence-types"},
 	} {
 		out := runCapture(t, tc.args...)
 		assertContains(t, out, tc.want)
 	}
+}
+
+func TestCLI_RulesValidateAndEvidenceTypes(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	writeFile(t, "rules-platform/schemas/rule.schema.yaml", `type: object
+required:
+  - id
+  - title
+  - status
+`)
+	writeFile(t, "rules-platform/rules/core/contract.md", `---
+id: platform.contract-first
+title: Contract first
+status: draft
+risk_floor: medium
+required_evidence:
+  - generated-artifacts-clean
+review_domains:
+  - backend
+---
+
+body
+`)
+	appendFile(t, ".fairway/config.toml", `
+[[rule_sources]]
+name = "platform"
+source = "path:rules-platform"
+mode = "advisory"
+
+[[workstream_profiles]]
+name = "platform-foundation"
+review_domains = ["backend"]
+
+[[workstream_profiles.gates]]
+name = "codegen"
+mode = "advisory"
+evidence_type = "generated-artifacts-clean"
+accepted_results = ["pass"]
+`)
+	out := runCapture(t, "rules", "validate", "rules-platform")
+	assertContains(t, out, "rule pack rules-platform: rules=1 groups=1 findings=0")
+	assertContains(t, out, "group: rules-platform.core")
+
+	runOK(t, "add", "T-001", "--title", "Rules evidence", "--role", "backend")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "make codegen", "--result", "pass", "--artifact-type", "generated-artifacts-clean")
+	out = runCapture(t, "rules", "evidence-types")
+	assertContains(t, out, "rule pack platform: rules=1 groups=1 findings=0")
+	assertContains(t, out, "- generated-artifacts-clean")
+	assertContains(t, out, "config_gate")
+	assertContains(t, out, "recorded")
 }
 
 func TestCLI_WorkflowCloseoutCleanTask(t *testing.T) {

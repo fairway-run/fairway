@@ -28,6 +28,7 @@ import (
 	"github.com/subashram/fairway/internal/importer"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/registry"
+	"github.com/subashram/fairway/internal/rules"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 	"github.com/subashram/fairway/internal/tracker"
@@ -151,6 +152,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdWatcher(ctx, opts, args[1:])
 	case "release":
 		return cmdRelease(ctx, opts, args[1:])
+	case "rules":
+		return cmdRules(ctx, opts, args[1:])
 	case "regression-pack":
 		return cmdRegressionPack(opts, args[1:])
 	case "prune-stale":
@@ -6121,6 +6124,145 @@ func recordEvidence(ctx context.Context, opts globalOptions, args []string) erro
 	})
 }
 
+func cmdRules(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("rules", "validate <dir>|evidence-types")
+		return nil
+	}
+	switch args[0] {
+	case "validate":
+		return cmdRulesValidate(opts, args[1:])
+	case "evidence-types":
+		return cmdRulesEvidenceTypes(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown rules subcommand %q", args[0])
+	}
+}
+
+func cmdRulesValidate(opts globalOptions, args []string) error {
+	if len(args) != 1 {
+		return errors.New("rules validate requires rule-pack directory")
+	}
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	dir := args[0]
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(root, dir)
+	}
+	pack, err := rules.LoadDir(dir, filepath.Base(dir), "advisory", rules.LoadOptions{Root: root, KnownDomains: rules.ReviewDomainSet(cfg)})
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return json.NewEncoder(os.Stdout).Encode(pack)
+	}
+	printRulePackSummary(pack)
+	if rules.HasErrors(pack.Findings) {
+		return errors.New("rule pack validation failed")
+	}
+	return nil
+}
+
+func cmdRulesEvidenceTypes(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("unexpected rules evidence-types arguments: %s", strings.Join(args, " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		recorded, err := s.EvidenceTypes(ctx)
+		if err != nil {
+			return err
+		}
+		knownEvidence := rules.ConfigGateEvidenceSet(cfg)
+		for _, evidence := range recorded {
+			knownEvidence[evidence] = true
+		}
+		packs, err := rules.LoadConfigured(cfg, root, rules.LoadOptions{
+			Root:          root,
+			KnownDomains:  rules.ReviewDomainSet(cfg),
+			KnownEvidence: knownEvidence,
+		})
+		if err != nil {
+			return err
+		}
+		type row struct {
+			EvidenceType string   `json:"evidence_type"`
+			FromRules    []string `json:"from_rules,omitempty"`
+			ConfigGate   bool     `json:"config_gate,omitempty"`
+			Recorded     bool     `json:"recorded,omitempty"`
+		}
+		byRule := rules.EvidenceTypes(packs)
+		recordedSet := map[string]bool{}
+		for _, evidence := range recorded {
+			recordedSet[evidence] = true
+		}
+		keys := map[string]bool{}
+		for evidence := range byRule {
+			keys[evidence] = true
+		}
+		for evidence := range rules.ConfigGateEvidenceSet(cfg) {
+			keys[evidence] = true
+		}
+		for evidence := range recordedSet {
+			keys[evidence] = true
+		}
+		var names []string
+		for evidence := range keys {
+			names = append(names, evidence)
+		}
+		sort.Strings(names)
+		var rows []row
+		for _, evidence := range names {
+			rows = append(rows, row{
+				EvidenceType: evidence,
+				FromRules:    byRule[evidence],
+				ConfigGate:   rules.ConfigGateEvidenceSet(cfg)[evidence],
+				Recorded:     recordedSet[evidence],
+			})
+		}
+		if opts.JSON {
+			return json.NewEncoder(os.Stdout).Encode(rows)
+		}
+		for _, pack := range packs {
+			printRulePackSummary(pack)
+		}
+		fmt.Println("evidence types:")
+		for _, row := range rows {
+			parts := []string{}
+			if len(row.FromRules) > 0 {
+				parts = append(parts, "rules="+strings.Join(row.FromRules, ","))
+			}
+			if row.ConfigGate {
+				parts = append(parts, "config_gate")
+			}
+			if row.Recorded {
+				parts = append(parts, "recorded")
+			}
+			fmt.Printf("- %s", row.EvidenceType)
+			if len(parts) > 0 {
+				fmt.Printf(" (%s)", strings.Join(parts, " "))
+			}
+			fmt.Println()
+		}
+		return nil
+	})
+}
+
+func printRulePackSummary(pack rules.Pack) {
+	fmt.Printf("rule pack %s: rules=%d groups=%d findings=%d\n", pack.SourceName, len(pack.Rules), len(pack.Groups), len(pack.Findings))
+	for _, group := range pack.Groups {
+		fmt.Printf("- group: %s\n", group)
+	}
+	for _, finding := range pack.Findings {
+		fmt.Printf("- %s: %s", finding.Severity, finding.Message)
+		if finding.Path != "" {
+			fmt.Printf(" (%s)", finding.Path)
+		}
+		fmt.Println()
+	}
+}
+
 func printEvidenceStatusPrompt(result string) {
 	switch strings.ToLower(strings.TrimSpace(result)) {
 	case "pass":
@@ -7445,7 +7587,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|rules validate|evidence-types|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

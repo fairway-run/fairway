@@ -1074,6 +1074,23 @@ func (s *Store) HasEvidence(ctx context.Context, taskID string) (bool, error) {
 	return count > 0, err
 }
 
+func (s *Store) EvidenceTypes(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT artifact_type FROM task_evidence WHERE project_id=? AND COALESCE(artifact_type, '') <> '' ORDER BY artifact_type`, s.projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var artifactType string
+		if err := rows.Scan(&artifactType); err != nil {
+			return nil, err
+		}
+		out = append(out, artifactType)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) HasApprovedReview(ctx context.Context, taskID string) (bool, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_reviews WHERE project_id=? AND task_id=? AND verdict='approve'`, s.projectID, taskID).Scan(&count)

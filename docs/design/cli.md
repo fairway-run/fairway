@@ -63,6 +63,8 @@ fairway regression-pack validate [<catalog-path>]
 fairway watcher start <watch-id> --task <task-id> [--owner <role-or-lane>] [--process <text>] [--command <cmd>] [--success <text>] [--failure <text>]
 fairway watcher finish <watch-id> --result <pass|fail|blocked> [--artifact <path-or-url>] [--duration-seconds <n>] [--notes <text>]
 fairway watcher status [--include-done]
+fairway rules validate <rule-pack-dir>                 # validate local rule-pack metadata and report groups/findings
+fairway rules evidence-types                           # list evidence types from loaded packs, profile gates, and recorded evidence
 fairway checkpoint record <task-id> --summary <text> [--state <state>] [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path>]
 fairway checkpoint status [--all]
 fairway checkpoint stale [--before <date>] [--all]
