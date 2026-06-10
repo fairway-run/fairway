@@ -23,12 +23,13 @@ type WorktreeFact struct {
 }
 
 type PlanOptions struct {
-	Worktrees             []WorktreeFact
-	StaleCheckpointAfter  time.Duration
-	MonitorHandbackAfter  time.Duration
-	ReadyLimit            int
-	RecommendationLimit   int
-	UtilityMonitorAllowed bool
+	Worktrees              []WorktreeFact
+	StaleCheckpointAfter   time.Duration
+	MonitorHandbackAfter   time.Duration
+	NotificationAckTimeout time.Duration
+	ReadyLimit             int
+	RecommendationLimit    int
+	UtilityMonitorAllowed  bool
 }
 
 type Plan struct {
@@ -126,7 +127,14 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	if err != nil {
 		return Plan{}, err
 	}
-	notificationGaps, err := s.HandoffNotificationGapsFiltered(ctx, store.HandoffNotificationGapOptions{TerminalStatuses: cfg.States.Terminal})
+	ackTimeout, err := notificationAckTimeout(cfg, opts)
+	if err != nil {
+		return Plan{}, err
+	}
+	notificationGaps, err := s.HandoffNotificationGapsFiltered(ctx, store.HandoffNotificationGapOptions{
+		TerminalStatuses: cfg.States.Terminal,
+		SentStaleBefore:  notificationStaleBefore(ackTimeout),
+	})
 	if err != nil {
 		return Plan{}, err
 	}
@@ -218,16 +226,25 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	}
 	for _, gap := range notificationGaps {
 		plan.Summary.NotificationGated++
-		plan.NotificationGated = appendTaskRef(plan.NotificationGated, TaskRef{ID: gap.TaskID, Role: gap.Role, Status: "handoff_unnotified"})
+		status := firstNonEmpty(gap.NotificationStatus, "never-sent")
+		plan.NotificationGated = appendTaskRef(plan.NotificationGated, TaskRef{ID: gap.TaskID, Role: gap.Role, Status: status})
 		reason := fmt.Sprintf("handoff %d to %s has no delivered provider/thread notification; provider_target=%s", gap.HandoffID, gap.Domain, providerTargetSummary(cfg.ProviderTargets, gap.Domain))
+		action := "send_or_record_provider_notification"
+		if status == "stale-sent" {
+			action = "escalate_stale_sent_notification"
+			reason = fmt.Sprintf("handoff %d to %s has stale sent notification without acknowledgement or review; provider_target=%s", gap.HandoffID, gap.Domain, providerTargetSummary(cfg.ProviderTargets, gap.Domain))
+		}
 		if gap.LastState != "" {
 			reason += "; latest notification state=" + gap.LastState
 		}
 		if gap.LastNotificationAt != "" {
 			reason += "; last_notification_at=" + gap.LastNotificationAt
 		}
+		if status != "" {
+			reason += "; notification_status=" + status
+		}
 		reason += "; last_handoff_at=" + gap.LastHandoffAt
-		addAction(&plan, 18, "notification-gated", "send_or_record_provider_notification", reason, gap.TaskID, gap.Domain, "", "", nil, false)
+		addAction(&plan, 18, "notification-gated", action, reason, gap.TaskID, gap.Domain, "", "", nil, false)
 	}
 	for _, checkpoint := range latestOpenCheckpointsByTask(checkpoints) {
 		if terminal[taskStatusByID[checkpoint.TaskID]] {
@@ -369,6 +386,28 @@ func relatedReadyGroups(tasks []store.Task) []relatedReadyGroup {
 		return out[i].Key < out[j].Key
 	})
 	return out
+}
+
+func notificationAckTimeout(cfg config.Config, opts PlanOptions) (time.Duration, error) {
+	if opts.NotificationAckTimeout > 0 {
+		return opts.NotificationAckTimeout, nil
+	}
+	raw := strings.TrimSpace(cfg.Coordinator.NotificationAckTimeout)
+	if raw == "" {
+		raw = "24h"
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid coordinator notification_ack_timeout %q: %w", raw, err)
+	}
+	return timeout, nil
+}
+
+func notificationStaleBefore(timeout time.Duration) string {
+	if timeout <= 0 {
+		return ""
+	}
+	return time.Now().UTC().Add(-timeout).Format(time.RFC3339Nano)
 }
 
 func latestCheckpointByTask(checkpoints []store.Checkpoint) map[string]store.Checkpoint {

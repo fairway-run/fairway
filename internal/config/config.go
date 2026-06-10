@@ -19,6 +19,7 @@ type Config struct {
 	Dashboard          DashboardConfig      `toml:"dashboard"`
 	Worktrees          WorktreesConfig      `toml:"worktrees"`
 	Sessions           SessionsConfig       `toml:"sessions"`
+	Coordinator        CoordinatorConfig    `toml:"coordinator"`
 	States             StatesConfig         `toml:"states"`
 	Gates              GatesConfig          `toml:"gates"`
 	TaskKinds          TaskKindsConfig      `toml:"task_kinds"`
@@ -54,6 +55,10 @@ type WorktreesConfig struct {
 type SessionsConfig struct {
 	DefaultBackend string `toml:"default_backend"`
 	StaleAfter     string `toml:"stale_after"`
+}
+
+type CoordinatorConfig struct {
+	NotificationAckTimeout string `toml:"notification_ack_timeout"`
 }
 
 type StatesConfig struct {
@@ -175,6 +180,9 @@ func Defaults(root string) Config {
 		Sessions: SessionsConfig{
 			DefaultBackend: "shell",
 			StaleAfter:     "12h",
+		},
+		Coordinator: CoordinatorConfig{
+			NotificationAckTimeout: "24h",
 		},
 		States: StatesConfig{
 			Allowed:  []string{"todo", "in_progress", "blocked", "done"},
@@ -699,6 +707,9 @@ review_branch_naming = "review/{role}"
 [sessions]
 default_backend = "shell"
 stale_after = "12h"
+
+[coordinator]
+notification_ack_timeout = "24h"
 
 [states]
 allowed = ["todo", "in_progress", "blocked", "done"]

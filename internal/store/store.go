@@ -128,10 +128,12 @@ type HandoffNotificationGap struct {
 	LastHandoffAt      string `json:"last_handoff_at"`
 	LastNotificationAt string `json:"last_notification_at,omitempty"`
 	LastState          string `json:"last_state,omitempty"`
+	NotificationStatus string `json:"notification_status,omitempty"`
 }
 
 type HandoffNotificationGapOptions struct {
 	TerminalStatuses []string
+	SentStaleBefore  string
 }
 
 type Session struct {
@@ -1592,7 +1594,18 @@ SELECT hf.task_id, d.role, hf.to_role, hf.id, hf.created_at,
          ORDER BY n2.created_at DESC
          LIMIT 1
        ), '') AS last_state,
-       SUM(CASE WHEN n.state IN ('sent', 'acknowledged', 'review_recorded') THEN 1 ELSE 0 END) AS delivered_count
+       SUM(CASE WHEN n.state IN ('acknowledged', 'review_recorded') THEN 1 ELSE 0 END) AS resolved_count,
+       SUM(CASE WHEN n.state = 'sent' THEN 1 ELSE 0 END) AS sent_count,
+       COALESCE(MAX(CASE WHEN n.state = 'sent' THEN n.created_at ELSE '' END), '') AS last_sent_at,
+       SUM(CASE WHEN n.state IN ('intent', 'failed') THEN 1 ELSE 0 END) AS unresolved_count,
+       (
+         SELECT COUNT(*)
+         FROM task_reviews r
+         WHERE r.project_id=hf.project_id
+           AND r.task_id=hf.task_id
+           AND r.reviewer=hf.to_role
+       ) AS review_count,
+       COUNT(n.id) AS notification_count
 FROM task_handoffs hf
 JOIN task_definitions d ON d.project_id=hf.project_id AND d.id=hf.task_id
 JOIN task_state st ON st.project_id=hf.project_id AND st.task_id=hf.task_id
@@ -1603,8 +1616,14 @@ LEFT JOIN task_notifications n ON n.project_id=hf.project_id
 WHERE hf.project_id=?
   AND COALESCE(hf.acknowledged_at, '') = ''
 GROUP BY hf.task_id, d.role, hf.to_role, hf.id, hf.created_at, st.status, st.review_required, st.review_status
-HAVING delivered_count IS NULL OR delivered_count = 0
-ORDER BY hf.created_at DESC`, s.projectID)
+HAVING resolved_count = 0
+  AND review_count = 0
+  AND (
+    notification_count = 0
+    OR unresolved_count > 0
+    OR (? <> '' AND sent_count > 0 AND last_sent_at < ?)
+  )
+ORDER BY hf.created_at DESC`, s.projectID, opts.SentStaleBefore, opts.SentStaleBefore)
 	if err != nil {
 		return nil, err
 	}
@@ -1619,18 +1638,38 @@ ORDER BY hf.created_at DESC`, s.projectID)
 	var out []HandoffNotificationGap
 	for rows.Next() {
 		var gap HandoffNotificationGap
-		var deliveredCount sql.NullInt64
+		var resolvedCount, sentCount, unresolvedCount, reviewCount, notificationCount int
+		var lastSentAt string
 		var taskStatus, reviewStatus string
 		var reviewRequired bool
-		if err := rows.Scan(&gap.TaskID, &gap.Role, &gap.Domain, &gap.HandoffID, &gap.LastHandoffAt, &taskStatus, &reviewRequired, &reviewStatus, &gap.LastNotificationAt, &gap.LastState, &deliveredCount); err != nil {
+		if err := rows.Scan(&gap.TaskID, &gap.Role, &gap.Domain, &gap.HandoffID, &gap.LastHandoffAt, &taskStatus, &reviewRequired, &reviewStatus, &gap.LastNotificationAt, &gap.LastState, &resolvedCount, &sentCount, &lastSentAt, &unresolvedCount, &reviewCount, &notificationCount); err != nil {
 			return nil, err
 		}
+		gap.NotificationStatus = notificationGapStatus(gap.LastState, gap.LastNotificationAt, opts.SentStaleBefore)
 		if terminal[taskStatus] && !terminalNotificationGapStillRelevant(reviewRequired, reviewStatus, gap.LastState) {
 			continue
 		}
 		out = append(out, gap)
 	}
 	return out, rows.Err()
+}
+
+func notificationGapStatus(lastState, lastNotificationAt, sentStaleBefore string) string {
+	switch strings.TrimSpace(lastState) {
+	case "":
+		return "never-sent"
+	case "sent":
+		if sentStaleBefore != "" && lastNotificationAt != "" && lastNotificationAt < sentStaleBefore {
+			return "stale-sent"
+		}
+		return "sent-awaiting-ack"
+	case "acknowledged":
+		return "acknowledged"
+	case "review_recorded":
+		return "review-recorded"
+	default:
+		return strings.TrimSpace(lastState)
+	}
 }
 
 func terminalNotificationGapStillRelevant(reviewRequired bool, reviewStatus, lastNotificationState string) bool {

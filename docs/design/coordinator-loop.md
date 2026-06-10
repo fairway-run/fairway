@@ -139,6 +139,12 @@ task, merge, push, deploy, or release. It only proves the configured target was
 contacted. Review authority still comes from `fairway record review`; task
 authority still comes from normal status, evidence, and merge-ready gates.
 
+`sent` is not permanent quieting. If no acknowledgement, `review_recorded`
+notification, or real matching review arrives within
+`[coordinator].notification_ack_timeout` (default `24h`), coordinator plan
+surfaces the handoff as `stale-sent` and recommends escalation. Fresh sent
+notifications remain `sent-awaiting-ack` and do not create coordinator noise.
+
 Coordinator notification-gap reporting is scoped to actionable work. It ignores
 handoffs that were explicitly acknowledged and suppresses historical handoffs
 on terminal tasks unless the task still has pending review routing or an

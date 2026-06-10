@@ -161,6 +161,43 @@ func TestBuildPlanReportsHandoffWithoutDeliveredNotification(t *testing.T) {
 	if plan.Summary.NotificationGated != 0 || hasPlanAction(plan, "notification-gated", "send_or_record_provider_notification", "REVIEW-001") {
 		t.Fatalf("sent notification still surfaced as gap: summary=%+v actions=%+v", plan.Summary, plan.Actions)
 	}
+	time.Sleep(time.Millisecond)
+	plan, err = BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20, NotificationAckTimeout: time.Nanosecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.NotificationGated != 1 || !hasPlanAction(plan, "notification-gated", "escalate_stale_sent_notification", "REVIEW-001") {
+		t.Fatalf("stale sent notification not escalated: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+	if !hasPlanActionReason(plan, "notification-gated", "REVIEW-001", "notification_status=stale-sent") {
+		t.Fatalf("stale notification reason missing status: actions=%+v", plan.Actions)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "REVIEW-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "acknowledged"}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20, NotificationAckTimeout: time.Nanosecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.NotificationGated != 0 {
+		t.Fatalf("acknowledged notification surfaced as gap: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "REVR-001", Title: "Review recorded", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "REVR-001", store.Handoff{ToRole: "security", Payload: "please review"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "REVR-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "review_recorded"}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20, NotificationAckTimeout: time.Nanosecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasPlanAction(plan, "notification-gated", "send_or_record_provider_notification", "REVR-001") {
+		t.Fatalf("review-recorded notification surfaced as gap: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
 }
 
 func TestBuildPlanFiltersHistoricalTerminalNotificationGaps(t *testing.T) {

@@ -436,6 +436,51 @@ func TestNotificationTracksHandoffDeliveryState(t *testing.T) {
 	}
 }
 
+func TestHandoffNotificationGapsEscalateStaleSentNotifications(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	tasks := []TaskDefinition{
+		{ID: "STALE-001", Title: "Stale notification", Role: "backend"},
+		{ID: "ACK-001", Title: "Acknowledged notification", Role: "backend"},
+		{ID: "REVIEW-001", Title: "Reviewed notification", Role: "backend"},
+	}
+	if err := s.ImportTasks(ctx, tasks); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"STALE-001", "ACK-001", "REVIEW-001"} {
+		if err := s.RecordHandoff(ctx, id, Handoff{ToRole: "security", Payload: "please review"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.RecordNotification(ctx, Notification{TaskID: id, Domain: "security", Provider: "codex", Target: "thread-1", State: "sent"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldHandoff := time.Now().UTC().Add(-72 * time.Hour).Format(time.RFC3339Nano)
+	old := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339Nano)
+	if _, err := s.db.ExecContext(ctx, `UPDATE task_handoffs SET created_at=? WHERE project_id=?`, oldHandoff, s.projectID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE task_notifications SET created_at=? WHERE project_id=?`, old, s.projectID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, Notification{TaskID: "ACK-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "acknowledged"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "REVIEW-001", Review{Reviewer: "security", Domain: "security", Verdict: "approve", Reason: "reviewed"}); err != nil {
+		t.Fatal(err)
+	}
+
+	gaps, err := s.HandoffNotificationGapsFiltered(ctx, HandoffNotificationGapOptions{
+		SentStaleBefore: time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gaps) != 1 || gaps[0].TaskID != "STALE-001" || gaps[0].NotificationStatus != "stale-sent" {
+		t.Fatalf("gaps=%+v, want one stale-sent gap", gaps)
+	}
+}
+
 func TestHandoffNotificationGapsFilterAcknowledgedAndTerminalTasks(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

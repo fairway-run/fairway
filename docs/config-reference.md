@@ -31,6 +31,7 @@ max_primary_tracks = 1
 max_sidecar_tracks = 1
 max_review_tracks = 1
 checkpoint_stale_after = "24h"
+notification_ack_timeout = "24h"
 
 [[roles]]
 name = "backend"
@@ -196,6 +197,7 @@ that the target was contacted, not proof that review happened.
 | `max_sidecar_tracks` | int | `1` | Advisory limit for active side tracks/checkpoints. |
 | `max_review_tracks` | int | `1` | Advisory limit for active review/verification tracks. |
 | `checkpoint_stale_after` | duration | `24h` | Checkpoints older than this are stale unless the checkpoint state is `awaiting_input`, `done`, `parked`, or `abandoned`. |
+| `notification_ack_timeout` | duration | `24h` | How long a `sent` provider/thread notification may wait without acknowledgement, `review_recorded`, or a real matching review before coordinator plan escalates it as `stale-sent`. |
 
 ### `[[roles]]`
 
