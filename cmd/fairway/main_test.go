@@ -317,6 +317,63 @@ func TestCLI_WorkflowCloseoutCleanTask(t *testing.T) {
 	runOK(t, "workflow", "check", "--mode", "close", "--task-id", "T-001")
 }
 
+func TestCLI_CleanGatesAllowConfiguredAndEvidenceArtifacts(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	configBytes, err := os.ReadFile(".fairway/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	configText := strings.Replace(string(configBytes), "task_id_pattern = \"^[A-Z]+-[0-9]+$\"\n", "task_id_pattern = \"^[A-Z]+-[0-9]+$\"\nlocal_artifact_paths = [\"local-artifacts/fairway\"]\n", 1)
+	if err := os.WriteFile(".fairway/config.toml", []byte(configText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, ".gitignore", "scratch/\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	commit := strings.TrimSpace(gitOutput(t, repo, "rev-parse", "--short", "HEAD"))
+
+	runOK(t, "add", "T-001", "--title", "Artifact clean", "--role", "backend")
+	runOK(t, "claim", "T-001")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass", "--artifact", "evidence/local.txt")
+	runOK(t, "set-status", "T-001", "done", "--commit", commit)
+	writeFile(t, "local-artifacts/fairway/report.md", "local artifact\n")
+	writeFile(t, "evidence/local.txt", "recorded evidence artifact\n")
+	writeFile(t, "scratch/ignored.txt", "ignored scratch\n")
+
+	mergeReady := runCapture(t, "merge-ready", "T-001")
+	assertContains(t, mergeReady, "merge_ready: true")
+	assertContains(t, mergeReady, "allowed_local_artifacts:")
+	assertContains(t, mergeReady, "local-artifacts/fairway/report.md")
+	assertContains(t, mergeReady, "evidence/local.txt")
+	assertNotContains(t, mergeReady, "worktree has uncommitted changes")
+
+	closeout := runCapture(t, "workflow", "closeout", "T-001", "--dry-run")
+	assertContains(t, closeout, "lane_closeout: true")
+	assertContains(t, closeout, "allowed_local_artifact")
+	assertContains(t, closeout, "path=local-artifacts/fairway/report.md")
+	assertContains(t, closeout, "path=evidence/local.txt")
+
+	writeFile(t, "cmd/dirty.go", "package dirty\n")
+	dirty := runCaptureAllowError(t, "merge-ready", "T-001")
+	assertContains(t, dirty, "merge_ready: false")
+	assertContains(t, dirty, "dirty_paths:")
+	assertContains(t, dirty, "cmd/dirty.go")
+	assertContains(t, dirty, "worktree has uncommitted changes")
+}
+
 func TestCLI_WorkflowCloseoutApplyDeletesVerifiedMergedRemoteBranch(t *testing.T) {
 	repo := t.TempDir()
 	remote := filepath.Join(t.TempDir(), "origin.git")

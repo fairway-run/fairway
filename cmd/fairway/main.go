@@ -701,15 +701,23 @@ type preflightConfigRef struct {
 }
 
 type workflowCheckReport struct {
-	OK              bool                     `json:"ok"`
-	Mode            string                   `json:"mode"`
-	Git             fairwaygit.Status        `json:"git"`
-	Reconcile       reconcile.ActiveReport   `json:"reconcile"`
-	Closeout        reconcile.CloseoutReport `json:"closeout,omitempty"`
-	RuleEvaluations []ruleEvidenceEvaluation `json:"rule_evaluations,omitempty"`
-	Issues          []string                 `json:"issues"`
-	Warnings        []string                 `json:"warnings,omitempty"`
-	Recommendations []string                 `json:"recommendations,omitempty"`
+	OK                   bool                     `json:"ok"`
+	Mode                 string                   `json:"mode"`
+	Git                  fairwaygit.Status        `json:"git"`
+	AllowedArtifactPaths []string                 `json:"allowed_artifact_paths,omitempty"`
+	DirtyPaths           []string                 `json:"dirty_paths,omitempty"`
+	Reconcile            reconcile.ActiveReport   `json:"reconcile"`
+	Closeout             reconcile.CloseoutReport `json:"closeout,omitempty"`
+	RuleEvaluations      []ruleEvidenceEvaluation `json:"rule_evaluations,omitempty"`
+	Issues               []string                 `json:"issues"`
+	Warnings             []string                 `json:"warnings,omitempty"`
+	Recommendations      []string                 `json:"recommendations,omitempty"`
+}
+
+type worktreeCleanliness struct {
+	Dirty                bool
+	DirtyPaths           []string
+	AllowedArtifactPaths []string
 }
 
 func cmdPreflight(opts globalOptions, args []string) error {
@@ -824,6 +832,7 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 		if err != nil {
 			return err
 		}
+		cleanliness := evaluateWorktreeCleanliness(gitStatus, localArtifactAllowlist(cfg, nil))
 		reconcileReport, err := reconcile.Active(ctx, s, reconcile.ActiveOptions{
 			Terminal:             cfg.States.Terminal,
 			StaleCheckpointAfter: *staleAfter,
@@ -832,10 +841,12 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 			return err
 		}
 		report := workflowCheckReport{
-			OK:        true,
-			Mode:      *mode,
-			Git:       gitStatus,
-			Reconcile: reconcileReport,
+			OK:                   true,
+			Mode:                 *mode,
+			Git:                  gitStatus,
+			AllowedArtifactPaths: cleanliness.AllowedArtifactPaths,
+			DirtyPaths:           cleanliness.DirtyPaths,
+			Reconcile:            reconcileReport,
 		}
 		var closeoutReport reconcile.CloseoutReport
 		if *mode == "close" {
@@ -846,7 +857,10 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 				if err != nil {
 					return err
 				}
-				closeoutGit := buildCloseoutGit(root, *base, task, gitStatus)
+				cleanliness = evaluateWorktreeCleanliness(gitStatus, localArtifactAllowlist(cfg, evidence))
+				report.AllowedArtifactPaths = cleanliness.AllowedArtifactPaths
+				report.DirtyPaths = cleanliness.DirtyPaths
+				closeoutGit := buildCloseoutGit(root, *base, task, gitStatus, localArtifactAllowlist(cfg, evidence))
 				closeoutReport, err = reconcile.Closeout(ctx, s, reconcile.CloseoutOptions{
 					TaskID:         *taskID,
 					Role:           task.Definition.Role,
@@ -880,17 +894,17 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 				}
 			}
 		}
-		if gitStatus.Dirty {
+		if cleanliness.Dirty {
 			message := "worktree has uncommitted changes"
 			if *requireClean {
 				report.Issues = append(report.Issues, message)
 			} else {
 				report.Warnings = append(report.Warnings, message)
 			}
-			if changedDocs(gitStatus.ChangedFiles) {
+			if changedDocs(cleanliness.DirtyPaths) {
 				report.Recommendations = append(report.Recommendations, "commit completed documentation updates as their own coherent slice")
 			}
-			if changedCode(gitStatus.ChangedFiles) {
+			if changedCode(cleanliness.DirtyPaths) {
 				report.Recommendations = append(report.Recommendations, "run focused tests before committing changed code")
 			}
 		}
@@ -919,7 +933,7 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 		case "deploy":
 			report.Recommendations = append(report.Recommendations, "create one deploy-run task for the release/deploy attempt")
 			report.Recommendations = append(report.Recommendations, "create CI-FIX/CD-FIX/UAT-BUG/OPS-FIX/HARNESS-FIX/DOC-FIX follow-ups only for actionable findings")
-			if gitStatus.Dirty {
+			if cleanliness.Dirty {
 				report.Issues = append(report.Issues, "deploy mode requires a clean committed source SHA")
 			}
 			if gitStatus.HasUpstream && gitStatus.Unpushed > 0 {
@@ -939,6 +953,7 @@ func cmdWorkflowCheck(ctx context.Context, opts globalOptions, args []string) er
 			if report.Git.HasUpstream {
 				fmt.Printf("upstream: %s\nunpushed: %d\nunpulled: %d\n", report.Git.Upstream, report.Git.Unpushed, report.Git.Unpulled)
 			}
+			printWorktreeCleanliness(report.DirtyPaths, report.AllowedArtifactPaths)
 			if len(report.Issues) > 0 {
 				fmt.Println("issues:")
 				for _, issue := range report.Issues {
@@ -998,7 +1013,7 @@ func cmdWorkflowCloseout(ctx context.Context, opts globalOptions, args []string)
 		if *base == "" {
 			*base = cfg.Fairway.MainBranch
 		}
-		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		task, _, evidence, _, _, err := s.TaskDetail(ctx, taskID)
 		if err != nil {
 			return err
 		}
@@ -1006,7 +1021,7 @@ func cmdWorkflowCloseout(ctx context.Context, opts globalOptions, args []string)
 		if err != nil {
 			return err
 		}
-		closeoutGit := buildCloseoutGit(root, *base, task, gitStatus)
+		closeoutGit := buildCloseoutGit(root, *base, task, gitStatus, localArtifactAllowlist(cfg, evidence))
 		report, err := reconcile.Closeout(ctx, s, reconcile.CloseoutOptions{
 			TaskID:         taskID,
 			Role:           task.Definition.Role,
@@ -1038,26 +1053,109 @@ func cmdWorkflowCloseout(ctx context.Context, opts globalOptions, args []string)
 	})
 }
 
-func buildCloseoutGit(root, base string, task store.Task, gitStatus fairwaygit.Status) reconcile.CloseoutGit {
+func buildCloseoutGit(root, base string, task store.Task, gitStatus fairwaygit.Status, allowedArtifacts []string) reconcile.CloseoutGit {
 	branch := firstNonEmpty(task.Branch, gitStatus.Branch)
 	worktreePath := gitStatus.Root
-	worktreeDirty := gitStatus.Dirty
+	cleanliness := evaluateWorktreeCleanliness(gitStatus, allowedArtifacts)
+	worktreeDirty := cleanliness.Dirty
+	allowedArtifactPaths := cleanliness.AllowedArtifactPaths
 	if branch != "" && branch != gitStatus.Branch {
 		if worktree, ok := worktreeForBranch(root, branch); ok {
 			worktreePath = worktree.Path
 			if status, err := fairwaygit.Check(worktree.Path, base); err == nil {
-				worktreeDirty = status.Dirty
+				cleanliness = evaluateWorktreeCleanliness(status, allowedArtifacts)
+				worktreeDirty = cleanliness.Dirty
+				allowedArtifactPaths = cleanliness.AllowedArtifactPaths
 			}
 		}
 	}
 	return reconcile.CloseoutGit{
-		Branch:             branch,
-		Base:               base,
-		WorktreePath:       worktreePath,
-		WorktreeDirty:      worktreeDirty,
-		BranchExists:       fairwaygit.BranchExists(root, branch),
-		BranchMerged:       fairwaygit.BranchMerged(root, branch, base),
-		RemoteBranchExists: branch != base && fairwaygit.RemoteBranchExists(root, branch),
+		Branch:               branch,
+		Base:                 base,
+		WorktreePath:         worktreePath,
+		WorktreeDirty:        worktreeDirty,
+		AllowedArtifactPaths: allowedArtifactPaths,
+		BranchExists:         fairwaygit.BranchExists(root, branch),
+		BranchMerged:         fairwaygit.BranchMerged(root, branch, base),
+		RemoteBranchExists:   branch != base && fairwaygit.RemoteBranchExists(root, branch),
+	}
+}
+
+func localArtifactAllowlist(cfg config.Config, evidence []store.Evidence) []string {
+	allowlist := append([]string(nil), cfg.Fairway.LocalArtifactPaths...)
+	for _, ev := range evidence {
+		artifact := strings.TrimSpace(ev.ArtifactPath)
+		if artifact == "" || strings.Contains(artifact, "://") {
+			continue
+		}
+		allowlist = append(allowlist, artifact)
+	}
+	return uniqueStrings(allowlist)
+}
+
+func evaluateWorktreeCleanliness(status fairwaygit.Status, allowedArtifacts []string) worktreeCleanliness {
+	var result worktreeCleanliness
+	for _, path := range status.TrackedChangedFiles {
+		result.DirtyPaths = append(result.DirtyPaths, path)
+	}
+	for _, path := range status.UntrackedFiles {
+		if localArtifactPathAllowed(path, allowedArtifacts) {
+			result.AllowedArtifactPaths = append(result.AllowedArtifactPaths, path)
+			continue
+		}
+		result.DirtyPaths = append(result.DirtyPaths, path)
+	}
+	if len(status.TrackedChangedFiles) == 0 && len(status.UntrackedFiles) == 0 && status.Dirty {
+		result.DirtyPaths = append(result.DirtyPaths, status.ChangedFiles...)
+	}
+	result.Dirty = len(result.DirtyPaths) > 0
+	sort.Strings(result.DirtyPaths)
+	sort.Strings(result.AllowedArtifactPaths)
+	return result
+}
+
+func localArtifactPathAllowed(pathValue string, allowlist []string) bool {
+	pathValue = normalizeLocalArtifactPath(pathValue)
+	if pathValue == "" {
+		return false
+	}
+	for _, allowed := range allowlist {
+		allowed = normalizeLocalArtifactPath(allowed)
+		if allowed == "" {
+			continue
+		}
+		if pathValue == allowed || strings.HasPrefix(pathValue, strings.TrimSuffix(allowed, "/")+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeLocalArtifactPath(pathValue string) string {
+	pathValue = strings.TrimSpace(pathValue)
+	if pathValue == "" || strings.Contains(pathValue, "://") {
+		return ""
+	}
+	pathValue = filepath.ToSlash(filepath.Clean(pathValue))
+	pathValue = strings.TrimPrefix(pathValue, "./")
+	if pathValue == "." {
+		return ""
+	}
+	return pathValue
+}
+
+func printWorktreeCleanliness(dirtyPaths, allowedArtifactPaths []string) {
+	if len(dirtyPaths) > 0 {
+		fmt.Println("dirty_paths:")
+		for _, path := range dirtyPaths {
+			fmt.Printf("- %s\n", path)
+		}
+	}
+	if len(allowedArtifactPaths) > 0 {
+		fmt.Println("allowed_local_artifacts:")
+		for _, path := range allowedArtifactPaths {
+			fmt.Printf("- %s\n", path)
+		}
 	}
 }
 
@@ -1111,6 +1209,9 @@ func printCloseoutReport(report reconcile.CloseoutReport) {
 		}
 		if finding.PushIntent != "" {
 			extra += " push_intent=" + finding.PushIntent
+		}
+		if finding.Path != "" {
+			extra += " path=" + finding.Path
 		}
 		fmt.Printf("- %s %s action=%s%s reason=%s\n", finding.Severity, finding.Kind, finding.Action, extra, finding.Reason)
 	}
@@ -1537,6 +1638,8 @@ type mergeReadyReport struct {
 	OK                   bool                     `json:"ok"`
 	TaskID               string                   `json:"task_id"`
 	Git                  fairwaygit.Status        `json:"git"`
+	AllowedArtifactPaths []string                 `json:"allowed_artifact_paths,omitempty"`
+	DirtyPaths           []string                 `json:"dirty_paths,omitempty"`
 	Issues               []string                 `json:"issues"`
 	Warnings             []string                 `json:"warnings,omitempty"`
 	MissingReviewDomains []string                 `json:"missing_review_domains,omitempty"`
@@ -1570,7 +1673,10 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 			return err
 		}
 		report := mergeReadyReport{OK: true, TaskID: taskID, Git: gitStatus}
-		if gitStatus.Dirty {
+		cleanliness := evaluateWorktreeCleanliness(gitStatus, localArtifactAllowlist(cfg, evidence))
+		report.AllowedArtifactPaths = cleanliness.AllowedArtifactPaths
+		report.DirtyPaths = cleanliness.DirtyPaths
+		if cleanliness.Dirty {
 			report.Issues = append(report.Issues, "worktree has uncommitted changes")
 		}
 		if *base != "" && !gitStatus.BaseAncestor {
@@ -1642,6 +1748,7 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 			}
 		} else {
 			fmt.Printf("merge_ready: %t\ntask: %s\nbranch: %s\nbase: %s\n", report.OK, report.TaskID, report.Git.Branch, report.Git.Base)
+			printWorktreeCleanliness(report.DirtyPaths, report.AllowedArtifactPaths)
 			if len(report.Issues) > 0 {
 				fmt.Println("issues:")
 				for _, issue := range report.Issues {

@@ -11,6 +11,7 @@ db_path = ".fairway/state.db"          # relative to repo root
 queue_source = "inline"                # "inline" | "yaml:<path>" | "json:<path>"
 main_branch = "main"                   # base branch worktrees branch off of
 task_id_pattern = "^[A-Z]+-[0-9]+$"    # regex enforced by add/import/update
+local_artifact_paths = ["dist/fairway"] # optional local evidence artifact dirs
 
 [dashboard]
 listen = "127.0.0.1:7878"
@@ -118,6 +119,7 @@ levels = [
 | `queue_source` | string | `inline` | `inline` (DB-only task definitions), `yaml:<path>` or `json:<path>` (active backlog definition for import/reconciliation; runtime execution state still lives in the DB). |
 | `main_branch` | string | `main` | Base branch new worktree branches are created from. |
 | `task_id_pattern` | string | `^[A-Z]+-[0-9]+$` | Regex enforced for task IDs. GPUaaS parity configs use a wider pattern for legacy IDs such as `A-DEMO-UAT-001` and `A-PROV-REMOVE-SSH`. |
+| `local_artifact_paths` | []string | `[]` | Optional repo-relative directories or files that may appear as untracked local evidence artifacts without making `merge-ready`, `workflow check`, or `workflow closeout` dirty. Recorded Fairway evidence artifact paths are also allowed for that task. Tracked source changes and arbitrary untracked files remain dirty. |
 
 ### `[dashboard]`
 

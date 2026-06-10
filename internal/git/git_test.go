@@ -27,6 +27,9 @@ func TestCheckReportsDirtyFiles(t *testing.T) {
 	if !status.Dirty || !status.Untracked {
 		t.Fatalf("status=%+v, want dirty untracked", status)
 	}
+	if len(status.UntrackedFiles) != 1 || status.UntrackedFiles[0] != "dirty.txt" {
+		t.Fatalf("untracked files=%v, want dirty.txt", status.UntrackedFiles)
+	}
 	if !status.BaseAncestor {
 		t.Fatalf("status=%+v, want base ancestor", status)
 	}

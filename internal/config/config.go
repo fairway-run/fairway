@@ -32,11 +32,12 @@ type Config struct {
 }
 
 type FairwayConfig struct {
-	ProjectName   string `toml:"project_name"`
-	DBPath        string `toml:"db_path"`
-	QueueSource   string `toml:"queue_source"`
-	MainBranch    string `toml:"main_branch"`
-	TaskIDPattern string `toml:"task_id_pattern"`
+	ProjectName        string   `toml:"project_name"`
+	DBPath             string   `toml:"db_path"`
+	QueueSource        string   `toml:"queue_source"`
+	MainBranch         string   `toml:"main_branch"`
+	TaskIDPattern      string   `toml:"task_id_pattern"`
+	LocalArtifactPaths []string `toml:"local_artifact_paths"`
 }
 
 type DashboardConfig struct {

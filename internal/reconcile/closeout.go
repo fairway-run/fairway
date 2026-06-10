@@ -16,13 +16,14 @@ type CloseoutOptions struct {
 }
 
 type CloseoutGit struct {
-	Branch             string `json:"branch,omitempty"`
-	Base               string `json:"base,omitempty"`
-	WorktreePath       string `json:"worktree_path,omitempty"`
-	WorktreeDirty      bool   `json:"worktree_dirty,omitempty"`
-	BranchExists       bool   `json:"branch_exists,omitempty"`
-	BranchMerged       bool   `json:"branch_merged,omitempty"`
-	RemoteBranchExists bool   `json:"remote_branch_exists,omitempty"`
+	Branch               string   `json:"branch,omitempty"`
+	Base                 string   `json:"base,omitempty"`
+	WorktreePath         string   `json:"worktree_path,omitempty"`
+	WorktreeDirty        bool     `json:"worktree_dirty,omitempty"`
+	AllowedArtifactPaths []string `json:"allowed_artifact_paths,omitempty"`
+	BranchExists         bool     `json:"branch_exists,omitempty"`
+	BranchMerged         bool     `json:"branch_merged,omitempty"`
+	RemoteBranchExists   bool     `json:"remote_branch_exists,omitempty"`
 }
 
 type CloseoutApplyPlan struct {
@@ -68,6 +69,7 @@ type CloseoutFinding struct {
 	TaskID         string   `json:"task_id,omitempty"`
 	Role           string   `json:"role,omitempty"`
 	Branch         string   `json:"branch,omitempty"`
+	Path           string   `json:"path,omitempty"`
 	Worktree       string   `json:"worktree,omitempty"`
 	SessionID      string   `json:"session_id,omitempty"`
 	WatcherID      string   `json:"watcher_id,omitempty"`
@@ -163,6 +165,9 @@ func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (Closeo
 	}
 	if opts.Git.WorktreeDirty {
 		add(CloseoutFinding{Kind: "dirty_worktree", Severity: "blocker", Action: "commit_stash_or_revert_local_changes", Reason: "lane worktree has uncommitted changes"})
+	}
+	for _, path := range opts.Git.AllowedArtifactPaths {
+		add(CloseoutFinding{Kind: "allowed_local_artifact", Severity: "info", Action: "keep_or_archive_local_artifact", Reason: "untracked local artifact path is allowed by config or recorded evidence", Path: path})
 	}
 	if strings.TrimSpace(branch) != "" && opts.Git.RemoteBranchExists {
 		intent, ok, reason := pushIntentForBranch(evidence, branch)

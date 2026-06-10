@@ -174,6 +174,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `--mode close --task-id <id>` before moving a lane to new implementation
   work; it includes the lane closeout report for the task. Use `--require-clean`
   or `--require-pushed` when the current boundary should fail instead of warn.
+  Cleanliness output separates true `dirty_paths` from
+  `allowed_local_artifacts`, which are configured or evidence-referenced
+  untracked operational artifact paths.
 - `workflow closeout <task-id>` is advisory by default. It reports task status,
   commit association, CI/deploy/UAT evidence, review-domain completeness,
   active sessions/watchers, branch merge state, remote branch presence,

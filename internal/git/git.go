@@ -10,20 +10,22 @@ import (
 )
 
 type Status struct {
-	Root         string   `json:"root"`
-	Branch       string   `json:"branch"`
-	Base         string   `json:"base"`
-	Upstream     string   `json:"upstream,omitempty"`
-	Dirty        bool     `json:"dirty"`
-	Staged       bool     `json:"staged"`
-	Untracked    bool     `json:"untracked"`
-	Ahead        int      `json:"ahead"`
-	Behind       int      `json:"behind"`
-	Unpushed     int      `json:"unpushed"`
-	Unpulled     int      `json:"unpulled"`
-	HasUpstream  bool     `json:"has_upstream"`
-	BaseAncestor bool     `json:"base_ancestor"`
-	ChangedFiles []string `json:"changed_files"`
+	Root                string   `json:"root"`
+	Branch              string   `json:"branch"`
+	Base                string   `json:"base"`
+	Upstream            string   `json:"upstream,omitempty"`
+	Dirty               bool     `json:"dirty"`
+	Staged              bool     `json:"staged"`
+	Untracked           bool     `json:"untracked"`
+	Ahead               int      `json:"ahead"`
+	Behind              int      `json:"behind"`
+	Unpushed            int      `json:"unpushed"`
+	Unpulled            int      `json:"unpulled"`
+	HasUpstream         bool     `json:"has_upstream"`
+	BaseAncestor        bool     `json:"base_ancestor"`
+	ChangedFiles        []string `json:"changed_files"`
+	TrackedChangedFiles []string `json:"tracked_changed_files,omitempty"`
+	UntrackedFiles      []string `json:"untracked_files,omitempty"`
 }
 
 type Worktree struct {
@@ -188,7 +190,7 @@ func Check(root, base string) (Status, error) {
 		return Status{}, err
 	}
 	status := Status{Root: repoRoot, Branch: CurrentBranch(repoRoot), Base: base}
-	porcelain, err := output(repoRoot, "status", "--porcelain")
+	porcelain, err := output(repoRoot, "status", "--porcelain", "-uall")
 	if err != nil {
 		return Status{}, err
 	}
@@ -204,7 +206,13 @@ func Check(root, base string) (Status, error) {
 			status.Staged = true
 		}
 		if len(line) > 3 {
-			status.ChangedFiles = append(status.ChangedFiles, strings.TrimSpace(line[3:]))
+			path := strings.TrimSpace(line[3:])
+			status.ChangedFiles = append(status.ChangedFiles, path)
+			if strings.HasPrefix(line, "??") {
+				status.UntrackedFiles = append(status.UntrackedFiles, path)
+			} else {
+				status.TrackedChangedFiles = append(status.TrackedChangedFiles, path)
+			}
 		}
 	}
 	if base == "" {
