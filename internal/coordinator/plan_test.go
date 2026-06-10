@@ -348,6 +348,108 @@ func TestBuildPlanIgnoresTerminalReviewCheckpointWhenReviewsApproved(t *testing.
 	}
 }
 
+func TestBuildPlanReviewCompletionHandback(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "PARTIAL-001", Title: "Partial reviews", Kind: "task", Role: "backend", ReviewDomains: []string{"arch", "governance"}},
+		{ID: "CHANGES-001", Title: "Changes then approved", Kind: "task", Role: "backend", ReviewDomains: []string{"arch", "governance"}},
+		{ID: "OPENCHANGES-001", Title: "Unresolved changes", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"PARTIAL-001", "CHANGES-001", "OPENCHANGES-001"} {
+		if err := s.SetStatus(ctx, id, "done", "", false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.RecordReview(ctx, "PARTIAL-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "arch ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "CHANGES-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "changes", Reason: "needs fix"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "CHANGES-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "fixed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "CHANGES-001", store.Review{Reviewer: "gov-reviewer", Domain: "governance", Verdict: "approve", Reason: "governance ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "OPENCHANGES-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "initial ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "OPENCHANGES-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "changes", Reason: "later blocker"}); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", "PARTIAL-001") {
+		t.Fatalf("partial approvals produced review-complete handback: %+v", plan.Actions)
+	}
+	action, ok := planAction(plan, "review-complete", "run_merge_ready_after_review", "CHANGES-001")
+	if !ok {
+		t.Fatalf("changes-then-approved task missing review-complete handback: %+v", plan.Actions)
+	}
+	if action.ReviewHandback == nil {
+		t.Fatalf("review-complete action missing handback: %+v", action)
+	}
+	if got := strings.Join(action.ReviewHandback.RequiredDomains, ","); got != "arch,governance" {
+		t.Fatalf("required domains=%q", got)
+	}
+	if got := strings.Join(action.ReviewHandback.ApprovedDomains, ","); got != "arch,governance" {
+		t.Fatalf("approved domains=%q", got)
+	}
+	if action.ReviewHandback.MergeReadyStatus != "review_complete_next_merge_ready_check" {
+		t.Fatalf("merge-ready status=%q", action.ReviewHandback.MergeReadyStatus)
+	}
+	if !strings.Contains(action.Reason, "fairway merge-ready CHANGES-001") {
+		t.Fatalf("review-complete reason missing merge-ready command: %+v", action)
+	}
+	if hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", "OPENCHANGES-001") {
+		t.Fatalf("unresolved changes-requested verdict produced review-complete handback: %+v", plan.Actions)
+	}
+}
+
+func TestBuildPlanReviewCompletionBlockedByNonReviewGate(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	cfg.Gates.RequireEvidenceBeforeDone = true
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "RBLOCK-001", Title: "Approved but missing evidence", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "RBLOCK-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "RBLOCK-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "review ok"}); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", "RBLOCK-001") {
+		t.Fatalf("missing evidence produced false review-complete handback: %+v", plan.Actions)
+	}
+	action, ok := planAction(plan, "review-complete-blocked", "resolve_merge_ready_blockers", "RBLOCK-001")
+	if !ok {
+		t.Fatalf("missing evidence did not produce blocked handback action: %+v", plan.Actions)
+	}
+	if action.ReviewHandback == nil || action.ReviewHandback.MergeReadyStatus != "blocked_by_non_review_gate" {
+		t.Fatalf("blocked action missing handback status: %+v", action)
+	}
+	if len(action.ReviewHandback.Blockers) != 1 || action.ReviewHandback.Blockers[0] != "missing evidence" {
+		t.Fatalf("blockers=%v, want missing evidence", action.ReviewHandback.Blockers)
+	}
+}
+
 func openPlanStore(t *testing.T, ctx context.Context) *store.Store {
 	t.Helper()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
@@ -359,12 +461,17 @@ func openPlanStore(t *testing.T, ctx context.Context) *store.Store {
 }
 
 func hasPlanAction(plan Plan, classification, action, taskID string) bool {
+	_, ok := planAction(plan, classification, action, taskID)
+	return ok
+}
+
+func planAction(plan Plan, classification, action, taskID string) (PlanAction, bool) {
 	for _, candidate := range plan.Actions {
 		if candidate.Classification == classification && candidate.Action == action && (taskID == "" || candidate.TaskID == taskID) {
-			return true
+			return candidate, true
 		}
 	}
-	return false
+	return PlanAction{}, false
 }
 
 func hasPlanActionReason(plan Plan, classification, taskID, contains string) bool {

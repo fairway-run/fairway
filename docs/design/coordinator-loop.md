@@ -62,6 +62,17 @@ tasks, sessions, watchers, batches, reviews, worktrees, checkpoints, and active
 reconciliation findings, then emits typed next actions without mutating task
 state.
 
+When all required review domains for a task have approved latest verdicts,
+`plan` emits a `review-complete` handback action that tells the coordinator to
+run `fairway merge-ready <task-id>` and perform the configured merge/push/release
+step if it passes. The handback includes required domains, approved domains,
+latest verdicts, merge-ready posture, and the recommended next action.
+
+If reviews are complete but a store-visible non-review gate is still missing
+such as required evidence or required handoff, `plan` emits
+`review-complete-blocked` instead of a false merge-ready handback. Fairway does
+not auto-merge, push, deploy, tag, or release from this signal.
+
 When the ready queue is empty but todo work remains, `plan` includes the same
 readiness explanation used by `fairway ready`: non-ready todo count, blocker
 categories, top task ids, dependency blocker ids, and suggested inspection
@@ -108,6 +119,8 @@ like an operations controller:
 - report Fairway handoffs that have no delivered provider/thread notification,
   so a handoff recorded in the DB is not confused with an actual message sent to
   a reviewer or provider target;
+- report review-complete handbacks so a coordinator does not need to poll
+  provider chat to discover that required reviewers approved a task;
 - enforce stop conditions before destructive, production-impacting, credential,
   approval-gated, or review-gated actions;
 - produce a deterministic next-action plan in dry-run mode. Unknown or unsafe

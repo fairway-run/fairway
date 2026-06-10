@@ -99,8 +99,8 @@ func run(ctx context.Context, args []string) error {
 		if len(args) > 2 {
 			return fmt.Errorf("unexpected task-detail arguments: %s", strings.Join(args[2:], " "))
 		}
-		return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
-			return printDetail(ctx, s, args[1], opts.JSON)
+		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+			return printDetail(ctx, cfg, s, args[1], opts.JSON)
 		})
 	case "status-report":
 		return cmdStatusReport(ctx, opts, args[1:])
@@ -3131,7 +3131,7 @@ func coordinatorWorktreeFacts(worktrees []worktreeStatus) []coord.WorktreeFact {
 
 func printCoordinatorPlan(plan coord.Plan) {
 	fmt.Printf("dry_run: %t\nok: %t\n", plan.DryRun, plan.OK)
-	fmt.Printf("summary: top=%s ready=%d active=%d waiting=%d blocked=%d stale=%d complete=%d review_gated=%d review_debt=%d approval_gated=%d utility_gated=%d batch_recommended=%d\n",
+	fmt.Printf("summary: top=%s ready=%d active=%d waiting=%d blocked=%d stale=%d complete=%d review_gated=%d review_complete=%d review_debt=%d approval_gated=%d utility_gated=%d batch_recommended=%d\n",
 		plan.Summary.TopClassification,
 		plan.Summary.Ready,
 		plan.Summary.Active,
@@ -3140,6 +3140,7 @@ func printCoordinatorPlan(plan coord.Plan) {
 		plan.Summary.Stale,
 		plan.Summary.Complete,
 		plan.Summary.ReviewGated,
+		plan.Summary.ReviewComplete,
 		plan.Summary.ReviewDebt,
 		plan.Summary.ApprovalGated,
 		plan.Summary.UtilityGated,
@@ -5712,7 +5713,7 @@ func cmdTUI(ctx context.Context, opts globalOptions, args []string) error {
 					fmt.Fprintln(os.Stderr, "detail requires task id")
 					continue
 				}
-				if err := printDetail(ctx, s, parts[1], false); err != nil {
+				if err := printDetail(ctx, cfg, s, parts[1], false); err != nil {
 					fmt.Fprintln(os.Stderr, err)
 				}
 			case "claim", "c":
@@ -7993,7 +7994,7 @@ func printTree(node treeNode, depth int) {
 	}
 }
 
-func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool) error {
+func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID string, asJSON bool) error {
 	task, transitions, evidence, handoffs, reviews, err := s.TaskDetail(ctx, taskID)
 	if err != nil {
 		return err
@@ -8021,23 +8022,26 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
+		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews)
 		return printJSON(struct {
-			Task                 store.Task            `json:"task"`
-			ReviewStatus         string                `json:"review_status"`
-			Transitions          []store.Transition    `json:"transitions"`
-			Evidence             []store.Evidence      `json:"evidence"`
-			Handoffs             []store.Handoff       `json:"handoffs"`
-			Reviews              []store.Review        `json:"reviews"`
-			MissingReviewDomains []string              `json:"missing_review_domains,omitempty"`
-			Sessions             []store.Session       `json:"sessions"`
-			Usage                []store.ProviderUsage `json:"usage"`
-			UsageRollups         []store.UsageRollup   `json:"usage_rollups"`
-			Batches              []store.WorkBatch     `json:"batches"`
-			Notifications        []store.Notification  `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions, usageEvents, usageRollups, batches, notifications})
+			Task                 store.Task                      `json:"task"`
+			ReviewStatus         string                          `json:"review_status"`
+			Transitions          []store.Transition              `json:"transitions"`
+			Evidence             []store.Evidence                `json:"evidence"`
+			Handoffs             []store.Handoff                 `json:"handoffs"`
+			Reviews              []store.Review                  `json:"reviews"`
+			MissingReviewDomains []string                        `json:"missing_review_domains,omitempty"`
+			ReviewHandback       *coord.ReviewCompletionHandback `json:"review_handback,omitempty"`
+			Sessions             []store.Session                 `json:"sessions"`
+			Usage                []store.ProviderUsage           `json:"usage"`
+			UsageRollups         []store.UsageRollup             `json:"usage_rollups"`
+			Batches              []store.WorkBatch               `json:"batches"`
+			Notifications        []store.Notification            `json:"notifications"`
+		}{task, reviewStatus, transitions, evidence, handoffs, reviews, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
+	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews)
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, reviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
 	fmt.Println("\ndependencies:")
@@ -8089,6 +8093,19 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 			fmt.Printf("- %s\n", domain)
 		}
 	}
+	if hasReviewHandback {
+		fmt.Println("\nreview handback:")
+		fmt.Printf("- merge_ready_status: %s\n", reviewHandback.MergeReadyStatus)
+		fmt.Printf("- recommended_action: %s\n", reviewHandback.RecommendedAction)
+		fmt.Printf("- required_domains: %s\n", strings.Join(reviewHandback.RequiredDomains, ", "))
+		fmt.Printf("- approved_domains: %s\n", strings.Join(reviewHandback.ApprovedDomains, ", "))
+		for _, verdict := range reviewHandback.LatestVerdicts {
+			fmt.Printf("- latest %s: %s by %s\n", verdict.Domain, firstNonEmpty(verdict.Verdict, "none"), firstNonEmpty(verdict.Reviewer, "unknown"))
+		}
+		for _, blocker := range reviewHandback.Blockers {
+			fmt.Printf("- blocker: %s\n", blocker)
+		}
+	}
 	fmt.Println("\nsessions:")
 	for _, session := range sessions {
 		fmt.Printf("- %s %s/%s %s pane=%s transcript=%s\n", session.ID, session.SessionBackend, session.Provider, session.Status, session.TmuxPane, session.TranscriptPath)
@@ -8115,6 +8132,13 @@ func formatUsageInt(value *int) string {
 		return "unknown"
 	}
 	return strconv.Itoa(*value)
+}
+
+func optionalReviewHandback(handback coord.ReviewCompletionHandback, ok bool) *coord.ReviewCompletionHandback {
+	if !ok {
+		return nil
+	}
+	return &handback
 }
 
 func effectiveReviewStatus(stored string, missingReviewDomains []string) string {

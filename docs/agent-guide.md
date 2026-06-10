@@ -1127,6 +1127,13 @@ fairway record review T-001 \
   --reason "independent ops review"
 ```
 
+When every required review domain is approved, `fairway coordinator plan`
+surfaces a `review-complete` handback for the coordinator or reviewer/merge
+lane. The handback prevents review completion from being trapped in provider
+chat, but it does not merge, push, deploy, or release. The coordinator still
+runs `fairway merge-ready <task-id>` and performs the configured promotion step
+explicitly.
+
 Use `changes` rather than `approve` when more work is required. No agent should
 approve its own work.
 

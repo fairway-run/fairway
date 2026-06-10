@@ -55,6 +55,19 @@
 <dt>Review domains</dt><dd>{{range .Task.Definition.ReviewDomains}}<code>{{.}}</code> {{else}}none{{end}}</dd>
 </dl>
 </article>
+{{with .ReviewHandback}}
+<article class="detail-panel wide">
+<h2>Review Handback</h2>
+<dl class="detail-list">
+<dt>Status</dt><dd><span class="status-pill {{statusClass .MergeReadyStatus}}">{{.MergeReadyStatus}}</span></dd>
+<dt>Next</dt><dd>{{.RecommendedAction}}</dd>
+<dt>Required</dt><dd>{{range .RequiredDomains}}<code>{{.}}</code> {{end}}</dd>
+<dt>Approved</dt><dd>{{range .ApprovedDomains}}<code>{{.}}</code> {{end}}</dd>
+<dt>Latest verdicts</dt><dd>{{range .LatestVerdicts}}<code>{{.Domain}}</code> {{if .Verdict}}{{.Verdict}}{{else}}none{{end}} {{if .Reviewer}}by {{.Reviewer}}{{end}}<br>{{end}}</dd>
+{{if .Blockers}}<dt>Blockers</dt><dd>{{range .Blockers}}{{.}}<br>{{end}}</dd>{{end}}
+</dl>
+</article>
+{{end}}
 <article class="detail-panel wide">
 <h2>Gate Readiness</h2>
 {{if .TaskGates}}

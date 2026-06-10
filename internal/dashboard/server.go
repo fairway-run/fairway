@@ -304,6 +304,7 @@ type TaskDetailViewData struct {
 	Reviews              []store.Review
 	MissingReviewDomains []string
 	ReviewStatus         string
+	ReviewHandback       *coord.ReviewCompletionHandback
 	TaskSessions         []store.Session
 	Usage                []store.ProviderUsage
 	UsageRollups         []store.UsageRollup
@@ -2279,6 +2280,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	missingReviewDomains := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews)
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -2292,6 +2294,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Reviews:              reviews,
 		MissingReviewDomains: missingReviewDomains,
 		ReviewStatus:         dashboardEffectiveReviewStatus(task.ReviewStatus, missingReviewDomains),
+		ReviewHandback:       optionalDashboardReviewHandback(reviewHandback, hasReviewHandback),
 		TaskSessions:         sessionsForDashboardTask(sessions, id),
 		Usage:                usageEvents,
 		UsageRollups:         usageRollups,
@@ -2359,6 +2362,13 @@ func dashboardEffectiveReviewStatus(stored string, missingReviewDomains []string
 		return "partial_approval"
 	}
 	return stored
+}
+
+func optionalDashboardReviewHandback(handback coord.ReviewCompletionHandback, ok bool) *coord.ReviewCompletionHandback {
+	if !ok {
+		return nil
+	}
+	return &handback
 }
 
 func (s *Server) dashboardMissingReviewDomainsByTask(ctx context.Context, tasks []store.Task) (map[string][]string, error) {

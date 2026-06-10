@@ -53,6 +53,12 @@ the control point that prevents remote branch sprawl:
    `main-validation` or `integration`,
 6. record CI/deploy evidence and close out the worker branch.
 
+After the last required review domain is approved, `fairway coordinator plan`
+surfaces a `review-complete` handback for the coordinator or reviewer/merge lane.
+That handback is a signal to run `fairway merge-ready <task-id>` and continue the
+configured merge/push/release workflow if it passes. It is not approval to
+auto-merge or push, and it does not replace `merge-ready`.
+
 The merge lane should not push every provider thread branch just to get CI.
 Worker branches are scratch by default; the merged batch is the remote
 validation unit unless a review, release, backup, or exception intent is

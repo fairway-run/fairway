@@ -1274,6 +1274,43 @@ func TestTaskDetailRendersPartialApprovalWhenReviewDomainsMissing(t *testing.T) 
 	}
 }
 
+func TestTaskDetailRendersReviewHandback(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{
+		ID:            "T-001",
+		Title:         "Reviewed task",
+		Kind:          "dashboard",
+		Role:          "ui",
+		ReviewDomains: []string{"architecture", "governance"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-001", store.Review{Reviewer: "arch-reviewer", Domain: "architecture", Verdict: "approve", Reason: "arch ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-001", store.Review{Reviewer: "gov-reviewer", Domain: "governance", Verdict: "approve", Reason: "governance ok"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Review Handback", "review_complete_next_merge_ready_check", "fairway merge-ready T-001", "architecture", "governance", "arch-reviewer", "gov-reviewer"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail review handback missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestDashboardClaimRequiresCSRFAndAudits(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

@@ -43,6 +43,7 @@ type Plan struct {
 	Waiting           []TaskRef              `json:"waiting,omitempty"`
 	Blocked           []TaskRef              `json:"blocked,omitempty"`
 	ReviewGated       []TaskRef              `json:"review_gated,omitempty"`
+	ReviewComplete    []TaskRef              `json:"review_complete,omitempty"`
 	ReviewDebt        []TaskRef              `json:"review_debt,omitempty"`
 	NotificationGated []TaskRef              `json:"notification_gated,omitempty"`
 	UtilityGated      []TaskRef              `json:"utility_gated,omitempty"`
@@ -70,21 +71,23 @@ type PlanSummary struct {
 	NotificationGated int    `json:"notification_gated"`
 	ApprovalGated     int    `json:"approval_gated"`
 	UtilityGated      int    `json:"utility_gated"`
+	ReviewComplete    int    `json:"review_complete"`
 	BatchRecommended  int    `json:"batch_recommended"`
 }
 
 type PlanAction struct {
-	Priority       int      `json:"priority"`
-	Classification string   `json:"classification"`
-	Action         string   `json:"action"`
-	Reason         string   `json:"reason"`
-	TaskID         string   `json:"task_id,omitempty"`
-	Role           string   `json:"role,omitempty"`
-	SessionID      string   `json:"session_id,omitempty"`
-	WatcherID      string   `json:"watcher_id,omitempty"`
-	BatchKey       string   `json:"batch_key,omitempty"`
-	TaskIDs        []string `json:"task_ids,omitempty"`
-	Stop           bool     `json:"stop,omitempty"`
+	Priority       int                       `json:"priority"`
+	Classification string                    `json:"classification"`
+	Action         string                    `json:"action"`
+	Reason         string                    `json:"reason"`
+	TaskID         string                    `json:"task_id,omitempty"`
+	Role           string                    `json:"role,omitempty"`
+	SessionID      string                    `json:"session_id,omitempty"`
+	WatcherID      string                    `json:"watcher_id,omitempty"`
+	BatchKey       string                    `json:"batch_key,omitempty"`
+	TaskIDs        []string                  `json:"task_ids,omitempty"`
+	ReviewHandback *ReviewCompletionHandback `json:"review_handback,omitempty"`
+	Stop           bool                      `json:"stop,omitempty"`
 }
 
 type PlanStopCondition struct {
@@ -92,6 +95,24 @@ type PlanStopCondition struct {
 	Reason string `json:"reason"`
 	TaskID string `json:"task_id,omitempty"`
 	Role   string `json:"role,omitempty"`
+}
+
+type ReviewCompletionHandback struct {
+	TaskID            string                `json:"task_id"`
+	RequiredDomains   []string              `json:"required_domains"`
+	ApprovedDomains   []string              `json:"approved_domains"`
+	LatestVerdicts    []ReviewDomainVerdict `json:"latest_verdicts"`
+	MergeReadyStatus  string                `json:"merge_ready_status"`
+	RecommendedAction string                `json:"recommended_action"`
+	Blockers          []string              `json:"blockers,omitempty"`
+}
+
+type ReviewDomainVerdict struct {
+	Domain   string `json:"domain"`
+	Reviewer string `json:"reviewer,omitempty"`
+	Verdict  string `json:"verdict,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	Commit   string `json:"commit,omitempty"`
 }
 
 type TaskRef struct {
@@ -183,12 +204,12 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			if opts.UtilityMonitorAllowed {
 				action = "continue_configured_utility_monitor"
 			}
-			addAction(&plan, 40, "utility-gated", action, "utility or monitor session is still running", session.TaskID, session.Role, session.ID, "", nil, false)
+			addAction(&plan, 40, "utility-gated", action, "utility or monitor session is still running", session.TaskID, session.Role, session.ID, "", nil, nil, false)
 		}
 		if strings.Contains(session.Status, "approval") {
 			plan.Summary.ApprovalGated++
 			addStop(&plan, "approval-gated", "provider session is waiting on approval", session.TaskID, session.Role)
-			addAction(&plan, 5, "approval-gated", "request_or_record_approval", "provider session is waiting on approval", session.TaskID, session.Role, session.ID, "", nil, true)
+			addAction(&plan, 5, "approval-gated", "request_or_record_approval", "provider session is waiting on approval", session.TaskID, session.Role, session.ID, "", nil, nil, true)
 		}
 	}
 	for _, watcher := range watchers {
@@ -198,7 +219,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		if opts.UtilityMonitorAllowed {
 			action = "continue_configured_utility_monitor"
 		}
-		addAction(&plan, 40, "utility-gated", action, "watcher or monitor is still active", watcher.TaskID, watcher.Owner, "", watcher.ID, nil, false)
+		addAction(&plan, 40, "utility-gated", action, "watcher or monitor is still active", watcher.TaskID, watcher.Owner, "", watcher.ID, nil, nil, false)
 	}
 	for _, finding := range activeReport.Findings {
 		classification := "stale"
@@ -222,7 +243,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			classification = "approval-gated"
 			stop = true
 		}
-		addAction(&plan, priority, classification, finding.Action, finding.Reason, finding.TaskID, finding.Role, finding.SessionID, "", nil, stop)
+		addAction(&plan, priority, classification, finding.Action, finding.Reason, finding.TaskID, finding.Role, finding.SessionID, "", nil, nil, stop)
 	}
 	for _, gap := range notificationGaps {
 		plan.Summary.NotificationGated++
@@ -244,7 +265,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			reason += "; notification_status=" + status
 		}
 		reason += "; last_handoff_at=" + gap.LastHandoffAt
-		addAction(&plan, 18, "notification-gated", action, reason, gap.TaskID, gap.Domain, "", "", nil, false)
+		addAction(&plan, 18, "notification-gated", action, reason, gap.TaskID, gap.Domain, "", "", nil, nil, false)
 	}
 	for _, checkpoint := range latestOpenCheckpointsByTask(checkpoints) {
 		if terminal[taskStatusByID[checkpoint.TaskID]] {
@@ -258,9 +279,9 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 				plan.Summary.ApprovalGated++
 				addStop(&plan, "approval-gated", checkpoint.Summary, checkpoint.TaskID, checkpoint.Owner)
 			}
-			addAction(&plan, 20, "waiting", "resolve_awaiting_input_checkpoint", checkpoint.Summary, checkpoint.TaskID, checkpoint.Owner, "", "", nil, false)
+			addAction(&plan, 20, "waiting", "resolve_awaiting_input_checkpoint", checkpoint.Summary, checkpoint.TaskID, checkpoint.Owner, "", "", nil, nil, false)
 		case "review":
-			addAction(&plan, 25, "review-gated", "complete_review_checkpoint", checkpoint.Summary, checkpoint.TaskID, checkpoint.Owner, "", "", nil, false)
+			addAction(&plan, 25, "review-gated", "complete_review_checkpoint", checkpoint.Summary, checkpoint.TaskID, checkpoint.Owner, "", "", nil, nil, false)
 		}
 	}
 	readyRefs := make([]TaskRef, 0, len(ready))
@@ -278,7 +299,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			reason += fmt.Sprintf("; top blocker %s=%d", top.Category, top.Count)
 			taskIDs = top.TaskIDs
 		}
-		addAction(&plan, 55, "blocked", "inspect_ready_blockers", reason, "", "", "", "", taskIDs, false)
+		addAction(&plan, 55, "blocked", "inspect_ready_blockers", reason, "", "", "", "", taskIDs, nil, false)
 	}
 	for _, task := range tasks {
 		switch {
@@ -286,17 +307,17 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			plan.Summary.Active++
 			plan.Active = appendTaskRef(plan.Active, taskRef(task))
 			if _, ok := activeSessionByTask[task.Definition.ID]; ok {
-				addAction(&plan, 50, "active", "continue_active_session", "task has an active provider/session attachment", task.Definition.ID, task.Definition.Role, activeSessionByTask[task.Definition.ID].ID, "", nil, false)
+				addAction(&plan, 50, "active", "continue_active_session", "task has an active provider/session attachment", task.Definition.ID, task.Definition.Role, activeSessionByTask[task.Definition.ID].ID, "", nil, nil, false)
 			}
 		case task.Status == "blocked":
 			plan.Summary.Blocked++
 			plan.Blocked = appendTaskRef(plan.Blocked, taskRef(task))
-			addAction(&plan, 25, "blocked", "resolve_blocked_task", "task is blocked and needs an unblock decision", task.Definition.ID, task.Definition.Role, "", "", nil, false)
+			addAction(&plan, 25, "blocked", "resolve_blocked_task", "task is blocked and needs an unblock decision", task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
 		case terminal[task.Status]:
 			plan.Summary.Complete++
 		}
 		if len(task.Definition.ReviewDomains) > 0 && (terminal[task.Status] || task.Status == "review") {
-			_, _, _, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+			detailTask, _, evidence, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
 			if err != nil {
 				return Plan{}, err
 			}
@@ -306,27 +327,39 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 				if terminal[task.Status] {
 					plan.Summary.ReviewDebt++
 					plan.ReviewDebt = appendTaskRef(plan.ReviewDebt, taskRef(task))
-					addAction(&plan, 45, "review-debt", "sweep_historical_review_debt", reason, task.Definition.ID, task.Definition.Role, "", "", nil, false)
+					addAction(&plan, 45, "review-debt", "sweep_historical_review_debt", reason, task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
 				} else {
 					plan.Summary.ReviewGated++
 					plan.ReviewGated = appendTaskRef(plan.ReviewGated, taskRef(task))
-					addAction(&plan, 15, "review-gated", "record_required_reviews", reason, task.Definition.ID, task.Definition.Role, "", "", nil, true)
+					addAction(&plan, 15, "review-gated", "record_required_reviews", reason, task.Definition.ID, task.Definition.Role, "", "", nil, nil, true)
 					addStop(&plan, "review-gated", reason, task.Definition.ID, task.Definition.Role)
+				}
+			} else {
+				handback, ok := ReviewHandbackForTask(cfg, detailTask, evidence, handoffs, reviews)
+				if ok {
+					if len(handback.Blockers) > 0 {
+						reason := "required reviews are approved but merge-ready has non-review blockers: " + strings.Join(handback.Blockers, "; ")
+						addAction(&plan, 22, "review-complete-blocked", "resolve_merge_ready_blockers", reason, task.Definition.ID, task.Definition.Role, "", "", nil, &handback, false)
+					} else {
+						plan.Summary.ReviewComplete++
+						plan.ReviewComplete = appendTaskRef(plan.ReviewComplete, taskRef(task))
+						addAction(&plan, 12, "review-complete", "run_merge_ready_after_review", handback.RecommendedAction, task.Definition.ID, task.Definition.Role, "", "", nil, &handback, false)
+					}
 				}
 			}
 		}
 	}
 	for _, group := range relatedReadyGroups(ready) {
 		plan.Summary.BatchRecommended++
-		addAction(&plan, 35, "ready", "consider_work_batch", "related ready tasks share role/domain/kind/review surface", "", "", "", "", group.TaskIDs, false)
+		addAction(&plan, 35, "ready", "consider_work_batch", "related ready tasks share role/domain/kind/review surface", "", "", "", "", group.TaskIDs, nil, false)
 	}
 	for _, task := range ready {
-		addAction(&plan, 60, "ready", "claim_ready_task", "task is ready and no higher-priority stop condition applies", task.Definition.ID, task.Definition.Role, "", "", nil, false)
+		addAction(&plan, 60, "ready", "claim_ready_task", "task is ready and no higher-priority stop condition applies", task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
 	}
 	for _, wt := range opts.Worktrees {
 		if wt.Dirty {
 			addStop(&plan, "unsafe-to-infer", "worktree has uncommitted changes", "", wt.Role)
-			addAction(&plan, 5, "blocked", "clean_or_commit_worktree_before_dispatch", "worktree has uncommitted changes", "", wt.Role, "", "", nil, true)
+			addAction(&plan, 5, "blocked", "clean_or_commit_worktree_before_dispatch", "worktree has uncommitted changes", "", wt.Role, "", "", nil, nil, true)
 		}
 	}
 	sort.SliceStable(plan.Actions, func(i, j int) bool {
@@ -483,8 +516,8 @@ func limitTaskRefs(refs []TaskRef, limit int) []TaskRef {
 	return refs
 }
 
-func addAction(plan *Plan, priority int, classification, action, reason, taskID, role, sessionID, watcherID string, taskIDs []string, stop bool) {
-	plan.Actions = append(plan.Actions, PlanAction{Priority: priority, Classification: classification, Action: action, Reason: reason, TaskID: taskID, Role: role, SessionID: sessionID, WatcherID: watcherID, TaskIDs: taskIDs, Stop: stop})
+func addAction(plan *Plan, priority int, classification, action, reason, taskID, role, sessionID, watcherID string, taskIDs []string, reviewHandback *ReviewCompletionHandback, stop bool) {
+	plan.Actions = append(plan.Actions, PlanAction{Priority: priority, Classification: classification, Action: action, Reason: reason, TaskID: taskID, Role: role, SessionID: sessionID, WatcherID: watcherID, TaskIDs: taskIDs, ReviewHandback: reviewHandback, Stop: stop})
 	switch classification {
 	case "stale":
 		plan.Summary.Stale++
@@ -537,6 +570,90 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func ReviewHandbackForTask(cfg config.Config, task store.Task, evidence []store.Evidence, handoffs []store.Handoff, reviews []store.Review) (ReviewCompletionHandback, bool) {
+	required := normalizedUnique(task.Definition.ReviewDomains)
+	if len(required) == 0 {
+		return ReviewCompletionHandback{}, false
+	}
+	latest := latestReviewVerdicts(required, reviews)
+	approved := make([]string, 0, len(required))
+	for _, domain := range required {
+		if verdict, ok := latest[domain]; ok && verdict.Verdict == "approve" {
+			approved = append(approved, domain)
+		}
+	}
+	if len(approved) != len(required) {
+		return ReviewCompletionHandback{}, false
+	}
+	handback := ReviewCompletionHandback{
+		TaskID:            task.Definition.ID,
+		RequiredDomains:   required,
+		ApprovedDomains:   approved,
+		LatestVerdicts:    orderedReviewVerdicts(required, latest),
+		MergeReadyStatus:  "review_complete_next_merge_ready_check",
+		RecommendedAction: fmt.Sprintf("run fairway merge-ready %s, then perform the configured coordinator merge/push/release action if it passes", task.Definition.ID),
+	}
+	if cfg.Gates.RequireEvidenceBeforeDone && len(evidence) == 0 {
+		handback.Blockers = append(handback.Blockers, "missing evidence")
+	}
+	if cfg.Gates.RequireHandoffBeforeMergeReady && len(handoffs) == 0 {
+		handback.Blockers = append(handback.Blockers, "missing handoff")
+	}
+	if len(handback.Blockers) > 0 {
+		handback.MergeReadyStatus = "blocked_by_non_review_gate"
+		handback.RecommendedAction = "resolve non-review merge-ready blockers before coordinator merge/push/release action"
+	}
+	return handback, true
+}
+
+func latestReviewVerdicts(required []string, reviews []store.Review) map[string]ReviewDomainVerdict {
+	requiredSet := map[string]bool{}
+	for _, domain := range required {
+		requiredSet[domain] = true
+	}
+	latest := map[string]ReviewDomainVerdict{}
+	for _, review := range reviews {
+		domain := strings.TrimSpace(firstNonEmpty(review.Domain, review.Reviewer))
+		if domain == "" || !requiredSet[domain] {
+			continue
+		}
+		latest[domain] = ReviewDomainVerdict{
+			Domain:   domain,
+			Reviewer: strings.TrimSpace(review.Reviewer),
+			Verdict:  strings.TrimSpace(review.Verdict),
+			Reason:   strings.TrimSpace(review.Reason),
+			Commit:   strings.TrimSpace(review.Commit),
+		}
+	}
+	return latest
+}
+
+func orderedReviewVerdicts(required []string, latest map[string]ReviewDomainVerdict) []ReviewDomainVerdict {
+	out := make([]ReviewDomainVerdict, 0, len(required))
+	for _, domain := range required {
+		verdict, ok := latest[domain]
+		if !ok {
+			verdict = ReviewDomainVerdict{Domain: domain}
+		}
+		out = append(out, verdict)
+	}
+	return out
+}
+
+func normalizedUnique(values []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func missingApprovedReviewDomains(domains []string, reviews []store.Review) []string {
