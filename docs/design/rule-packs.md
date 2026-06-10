@@ -302,6 +302,18 @@ AND risk_floor match
 Within a single axis, multiple values are OR unless the field explicitly says
 otherwise. Across rules, matches are independent; every matched rule applies.
 
+Path patterns use slash-separated globs. Supported syntax:
+
+- `*` and character classes inside a single path segment, using Go
+  `path.Match` semantics;
+- `**` as a complete path segment, matching zero or more path segments;
+- mid-pattern globstar such as `packages/**/gen/**`;
+- suffix globstar such as `doc/api/**`.
+
+Unsupported syntax is reported during rule-pack validation. In particular,
+`**` must be a complete path segment; patterns such as `packages/**gen/**` are
+invalid because authors could otherwise assume a dead pattern is active.
+
 Matched rules should be ordered deterministically:
 
 1. higher `risk_floor` first: `critical`, `high`, `medium`, `low`;

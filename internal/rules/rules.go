@@ -299,6 +299,16 @@ func parseRuleFile(path, rulesRoot, sourceName, mode string, required map[string
 			findings = append(findings, Finding{Severity: "warning", Path: path, Message: fmt.Sprintf("review domain %q is not configured for this project", domain)})
 		}
 	}
+	for _, pattern := range meta.AppliesWhen.SourcePaths {
+		if err := validateGlobPattern(pattern); err != nil {
+			findings = append(findings, Finding{Severity: "error", Path: path, Message: fmt.Sprintf("source_paths pattern %q is invalid: %v", pattern, err)})
+		}
+	}
+	for _, pattern := range meta.AppliesWhen.TargetPaths {
+		if err := validateGlobPattern(pattern); err != nil {
+			findings = append(findings, Finding{Severity: "error", Path: path, Message: fmt.Sprintf("target_paths pattern %q is invalid: %v", pattern, err)})
+		}
+	}
 	if mode == "blocking" && opts.KnownEvidence != nil {
 		for _, evidence := range meta.RequiredEvidence {
 			if !opts.KnownEvidence[evidence] {
@@ -500,11 +510,49 @@ func anyGlobMatch(patterns, values []string) bool {
 func globMatch(pattern, value string) bool {
 	pattern = filepath.ToSlash(pattern)
 	value = filepath.ToSlash(value)
-	if strings.HasSuffix(pattern, "/**") {
-		return strings.HasPrefix(value, strings.TrimSuffix(pattern, "/**")+"/") || value == strings.TrimSuffix(pattern, "/**")
+	if err := validateGlobPattern(pattern); err != nil {
+		return false
 	}
-	ok, err := path.Match(pattern, value)
-	return err == nil && ok
+	return globSegmentsMatch(strings.Split(pattern, "/"), strings.Split(value, "/"))
+}
+
+func validateGlobPattern(pattern string) error {
+	pattern = filepath.ToSlash(pattern)
+	if strings.TrimSpace(pattern) == "" {
+		return fmt.Errorf("pattern is empty")
+	}
+	for _, segment := range strings.Split(pattern, "/") {
+		if segment == "" {
+			return fmt.Errorf("empty path segment")
+		}
+		if strings.Contains(segment, "**") && segment != "**" {
+			return fmt.Errorf("globstar ** must be a complete path segment")
+		}
+		if segment == "**" {
+			continue
+		}
+		if _, err := path.Match(segment, segment); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func globSegmentsMatch(pattern, value []string) bool {
+	if len(pattern) == 0 {
+		return len(value) == 0
+	}
+	if pattern[0] == "**" {
+		if globSegmentsMatch(pattern[1:], value) {
+			return true
+		}
+		return len(value) > 0 && globSegmentsMatch(pattern, value[1:])
+	}
+	if len(value) == 0 {
+		return false
+	}
+	ok, err := path.Match(pattern[0], value[0])
+	return err == nil && ok && globSegmentsMatch(pattern[1:], value[1:])
 }
 
 func anyOverlap(a, b []string) bool {

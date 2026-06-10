@@ -259,3 +259,88 @@ func TestMatchTaskUsesAxesRiskAndProfileBinding(t *testing.T) {
 		t.Fatalf("disabled status=%q", got)
 	}
 }
+
+func TestMatchTaskSupportsMidPatternGlobstar(t *testing.T) {
+	cfg := config.Defaults(t.TempDir())
+	packs := []Pack{{
+		SourceName: "platform",
+		Mode:       "advisory",
+		Rules: []Rule{
+			{
+				ID:    "platform.generated-client",
+				Group: "platform.core",
+				AppliesWhen: AppliesWhen{
+					SourcePaths: []string{"packages/**/gen/**"},
+				},
+			},
+			{
+				ID:    "platform.api-doc",
+				Group: "platform.core",
+				AppliesWhen: AppliesWhen{
+					SourcePaths: []string{"doc/api/**"},
+				},
+			},
+		},
+	}}
+	task := store.Task{Definition: store.TaskDefinition{
+		ID:          "FW-001",
+		Kind:        "task",
+		SourcePaths: []string{"packages/services/billing/gen/client.ts", "doc/api/openapi.yaml"},
+	}}
+
+	matches := MatchTask(cfg, packs, task)
+	byID := map[string]Match{}
+	for _, match := range matches {
+		byID[match.Rule.ID] = match
+	}
+	if got := byID["platform.generated-client"].Status; got != "selected" {
+		t.Fatalf("generated-client status=%q, want selected", got)
+	}
+	if got := byID["platform.api-doc"].Status; got != "selected" {
+		t.Fatalf("api-doc status=%q, want selected", got)
+	}
+	if globMatch("packages/**/gen/**", "packages/gen/client.ts") != true {
+		t.Fatal("globstar should match zero or more middle path segments")
+	}
+}
+
+func TestLoadDirReportsInvalidGlobPatterns(t *testing.T) {
+	root := t.TempDir()
+	writeRulePackFile(t, root, "schemas/rule.schema.yaml", `type: object
+required:
+  - id
+  - title
+  - status
+`)
+	writeRulePackFile(t, root, "rules/core/bad-glob.md", `---
+id: platform.bad-glob
+title: Bad glob
+status: active
+applies_when:
+  source_paths:
+    - packages/**gen/**
+  target_paths:
+    - generated/[broken
+---
+
+body
+`)
+
+	pack, err := LoadDir(root, "platform", "advisory", LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var messages []string
+	for _, finding := range pack.Findings {
+		messages = append(messages, finding.Message)
+	}
+	joined := strings.Join(messages, "\n")
+	for _, want := range []string{
+		`source_paths pattern "packages/**gen/**" is invalid: globstar ** must be a complete path segment`,
+		`target_paths pattern "generated/[broken" is invalid: syntax error in pattern`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("findings=%q, want %q", joined, want)
+		}
+	}
+}
