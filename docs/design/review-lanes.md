@@ -59,6 +59,13 @@ That handback is a signal to run `fairway merge-ready <task-id>` and continue th
 configured merge/push/release workflow if it passes. It is not approval to
 auto-merge or push, and it does not replace `merge-ready`.
 
+Once the coordinator records the merge/push/closeout decision, record normal
+evidence such as push intent, lane closeout, release-run/release-verify output,
+or an explicit `review-handback-ack` evidence row. Coordinator plan treats those
+records, and terminal tasks with recorded completion commits, as closed for
+review-handback purposes so older completed work does not reappear as a fresh
+next action.
+
 The merge lane should not push every provider thread branch just to get CI.
 Worker branches are scratch by default; the merged batch is the remote
 validation unit unless a review, release, backup, or exception intent is

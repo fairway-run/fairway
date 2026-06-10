@@ -26,6 +26,7 @@ type PlanOptions struct {
 	Worktrees              []WorktreeFact
 	StaleCheckpointAfter   time.Duration
 	MonitorHandbackAfter   time.Duration
+	ReviewHandbackFreshFor time.Duration
 	NotificationAckTimeout time.Duration
 	ReadyLimit             int
 	RecommendationLimit    int
@@ -115,6 +116,13 @@ type ReviewDomainVerdict struct {
 	Commit   string `json:"commit,omitempty"`
 }
 
+type ReviewHandbackOptions struct {
+	FreshFor             time.Duration
+	Now                  time.Time
+	IncludeHistorical    bool
+	SuppressAcknowledged bool
+}
+
 type TaskRef struct {
 	ID     string `json:"id"`
 	Title  string `json:"title,omitempty"`
@@ -180,6 +188,9 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	}
 	if opts.RecommendationLimit <= 0 {
 		opts.RecommendationLimit = 20
+	}
+	if opts.ReviewHandbackFreshFor <= 0 {
+		opts.ReviewHandbackFreshFor = 24 * time.Hour
 	}
 	plan := Plan{
 		OK:              true,
@@ -335,7 +346,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 					addStop(&plan, "review-gated", reason, task.Definition.ID, task.Definition.Role)
 				}
 			} else {
-				handback, ok := ReviewHandbackForTask(cfg, detailTask, evidence, handoffs, reviews)
+				handback, ok := ReviewHandbackForTask(cfg, detailTask, evidence, handoffs, reviews, ReviewHandbackOptions{FreshFor: opts.ReviewHandbackFreshFor, Now: time.Now().UTC(), SuppressAcknowledged: true})
 				if ok {
 					if len(handback.Blockers) > 0 {
 						reason := "required reviews are approved but merge-ready has non-review blockers: " + strings.Join(handback.Blockers, "; ")
@@ -572,10 +583,16 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func ReviewHandbackForTask(cfg config.Config, task store.Task, evidence []store.Evidence, handoffs []store.Handoff, reviews []store.Review) (ReviewCompletionHandback, bool) {
+func ReviewHandbackForTask(cfg config.Config, task store.Task, evidence []store.Evidence, handoffs []store.Handoff, reviews []store.Review, opts ReviewHandbackOptions) (ReviewCompletionHandback, bool) {
 	required := normalizedUnique(task.Definition.ReviewDomains)
 	if len(required) == 0 {
 		return ReviewCompletionHandback{}, false
+	}
+	if opts.Now.IsZero() {
+		opts.Now = time.Now().UTC()
+	}
+	if opts.FreshFor <= 0 {
+		opts.FreshFor = 24 * time.Hour
 	}
 	latest := latestReviewVerdicts(required, reviews)
 	approved := make([]string, 0, len(required))
@@ -585,6 +602,12 @@ func ReviewHandbackForTask(cfg config.Config, task store.Task, evidence []store.
 		}
 	}
 	if len(approved) != len(required) {
+		return ReviewCompletionHandback{}, false
+	}
+	if opts.SuppressAcknowledged && reviewHandbackAcknowledged(evidence) {
+		return ReviewCompletionHandback{}, false
+	}
+	if !opts.IncludeHistorical && reviewHandbackIsHistorical(task, evidence, reviews, opts) {
 		return ReviewCompletionHandback{}, false
 	}
 	handback := ReviewCompletionHandback{
@@ -606,6 +629,40 @@ func ReviewHandbackForTask(cfg config.Config, task store.Task, evidence []store.
 		handback.RecommendedAction = "resolve non-review merge-ready blockers before coordinator merge/push/release action"
 	}
 	return handback, true
+}
+
+func reviewHandbackAcknowledged(evidence []store.Evidence) bool {
+	for _, ev := range evidence {
+		switch strings.TrimSpace(ev.ArtifactType) {
+		case "review-handback-ack", "merge-ready", "push-intent", "lane-closeout":
+			return true
+		}
+	}
+	return false
+}
+
+func reviewHandbackIsHistorical(task store.Task, evidence []store.Evidence, reviews []store.Review, opts ReviewHandbackOptions) bool {
+	if reviewHandbackHasClosureEvidence(evidence) {
+		return true
+	}
+	completedAt, err := time.Parse(time.RFC3339Nano, task.CompletedAt)
+	if err != nil {
+		return false
+	}
+	if strings.TrimSpace(task.CommitSHA) != "" {
+		return true
+	}
+	return opts.Now.Sub(completedAt) > opts.FreshFor
+}
+
+func reviewHandbackHasClosureEvidence(evidence []store.Evidence) bool {
+	for _, ev := range evidence {
+		switch strings.TrimSpace(ev.ArtifactType) {
+		case "push-intent", "lane-closeout", "release-run", "release-verify":
+			return true
+		}
+	}
+	return false
 }
 
 func latestReviewVerdicts(required []string, reviews []store.Review) map[string]ReviewDomainVerdict {

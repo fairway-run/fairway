@@ -450,6 +450,55 @@ func TestBuildPlanReviewCompletionBlockedByNonReviewGate(t *testing.T) {
 	}
 }
 
+func TestBuildPlanSuppressesStaleReviewCompletionHandbacks(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	tasks := []store.TaskDefinition{
+		{ID: "FRESH-001", Title: "Fresh review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "PUSHED-001", Title: "Pushed review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "OLD-001", Title: "Old review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "ACK-001", Title: "Acknowledged review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+	}
+	if err := s.ImportTasks(ctx, tasks); err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range tasks {
+		if task.ID == "FRESH-001" {
+			if err := s.SetStatus(ctx, task.ID, "review", "fresh review-complete handback", false); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			if err := s.SetStatusWithCommit(ctx, task.ID, "done", "done", strings.ToLower(task.ID[:3])+"123", false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := s.RecordReview(ctx, task.ID, store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "review ok"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.RecordEvidence(ctx, "PUSHED-001", store.Evidence{CommandText: "fairway record push-intent PUSHED-001", Result: "pass", ArtifactType: "push-intent"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "ACK-001", store.Evidence{CommandText: "fairway coordinator acknowledged review handback", Result: "pass", ArtifactType: "review-handback-ack"}); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReviewHandbackFreshFor: time.Nanosecond, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", "FRESH-001") {
+		t.Fatalf("fresh review-complete handback missing: %+v", plan.Actions)
+	}
+	for _, suppressed := range []string{"PUSHED-001", "OLD-001", "ACK-001"} {
+		if hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", suppressed) {
+			t.Fatalf("suppressed task %s produced review-complete action: %+v", suppressed, plan.Actions)
+		}
+	}
+}
+
 func openPlanStore(t *testing.T, ctx context.Context) *store.Store {
 	t.Helper()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

@@ -73,6 +73,14 @@ such as required evidence or required handoff, `plan` emits
 `review-complete-blocked` instead of a false merge-ready handback. Fairway does
 not auto-merge, push, deploy, tag, or release from this signal.
 
+Review-complete handbacks are next-action signals, not historical audit rows.
+Coordinator plan suppresses handbacks for terminal tasks that already have a
+recorded completion commit, closure evidence such as `push-intent`,
+`lane-closeout`, `release-run`, or `release-verify`, or an explicit
+`review-handback-ack` evidence row. Task detail, reports, and audits can still
+show the historical reviews and completion evidence without putting old work
+back into the coordinator's action list.
+
 When the ready queue is empty but todo work remains, `plan` includes the same
 readiness explanation used by `fairway ready`: non-ready todo count, blocker
 categories, top task ids, dependency blocker ids, and suggested inspection

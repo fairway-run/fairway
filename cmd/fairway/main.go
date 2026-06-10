@@ -8022,7 +8022,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
-		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews)
+		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true})
 		return printJSON(struct {
 			Task                 store.Task                      `json:"task"`
 			ReviewStatus         string                          `json:"review_status"`
@@ -8041,7 +8041,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	}
 	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
-	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews)
+	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true})
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, reviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
 	fmt.Println("\ndependencies:")

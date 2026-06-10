@@ -2280,7 +2280,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	missingReviewDomains := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
-	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews)
+	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true})
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),

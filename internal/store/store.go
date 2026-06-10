@@ -76,6 +76,7 @@ type Task struct {
 	Owner        string
 	Claimant     string
 	Branch       string
+	CompletedAt  string
 	CommitSHA    string
 	ReviewStatus string
 	UpdatedAt    string
@@ -101,11 +102,12 @@ type Handoff struct {
 }
 
 type Review struct {
-	Reviewer string
-	Domain   string
-	Verdict  string
-	Reason   string
-	Commit   string
+	Reviewer  string
+	Domain    string
+	Verdict   string
+	Reason    string
+	Commit    string
+	CreatedAt string
 }
 
 type Notification struct {
@@ -995,7 +997,7 @@ func (s *Store) Ready(ctx context.Context, role string, terminal []string) ([]Ta
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
        d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.tags, d.risk_level, d.migration_type,
-       st.status, st.owner, st.claimant, st.branch, st.commit_sha, st.review_status, st.updated_at
+       st.status, st.owner, st.claimant, st.branch, st.completed_at, st.commit_sha, st.review_status, st.updated_at
 FROM task_definitions d
 JOIN task_state st ON st.project_id = d.project_id AND st.task_id = d.id
 WHERE d.project_id = ? AND st.status = 'todo'`+roleSQL+`
@@ -1735,7 +1737,7 @@ func (s *Store) TaskDetail(ctx context.Context, taskID string) (Task, []Transiti
 	row := s.db.QueryRowContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
        d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.tags, d.risk_level, d.migration_type,
-       st.status, st.owner, st.claimant, st.branch, st.commit_sha, st.review_status, st.updated_at
+       st.status, st.owner, st.claimant, st.branch, st.completed_at, st.commit_sha, st.review_status, st.updated_at
 FROM task_definitions d JOIN task_state st ON st.project_id=d.project_id AND st.task_id=d.id
 WHERE d.project_id=? AND d.id=?`, s.projectID, taskID)
 	task, err := scanTask(row)
@@ -2193,7 +2195,7 @@ func (s *Store) AllTasks(ctx context.Context) ([]Task, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT d.id, d.parent_id, d.kind, d.title, d.role, d.notes, d.acceptance_checks, d.dependencies,
        d.priority, d.sequence, d.profile, d.owning_domain, d.owning_layer, d.source_paths, d.target_paths, d.review_domains, d.tags, d.risk_level, d.migration_type,
-       st.status, st.owner, st.claimant, st.branch, st.commit_sha, st.review_status, st.updated_at
+       st.status, st.owner, st.claimant, st.branch, st.completed_at, st.commit_sha, st.review_status, st.updated_at
 FROM task_definitions d JOIN task_state st ON st.project_id=d.project_id AND st.task_id=d.id
 WHERE d.project_id=?
 ORDER BY d.role, st.status, COALESCE(d.priority, 9999), d.created_at`, s.projectID)
@@ -2510,9 +2512,9 @@ func scanTask(row rowScanner) (Task, error) {
 	var task Task
 	var acceptance, deps string
 	var sourcePaths, targetPaths, reviewDomains, tags sql.NullString
-	var parent, kind, notes, profile, owningDomain, owningLayer, riskLevel, migrationType, owner, claimant, branch, commitSHA, reviewStatus, updated sql.NullString
+	var parent, kind, notes, profile, owningDomain, owningLayer, riskLevel, migrationType, owner, claimant, branch, completedAt, commitSHA, reviewStatus, updated sql.NullString
 	var priority, sequence sql.NullInt64
-	err := row.Scan(&task.Definition.ID, &parent, &kind, &task.Definition.Title, &task.Definition.Role, &notes, &acceptance, &deps, &priority, &sequence, &profile, &owningDomain, &owningLayer, &sourcePaths, &targetPaths, &reviewDomains, &tags, &riskLevel, &migrationType, &task.Status, &owner, &claimant, &branch, &commitSHA, &reviewStatus, &updated)
+	err := row.Scan(&task.Definition.ID, &parent, &kind, &task.Definition.Title, &task.Definition.Role, &notes, &acceptance, &deps, &priority, &sequence, &profile, &owningDomain, &owningLayer, &sourcePaths, &targetPaths, &reviewDomains, &tags, &riskLevel, &migrationType, &task.Status, &owner, &claimant, &branch, &completedAt, &commitSHA, &reviewStatus, &updated)
 	if err != nil {
 		return Task{}, err
 	}
@@ -2549,6 +2551,7 @@ func scanTask(row rowScanner) (Task, error) {
 	task.Owner = owner.String
 	task.Claimant = claimant.String
 	task.Branch = branch.String
+	task.CompletedAt = completedAt.String
 	task.CommitSHA = commitSHA.String
 	task.ReviewStatus = reviewStatus.String
 	task.UpdatedAt = updated.String
@@ -2744,7 +2747,7 @@ func (s *Store) handoffs(ctx context.Context, taskID string) ([]Handoff, error) 
 }
 
 func (s *Store) reviews(ctx context.Context, taskID string) ([]Review, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT reviewer, COALESCE(review_domain, ''), verdict, notes, reviewed_commit_sha FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
+	rows, err := s.db.QueryContext(ctx, `SELECT reviewer, COALESCE(review_domain, ''), verdict, notes, reviewed_commit_sha, created_at FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -2752,7 +2755,7 @@ func (s *Store) reviews(ctx context.Context, taskID string) ([]Review, error) {
 	var out []Review
 	for rows.Next() {
 		var r Review
-		if err := rows.Scan(&r.Reviewer, &r.Domain, &r.Verdict, &r.Reason, &r.Commit); err != nil {
+		if err := rows.Scan(&r.Reviewer, &r.Domain, &r.Verdict, &r.Reason, &r.Commit, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
