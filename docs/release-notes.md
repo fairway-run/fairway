@@ -10,6 +10,32 @@ replacement, LLM provider abstraction, credential store, or provider-cost gate.
 Release and adapter work must preserve the rules in
 [Product boundaries](design/product-boundaries.md).
 
+## Unreleased
+
+### What Changed
+
+- Rule packs can now be configured as local sources, validated, matched against
+  task metadata, surfaced on task detail and reports, enforced by
+  `merge-ready` / `workflow check --mode close`, and rendered through
+  `fairway packet rules <task-id>`.
+- Blocking rule sources can require matching evidence artifact types before
+  merge readiness passes. Advisory rule gaps are warnings. Disabled and
+  non-applicable rules remain visible without affecting readiness.
+- Rule packets are read-only review/handoff artifacts. Rendering a packet does
+  not approve reviews, close tasks, or mutate state; agents must explicitly
+  record the packet as evidence when used.
+
+### Release Checklist
+
+- `go test ./...` passes.
+- `go vet ./...` passes.
+- `git diff --check` passes.
+- `fairway config validate` passes.
+- `fairway reconcile active --dry-run` reports no active reconciliation
+  findings.
+- Rule-pack docs and command examples remain aligned with
+  `docs/design/rule-packs.md` and `docs/design/cli.md`.
+
 ## v0.1.4
 
 ### What Changed

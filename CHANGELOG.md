@@ -7,6 +7,18 @@ and uses semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- Configurable local rule-pack sources, rule validation, evidence-type
+  discovery, and task rule matching.
+- Dashboard task-detail and report surfaces for selected rule matches, missing
+  blocking/advisory evidence, and non-applicable rule rationale.
+- `merge-ready` and `workflow check --mode close` rule evidence checks, where
+  blocking rule sources fail readiness and advisory sources warn.
+- `fairway packet rules <task-id>` for read-only selected/non-applicable rule
+  review packets with required evidence, recommended commands, review domains,
+  and residual-risk fields.
+
 ## v0.1.4
 
 ### Added
