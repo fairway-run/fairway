@@ -1463,6 +1463,82 @@ func TestUtilityEventAdapterDryRun(t *testing.T) {
 	}
 }
 
+func TestProviderEventAdapterFailsClosedOnSessionStatusParsing(t *testing.T) {
+	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "provider-event.sh"))
+	fairwayBin := writeFakeFairwaySessionStatus(t)
+	baseArgs := []string{
+		"--provider", "codex",
+		"--external-session-id", "thread-1",
+		"--role", "backend",
+		"--task-id", "T-001",
+		"--state", "running",
+		"--summary", "still working",
+	}
+
+	out, err := runAdapterWithEnv(t, []string{"FAIRWAY_BIN=" + fairwayBin, `FAKE_SESSION_JSON=[]`}, script, baseArgs...)
+	if err != nil {
+		t.Fatalf("missing session should be allowed for first event: %v\n%s", err, out)
+	}
+	assertContains(t, out, "session upsert")
+
+	for _, tc := range []struct {
+		name string
+		json string
+		want string
+	}{
+		{name: "malformed", json: `{not-json`, want: "refusing provider event because Fairway session status could not be parsed"},
+		{name: "missing task", json: `[{"id":"codex-thread-1","status":"running"}]`, want: "refusing provider event because Fairway session status could not be parsed"},
+		{name: "mismatched task", json: `[{"id":"codex-thread-1","status":"running","task_id":"OTHER-001"}]`, want: "session/task mismatch for codex-thread-1"},
+		{name: "ended session", json: `[{"id":"codex-thread-1","status":"ended","task_id":"T-001"}]`, want: "refusing provider event running for terminal session codex-thread-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runAdapterWithEnv(t, []string{"FAIRWAY_BIN=" + fairwayBin, "FAKE_SESSION_JSON=" + tc.json}, script, baseArgs...)
+			if err == nil {
+				t.Fatalf("adapter succeeded, expected fail-closed\n%s", out)
+			}
+			assertContains(t, out, tc.want)
+		})
+	}
+}
+
+func TestUtilityEventAdapterFailsClosedOnSessionStatusParsing(t *testing.T) {
+	script := filepath.Clean(filepath.Join(mustGetwd(t), "..", "..", "examples", "session-adapters", "utility-event.sh"))
+	fairwayBin := writeFakeFairwaySessionStatus(t)
+	baseArgs := []string{
+		"--task-id", "T-001",
+		"--utility-name", "release-assets",
+		"--utility-kind", "release-asset",
+		"--command", "scripts/check-release-assets.sh",
+		"--external-run-id", "v0.1.3",
+		"--state", "heartbeat",
+	}
+
+	out, err := runAdapterWithEnv(t, []string{"FAIRWAY_BIN=" + fairwayBin, `FAKE_SESSION_JSON=[]`}, script, baseArgs...)
+	if err != nil {
+		t.Fatalf("missing session should be allowed for first utility event: %v\n%s", err, out)
+	}
+	assertContains(t, out, "session upsert")
+
+	for _, tc := range []struct {
+		name string
+		json string
+		want string
+	}{
+		{name: "malformed", json: `{not-json`, want: "refusing utility event because Fairway session status could not be parsed"},
+		{name: "missing task", json: `[{"id":"release-assets-release-asset-v0.1.3","status":"running"}]`, want: "refusing utility event because Fairway session status could not be parsed"},
+		{name: "mismatched task", json: `[{"id":"release-assets-release-asset-v0.1.3","status":"running","task_id":"OTHER-001"}]`, want: "session/task mismatch for release-assets-release-asset-v0.1.3"},
+		{name: "ended session", json: `[{"id":"release-assets-release-asset-v0.1.3","status":"ended","task_id":"T-001"}]`, want: "refusing utility event heartbeat for terminal session release-assets-release-asset-v0.1.3"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runAdapterWithEnv(t, []string{"FAIRWAY_BIN=" + fairwayBin, "FAKE_SESSION_JSON=" + tc.json}, script, baseArgs...)
+			if err == nil {
+				t.Fatalf("adapter succeeded, expected fail-closed\n%s", out)
+			}
+			assertContains(t, out, tc.want)
+		})
+	}
+}
+
 func TestUtilityEventAdapterLiveSmoke(t *testing.T) {
 	repo := t.TempDir()
 	fairwayBin := filepath.Join(repo, "fairway")
@@ -2461,6 +2537,33 @@ func runAdapter(t *testing.T, script string, args ...string) string {
 		t.Fatalf("adapter %v failed: %v\n%s", args, err, out)
 	}
 	return string(out)
+}
+
+func runAdapterWithEnv(t *testing.T, env []string, script string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command("bash", append([]string{script}, args...)...)
+	cmd.Env = append(os.Environ(), env...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func writeFakeFairwaySessionStatus(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fairway")
+	body := `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "--json" && "${2:-}" == "session" && "${3:-}" == "status" && "${4:-}" == "--all" ]]; then
+  printf '%s\n' "${FAKE_SESSION_JSON:-[]}"
+  exit "${FAKE_SESSION_STATUS_EXIT:-0}"
+fi
+printf 'fairway'
+printf ' %q' "$@"
+printf '\n'
+`
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func mustGetwd(t *testing.T) string {

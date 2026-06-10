@@ -132,13 +132,44 @@ existing_session_field() {
   if [[ "$dry_run" == true ]]; then
     return 0
   fi
-  "$fairway_bin" session status --all 2>/dev/null | awk -v id="$session_id" -v field="$field" '
-    $1 == id {
-      if (field == "status") print $3;
-      if (field == "task") print $5;
-      exit
-    }
-  '
+  local json
+  if ! json="$("$fairway_bin" --json session status --all 2>/dev/null)"; then
+    echo "failed to read Fairway session status for ${session_id}" >&2
+    exit 2
+  fi
+  local value
+  if ! value="$(printf '%s' "$json" | ruby -rjson -e '
+field = ARGV.fetch(0)
+id = ARGV.fetch(1)
+begin
+  sessions = JSON.parse(STDIN.read)
+rescue JSON::ParserError => e
+  warn "failed to parse Fairway session JSON: #{e.message}"
+  exit 3
+end
+exit 0 if sessions.nil?
+unless sessions.is_a?(Array)
+  warn "Fairway session JSON must be an array"
+  exit 3
+end
+session = sessions.find { |item| item.is_a?(Hash) && item["id"] == id }
+exit 0 if session.nil?
+key = case field
+      when "status" then "status"
+      when "task" then "task_id"
+      else field
+      end
+unless session.key?(key)
+  warn "Fairway session #{id} missing #{key}"
+  exit 3
+end
+value = session[key]
+print value unless value.nil?
+' "$field" "$session_id")"; then
+    echo "refusing provider event because Fairway session status could not be parsed" >&2
+    exit 2
+  fi
+  printf '%s' "$value"
 }
 
 existing_status="$(existing_session_field status)"

@@ -267,6 +267,12 @@ fairway checkpoint record <task-id> \
   --summary "Delegated Codex thread is waiting on approval: <short reason>"
 ```
 
+Provider and utility adapters must read existing session state from
+`fairway --json session status --all`, not from human table output. If the JSON
+cannot be parsed, a matching session is missing required fields, the session is
+attached to another task, or the session is already terminal, the adapter must
+refuse the event and leave task state unchanged.
+
 When the coordinator handles the blocked operation, it should notify the
 delegated session with the resulting commit, push, or command outcome and tell
 the delegated session whether to stop, continue, or only report final summary.

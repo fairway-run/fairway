@@ -155,6 +155,13 @@ completion so coordinators do not need to remember to poll provider-specific
 chat or thread state. The adapter does not claim tasks, set terminal statuses,
 approve reviews, or mark work merge-ready.
 
+Provider and utility adapters must validate existing Fairway session state from
+structured `fairway --json session status --all` output. They must fail closed
+when that JSON cannot be parsed, when a matching session is missing required
+fields, when an existing session belongs to a different task, or when an event
+tries to continue an ended, failed, or stale session. Human table output is for
+operators, not adapter trust-boundary parsing.
+
 ## Rules
 
 - A failed launch must not claim a task.
