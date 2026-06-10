@@ -1507,10 +1507,12 @@ tasks:
     depends_on:
       - FW-143
     acceptance_checks:
-      - Config supports `[[rule_sources]]` with name, source, optional version, and mode.
+      - Config supports `[[rule_sources]]` with name, source, optional immutable pin/checksum metadata, and mode.
       - Supported modes include advisory, blocking, and disabled.
       - Config validation catches duplicate names, unknown modes, empty sources, and malformed source schemes.
-      - Documentation explains local file and external source examples without enabling network fetch by default.
+      - Initial source validation supports local `path:` and `file:` sources only; network fetch remains disabled.
+      - Remote source declarations are represented only as future/pinned metadata and cannot be used as blocking authority without immutable commit SHA and checksum support.
+      - Documentation explains that external guidance such as CodeGuard must be converted or vendored into Fairway-native rule-pack format before loading.
 
   - id: FW-145
     title: Add rule pack loader and validator
@@ -1537,9 +1539,16 @@ tasks:
       - FW-144
     acceptance_checks:
       - Loader reads local rule-pack directories with Markdown files containing YAML front matter.
-      - Validator checks required rule fields, duplicate ids, status values, risk floor, evidence names, review domains, and applicability metadata.
-      - External GitHub sources are represented in config but remain fetch-disabled or explicitly documented until safe fetch/cache policy is implemented.
-      - CLI command or config validation output reports loaded rule counts and validation findings.
+      - Validator checks rules against the pack-owned `schemas/rule.schema.yaml` rather than a divergent Fairway-core schema.
+      - Validator checks required rule fields, duplicate ids, status values, top-level risk floor, evidence names, review domains, applicability metadata, and invalid nested `risk_floor` placement.
+      - Per-rule `version` is rejected; source or repository pinning versions the pack as a unit.
+      - Rule groups resolve as source name plus `rules/` subdirectory, and validation reports available groups plus unresolved profile references.
+      - Review domains referenced by packs are checked against project-defined review domains and reported as warnings when unknown.
+      - CLI includes `fairway rules validate <dir>` or equivalent validation command for local packs.
+      - CLI includes `fairway rules evidence-types` or equivalent output listing evidence types from loaded packs, configured gates, and recorded evidence.
+      - Blocking rules that require evidence types with no known gate, command, or recorded evidence pattern produce validation findings.
+      - External GitHub sources are represented in config but remain fetch-disabled until safe fetch/cache policy is implemented.
+      - CLI command or config validation output reports loaded rule counts, group counts, evidence type counts, and validation findings.
 
   - id: FW-146
     title: Match rule packs to tasks by paths tags kind and risk
@@ -1568,9 +1577,15 @@ tasks:
       - FW-141
     acceptance_checks:
       - Rule matcher evaluates task source paths, target paths, tags, kind, profile, risk level, and review domains.
+      - Populated applicability axes within one rule are combined with AND semantics; multiple values within a single axis are OR.
+      - Rules match independently across a pack, and output is ordered by risk floor descending then rule id.
+      - "`risk_floor` is treated as an applicability floor for task risk and does not raise or mutate the task risk level."
+      - Project config `rule_groups` binds rule groups to workstream profiles; pack-local profiles are examples unless imported.
+      - "`applies_when.profiles` narrows an already-bound rule and does not bind the source by itself."
       - Match output distinguishes selected, considered, disabled, and non-applicable rules.
+      - Non-applicable rule rationale is available in human and JSON output.
       - CLI can show applicable rules for a task in human and JSON output.
-      - Tests cover path glob matches, tag matches, risk-floor behavior, disabled sources, and no-match tasks.
+      - Tests cover path glob matches, tag matches, task kind, profile binding, risk-floor behavior, disabled sources, multi-axis AND behavior, and no-match tasks.
 
   - id: FW-147
     title: Surface applicable rules in task detail dashboard and reports
