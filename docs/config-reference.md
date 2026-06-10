@@ -186,6 +186,7 @@ metadata without changing the file shape.
 | `name` | string | — | Stable profile name, for example `platform-foundation`, `release-readiness`, or `sdk-readiness`. Must be unique. |
 | `task_kinds` | []string | — | Task kinds associated with this profile. If `[task_kinds].allowed` is configured, every profile kind must appear there. |
 | `dashboard_groups` | []string | — | Human-facing groups a dashboard can use to cluster tasks for this profile. |
+| `rule_groups` | []string | — | Rule groups bound to this profile, using `<rule-source-name>.<rules-subdirectory>` names such as `fairway-platform.core`. |
 | `tag_groups` | []table | — | Optional recommended tag display groups for dashboards/reports. These are advisory; task tags remain generic task metadata. |
 | `review_domains` | []string | — | Review domains that may be required for readiness, distinct from first-match assignment routes. |
 | `route_samples` | []string | — | Paths sampled by `fairway adoption artifact` when no `--route` flags are provided. |

@@ -6126,7 +6126,7 @@ func recordEvidence(ctx context.Context, opts globalOptions, args []string) erro
 
 func cmdRules(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("rules", "validate <dir>|evidence-types")
+		subcommandUsage("rules", "validate <dir>|evidence-types|match <task-id>")
 		return nil
 	}
 	switch args[0] {
@@ -6134,6 +6134,8 @@ func cmdRules(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdRulesValidate(opts, args[1:])
 	case "evidence-types":
 		return cmdRulesEvidenceTypes(ctx, opts, args[1:])
+	case "match":
+		return cmdRulesMatch(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown rules subcommand %q", args[0])
 	}
@@ -6242,6 +6244,41 @@ func cmdRulesEvidenceTypes(ctx context.Context, opts globalOptions, args []strin
 			fmt.Printf("- %s", row.EvidenceType)
 			if len(parts) > 0 {
 				fmt.Printf(" (%s)", strings.Join(parts, " "))
+			}
+			fmt.Println()
+		}
+		return nil
+	})
+}
+
+func cmdRulesMatch(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) != 1 {
+		return errors.New("rules match requires task id")
+	}
+	taskID := args[0]
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		packs, err := rules.LoadConfigured(cfg, root, rules.LoadOptions{
+			Root:            root,
+			KnownDomains:    rules.ReviewDomainSet(cfg),
+			KnownEvidence:   rules.ConfigGateEvidenceSet(cfg),
+			IncludeDisabled: true,
+		})
+		if err != nil {
+			return err
+		}
+		matches := rules.MatchTask(cfg, packs, task)
+		if opts.JSON {
+			return json.NewEncoder(os.Stdout).Encode(matches)
+		}
+		fmt.Printf("rules for %s:\n", taskID)
+		for _, match := range matches {
+			fmt.Printf("- %s [%s] group=%s risk_floor=%s", match.Rule.ID, match.Status, match.Rule.Group, firstNonEmpty(match.Rule.RiskFloor, "none"))
+			if len(match.Reasons) > 0 {
+				fmt.Printf(" reason=%s", strings.Join(match.Reasons, "; "))
 			}
 			fmt.Println()
 		}
@@ -7587,7 +7624,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|rules validate|evidence-types|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|import|add|spawn|update|tree|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|rules validate|evidence-types|match|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

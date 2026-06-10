@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/store"
 )
 
 func TestLoadDirValidatesRulesGroupsAndFindings(t *testing.T) {
@@ -85,5 +88,67 @@ func writeRulePackFile(t *testing.T, root, rel, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMatchTaskUsesAxesRiskAndProfileBinding(t *testing.T) {
+	cfg := config.Defaults(t.TempDir())
+	cfg.WorkstreamProfiles = []config.WorkstreamProfile{
+		{Name: "platform-foundation", RuleGroups: []string{"platform.core"}},
+	}
+	packs := []Pack{{
+		SourceName: "platform",
+		Mode:       "advisory",
+		Rules: []Rule{
+			{
+				ID:        "platform.contract-first",
+				Group:     "platform.core",
+				RiskFloor: "medium",
+				AppliesWhen: AppliesWhen{
+					SourcePaths: []string{"doc/api/**"},
+					Tags:        []string{"surface:api"},
+					TaskKinds:   []string{"task"},
+					Profiles:    []string{"platform-foundation"},
+				},
+			},
+			{
+				ID:        "platform.security",
+				Group:     "platform.security",
+				RiskFloor: "high",
+				AppliesWhen: AppliesWhen{
+					Tags: []string{"surface:api"},
+				},
+			},
+			{
+				ID:    "platform.disabled",
+				Group: "platform.core",
+				Mode:  "disabled",
+			},
+		},
+	}}
+	task := store.Task{Definition: store.TaskDefinition{
+		ID:          "FW-001",
+		Kind:        "task",
+		Profile:     "platform-foundation",
+		SourcePaths: []string{"doc/api/openapi.yaml"},
+		Tags:        []string{"surface:api"},
+		RiskLevel:   "medium",
+	}}
+	matches := MatchTask(cfg, packs, task)
+	byID := map[string]Match{}
+	for _, match := range matches {
+		byID[match.Rule.ID] = match
+	}
+	if got := byID["platform.contract-first"].Status; got != "selected" {
+		t.Fatalf("contract status=%q", got)
+	}
+	if got := byID["platform.security"].Status; got != "non_applicable" {
+		t.Fatalf("security status=%q", got)
+	}
+	if !strings.Contains(strings.Join(byID["platform.security"].Reasons, ";"), "not bound") {
+		t.Fatalf("security reasons=%v", byID["platform.security"].Reasons)
+	}
+	if got := byID["platform.disabled"].Status; got != "disabled" {
+		t.Fatalf("disabled status=%q", got)
 	}
 }

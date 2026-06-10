@@ -89,7 +89,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"batch", "list", "--help"}, "fairway batch list"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning"},
 		{[]string{"release", "--help"}, "fairway release verify"},
-		{[]string{"rules", "--help"}, "fairway rules validate <dir>|evidence-types"},
+		{[]string{"rules", "--help"}, "fairway rules validate <dir>|evidence-types|match <task-id>"},
 	} {
 		out := runCapture(t, tc.args...)
 		assertContains(t, out, tc.want)
@@ -135,6 +135,7 @@ mode = "advisory"
 
 [[workstream_profiles]]
 name = "platform-foundation"
+rule_groups = ["platform.core"]
 review_domains = ["backend"]
 
 [[workstream_profiles.gates]]
@@ -147,13 +148,16 @@ accepted_results = ["pass"]
 	assertContains(t, out, "rule pack rules-platform: rules=1 groups=1 findings=0")
 	assertContains(t, out, "group: rules-platform.core")
 
-	runOK(t, "add", "T-001", "--title", "Rules evidence", "--role", "backend")
+	runOK(t, "add", "T-001", "--title", "Rules evidence", "--role", "backend", "--profile", "platform-foundation", "--source-paths", "doc/api/openapi.yaml", "--tag", "surface:api", "--risk-level", "medium")
 	runOK(t, "record", "evidence", "T-001", "--command-text", "make codegen", "--result", "pass", "--artifact-type", "generated-artifacts-clean")
 	out = runCapture(t, "rules", "evidence-types")
 	assertContains(t, out, "rule pack platform: rules=1 groups=1 findings=0")
 	assertContains(t, out, "- generated-artifacts-clean")
 	assertContains(t, out, "config_gate")
 	assertContains(t, out, "recorded")
+	out = runCapture(t, "rules", "match", "T-001")
+	assertContains(t, out, "platform.contract-first [selected]")
+	assertContains(t, out, "group=platform.core")
 }
 
 func TestCLI_WorkflowCloseoutCleanTask(t *testing.T) {

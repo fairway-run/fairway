@@ -99,6 +99,7 @@ type WorkstreamProfile struct {
 	Name            string                  `toml:"name"`
 	TaskKinds       []string                `toml:"task_kinds"`
 	DashboardGroups []string                `toml:"dashboard_groups"`
+	RuleGroups      []string                `toml:"rule_groups"`
 	TagGroups       []WorkstreamTagGroup    `toml:"tag_groups"`
 	ReviewDomains   []string                `toml:"review_domains"`
 	RouteSamples    []string                `toml:"route_samples"`
@@ -420,6 +421,9 @@ func validateWorkstreamProfiles(profiles []WorkstreamProfile, kindSet map[string
 			}
 		}
 		if err := validateStringList("[[workstream_profiles]] dashboard_groups", profile.DashboardGroups); err != nil {
+			return err
+		}
+		if err := validateStringList("[[workstream_profiles]] rule_groups", profile.RuleGroups); err != nil {
 			return err
 		}
 		tagGroups := map[string]bool{}

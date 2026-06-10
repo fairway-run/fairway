@@ -65,6 +65,7 @@ fairway watcher finish <watch-id> --result <pass|fail|blocked> [--artifact <path
 fairway watcher status [--include-done]
 fairway rules validate <rule-pack-dir>                 # validate local rule-pack metadata and report groups/findings
 fairway rules evidence-types                           # list evidence types from loaded packs, profile gates, and recorded evidence
+fairway rules match <task-id>                          # show selected, disabled, and non-applicable rules for a task
 fairway checkpoint record <task-id> --summary <text> [--state <state>] [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path>]
 fairway checkpoint status [--all]
 fairway checkpoint stale [--before <date>] [--all]

@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/store"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,11 +32,12 @@ type Rule struct {
 }
 
 type AppliesWhen struct {
-	SourcePaths []string `yaml:"source_paths"`
-	TargetPaths []string `yaml:"target_paths"`
-	Tags        []string `yaml:"tags"`
-	TaskKinds   []string `yaml:"task_kinds"`
-	Profiles    []string `yaml:"profiles"`
+	SourcePaths   []string `yaml:"source_paths"`
+	TargetPaths   []string `yaml:"target_paths"`
+	Tags          []string `yaml:"tags"`
+	TaskKinds     []string `yaml:"task_kinds"`
+	Profiles      []string `yaml:"profiles"`
+	ReviewDomains []string `yaml:"review_domains"`
 }
 
 type Pack struct {
@@ -53,9 +56,16 @@ type Finding struct {
 }
 
 type LoadOptions struct {
-	Root          string
-	KnownDomains  map[string]bool
-	KnownEvidence map[string]bool
+	Root            string
+	KnownDomains    map[string]bool
+	KnownEvidence   map[string]bool
+	IncludeDisabled bool
+}
+
+type Match struct {
+	Rule    Rule
+	Status  string
+	Reasons []string
 }
 
 type ruleFrontMatter struct {
@@ -83,7 +93,7 @@ func LoadConfigured(cfg config.Config, root string, opts LoadOptions) ([]Pack, e
 	var packs []Pack
 	for _, source := range cfg.RuleSources {
 		mode := ruleSourceMode(source)
-		if mode == "disabled" {
+		if mode == "disabled" && !opts.IncludeDisabled {
 			continue
 		}
 		dir, err := ResolveSourcePath(source.Source, root)
@@ -338,4 +348,145 @@ func HasErrors(findings []Finding) bool {
 		}
 	}
 	return false
+}
+
+func MatchTask(cfg config.Config, packs []Pack, task store.Task) []Match {
+	groupSet := boundRuleGroups(cfg, task.Definition.Profile)
+	var matches []Match
+	for _, pack := range packs {
+		for _, rule := range pack.Rules {
+			status, reasons := matchRule(groupSet, rule, task.Definition)
+			if rule.Mode == "disabled" {
+				status = "disabled"
+				if len(reasons) == 0 {
+					reasons = append(reasons, "rule source is disabled")
+				}
+			}
+			matches = append(matches, Match{Rule: rule, Status: status, Reasons: reasons})
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		ri, rj := riskRank(matches[i].Rule.RiskFloor), riskRank(matches[j].Rule.RiskFloor)
+		if ri != rj {
+			return ri > rj
+		}
+		return matches[i].Rule.ID < matches[j].Rule.ID
+	})
+	return matches
+}
+
+func matchRule(boundGroups map[string]bool, rule Rule, task store.TaskDefinition) (string, []string) {
+	var reasons []string
+	if len(boundGroups) > 0 && !boundGroups[rule.Group] {
+		reasons = append(reasons, fmt.Sprintf("group %s is not bound to profile %s", rule.Group, task.Profile))
+	}
+	if len(rule.AppliesWhen.SourcePaths) > 0 && !anyGlobMatch(rule.AppliesWhen.SourcePaths, task.SourcePaths) {
+		reasons = append(reasons, "source paths do not match")
+	}
+	if len(rule.AppliesWhen.TargetPaths) > 0 && !anyGlobMatch(rule.AppliesWhen.TargetPaths, task.TargetPaths) {
+		reasons = append(reasons, "target paths do not match")
+	}
+	if len(rule.AppliesWhen.Tags) > 0 && !anyOverlap(rule.AppliesWhen.Tags, task.Tags) {
+		reasons = append(reasons, "tags do not match")
+	}
+	if len(rule.AppliesWhen.TaskKinds) > 0 && !contains(rule.AppliesWhen.TaskKinds, task.Kind) {
+		reasons = append(reasons, "task kind does not match")
+	}
+	if len(rule.AppliesWhen.Profiles) > 0 && !contains(rule.AppliesWhen.Profiles, task.Profile) {
+		reasons = append(reasons, "profile filter does not match")
+	}
+	if len(rule.AppliesWhen.ReviewDomains) > 0 && !anyOverlap(rule.AppliesWhen.ReviewDomains, task.ReviewDomains) {
+		reasons = append(reasons, "review domains do not match")
+	}
+	if rule.RiskFloor != "" && riskRank(task.RiskLevel) < riskRank(rule.RiskFloor) {
+		reasons = append(reasons, fmt.Sprintf("task risk %q is below floor %q", firstNonEmpty(task.RiskLevel, "low"), rule.RiskFloor))
+	}
+	if len(reasons) > 0 {
+		return "non_applicable", reasons
+	}
+	return "selected", nil
+}
+
+func boundRuleGroups(cfg config.Config, profileName string) map[string]bool {
+	if profileName == "" {
+		return nil
+	}
+	for _, profile := range cfg.WorkstreamProfiles {
+		if profile.Name != profileName || len(profile.RuleGroups) == 0 {
+			continue
+		}
+		out := map[string]bool{}
+		for _, group := range profile.RuleGroups {
+			out[group] = true
+		}
+		return out
+	}
+	return nil
+}
+
+func anyGlobMatch(patterns, values []string) bool {
+	for _, pattern := range patterns {
+		for _, value := range values {
+			if globMatch(pattern, value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func globMatch(pattern, value string) bool {
+	pattern = filepath.ToSlash(pattern)
+	value = filepath.ToSlash(value)
+	if strings.HasSuffix(pattern, "/**") {
+		return strings.HasPrefix(value, strings.TrimSuffix(pattern, "/**")+"/") || value == strings.TrimSuffix(pattern, "/**")
+	}
+	ok, err := path.Match(pattern, value)
+	return err == nil && ok
+}
+
+func anyOverlap(a, b []string) bool {
+	set := map[string]bool{}
+	for _, value := range b {
+		set[value] = true
+	}
+	for _, value := range a {
+		if set[value] {
+			return true
+		}
+	}
+	return false
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func riskRank(risk string) int {
+	switch risk {
+	case "critical":
+		return 4
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	case "low", "":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
