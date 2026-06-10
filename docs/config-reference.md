@@ -245,18 +245,38 @@ fairway packet template architecture-map T-010 \
   --field acceptance="owners and review routes are explicit"
 ```
 
-### `[[rule_sources]]` draft
+### `[[rule_sources]]`
 
-Rule sources are planned configuration for reusable operating rule packs. They
-are documented in [Rule packs](design/rule-packs.md). The intended shape is:
+Rule sources configure reusable operating rule packs. They are documented in
+[Rule packs](design/rule-packs.md). The first implementation is local-first:
+enabled sources must use `path:` or `file:`.
 
 ```toml
 [[rule_sources]]
 name = "fairway-platform"
-source = "github:fairway-run/fairway-rules-platform"
-version = "v0.1.0"
+source = "path:../fairway-rules-platform"
 mode = "advisory"
+
+[[rule_sources]]
+name = "gpuaas"
+source = "path:../fairway-rules-gpuaas"
+mode = "blocking"
+
+[[rule_sources]]
+name = "codeguard"
+source = "github:fairway-run/fairway-rules-codeguard"
+mode = "disabled"
+commit_sha = "0123456789abcdef0123456789abcdef01234567"
+checksum = "sha256:..."
 ```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | — | Unique source name. Group names are derived from this value plus the pack `rules/` subdirectory. |
+| `source` | string | — | Source reference. Initial enabled support is local `path:` or `file:` only. Remote schemes are represented but not fetched. |
+| `mode` | string | `advisory` | `advisory`, `blocking`, or `disabled`. |
+| `commit_sha` | string | — | Future immutable remote pin metadata. Required for represented `github:` sources. |
+| `checksum` | string | — | Future remote content checksum metadata. Required for represented `github:` sources. |
 
 Modes:
 
@@ -264,7 +284,9 @@ Modes:
 - `blocking`: missing required evidence blocks configured readiness checks.
 - `disabled`: keep the source configured but do not evaluate it.
 
-This section is a design target until the rule-source loader lands.
+Remote `github:` sources must remain `disabled` until safe fetch/cache support
+lands. They must include both `commit_sha` and `checksum` so mutable branch/tag
+references do not become blocking authority by accident.
 
 ### `[states]`
 

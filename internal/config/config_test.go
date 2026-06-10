@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -13,6 +14,71 @@ func TestRootForConfigPath_DefaultFairwayDir(t *testing.T) {
 	want := filepath.Join("/tmp", "repo")
 	if got != want {
 		t.Fatalf("root=%q, want %q", got, want)
+	}
+}
+
+func TestValidateRuleSources(t *testing.T) {
+	base := Defaults(t.TempDir())
+	base.RuleSources = []RuleSource{
+		{Name: "platform", Source: "path:../fairway-rules-platform", Mode: "advisory"},
+		{Name: "gpuaas", Source: "file:/opt/fairway-rules-gpuaas", Mode: "blocking"},
+		{Name: "codeguard", Source: "github:fairway-run/fairway-rules-codeguard", Mode: "disabled", CommitSHA: strings.Repeat("a", 40), Checksum: "sha256:abc123"},
+	}
+	if err := Validate(base); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		sources []RuleSource
+		want    string
+	}{
+		{
+			name:    "duplicate name",
+			sources: []RuleSource{{Name: "platform", Source: "path:one"}, {Name: "platform", Source: "path:two"}},
+			want:    `duplicate rule source "platform"`,
+		},
+		{
+			name:    "unknown mode",
+			sources: []RuleSource{{Name: "platform", Source: "path:../rules", Mode: "strict"}},
+			want:    `unknown mode "strict"`,
+		},
+		{
+			name:    "empty source",
+			sources: []RuleSource{{Name: "platform", Source: ""}},
+			want:    `source is required`,
+		},
+		{
+			name:    "malformed source",
+			sources: []RuleSource{{Name: "platform", Source: "../rules"}},
+			want:    `scheme:path form`,
+		},
+		{
+			name:    "unsupported scheme",
+			sources: []RuleSource{{Name: "platform", Source: "https://example.com/rules"}},
+			want:    `unsupported source scheme "https"`,
+		},
+		{
+			name:    "github enabled",
+			sources: []RuleSource{{Name: "platform", Source: "github:fairway-run/fairway-rules-platform", Mode: "advisory", CommitSHA: "abc", Checksum: "sha256:abc"}},
+			want:    `remote fetch is not supported yet`,
+		},
+		{
+			name:    "github missing pin",
+			sources: []RuleSource{{Name: "platform", Source: "github:fairway-run/fairway-rules-platform", Mode: "disabled"}},
+			want:    `commit_sha and checksum`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Defaults(t.TempDir())
+			cfg.RuleSources = tc.sources
+			err := Validate(cfg)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tc.want)
+			}
+		})
 	}
 }
 

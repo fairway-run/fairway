@@ -27,6 +27,7 @@ type Config struct {
 	ReviewRoutes       []ReviewRoute        `toml:"review_routes"`
 	WorkstreamProfiles []WorkstreamProfile  `toml:"workstream_profiles"`
 	PacketTemplates    []PacketTemplate     `toml:"packet_templates"`
+	RuleSources        []RuleSource         `toml:"rule_sources"`
 }
 
 type FairwayConfig struct {
@@ -129,6 +130,14 @@ type PacketTemplate struct {
 	Name           string   `toml:"name"`
 	RequiredFields []string `toml:"required_fields"`
 	OptionalFields []string `toml:"optional_fields"`
+}
+
+type RuleSource struct {
+	Name      string `toml:"name"`
+	Source    string `toml:"source"`
+	Mode      string `toml:"mode"`
+	CommitSHA string `toml:"commit_sha"`
+	Checksum  string `toml:"checksum"`
 }
 
 func Defaults(root string) Config {
@@ -334,6 +343,56 @@ func Validate(cfg Config) error {
 	}
 	if err := validatePacketTemplates(cfg.PacketTemplates, workstreamProfileSet(cfg.WorkstreamProfiles)); err != nil {
 		return err
+	}
+	if err := validateRuleSources(cfg.RuleSources); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateRuleSources(sources []RuleSource) error {
+	seen := map[string]bool{}
+	for _, source := range sources {
+		name := strings.TrimSpace(source.Name)
+		if name == "" {
+			return errors.New("[[rule_sources]] name is required")
+		}
+		if seen[name] {
+			return fmt.Errorf("duplicate rule source %q", name)
+		}
+		seen[name] = true
+
+		rawSource := strings.TrimSpace(source.Source)
+		if rawSource == "" {
+			return fmt.Errorf("rule source %q source is required", name)
+		}
+		mode := strings.TrimSpace(source.Mode)
+		if mode == "" {
+			mode = "advisory"
+		}
+		switch mode {
+		case "advisory", "blocking", "disabled":
+		default:
+			return fmt.Errorf("rule source %q has unknown mode %q", name, source.Mode)
+		}
+
+		scheme, value, ok := strings.Cut(rawSource, ":")
+		if !ok || strings.TrimSpace(scheme) == "" || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("rule source %q source must use scheme:path form", name)
+		}
+		switch scheme {
+		case "path", "file":
+			// Local sources are the only enabled source type for the first loader.
+		case "github":
+			if mode != "disabled" {
+				return fmt.Errorf("rule source %q uses github source; remote fetch is not supported yet, set mode=\"disabled\"", name)
+			}
+			if strings.TrimSpace(source.CommitSHA) == "" || strings.TrimSpace(source.Checksum) == "" {
+				return fmt.Errorf("rule source %q remote source must include commit_sha and checksum before it can be represented safely", name)
+			}
+		default:
+			return fmt.Errorf("rule source %q has unsupported source scheme %q", name, scheme)
+		}
 	}
 	return nil
 }
