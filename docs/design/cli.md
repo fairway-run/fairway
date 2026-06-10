@@ -121,6 +121,14 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - Commands exit non-zero on validation failure. Pass `--json` for machine-readable error output.
 - Grouped commands accept `help`, `-h`, and `--help` after the group name, for
   example `fairway session --help` or `fairway dashboard help`.
+- Do not infer noun-style subcommands that are not in the command summary.
+  Fairway currently keeps core task operations as top-level verbs such as
+  `add`, `spawn`, `update`, `tree`, `ready`, and `task-detail`; there is no
+  grouped `task` command. Dependency metadata is set with
+  `fairway update <task-id> --dependencies <a,b,c>` and inspected through
+  `fairway task-detail <task-id>`, `fairway tree`, or readiness output. Watcher
+  rows are inspected with `fairway watcher status [--include-done]`; there is
+  no `fairway watcher list` command.
 - The caller's role is determined by (in order): `--as <role>` flag, `FAIRWAY_ROLE` env var, current worktree's configured role, prompt if ambiguous.
 - Evidence records are command-oriented. `artifact` is optional so "no-op" checks,
   skipped checks, and blocked checks can still leave an auditable row.

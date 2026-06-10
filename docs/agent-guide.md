@@ -879,8 +879,17 @@ track:
 fairway session status
 fairway status-report
 fairway ready
+fairway watcher status
 fairway reconcile active --dry-run
 ```
+
+Do not guess CLI subcommands from natural language. Check `fairway --help` or
+the group help first (`fairway session --help`, `fairway watcher --help`,
+`fairway workflow --help`). Use `fairway watcher status [--include-done]` for
+watcher rows; there is no `fairway watcher list`. Use `fairway task-detail`,
+`fairway tree`, `fairway ready`, and `fairway update --dependencies` for task
+and dependency inspection/update; there is no grouped `task` command or
+`depends` shortcut in the current CLI.
 
 Use `fairway session reconcile --dry-run` when you specifically want to inspect
 session-local cleanup such as dead PIDs, missing tmux panes, or stale sessions.
@@ -937,6 +946,7 @@ fairway packet watcher W-001 --owner C-ops/watch --process ci \
   --command "gh run watch" --success "green" --failure "red"
 fairway watcher start W-001 --task T-001 --owner C-ops/watch --process ci
 fairway watcher finish W-001 --result pass --artifact dist/ci.log
+fairway watcher status --include-done
 ```
 
 Before leaving a CI/deploy/UAT/provider monitor active, prove that a real

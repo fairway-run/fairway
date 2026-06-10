@@ -17,6 +17,9 @@ fairway watcher finish <watch-id> --result <pass|fail|blocked> [--artifact <path
 fairway watcher status [--include-done]
 ```
 
+`watcher status` is the watcher inspection surface. Do not use or document
+`watcher list`; it is not a Fairway command.
+
 `packet watcher` prints a bounded watch brief. `start` and `finish` record
 normal fairway evidence and checkpoint rows; they do not run the watched command
 unless a future runner adapter is configured.
