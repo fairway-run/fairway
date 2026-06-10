@@ -189,6 +189,7 @@ examples/session-adapters/ci-monitor.sh \
   --batch-id BATCH-001 \
   --monitor-kind ci \
   --external-run-id gha-123 \
+  --run-suffix retry-1 \
   --poll-command "gh run view gha-123 --json conclusion --jq .conclusion" \
   --success-regex "success" \
   --failure-regex "failure|cancelled|timed_out" \
@@ -206,6 +207,14 @@ default; it does not create tasks automatically.
 After closing the watcher and session, the adapter runs
 `fairway reconcile active --dry-run` as the reusable handback. If ready work
 remains, that report surfaces `monitor_completion_resume_needed`.
+
+When launching more than one monitor attempt for the same external CI/deploy
+run, pass `--run-suffix` with a unique attempt id such as `retry-1` or a
+timestamp. The external run id remains the CI/deploy identity recorded in
+Fairway metadata, while the suffix keeps the utility session and watcher ids
+unique. Without a suffix, repeated attempts for the same external run use the
+same deterministic watcher id and will fail once that watcher id already
+exists.
 
 ## Generic utility event adapter
 

@@ -1239,6 +1239,23 @@ func TestCIMonitorAdapterDryRun(t *testing.T) {
 		assertContains(t, pass, want)
 	}
 
+	retry := runAdapter(t, script,
+		"--task-id", "T-001",
+		"--external-run-id", "gha-123",
+		"--run-suffix", "retry-1",
+		"--poll-command", "gh run view gha-123",
+		"--result", "pass",
+		"--dry-run",
+	)
+	for _, want := range []string{
+		"session end ci-monitor-ci-gha-123-retry-1",
+		"watcher finish ci-monitor-ci-gha-123-retry-1",
+		"run_suffix=retry-1",
+		"--external-run-id gha-123",
+	} {
+		assertContains(t, retry, want)
+	}
+
 	fail := runAdapter(t, script,
 		"--task-id", "T-001",
 		"--monitor-kind", "deploy",
@@ -1323,6 +1340,26 @@ func TestCIMonitorAdapterLiveSmoke(t *testing.T) {
 	assertContains(t, checkpoints, "ci-monitor completed ci run gha-live: pass")
 	sessions := runExternal("session", "status", "--all")
 	assertContains(t, sessions, "ci-monitor-ci-gha-live")
+	assertContains(t, sessions, "ended")
+
+	cmd = exec.Command("bash", script,
+		"--task-id", "T-001",
+		"--external-run-id", "gha-live",
+		"--run-suffix", "retry-1",
+		"--poll-command", "printf success",
+		"--artifact", "dist/gha-live-retry.log",
+		"--result", "pass",
+	)
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "FAIRWAY_BIN="+fairwayBin)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ci-monitor live retry smoke failed: %v\n%s", err, out)
+	}
+	detail = runExternal("task-detail", "T-001")
+	assertContains(t, detail, "run_suffix=retry-1")
+	sessions = runExternal("session", "status", "--all")
+	assertContains(t, sessions, "ci-monitor-ci-gha-live-retry-1")
 	assertContains(t, sessions, "ended")
 }
 

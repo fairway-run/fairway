@@ -18,6 +18,8 @@ Options:
   --monitor-kind <ci|deploy|smoke|uat|docs|ops>
                                     Monitor kind. Default: ci.
   --external-run-id <id>            CI/deploy/smoke/UAT run id or URL.
+  --run-suffix <id>                 Optional unique suffix for retry/background
+                                    attempts against the same external run.
   --automation-id <id>              Optional backing scheduler/heartbeat id.
   --poll-command <cmd>              Command used to poll the external run.
   --source-sha <sha>                Source commit SHA being monitored.
@@ -41,6 +43,7 @@ role="ops/watch"
 utility_name="ci-monitor"
 monitor_kind="ci"
 external_run_id=""
+run_suffix=""
 automation_id=""
 poll_command=""
 source_sha=""
@@ -61,6 +64,7 @@ while [[ $# -gt 0 ]]; do
     --utility-name) utility_name="${2:?--utility-name requires a value}"; shift 2 ;;
     --monitor-kind) monitor_kind="${2:?--monitor-kind requires a value}"; shift 2 ;;
     --external-run-id) external_run_id="${2:?--external-run-id requires a value}"; shift 2 ;;
+    --run-suffix) run_suffix="${2:?--run-suffix requires a value}"; shift 2 ;;
     --automation-id) automation_id="${2:?--automation-id requires a value}"; shift 2 ;;
     --poll-command) poll_command="${2:?--poll-command requires a value}"; shift 2 ;;
     --source-sha) source_sha="${2:?--source-sha requires a value}"; shift 2 ;;
@@ -96,7 +100,11 @@ sanitize_id() {
   printf '%s' "$1" | tr -c 'A-Za-z0-9_.:-' '-'
 }
 
-session_id="$(sanitize_id "${utility_name}-${monitor_kind}-${external_run_id}")"
+session_key="${utility_name}-${monitor_kind}-${external_run_id}"
+if [[ -n "$run_suffix" ]]; then
+  session_key="${session_key}-${run_suffix}"
+fi
+session_id="$(sanitize_id "$session_key")"
 watch_id="$session_id"
 artifact_value="$artifact"
 if [[ -z "$artifact_value" ]]; then
@@ -106,6 +114,7 @@ fi
 note_parts=("external_run=${external_run_id}")
 if [[ -n "$batch_id" ]]; then note_parts+=("work_batch=${batch_id}"); fi
 if [[ -n "$source_sha" ]]; then note_parts+=("source_sha=${source_sha}"); fi
+if [[ -n "$run_suffix" ]]; then note_parts+=("run_suffix=${run_suffix}"); fi
 notes="$(printf '%s ' "${note_parts[@]}")"
 notes="${notes% }"
 
