@@ -134,6 +134,45 @@ func TestBuildPlanReportsHandoffWithoutDeliveredNotification(t *testing.T) {
 	}
 }
 
+func TestBuildPlanFiltersHistoricalTerminalNotificationGaps(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "DONE-001", Title: "Historical done handoff", Kind: "task", Role: "backend"},
+		{ID: "DONEREVIEW-001", Title: "Terminal pending review handoff", Kind: "task", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "DONE-001", store.Handoff{ToRole: "security", Payload: "please review"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "DONEREVIEW-001", store.Handoff{ToRole: "security", Payload: "please review"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONE-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RouteReview(ctx, "DONEREVIEW-001", "security", "terminal task still needs review notification"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONEREVIEW-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasPlanAction(plan, "notification-gated", "send_or_record_provider_notification", "DONE-001") {
+		t.Fatalf("historical terminal handoff surfaced as notification gap: %+v", plan.Actions)
+	}
+	if !hasPlanAction(plan, "notification-gated", "send_or_record_provider_notification", "DONEREVIEW-001") {
+		t.Fatalf("terminal pending-review handoff did not surface as gap: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+}
+
 func TestBuildPlanAllWorkCompleteIsIdle(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)

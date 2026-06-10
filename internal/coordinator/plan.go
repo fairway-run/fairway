@@ -125,7 +125,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	if err != nil {
 		return Plan{}, err
 	}
-	notificationGaps, err := s.HandoffNotificationGaps(ctx)
+	notificationGaps, err := s.HandoffNotificationGapsFiltered(ctx, store.HandoffNotificationGapOptions{TerminalStatuses: cfg.States.Terminal})
 	if err != nil {
 		return Plan{}, err
 	}

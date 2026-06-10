@@ -130,6 +130,10 @@ type HandoffNotificationGap struct {
 	LastState          string `json:"last_state,omitempty"`
 }
 
+type HandoffNotificationGapOptions struct {
+	TerminalStatuses []string
+}
+
 type Session struct {
 	ID              string `json:"id"`
 	Role            string `json:"role"`
@@ -1568,8 +1572,15 @@ ORDER BY created_at`, s.projectID, taskID, taskID)
 }
 
 func (s *Store) HandoffNotificationGaps(ctx context.Context) ([]HandoffNotificationGap, error) {
+	return s.HandoffNotificationGapsFiltered(ctx, HandoffNotificationGapOptions{})
+}
+
+func (s *Store) HandoffNotificationGapsFiltered(ctx context.Context, opts HandoffNotificationGapOptions) ([]HandoffNotificationGap, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT hf.task_id, d.role, hf.to_role, hf.id, hf.created_at,
+       st.status,
+       st.review_required,
+       COALESCE(st.review_status, '') AS review_status,
        COALESCE(MAX(n.created_at), '') AS last_notification_at,
        COALESCE((
          SELECT n2.state
@@ -1584,28 +1595,54 @@ SELECT hf.task_id, d.role, hf.to_role, hf.id, hf.created_at,
        SUM(CASE WHEN n.state IN ('sent', 'acknowledged', 'review_recorded') THEN 1 ELSE 0 END) AS delivered_count
 FROM task_handoffs hf
 JOIN task_definitions d ON d.project_id=hf.project_id AND d.id=hf.task_id
+JOIN task_state st ON st.project_id=hf.project_id AND st.task_id=hf.task_id
 LEFT JOIN task_notifications n ON n.project_id=hf.project_id
   AND n.task_id=hf.task_id
   AND n.domain=hf.to_role
   AND n.created_at >= hf.created_at
 WHERE hf.project_id=?
-GROUP BY hf.task_id, d.role, hf.to_role, hf.id, hf.created_at
+  AND COALESCE(hf.acknowledged_at, '') = ''
+GROUP BY hf.task_id, d.role, hf.to_role, hf.id, hf.created_at, st.status, st.review_required, st.review_status
 HAVING delivered_count IS NULL OR delivered_count = 0
 ORDER BY hf.created_at DESC`, s.projectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	terminal := map[string]bool{}
+	for _, status := range opts.TerminalStatuses {
+		status = strings.TrimSpace(status)
+		if status != "" {
+			terminal[status] = true
+		}
+	}
 	var out []HandoffNotificationGap
 	for rows.Next() {
 		var gap HandoffNotificationGap
 		var deliveredCount sql.NullInt64
-		if err := rows.Scan(&gap.TaskID, &gap.Role, &gap.Domain, &gap.HandoffID, &gap.LastHandoffAt, &gap.LastNotificationAt, &gap.LastState, &deliveredCount); err != nil {
+		var taskStatus, reviewStatus string
+		var reviewRequired bool
+		if err := rows.Scan(&gap.TaskID, &gap.Role, &gap.Domain, &gap.HandoffID, &gap.LastHandoffAt, &taskStatus, &reviewRequired, &reviewStatus, &gap.LastNotificationAt, &gap.LastState, &deliveredCount); err != nil {
 			return nil, err
+		}
+		if terminal[taskStatus] && !terminalNotificationGapStillRelevant(reviewRequired, reviewStatus, gap.LastState) {
+			continue
 		}
 		out = append(out, gap)
 	}
 	return out, rows.Err()
+}
+
+func terminalNotificationGapStillRelevant(reviewRequired bool, reviewStatus, lastNotificationState string) bool {
+	if reviewRequired && strings.TrimSpace(reviewStatus) != "approved" {
+		return true
+	}
+	switch strings.TrimSpace(lastNotificationState) {
+	case "intent", "failed":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Store) RecordReview(ctx context.Context, taskID string, r Review) error {

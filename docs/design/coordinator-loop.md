@@ -133,6 +133,13 @@ task, merge, push, deploy, or release. It only proves the configured target was
 contacted. Review authority still comes from `fairway record review`; task
 authority still comes from normal status, evidence, and merge-ready gates.
 
+Coordinator notification-gap reporting is scoped to actionable work. It ignores
+handoffs that were explicitly acknowledged and suppresses historical handoffs
+on terminal tasks unless the task still has pending review routing or an
+unresolved notification attempt such as `intent` or `failed`. This keeps
+upgraded projects from flooding the coordinator plan with old done-task
+handoffs while preserving gaps that still need human delivery or review action.
+
 ## Why This Exists
 
 GPUaaS used separate `queue-*`, `agent-*`, and `orchestrator-*` helpers. The

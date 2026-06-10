@@ -436,6 +436,66 @@ func TestNotificationTracksHandoffDeliveryState(t *testing.T) {
 	}
 }
 
+func TestHandoffNotificationGapsFilterAcknowledgedAndTerminalTasks(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	tasks := []TaskDefinition{
+		{ID: "ACTIVE-001", Title: "Active handoff", Role: "backend"},
+		{ID: "ACK-001", Title: "Acknowledged handoff", Role: "backend"},
+		{ID: "DONE-001", Title: "Historical done handoff", Role: "backend"},
+		{ID: "DONEREVIEW-001", Title: "Terminal pending review", Role: "backend"},
+	}
+	if err := s.ImportTasks(ctx, tasks); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"ACTIVE-001", "ACK-001", "DONE-001", "DONEREVIEW-001"} {
+		if err := s.RecordHandoff(ctx, id, Handoff{ToRole: "security", Payload: "please review"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE task_handoffs SET acknowledged_at=? WHERE project_id=? AND task_id=?`, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, "ACK-001"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONE-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RouteReview(ctx, "DONEREVIEW-001", "security", "terminal task still needs review notification"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONEREVIEW-001", "done", "", false); err != nil {
+		t.Fatal(err)
+	}
+
+	gaps, err := s.HandoffNotificationGapsFiltered(ctx, HandoffNotificationGapOptions{TerminalStatuses: []string{"done"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gaps) != 2 {
+		t.Fatalf("gaps=%+v, want active and terminal pending-review gaps", gaps)
+	}
+	if !hasHandoffGap(gaps, "ACTIVE-001") {
+		t.Fatalf("active handoff gap missing: %+v", gaps)
+	}
+	if hasHandoffGap(gaps, "ACK-001") {
+		t.Fatalf("acknowledged handoff surfaced as gap: %+v", gaps)
+	}
+	if hasHandoffGap(gaps, "DONE-001") {
+		t.Fatalf("terminal done handoff surfaced as gap: %+v", gaps)
+	}
+	if !hasHandoffGap(gaps, "DONEREVIEW-001") {
+		t.Fatalf("terminal pending-review handoff gap missing: %+v", gaps)
+	}
+}
+
+func hasHandoffGap(gaps []HandoffNotificationGap, taskID string) bool {
+	for _, gap := range gaps {
+		if gap.TaskID == taskID {
+			return true
+		}
+	}
+	return false
+}
+
 func TestSessionLifecycle(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
