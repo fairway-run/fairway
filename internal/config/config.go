@@ -28,6 +28,7 @@ type Config struct {
 	WorkstreamProfiles []WorkstreamProfile  `toml:"workstream_profiles"`
 	PacketTemplates    []PacketTemplate     `toml:"packet_templates"`
 	RuleSources        []RuleSource         `toml:"rule_sources"`
+	ProviderTargets    []ProviderTarget     `toml:"provider_targets"`
 }
 
 type FairwayConfig struct {
@@ -139,6 +140,13 @@ type RuleSource struct {
 	Mode      string `toml:"mode"`
 	CommitSHA string `toml:"commit_sha"`
 	Checksum  string `toml:"checksum"`
+}
+
+type ProviderTarget struct {
+	Domain   string `toml:"domain"`
+	Provider string `toml:"provider"`
+	Target   string `toml:"target"`
+	Type     string `toml:"type"`
 }
 
 func Defaults(root string) Config {
@@ -347,6 +355,40 @@ func Validate(cfg Config) error {
 	}
 	if err := validateRuleSources(cfg.RuleSources); err != nil {
 		return err
+	}
+	if err := validateProviderTargets(cfg.ProviderTargets); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateProviderTargets(targets []ProviderTarget) error {
+	seen := map[string]bool{}
+	for _, target := range targets {
+		domain := strings.TrimSpace(target.Domain)
+		if domain == "" {
+			return errors.New("[[provider_targets]] domain is required")
+		}
+		if strings.TrimSpace(target.Provider) == "" {
+			return errors.New("[[provider_targets]] provider is required")
+		}
+		if strings.TrimSpace(target.Target) == "" {
+			return errors.New("[[provider_targets]] target is required")
+		}
+		targetType := strings.TrimSpace(target.Type)
+		if targetType == "" {
+			targetType = "generic"
+		}
+		switch targetType {
+		case "generic", "thread", "tmux", "cli", "webhook":
+		default:
+			return fmt.Errorf("[[provider_targets]] type %q is invalid", target.Type)
+		}
+		key := domain + "\x00" + strings.TrimSpace(target.Provider) + "\x00" + strings.TrimSpace(target.Target)
+		if seen[key] {
+			return fmt.Errorf("duplicate provider target for domain %q", domain)
+		}
+		seen[key] = true
 	}
 	return nil
 }

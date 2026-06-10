@@ -1064,6 +1064,24 @@ fairway record handoff T-001 \
 
 Use `--payload @path/to/file` for longer handoffs.
 
+A handoff is not the same thing as a delivered provider/thread message. When the
+coordinator actually sends, attempts, or receives acknowledgement for a provider
+notification, record that state separately:
+
+```bash
+fairway record notification T-001 \
+  --domain ui \
+  --provider codex \
+  --target <thread-or-adapter-target> \
+  --state sent
+```
+
+Use `--state failed --reason "<why>"` when the provider target could not be
+contacted. Use `acknowledged` only when the target confirmed receipt, and
+`review_recorded` only when the review was recorded in Fairway. Notification
+state never substitutes for `fairway record review`, status changes, merge,
+push, deploy, or release gates.
+
 ## Review
 
 Route review based on changed paths:

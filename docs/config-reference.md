@@ -49,6 +49,12 @@ reviewer = "arch"
 match = "doc/governance/**"
 reviewer = "governance"
 
+[[provider_targets]]
+domain = "security"
+provider = "codex"
+type = "thread"
+target = "codex-thread-id-or-adapter-target"
+
 [[workstream_profiles]]
 name = "platform-foundation"
 task_kinds = ["architecture-map", "boundary-guard", "facade"]
@@ -146,6 +152,39 @@ core. Keep provider credentials, polling, and API-specific state outside the
 Fairway config; adapters should write generic `session upsert`, `checkpoint
 record`, `record evidence`, and `record handoff` events using provider labels
 such as `codex`, `claude`, `gemini`, or `shell`.
+
+### `[[provider_targets]]`
+
+Provider targets map review or work domains to notification destinations. They
+are routing metadata only. They do not store provider credentials and they do
+not grant review approval, task completion, merge, push, deploy, or release
+authority.
+
+```toml
+[[provider_targets]]
+domain = "security"
+provider = "codex"
+type = "thread"       # generic | thread | tmux | cli | webhook
+target = "019e..."
+
+[[provider_targets]]
+domain = "ops"
+provider = "tmux"
+type = "tmux"
+target = "ops:0.1"
+```
+
+Notification adapters may use these targets to send a provider-specific prompt
+or event, then record the result with `fairway record notification`. Fairway
+keeps the durable state machine separate: a delivered notification is only proof
+that the target was contacted, not proof that review happened.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `domain` | string | — | Review domain or target role, such as `architecture`, `security`, `governance`, `backend`, `frontend`, or `ops`. |
+| `provider` | string | — | Provider/adapter label, such as `codex`, `claude`, `tmux`, `shell`, or `webhook`. |
+| `type` | string | `generic` | Destination type: `generic`, `thread`, `tmux`, `cli`, or `webhook`. |
+| `target` | string | — | Provider-local target id. Do not put secrets or bearer URLs here. |
 
 ### `[coordinator]`
 

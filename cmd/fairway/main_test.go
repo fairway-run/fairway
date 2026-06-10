@@ -41,6 +41,8 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "claim", "T-001")
 	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass", "--duration-seconds", "1")
 	runOK(t, "--json", "record", "guard-report", "T-001", "--guard", "import-boundary", "--mode", "report_only", "--finding", "cmd/api imports billing internals", "--false-positive", "generated code", "--allowed-debt", "legacy route", "--graduation-criteria", "zero critical findings", "--artifact", "dist/import-boundary.json")
+	runOK(t, "record", "handoff", "T-001", "--to", "ui", "--payload", "please review")
+	runOK(t, "record", "notification", "T-001", "--domain", "ui", "--provider", "codex", "--target", "thread-1", "--state", "sent")
 	runOK(t, "route", "review", "T-001", "--reviewer", "ui", "--reason", "smoke")
 	runOK(t, "record", "review", "T-001", "--reviewer", "ui", "--verdict", "approve", "--reason", "ok")
 	runOK(t, "set-status", "T-001", "done")
@@ -76,7 +78,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"session", "help"}, "fairway session upsert|status|end|reconcile|launch"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
-		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|review|usage|push-intent"},
+		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent"},
 		{[]string{"usage", "--help"}, "fairway usage report"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
@@ -1426,6 +1428,7 @@ func TestUtilityEventAdapterDryRun(t *testing.T) {
 		"--utility-kind", "registry",
 		"--command", "scripts/check-image-freshness.sh",
 		"--external-run-id", "registry-1",
+		"--artifact", "dist/registry-freshness.md",
 		"--state", "failed",
 		"--decision-required",
 		"--recommended-next-action", "create OPS-FIX for stale image",
@@ -1445,6 +1448,7 @@ func TestUtilityEventAdapterDryRun(t *testing.T) {
 		"--utility-name", "stale-branch-scan",
 		"--utility-kind", "stale-branch",
 		"--command", "git for-each-ref refs/heads",
+		"--artifact", "dist/stale-branch-scan.md",
 		"--state", "stale",
 		"--result", "blocked",
 		"--dry-run",

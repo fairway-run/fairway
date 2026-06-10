@@ -32,25 +32,26 @@ type PlanOptions struct {
 }
 
 type Plan struct {
-	OK              bool                   `json:"ok"`
-	DryRun          bool                   `json:"dry_run"`
-	GeneratedAt     string                 `json:"generated_at"`
-	Summary         PlanSummary            `json:"summary"`
-	Actions         []PlanAction           `json:"actions"`
-	Ready           []TaskRef              `json:"ready,omitempty"`
-	Active          []TaskRef              `json:"active,omitempty"`
-	Waiting         []TaskRef              `json:"waiting,omitempty"`
-	Blocked         []TaskRef              `json:"blocked,omitempty"`
-	ReviewGated     []TaskRef              `json:"review_gated,omitempty"`
-	ReviewDebt      []TaskRef              `json:"review_debt,omitempty"`
-	UtilityGated    []TaskRef              `json:"utility_gated,omitempty"`
-	StopConditions  []PlanStopCondition    `json:"stop_conditions,omitempty"`
-	Reconcile       reconcile.ActiveReport `json:"reconcile"`
-	SessionCount    int                    `json:"session_count"`
-	WatcherCount    int                    `json:"watcher_count"`
-	CheckpointCount int                    `json:"checkpoint_count"`
-	WorktreeCount   int                    `json:"worktree_count"`
-	WorkBatchCount  int                    `json:"work_batch_count"`
+	OK                bool                   `json:"ok"`
+	DryRun            bool                   `json:"dry_run"`
+	GeneratedAt       string                 `json:"generated_at"`
+	Summary           PlanSummary            `json:"summary"`
+	Actions           []PlanAction           `json:"actions"`
+	Ready             []TaskRef              `json:"ready,omitempty"`
+	Active            []TaskRef              `json:"active,omitempty"`
+	Waiting           []TaskRef              `json:"waiting,omitempty"`
+	Blocked           []TaskRef              `json:"blocked,omitempty"`
+	ReviewGated       []TaskRef              `json:"review_gated,omitempty"`
+	ReviewDebt        []TaskRef              `json:"review_debt,omitempty"`
+	NotificationGated []TaskRef              `json:"notification_gated,omitempty"`
+	UtilityGated      []TaskRef              `json:"utility_gated,omitempty"`
+	StopConditions    []PlanStopCondition    `json:"stop_conditions,omitempty"`
+	Reconcile         reconcile.ActiveReport `json:"reconcile"`
+	SessionCount      int                    `json:"session_count"`
+	WatcherCount      int                    `json:"watcher_count"`
+	CheckpointCount   int                    `json:"checkpoint_count"`
+	WorktreeCount     int                    `json:"worktree_count"`
+	WorkBatchCount    int                    `json:"work_batch_count"`
 }
 
 type PlanSummary struct {
@@ -64,6 +65,7 @@ type PlanSummary struct {
 	Complete          int    `json:"complete"`
 	ReviewGated       int    `json:"review_gated"`
 	ReviewDebt        int    `json:"review_debt"`
+	NotificationGated int    `json:"notification_gated"`
 	ApprovalGated     int    `json:"approval_gated"`
 	UtilityGated      int    `json:"utility_gated"`
 	BatchRecommended  int    `json:"batch_recommended"`
@@ -120,6 +122,10 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		return Plan{}, err
 	}
 	batches, err := s.WorkBatches(ctx)
+	if err != nil {
+		return Plan{}, err
+	}
+	notificationGaps, err := s.HandoffNotificationGaps(ctx)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -208,6 +214,19 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			stop = true
 		}
 		addAction(&plan, priority, classification, finding.Action, finding.Reason, finding.TaskID, finding.Role, finding.SessionID, "", nil, stop)
+	}
+	for _, gap := range notificationGaps {
+		plan.Summary.NotificationGated++
+		plan.NotificationGated = appendTaskRef(plan.NotificationGated, TaskRef{ID: gap.TaskID, Role: gap.Role, Status: "handoff_unnotified"})
+		reason := fmt.Sprintf("handoff %d to %s has no delivered provider/thread notification; provider_target=%s", gap.HandoffID, gap.Domain, providerTargetSummary(cfg.ProviderTargets, gap.Domain))
+		if gap.LastState != "" {
+			reason += "; latest notification state=" + gap.LastState
+		}
+		if gap.LastNotificationAt != "" {
+			reason += "; last_notification_at=" + gap.LastNotificationAt
+		}
+		reason += "; last_handoff_at=" + gap.LastHandoffAt
+		addAction(&plan, 18, "notification-gated", "send_or_record_provider_notification", reason, gap.TaskID, gap.Domain, "", "", nil, false)
 	}
 	for _, checkpoint := range latestOpenCheckpointsByTask(checkpoints) {
 		if terminal[taskStatusByID[checkpoint.TaskID]] {
@@ -389,6 +408,26 @@ func appendTaskRef(refs []TaskRef, ref TaskRef) []TaskRef {
 		}
 	}
 	return append(refs, ref)
+}
+
+func providerTargetSummary(targets []config.ProviderTarget, domain string) string {
+	domain = strings.TrimSpace(domain)
+	var labels []string
+	for _, target := range targets {
+		if strings.TrimSpace(target.Domain) != domain {
+			continue
+		}
+		targetType := strings.TrimSpace(target.Type)
+		if targetType == "" {
+			targetType = "generic"
+		}
+		labels = append(labels, fmt.Sprintf("%s:%s(%s)", strings.TrimSpace(target.Provider), strings.TrimSpace(target.Target), targetType))
+	}
+	if len(labels) == 0 {
+		return "unconfigured"
+	}
+	sort.Strings(labels)
+	return strings.Join(labels, ",")
 }
 
 func limitTaskRefs(refs []TaskRef, limit int) []TaskRef {

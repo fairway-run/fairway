@@ -397,6 +397,45 @@ func TestHealth_CountsUnacknowledgedHandoff(t *testing.T) {
 	}
 }
 
+func TestNotificationTracksHandoffDeliveryState(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Review", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "T-001", Handoff{ToRole: "security", Payload: "please review"}); err != nil {
+		t.Fatal(err)
+	}
+	gaps, err := s.HandoffNotificationGaps(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gaps) != 1 || gaps[0].TaskID != "T-001" || gaps[0].Domain != "security" {
+		t.Fatalf("gaps=%+v, want security gap for T-001", gaps)
+	}
+	recorded, err := s.RecordNotification(ctx, Notification{TaskID: "T-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "sent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorded.ID == 0 || recorded.CreatedAt == "" {
+		t.Fatalf("recorded notification missing id/time: %+v", recorded)
+	}
+	notifications, err := s.Notifications(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications) != 1 || notifications[0].State != "sent" || notifications[0].Provider != "codex" {
+		t.Fatalf("notifications=%+v, want sent codex notification", notifications)
+	}
+	gaps, err = s.HandoffNotificationGaps(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gaps) != 0 {
+		t.Fatalf("gaps after sent notification=%+v, want none", gaps)
+	}
+}
+
 func TestSessionLifecycle(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

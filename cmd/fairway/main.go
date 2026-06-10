@@ -6290,13 +6290,13 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, root string, s 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		if isHelpOnly(args) {
-			subcommandUsage("record", "evidence|guard-report|handoff|review|usage|push-intent")
+			subcommandUsage("record", "evidence|guard-report|handoff|notification|review|usage|push-intent")
 			return nil
 		}
 		return errors.New("record requires type and task id")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("record", "evidence|guard-report|handoff|review|usage|push-intent")
+		subcommandUsage("record", "evidence|guard-report|handoff|notification|review|usage|push-intent")
 		return nil
 	}
 	switch args[0] {
@@ -6306,6 +6306,8 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 		return recordGuardReport(ctx, opts, args[1:])
 	case "handoff":
 		return recordHandoff(ctx, opts, args[1:])
+	case "notification":
+		return recordNotification(ctx, opts, args[1:])
 	case "review":
 		return recordReview(ctx, opts, args[1:])
 	case "usage":
@@ -6948,6 +6950,56 @@ func recordHandoff(ctx context.Context, opts globalOptions, args []string) error
 	}
 	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 		return s.RecordHandoff(ctx, taskID, store.Handoff{ToRole: *to, Payload: *payload})
+	})
+}
+
+func recordNotification(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("record notification requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("notification", flag.ContinueOnError)
+	handoffID := fs.String("handoff-id", "", "handoff id associated with this notification")
+	domain := fs.String("domain", "", "review domain or target role")
+	provider := fs.String("provider", "", "provider name")
+	target := fs.String("target", "", "provider target such as thread id, tmux pane, or adapter destination")
+	state := fs.String("state", "intent", "notification state: intent, sent, acknowledged, review_recorded, failed")
+	reason := fs.String("reason", "", "reason or failure detail")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected notification arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *domain == "" {
+		return errors.New("--domain is required")
+	}
+	var handoffPtr *int64
+	if strings.TrimSpace(*handoffID) != "" {
+		parsed, err := strconv.ParseInt(strings.TrimSpace(*handoffID), 10, 64)
+		if err != nil || parsed <= 0 {
+			return fmt.Errorf("invalid --handoff-id %q", *handoffID)
+		}
+		handoffPtr = &parsed
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		recorded, err := s.RecordNotification(ctx, store.Notification{
+			TaskID:    taskID,
+			HandoffID: handoffPtr,
+			Domain:    *domain,
+			Provider:  *provider,
+			Target:    *target,
+			State:     *state,
+			Reason:    *reason,
+		})
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(recorded)
+		}
+		fmt.Printf("notification recorded %s domain=%s state=%s provider=%s target=%s\n", taskID, recorded.Domain, recorded.State, firstNonEmpty(recorded.Provider, "none"), firstNonEmpty(recorded.Target, "none"))
+		return nil
 	})
 }
 
@@ -7664,6 +7716,10 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	if err != nil {
 		return err
 	}
+	notifications, err := s.Notifications(ctx, taskID)
+	if err != nil {
+		return err
+	}
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
@@ -7679,7 +7735,8 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 			Usage                []store.ProviderUsage `json:"usage"`
 			UsageRollups         []store.UsageRollup   `json:"usage_rollups"`
 			Batches              []store.WorkBatch     `json:"batches"`
-		}{task, reviewStatus, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions, usageEvents, usageRollups, batches})
+			Notifications        []store.Notification  `json:"notifications"`
+		}{task, reviewStatus, transitions, evidence, handoffs, reviews, missingReviewDomains, sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
@@ -7711,7 +7768,14 @@ func printDetail(ctx context.Context, s *store.Store, taskID string, asJSON bool
 	}
 	fmt.Println("\nhandoffs:")
 	for _, h := range handoffs {
-		fmt.Printf("- to %s: %s\n", h.ToRole, h.Payload)
+		fmt.Printf("- #%d to %s: %s\n", h.ID, h.ToRole, h.Payload)
+	}
+	fmt.Println("\nnotifications:")
+	if len(notifications) == 0 {
+		fmt.Println("- none")
+	}
+	for _, n := range notifications {
+		fmt.Printf("- %s domain=%s provider=%s target=%s reason=%s\n", n.State, n.Domain, firstNonEmpty(n.Provider, "none"), firstNonEmpty(n.Target, "none"), firstNonEmpty(n.Reason, "none"))
 	}
 	fmt.Println("\nreviews:")
 	for _, r := range reviews {

@@ -82,6 +82,62 @@ func TestValidateRuleSources(t *testing.T) {
 	}
 }
 
+func TestValidateProviderTargets(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.ProviderTargets = []ProviderTarget{
+		{Domain: "security", Provider: "codex", Type: "thread", Target: "thread-1"},
+		{Domain: "ops", Provider: "tmux", Type: "tmux", Target: "ops:0.1"},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		targets []ProviderTarget
+		want    string
+	}{
+		{
+			name:    "missing domain",
+			targets: []ProviderTarget{{Provider: "codex", Target: "thread-1"}},
+			want:    "domain is required",
+		},
+		{
+			name:    "missing provider",
+			targets: []ProviderTarget{{Domain: "security", Target: "thread-1"}},
+			want:    "provider is required",
+		},
+		{
+			name:    "missing target",
+			targets: []ProviderTarget{{Domain: "security", Provider: "codex"}},
+			want:    "target is required",
+		},
+		{
+			name:    "invalid type",
+			targets: []ProviderTarget{{Domain: "security", Provider: "codex", Type: "socket", Target: "thread-1"}},
+			want:    "type \"socket\" is invalid",
+		},
+		{
+			name: "duplicate",
+			targets: []ProviderTarget{
+				{Domain: "security", Provider: "codex", Type: "thread", Target: "thread-1"},
+				{Domain: "security", Provider: "codex", Type: "thread", Target: "thread-1"},
+			},
+			want: "duplicate provider target",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Defaults(t.TempDir())
+			cfg.ProviderTargets = tc.targets
+			err := Validate(cfg)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestRootForConfigPath_CustomConfig(t *testing.T) {
 	got := RootForConfigPath(filepath.Join("/tmp", "repo", "fairway.toml"))
 	want := filepath.Join("/tmp", "repo")

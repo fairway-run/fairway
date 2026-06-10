@@ -149,7 +149,7 @@ existing_session_field() {
   if [[ "$dry_run" == true ]]; then
     return 0
   fi
-  "$fairway_bin" session status --all 2>/dev/null | awk -v id="$session_id" -v field="$field" '
+  "$fairway_bin" session status --all 2>/dev/null | awk -F '\t' -v id="$session_id" -v field="$field" '
     $1 == id {
       if (field == "status") print $3;
       if (field == "task") print $5;

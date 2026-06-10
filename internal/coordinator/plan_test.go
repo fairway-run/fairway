@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,6 +100,40 @@ func TestBuildPlanClassifiesStaleSessionUtilityAndDryRunNoMutation(t *testing.T)
 	}
 }
 
+func TestBuildPlanReportsHandoffWithoutDeliveredNotification(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.ProviderTargets = []config.ProviderTarget{{Domain: "security", Provider: "codex", Target: "019-security", Type: "thread"}}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "REVIEW-001", Title: "Needs review", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "REVIEW-001", store.Handoff{ToRole: "security", Payload: "please review"}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.NotificationGated != 1 || !hasPlanAction(plan, "notification-gated", "send_or_record_provider_notification", "REVIEW-001") {
+		t.Fatalf("notification gap not surfaced: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+	if !hasPlanActionReason(plan, "notification-gated", "REVIEW-001", "provider_target=codex:019-security(thread)") ||
+		!hasPlanActionReason(plan, "notification-gated", "REVIEW-001", "last_handoff_at=") {
+		t.Fatalf("notification gap did not include target and handoff timing: actions=%+v", plan.Actions)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "REVIEW-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "sent"}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.NotificationGated != 0 || hasPlanAction(plan, "notification-gated", "send_or_record_provider_notification", "REVIEW-001") {
+		t.Fatalf("sent notification still surfaced as gap: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+}
+
 func TestBuildPlanAllWorkCompleteIsIdle(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)
@@ -192,6 +227,15 @@ func openPlanStore(t *testing.T, ctx context.Context) *store.Store {
 func hasPlanAction(plan Plan, classification, action, taskID string) bool {
 	for _, candidate := range plan.Actions {
 		if candidate.Classification == classification && candidate.Action == action && (taskID == "" || candidate.TaskID == taskID) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPlanActionReason(plan Plan, classification, taskID, contains string) bool {
+	for _, action := range plan.Actions {
+		if action.Classification == classification && action.TaskID == taskID && strings.Contains(action.Reason, contains) {
 			return true
 		}
 	}

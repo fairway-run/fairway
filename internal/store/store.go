@@ -92,8 +92,12 @@ type Evidence struct {
 }
 
 type Handoff struct {
-	ToRole  string
-	Payload string
+	ID             int64  `json:"id"`
+	FromRole       string `json:"from_role,omitempty"`
+	ToRole         string `json:"to_role"`
+	Payload        string `json:"payload"`
+	AcknowledgedAt string `json:"acknowledged_at,omitempty"`
+	CreatedAt      string `json:"created_at,omitempty"`
 }
 
 type Review struct {
@@ -102,6 +106,28 @@ type Review struct {
 	Verdict  string
 	Reason   string
 	Commit   string
+}
+
+type Notification struct {
+	ID        int64  `json:"id"`
+	TaskID    string `json:"task_id"`
+	HandoffID *int64 `json:"handoff_id,omitempty"`
+	Domain    string `json:"domain"`
+	Provider  string `json:"provider,omitempty"`
+	Target    string `json:"target,omitempty"`
+	State     string `json:"state"`
+	Reason    string `json:"reason,omitempty"`
+	CreatedAt string `json:"created_at"`
+}
+
+type HandoffNotificationGap struct {
+	TaskID             string `json:"task_id"`
+	Role               string `json:"role"`
+	Domain             string `json:"domain"`
+	HandoffID          int64  `json:"handoff_id"`
+	LastHandoffAt      string `json:"last_handoff_at"`
+	LastNotificationAt string `json:"last_notification_at,omitempty"`
+	LastState          string `json:"last_state,omitempty"`
 }
 
 type Session struct {
@@ -1476,6 +1502,112 @@ FROM task_state WHERE project_id=? AND task_id=?`,
 	return checkWriteResult(res, err)
 }
 
+func (s *Store) RecordNotification(ctx context.Context, n Notification) (Notification, error) {
+	n.TaskID = strings.TrimSpace(n.TaskID)
+	n.Domain = strings.TrimSpace(n.Domain)
+	n.Provider = strings.TrimSpace(n.Provider)
+	n.Target = strings.TrimSpace(n.Target)
+	n.State = strings.TrimSpace(n.State)
+	n.Reason = strings.TrimSpace(n.Reason)
+	if n.TaskID == "" {
+		return Notification{}, errors.New("notification task id is required")
+	}
+	if n.Domain == "" {
+		return Notification{}, errors.New("notification domain is required")
+	}
+	switch n.State {
+	case "intent", "sent", "acknowledged", "review_recorded", "failed":
+	default:
+		return Notification{}, fmt.Errorf("invalid notification state %q", n.State)
+	}
+	if n.State == "failed" && n.Reason == "" {
+		return Notification{}, errors.New("failed notification requires reason")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := s.db.ExecContext(ctx, `
+INSERT INTO task_notifications
+  (project_id, task_id, handoff_id, domain, provider, target, state, reason, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.projectID, n.TaskID, n.HandoffID, n.Domain, n.Provider, n.Target, n.State, n.Reason, now)
+	if err := checkWriteResult(res, err); err != nil {
+		return Notification{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Notification{}, err
+	}
+	n.ID = id
+	n.CreatedAt = now
+	return n, nil
+}
+
+func (s *Store) Notifications(ctx context.Context, taskID string) ([]Notification, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, task_id, handoff_id, domain, COALESCE(provider, ''), COALESCE(target, ''), state, COALESCE(reason, ''), created_at
+FROM task_notifications
+WHERE project_id=? AND (? = '' OR task_id=?)
+ORDER BY created_at`, s.projectID, taskID, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Notification
+	for rows.Next() {
+		var n Notification
+		var handoffID sql.NullInt64
+		if err := rows.Scan(&n.ID, &n.TaskID, &handoffID, &n.Domain, &n.Provider, &n.Target, &n.State, &n.Reason, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		if handoffID.Valid {
+			value := handoffID.Int64
+			n.HandoffID = &value
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) HandoffNotificationGaps(ctx context.Context) ([]HandoffNotificationGap, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT hf.task_id, d.role, hf.to_role, hf.id, hf.created_at,
+       COALESCE(MAX(n.created_at), '') AS last_notification_at,
+       COALESCE((
+         SELECT n2.state
+         FROM task_notifications n2
+         WHERE n2.project_id=hf.project_id
+           AND n2.task_id=hf.task_id
+           AND n2.domain=hf.to_role
+           AND n2.created_at >= hf.created_at
+         ORDER BY n2.created_at DESC
+         LIMIT 1
+       ), '') AS last_state,
+       SUM(CASE WHEN n.state IN ('sent', 'acknowledged', 'review_recorded') THEN 1 ELSE 0 END) AS delivered_count
+FROM task_handoffs hf
+JOIN task_definitions d ON d.project_id=hf.project_id AND d.id=hf.task_id
+LEFT JOIN task_notifications n ON n.project_id=hf.project_id
+  AND n.task_id=hf.task_id
+  AND n.domain=hf.to_role
+  AND n.created_at >= hf.created_at
+WHERE hf.project_id=?
+GROUP BY hf.task_id, d.role, hf.to_role, hf.id, hf.created_at
+HAVING delivered_count IS NULL OR delivered_count = 0
+ORDER BY hf.created_at DESC`, s.projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []HandoffNotificationGap
+	for rows.Next() {
+		var gap HandoffNotificationGap
+		var deliveredCount sql.NullInt64
+		if err := rows.Scan(&gap.TaskID, &gap.Role, &gap.Domain, &gap.HandoffID, &gap.LastHandoffAt, &gap.LastNotificationAt, &gap.LastState, &deliveredCount); err != nil {
+			return nil, err
+		}
+		out = append(out, gap)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) RecordReview(ctx context.Context, taskID string, r Review) error {
 	if r.Reviewer == "" {
 		return errors.New("reviewer is required")
@@ -2053,7 +2185,7 @@ func (s *Store) ActivityFiltered(ctx context.Context, opts ActivityOptions) ([]A
 		opts.Limit = 100
 	}
 	where := []string{}
-	args := []any{s.projectID, s.projectID, s.projectID, s.projectID}
+	args := []any{s.projectID, s.projectID, s.projectID, s.projectID, s.projectID}
 	joinSQL := ""
 	if strings.TrimSpace(opts.Profile) != "" {
 		joinSQL = "LEFT JOIN task_definitions d ON d.project_id = ? AND d.id = a.task_id"
@@ -2098,6 +2230,9 @@ FROM (
   UNION ALL
   SELECT 'review', task_id, verdict || ' by ' || reviewer, reviewer, created_at
     FROM task_reviews WHERE project_id=?
+  UNION ALL
+  SELECT 'notification', task_id, state || ' to ' || domain || CASE WHEN provider IS NOT NULL AND provider != '' THEN ' via ' || provider ELSE '' END, COALESCE(provider, ''), created_at
+    FROM task_notifications WHERE project_id=?
 ) a
 `+joinSQL+`
 `+filterSQL+`
@@ -2516,7 +2651,7 @@ func (s *Store) transitions(ctx context.Context, taskID string) ([]Transition, e
 }
 
 func (s *Store) handoffs(ctx context.Context, taskID string) ([]Handoff, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT to_role, payload FROM task_handoffs WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(from_role, ''), to_role, COALESCE(payload, ''), COALESCE(acknowledged_at, ''), created_at FROM task_handoffs WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -2524,7 +2659,7 @@ func (s *Store) handoffs(ctx context.Context, taskID string) ([]Handoff, error) 
 	var out []Handoff
 	for rows.Next() {
 		var h Handoff
-		if err := rows.Scan(&h.ToRole, &h.Payload); err != nil {
+		if err := rows.Scan(&h.ID, &h.FromRole, &h.ToRole, &h.Payload, &h.AcknowledgedAt, &h.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, h)

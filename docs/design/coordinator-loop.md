@@ -99,6 +99,9 @@ like an operations controller:
   closed;
 - emit continuation prompts only when provider judgment or implementation is
   needed;
+- report Fairway handoffs that have no delivered provider/thread notification,
+  so a handoff recorded in the DB is not confused with an actual message sent to
+  a reviewer or provider target;
 - enforce stop conditions before destructive, production-impacting, credential,
   approval-gated, or review-gated actions;
 - produce a deterministic next-action plan in dry-run mode. Unknown or unsafe
@@ -110,6 +113,25 @@ This is the missing layer between Fairway as a dashboard and Fairway as a
 reliable multi-agent operating system. Utility adapters reduce token churn, but
 the orchestration controller decides what should happen after those utilities
 hand control back.
+
+## Notification Boundary
+
+Fairway handoffs are durable coordination records. They are not notifications by
+themselves. Provider notification is a separate state transition recorded with:
+
+```bash
+fairway record notification T-001 \
+  --domain security \
+  --provider codex \
+  --target 019e... \
+  --state sent
+```
+
+Valid states are `intent`, `sent`, `acknowledged`, `review_recorded`, and
+`failed`. A sent or acknowledged notification does not approve review, close a
+task, merge, push, deploy, or release. It only proves the configured target was
+contacted. Review authority still comes from `fairway record review`; task
+authority still comes from normal status, evidence, and merge-ready gates.
 
 ## Why This Exists
 
