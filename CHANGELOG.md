@@ -7,6 +7,8 @@ and uses semantic versioning.
 
 ## Unreleased
 
+## v0.1.5
+
 ### Added
 
 - Configurable local rule-pack sources, rule validation, evidence-type

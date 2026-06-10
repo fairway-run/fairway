@@ -10,7 +10,7 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
-## Unreleased
+## v0.1.5
 
 ### What Changed
 
