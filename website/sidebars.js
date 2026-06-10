@@ -9,6 +9,7 @@ const sidebars = {
       items: [
         'quickstart',
         'product',
+        'governed-agentic-engineering',
         'design/product-boundaries',
         'design/backlog-sources',
         'design/scope',

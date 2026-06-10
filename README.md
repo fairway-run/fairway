@@ -121,6 +121,7 @@ Start here:
 
 - [Quickstart](docs/quickstart.md) — first local project setup
 - [Product](docs/product.md) — vision, principles, roadmap, anti-goals
+- [Governed agentic engineering](docs/governed-agentic-engineering.md) — the operating model Fairway supports
 - [Product boundaries](docs/design/product-boundaries.md) — what Fairway coordinates and what it deliberately does not do
 - [Backlog sources](docs/design/backlog-sources.md) — active backlog, archive, examples, and runtime DB authority
 - [Agent guide](docs/agent-guide.md) — practical command flow for agents using Fairway

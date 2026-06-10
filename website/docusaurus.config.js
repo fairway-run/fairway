@@ -66,6 +66,7 @@ const config = {
             items: [
               { label: 'Quickstart', to: '/docs/quickstart' },
               { label: 'Product', to: '/docs/product' },
+              { label: 'Governed Agentic Engineering', to: '/docs/governed-agentic-engineering' },
               { label: 'Product Boundaries', to: '/docs/design/product-boundaries' },
               { label: 'Backlog Sources', to: '/docs/design/backlog-sources' }
             ]

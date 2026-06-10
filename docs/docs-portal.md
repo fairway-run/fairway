@@ -9,7 +9,7 @@ Use these paths when organizing the Docusaurus portal:
 
 | Audience | First docs |
 |---|---|
-| New user | README, quickstart, product, concepts |
+| New user | README, quickstart, product, governed agentic engineering, concepts |
 | Agent/operator | agent guide, dashboard, workflow guards, checkpoints, context packets, review lanes |
 | Maintainer | architecture, coding standards, testing, release |
 | Evaluator | product boundaries, backlog sources, scope, workstream profile guide, adoption artifact flow |
@@ -30,8 +30,8 @@ Use these paths when organizing the Docusaurus portal:
 The Docusaurus portal should expose:
 
 - home page: what Fairway is, why it exists, install path, dashboard screenshots
-- docs: quickstart, product boundaries, backlog sources, agent guide,
-  workstream profiles, dashboard, release notes
+- docs: quickstart, product, governed agentic engineering, product boundaries,
+  backlog sources, agent guide, workstream profiles, dashboard, release notes
 - reference: config reference, CLI surface, schema, state machine
 - governance: release, testing, coding standards, review guards
 - release notes: current release candidate scope, known limits, and release
