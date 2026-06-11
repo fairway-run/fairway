@@ -99,6 +99,74 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 	}
 }
 
+func TestCLI_InitWritesAgentBreadcrumb(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	out := runCapture(t, "init")
+	assertContains(t, out, "initialized fairway")
+	assertContains(t, out, "wrote .fairway/AGENTS.md")
+	assertContains(t, out, "Root AGENTS.md / CLAUDE.md bootstrap block")
+	assertContains(t, out, "Read `.fairway/AGENTS.md` before changing code.")
+	assertContains(t, out, "github.com/fairway-run/fairway")
+
+	body, err := os.ReadFile(".fairway/AGENTS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := string(body)
+	assertContains(t, contract, "Execution Source Of Truth")
+	assertContains(t, contract, "Start Of Session Ritual")
+	assertContains(t, contract, "fairway config validate")
+	assertContains(t, contract, "fairway session upsert")
+	assertContains(t, contract, "Role Resolution Order")
+	assertContains(t, contract, "Session Registration Expectation")
+	assertContains(t, contract, "Full Guide")
+}
+
+func TestCLI_InitPreservesEditedAgentBreadcrumb(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	custom := "# Custom Agent Notes\n\nDo not overwrite this file.\n"
+	writeFile(t, ".fairway/AGENTS.md", custom)
+	out := runCapture(t, "init")
+	assertContains(t, out, ".fairway/config.toml already exists")
+	assertContains(t, out, ".fairway/AGENTS.md already exists")
+	assertContains(t, out, "--refresh-agent-contract")
+	body, err := os.ReadFile(".fairway/AGENTS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != custom {
+		t.Fatalf("agent breadcrumb was clobbered:\n%s", body)
+	}
+
+	out = runCapture(t, "init", "--refresh-agent-contract")
+	assertContains(t, out, "refreshed .fairway/AGENTS.md")
+	body, err = os.ReadFile(".fairway/AGENTS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, string(body), "Fairway Agent Contract")
+	assertNotContains(t, string(body), "Do not overwrite this file.")
+}
+
 func TestCLI_RulesValidateAndEvidenceTypes(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

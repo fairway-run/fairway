@@ -4,6 +4,23 @@ Fairway is built for coding agents working in parallel. This guide is the
 operator-facing contract for an agent that is already inside a repo with
 Fairway configured.
 
+## Cold Start In Consumer Repos
+
+When `fairway init` is run in a consumer repository, it writes
+`.fairway/AGENTS.md` as the local agent breadcrumb. That file is intentionally
+short: it states the Fairway execution source of truth, the start-of-session
+ritual, role resolution order, session registration expectation, and where to
+find this full guide for the installed Fairway version.
+
+Agents landing cold in a repo should first look for `.fairway/AGENTS.md`. Repo
+maintainers should paste the bootstrap block printed by `fairway init` into the
+root `AGENTS.md`, `CLAUDE.md`, or equivalent provider entrypoint so external
+agents are directed to the Fairway contract before editing.
+
+Re-running `fairway init` preserves an edited `.fairway/AGENTS.md`. Use
+`fairway init --refresh-agent-contract` only when intentionally replacing the
+local breadcrumb with the current generated contract.
+
 ## First Rule
 
 The Fairway DB is the execution source of truth. Do not edit queue state files,

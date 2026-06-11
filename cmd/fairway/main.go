@@ -69,7 +69,7 @@ func run(ctx context.Context, args []string) error {
 		usage()
 		return nil
 	case "init":
-		return cmdInit(ctx, opts)
+		return cmdInit(ctx, opts, args[1:])
 	case "import":
 		return cmdImport(ctx, opts, args[1:])
 	case "add":
@@ -6281,7 +6281,15 @@ func visitedFlags(fs *flag.FlagSet) map[string]bool {
 	return visited
 }
 
-func cmdInit(ctx context.Context, opts globalOptions) error {
+func cmdInit(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	refreshAgentContract := fs.Bool("refresh-agent-contract", false, "overwrite .fairway/AGENTS.md with the current generated contract")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected init arguments: %s", strings.Join(fs.Args(), " "))
+	}
 	root, err := os.Getwd()
 	if err != nil {
 		return err
@@ -6290,10 +6298,21 @@ func cmdInit(ctx context.Context, opts globalOptions) error {
 	if opts.ConfigPath != "" {
 		path = opts.ConfigPath
 	}
+	agentContractPath := filepath.Join(filepath.Dir(path), "AGENTS.md")
 	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("%s already exists", path)
+		fmt.Printf("%s already exists; leaving existing config unchanged\n", path)
+		if err := ensureInitAgentContract(agentContractPath, *refreshAgentContract); err != nil {
+			return err
+		}
+		printInitAgentBootstrap(agentContractPath)
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	if err := config.WriteDefault(path, root); err != nil {
+		return err
+	}
+	if err := ensureInitAgentContract(agentContractPath, *refreshAgentContract); err != nil {
 		return err
 	}
 	cfg, _, err := config.Load(path)
@@ -6314,7 +6333,98 @@ func cmdInit(ctx context.Context, opts globalOptions) error {
 	}
 	defer s.Close()
 	fmt.Println("initialized fairway")
+	printInitAgentBootstrap(agentContractPath)
 	return nil
+}
+
+func ensureInitAgentContract(path string, refresh bool) error {
+	if _, err := os.Stat(path); err == nil && !refresh {
+		fmt.Printf("%s already exists; leaving edited agent contract unchanged (use fairway init --refresh-agent-contract to regenerate)\n", path)
+		return nil
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(initAgentContract()), 0o644); err != nil {
+		return err
+	}
+	if refresh {
+		fmt.Printf("refreshed %s\n", path)
+	} else {
+		fmt.Printf("wrote %s\n", path)
+	}
+	return nil
+}
+
+func initAgentContract() string {
+	return fmt.Sprintf(`# Fairway Agent Contract
+
+This repository uses Fairway for multi-agent engineering coordination.
+
+## Execution Source Of Truth
+
+Fairway task state, sessions, checkpoints, evidence, reviews, and merge
+readiness live in the Fairway database and must be changed with Fairway
+commands. Do not edit SQLite rows, generated dashboard artifacts, or queue state
+out-of-band.
+
+## Start Of Session Ritual
+
+Run these commands before editing code:
+
+`+"```bash"+`
+fairway config validate
+fairway preflight --role <role>
+fairway ready
+fairway task-detail <task-id>
+fairway session upsert --id <provider-session-id> --provider <codex|claude|gemini|shell> --role <role> --task-id <task-id> --status running
+fairway checkpoint record <task-id> --state active --owner <role> --summary "Started work in <provider-session-id>"
+`+"```"+`
+
+## Role Resolution Order
+
+Resolve the active role in this order: explicit `+"`--as <role>`"+` or command
+flag, `+"`FAIRWAY_ROLE`"+`, the current Fairway session/task owner, configured
+worktree role, then coordinator instruction. If the role is still ambiguous,
+ask the coordinator before claiming or editing.
+
+## Session Registration Expectation
+
+Active provider work needs both task state and session state. Before editing,
+register or refresh the provider attachment with `+"`fairway session upsert`"+`
+and record an active checkpoint or provider event. Provider chat is useful
+context, but Fairway remains the coordination source of truth.
+
+## Full Guide
+
+Read the full guide that matches the installed Fairway release:
+
+%s
+
+`, fairwayVersionedAgentGuideURL())
+}
+
+func fairwayVersionedAgentGuideURL() string {
+	ref := strings.TrimSpace(version)
+	if ref == "" || strings.Contains(ref, "dev") {
+		ref = "main"
+	}
+	return fmt.Sprintf("https://github.com/fairway-run/fairway/blob/%s/docs/agent-guide.md", ref)
+}
+
+func printInitAgentBootstrap(agentContractPath string) {
+	fmt.Println()
+	fmt.Println("Root AGENTS.md / CLAUDE.md bootstrap block:")
+	fmt.Println("```markdown")
+	fmt.Println("## Fairway")
+	fmt.Println()
+	fmt.Println("This repo uses Fairway for multi-agent coordination.")
+	fmt.Printf("Read `%s` before changing code.\n", filepath.ToSlash(agentContractPath))
+	fmt.Println("Use Fairway commands as the source of truth for tasks, sessions, checkpoints, evidence, reviews, and merge readiness.")
+	fmt.Printf("Full guide: %s\n", fairwayVersionedAgentGuideURL())
+	fmt.Println("```")
 }
 
 func cmdImport(ctx context.Context, opts globalOptions, args []string) error {
