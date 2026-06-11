@@ -19,6 +19,20 @@ Semver. Pre-1.0 means breaking changes are allowed in minor versions; document t
 - One section per released version, plus an `Unreleased` section at the top.
 - Each PR touches the `Unreleased` section.
 
+## User-facing release highlights
+
+- `docs/release-highlights.md` contains the curated GitHub Release highlights
+  for the next tag.
+- Keep it to at most three bullets, written for readers who do not follow the
+  repository history.
+- The release owner drafts the bullets from `docs/release-notes.md`,
+  `CHANGELOG.md`, and the release-run assessment.
+- Governance approves the wording and ops approves the release workflow posture
+  before tagging.
+- The release workflow loads the file into `FAIRWAY_RELEASE_HIGHLIGHTS`, and
+  GoReleaser prepends it to the generated changelog under `## Highlights`.
+  Generated changelog detail remains below `## Changelog`.
+
 ## goreleaser
 
 - Config at `.goreleaser.yaml`.

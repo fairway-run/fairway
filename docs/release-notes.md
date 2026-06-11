@@ -42,6 +42,17 @@ must preserve the rules in [Product boundaries](design/product-boundaries.md).
 - Rule-pack docs and command examples remain aligned with
   `docs/design/rule-packs.md` and `docs/design/cli.md`.
 
+## Unreleased
+
+### Release Process
+
+- GitHub Releases for v0.1.6 and later use
+  `docs/release-highlights.md` for a short, reader-facing `## Highlights`
+  section before the generated changelog detail.
+- Release owners update the highlights from the current release notes,
+  changelog, and release-run assessment, then get governance wording approval
+  and ops workflow approval before tagging.
+
 ## v0.1.4
 
 ### What Changed

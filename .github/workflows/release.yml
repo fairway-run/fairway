@@ -31,6 +31,15 @@ jobs:
         run: |
           go test ./...
           go vet ./...
+      - name: Load release highlights
+        run: |
+          set -euo pipefail
+          test -s docs/release-highlights.md
+          {
+            echo "FAIRWAY_RELEASE_HIGHLIGHTS<<EOF"
+            cat docs/release-highlights.md
+            echo "EOF"
+          } >> "$GITHUB_ENV"
       - name: Import macOS signing certificate
         env:
           KEYCHAIN_PASSWORD: ${{ runner.temp }}/fairway-keychain-password

@@ -7,6 +7,11 @@ and uses semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- GitHub release highlights now come from `docs/release-highlights.md` and are
+  prepended to GoReleaser's generated changelog for v0.1.6 and later.
+
 ## v0.1.5
 
 ### Added

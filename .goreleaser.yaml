@@ -53,6 +53,12 @@ release:
     name: fairway
   draft: true
   replace_existing_draft: true
+  header: |
+    ## Highlights
+
+    {{ .Env.FAIRWAY_RELEASE_HIGHLIGHTS }}
+
+    ## Changelog
 
 homebrew_casks:
   - name: fairway
