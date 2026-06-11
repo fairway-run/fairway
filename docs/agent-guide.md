@@ -101,6 +101,61 @@ Fairway coordination should work through task state, evidence, handoffs,
 checkpoints, and session records. Provider-specific chat history is useful, but
 it is not the coordination source of truth.
 
+## Thread Steering Vs Fairway Notification
+
+Fairway handoffs, Fairway notifications, and Codex Desktop thread steering are
+different operations.
+
+Definitions:
+
+| Term | Meaning |
+|---|---|
+| Fairway handoff recorded | A durable task handoff/checkpoint exists in Fairway. This does not prove a provider thread received a prompt. |
+| Fairway notification recorded | Fairway has a notification row or adapter event. This is proof of routing state, not proof of review or completion. |
+| Thread steered | A prompt was actually sent into an existing provider thread using a host tool such as `send_message_to_thread`. |
+| Thread checked | The target thread was read after steering, and its response/status was reconciled back into Fairway. |
+
+Do not claim "sent to the thread" unless the host tool accepted the message for
+that thread. If only Fairway was updated, say "Fairway handoff recorded;
+thread/manual steering still required."
+
+When the host environment exposes desktop thread tools, use this sequence:
+
+1. Discover tool availability before claiming capability. For Codex Desktop,
+   look for `send_message_to_thread`, `read_thread`, and `list_threads`.
+2. Confirm the target thread id when needed with `list_threads`.
+3. Send the exact prompt with the thread messaging tool.
+4. Record a Fairway handoff, notification, or checkpoint that includes the
+   target thread id, role/domain, task id, and prompt summary.
+5. Later read the same thread to determine whether it is working, waiting,
+   blocked, complete, or asking for input.
+6. Record the result back into Fairway as evidence, review, checkpoint,
+   notification acknowledgement, or handoff. Provider chat is not durable
+   authority.
+
+When thread tools are not exposed:
+
+1. Record the Fairway handoff/checkpoint/notification normally.
+2. Produce a clearly labeled manual relay block:
+
+   ```text
+   Manual thread relay required
+   target_thread: <thread-id>
+   role_or_domain: <review|ops|security|backend|frontend|architecture|orchestrator>
+   task: <fairway-task-id>
+   prompt:
+   <exact text to paste>
+   ```
+
+3. Do not claim the target thread was steered.
+4. Continue other non-conflicting ready work if available; otherwise leave an
+   `awaiting_input` checkpoint naming the missing manual/thread relay.
+
+Review steering prompts should include the repo path, task id, commit or
+worktree path, changed files, validation already run, requested review domains,
+and the expected verdict format: approve or changes requested with concrete
+blockers.
+
 Durable lane, replaceable provider attachment: a Fairway lane or track is the
 durable coordination identity. Provider sessions are replaceable execution
 attachments. A long-lived provider session may carry useful working memory, but

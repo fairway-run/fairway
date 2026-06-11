@@ -182,6 +182,14 @@ or event, then record the result with `fairway record notification`. Fairway
 keeps the durable state machine separate: a delivered notification is only proof
 that the target was contacted, not proof that review happened.
 
+`type = "thread"` is routing metadata unless a host-specific adapter or desktop
+thread tool is actually available and invoked. Recording a Fairway notification
+or handoff does not by itself send a prompt into an existing Codex Desktop
+thread. Agents must distinguish "Fairway handoff/notification recorded" from
+"thread steered" and should fall back to a manual relay block when the host
+does not expose a thread messaging tool. See
+[agent-guide.md](agent-guide.md#thread-steering-vs-fairway-notification).
+
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `domain` | string | — | Review domain or target role, such as `architecture`, `security`, `governance`, `backend`, `frontend`, or `ops`. |
