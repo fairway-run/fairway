@@ -2242,3 +2242,32 @@ tasks:
       - Updated workflow posture is documented with the relevant GitHub Actions runtime setting or action version change.
       - Release workflow still passes `goreleaser check` and a dry-run or documented safe validation path before the next tag.
       - Docs Portal workflow still builds and deploys successfully after the runtime posture change.
+
+  - id: FW-167
+    title: Add user-facing release highlights to GitHub release process
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - .goreleaser.yaml
+      - docs/governance/release.md
+      - docs/release-notes.md
+      - CHANGELOG.md
+    target_paths:
+      - .goreleaser.yaml
+      - docs/governance/release.md
+      - docs/release-notes.md
+      - CHANGELOG.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: low
+    migration_type: release-notes-highlights
+    acceptance_checks:
+      - GitHub Releases for v0.1.6 and later include a short highlights section before the raw commit/changelog list.
+      - Highlights are written for readers who do not follow the repository and summarize the release in no more than three bullets.
+      - Release runbook documents where highlights come from and who approves them before tagging.
+      - Automated or documented release process preserves detailed changelog content while adding the user-facing summary.
