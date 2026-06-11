@@ -2362,3 +2362,73 @@ tasks:
       - "High-use groups include queue/task state, evidence/review, sessions, worktrees, coordinator, rules, reports, dashboard, release, and configuration."
       - "Help text stays concise enough for humans and agents to scan, with longer examples deferred to `fairway agent-guide` or docs."
       - "Regression tests cover top-level help, at least one file-taking command help path, and an unknown command error path."
+
+  - id: FW-175
+    title: Update Codex usage adapters for current token telemetry
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-adapters
+    source_paths:
+      - examples/session-adapters/codex-usage-adapter.sh
+      - examples/session-adapters/provider-otel-ingest.sh
+      - docs/design/provider-usage-accounting.md
+      - docs/agent-guide.md
+      - cmd/fairway/main_test.go
+    target_paths:
+      - examples/session-adapters/codex-usage-adapter.sh
+      - examples/session-adapters/provider-otel-ingest.sh
+      - docs/design/provider-usage-accounting.md
+      - docs/agent-guide.md
+      - cmd/fairway/main_test.go
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: low
+    migration_type: codex-token-telemetry-compatibility
+    acceptance_checks:
+      - "Codex `exec --json` usage ingestion maps current `reasoning_output_tokens` into Fairway `reasoning_tokens` attribution."
+      - "Provider-neutral OTel ingestion recognizes current Codex reasoning-output token field names and token-type labels."
+      - "Docs state the supported Codex token telemetry fields and preserve the privacy boundary: no prompt, transcript, tool body, auth token, or generated-content storage."
+      - "Focused adapter tests cover Codex `turn.completed.usage` with `reasoning_output_tokens`."
+      - "`go test ./...`, `go vet ./...`, `git diff --check`, and `go run ./cmd/fairway config validate` pass before closeout."
+
+  - id: FW-176
+    title: Add review completion notification and coordinator resume guard
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator-notifications
+    source_paths:
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - internal/dashboard
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+      - docs/design/provider-notifications.md
+    target_paths:
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - internal/dashboard
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+      - docs/design/provider-notifications.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: review-completion-resume-guard
+    acceptance_checks:
+      - "When all required review domains for a task are approved, Fairway emits or surfaces a review-complete next-action notification for the configured coordinator/control target."
+      - "`coordinator plan` reports a bounded `review_complete_next_action` item containing task id, commit, approved domains, missing domains if any, and suggested merge-ready/closeout command."
+      - "Dashboard or task detail clearly distinguishes `review pending`, `changes requested`, and `review complete; waiting for merge/push/CI` states."
+      - "The signal is not repeated after an acknowledged/delivered coordinator notification unless the task commit or required review set changes."
+      - "Tests cover partial review, changes requested, all-approved review, amended commit/reset, and already-acknowledged review-complete notification paths."
+      - "Docs explain that review completion notification is a resume signal only; it does not approve merge, push, deploy, or task completion."

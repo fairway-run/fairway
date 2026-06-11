@@ -154,12 +154,12 @@ The generic adapter recognizes common token attributes including:
 | Cached input tokens | `gen_ai.usage.cached_input_tokens`, `gen_ai.usage.input_token_details.cache_read`, `cached_input_tokens`, `cache_read_input_tokens` |
 | Cache creation | `gen_ai.usage.cache_creation_tokens`, `cache_creation_tokens`; stored as safe metadata `cache_creation` until the core schema has a dedicated field. |
 | Output tokens | `gen_ai.usage.output_tokens`, `output_tokens`, `llm.usage.completion_tokens`, `completion_tokens` |
-| Reasoning tokens | `gen_ai.usage.reasoning_tokens`, `reasoning_tokens` |
+| Reasoning tokens | `gen_ai.usage.reasoning_tokens`, `gen_ai.usage.reasoning_output_tokens`, `reasoning_tokens`, `reasoning_output_tokens` |
 | Total tokens | `gen_ai.usage.total_tokens`, `total_tokens`, `llm.usage.total_tokens` |
 
 For OTLP metrics, the adapter also maps token usage datapoints with
 `token.type` / `gen_ai.token.type` values such as `input`, `cache_read`,
-`cache_creation`, `output`, `reasoning`, and `total`.
+`cache_creation`, `output`, `reasoning`, `reasoning_output`, and `total`.
 
 Cost telemetry may exist in provider OTel streams, but Fairway does not perform
 pricing or cost accounting in this slice. The generic adapter may preserve a

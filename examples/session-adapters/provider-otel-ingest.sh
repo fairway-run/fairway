@@ -133,7 +133,7 @@ def each_event(root)
               attrs["gen_ai.usage.cache_creation_tokens"] = value
             when "output", "completion"
               attrs["gen_ai.usage.output_tokens"] = value
-            when "reasoning"
+            when "reasoning", "reasoning_output"
               attrs["gen_ai.usage.reasoning_tokens"] = value
             when "total"
               attrs["gen_ai.usage.total_tokens"] = value
@@ -236,7 +236,7 @@ events.each do |attrs|
     "--input-tokens" => int_value(attrs, ["gen_ai.usage.input_tokens", "input_tokens", "llm.usage.prompt_tokens", "prompt_tokens", "codex.usage.input_tokens", "claude_code.token.input", "claude_code.api.request.input_tokens", "claude_code.api.request.prompt_tokens"]),
     "--cached-input-tokens" => int_value(attrs, ["gen_ai.usage.cached_input_tokens", "gen_ai.usage.input_token_details.cache_read", "cached_input_tokens", "cache_read_input_tokens", "codex.usage.cached_input_tokens", "claude_code.token.cache_read", "claude_code.api.request.cache_read_input_tokens"]),
     "--output-tokens" => int_value(attrs, ["gen_ai.usage.output_tokens", "output_tokens", "llm.usage.completion_tokens", "completion_tokens", "codex.usage.output_tokens", "claude_code.token.output", "claude_code.api.request.output_tokens", "claude_code.api.response.output_tokens", "claude_code.api.request.completion_tokens"]),
-    "--reasoning-tokens" => int_value(attrs, ["gen_ai.usage.reasoning_tokens", "reasoning_tokens", "codex.usage.reasoning_tokens", "claude_code.token.reasoning"]),
+    "--reasoning-tokens" => int_value(attrs, ["gen_ai.usage.reasoning_tokens", "gen_ai.usage.reasoning_output_tokens", "reasoning_tokens", "reasoning_output_tokens", "codex.usage.reasoning_tokens", "codex.usage.reasoning_output_tokens", "claude_code.token.reasoning"]),
     "--total-tokens" => int_value(attrs, ["gen_ai.usage.total_tokens", "total_tokens", "llm.usage.total_tokens", "codex.usage.total_tokens", "claude_code.token.total", "claude_code.api.request.total_tokens"]),
     "--elapsed-seconds" => int_value(attrs, ["fairway.elapsed_seconds", "elapsed_seconds"])
   }.each do |flag, value|

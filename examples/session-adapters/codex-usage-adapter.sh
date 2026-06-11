@@ -225,7 +225,7 @@ parse_events(raw).each do |event|
     "--input-tokens" => int_string(first_string(usage["input_tokens"], usage["prompt_tokens"], usage["input"])),
     "--cached-input-tokens" => int_string(first_string(usage["cached_input_tokens"], usage["cache_read_input_tokens"], dig_any(usage, [["input_token_details", "cached_tokens"], ["input_token_details", "cache_read"]]))),
     "--output-tokens" => int_string(first_string(usage["output_tokens"], usage["completion_tokens"], usage["output"])),
-    "--reasoning-tokens" => int_string(first_string(usage["reasoning_tokens"], dig_any(usage, [["output_token_details", "reasoning_tokens"]]))),
+    "--reasoning-tokens" => int_string(first_string(usage["reasoning_tokens"], usage["reasoning_output_tokens"], dig_any(usage, [["output_token_details", "reasoning_tokens"]]))),
     "--total-tokens" => int_string(first_string(usage["total_tokens"], usage["total"]))
   }
   fields.each { |flag, value| args += [flag, value] unless value.empty? }

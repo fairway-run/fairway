@@ -584,8 +584,8 @@ examples/session-adapters/codex-usage-adapter.sh \
 ```
 
 The adapter supports Codex-shaped OTel JSON, `codex exec --json` /
-newline-delimited JSON with `turn.completed.usage`, and explicit snapshot
-mode:
+newline-delimited JSON with `turn.completed.usage`, including
+`reasoning_output_tokens`, and explicit snapshot mode:
 
 ```bash
 examples/session-adapters/codex-usage-adapter.sh \

@@ -1608,7 +1608,7 @@ func TestCodexUsageAdapter(t *testing.T) {
 
 	execJSON := filepath.Join(repo, "codex-exec.jsonl")
 	if err := os.WriteFile(execJSON, []byte(`{"type":"turn.started","content":"ignored generated text"}
-{"type":"turn.completed","thread_id":"codex-thread-1","session_id":"codex-session-1","role":"backend","phase":"implementation","model":"gpt-5-codex","usage":{"input_tokens":120,"cached_input_tokens":40,"output_tokens":30,"reasoning_tokens":5,"total_tokens":155}}
+{"type":"turn.completed","thread_id":"codex-thread-1","session_id":"codex-session-1","role":"backend","phase":"implementation","model":"gpt-5-codex","usage":{"input_tokens":120,"cached_input_tokens":40,"output_tokens":30,"reasoning_output_tokens":5,"total_tokens":155}}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
