@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	fairwaydocs "github.com/subashram/fairway/docs"
 	"github.com/subashram/fairway/internal/audit"
 	"github.com/subashram/fairway/internal/config"
 	coord "github.com/subashram/fairway/internal/coordinator"
@@ -182,6 +183,8 @@ func run(ctx context.Context, args []string) error {
 			fmt.Println("valid", path)
 			return nil
 		}
+	case "agent-guide":
+		return cmdAgentGuide(args[1:])
 	case "dashboard":
 		return cmdDashboard(ctx, opts, args[1:])
 	case "db":
@@ -6337,6 +6340,40 @@ func cmdInit(ctx context.Context, opts globalOptions, args []string) error {
 	return nil
 }
 
+func cmdAgentGuide(args []string) error {
+	fs := flag.NewFlagSet("agent-guide", flag.ContinueOnError)
+	printPath := fs.Bool("path", false, "print the embedded guide source path and version")
+	outputPath := fs.String("output", "", "write the embedded guide to this path instead of stdout")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected agent-guide arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *printPath && *outputPath != "" {
+		return errors.New("agent-guide accepts either --path or --output, not both")
+	}
+	if *printPath {
+		fmt.Printf("docs/agent-guide.md version=%s source=%s\n", version, fairwayVersionedAgentGuideURL())
+		return nil
+	}
+	if *outputPath != "" {
+		if err := os.MkdirAll(filepath.Dir(*outputPath), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(*outputPath, []byte(fairwaydocs.AgentGuide), 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("wrote %s\n", *outputPath)
+		return nil
+	}
+	fmt.Print(fairwaydocs.AgentGuide)
+	if !strings.HasSuffix(fairwaydocs.AgentGuide, "\n") {
+		fmt.Println()
+	}
+	return nil
+}
+
 func ensureInitAgentContract(path string, refresh bool) error {
 	if _, err := os.Stat(path); err == nil && !refresh {
 		fmt.Printf("%s already exists; leaving edited agent contract unchanged (use fairway init --refresh-agent-contract to regenerate)\n", path)
@@ -6399,7 +6436,13 @@ context, but Fairway remains the coordination source of truth.
 
 ## Full Guide
 
-Read the full guide that matches the installed Fairway release:
+For an offline copy embedded in the installed binary, run:
+
+`+"```bash"+`
+fairway agent-guide
+`+"```"+`
+
+Read the source guide that matches the installed Fairway release:
 
 %s
 
@@ -6423,6 +6466,7 @@ func printInitAgentBootstrap(agentContractPath string) {
 	fmt.Println("This repo uses Fairway for multi-agent coordination.")
 	fmt.Printf("Read `%s` before changing code.\n", filepath.ToSlash(agentContractPath))
 	fmt.Println("Use Fairway commands as the source of truth for tasks, sessions, checkpoints, evidence, reviews, and merge readiness.")
+	fmt.Println("Offline guide: `fairway agent-guide`")
 	fmt.Printf("Full guide: %s\n", fairwayVersionedAgentGuideURL())
 	fmt.Println("```")
 }
@@ -8349,7 +8393,7 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|import|add|spawn|update|tree|list|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|rules validate|evidence-types|match|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway init|agent-guide|import|add|spawn|update|tree|list|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|rules validate|evidence-types|match|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
 }
 
 func isHelpOnly(args []string) bool {

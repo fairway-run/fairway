@@ -65,7 +65,7 @@ func TestCLI_HelpAliases(t *testing.T) {
 		{"-h"},
 	} {
 		out := runCapture(t, args...)
-		assertContains(t, out, "fairway init|import|add")
+		assertContains(t, out, "fairway init|agent-guide|import|add")
 	}
 }
 
@@ -126,6 +126,7 @@ func TestCLI_InitWritesAgentBreadcrumb(t *testing.T) {
 	assertContains(t, contract, "Start Of Session Ritual")
 	assertContains(t, contract, "fairway config validate")
 	assertContains(t, contract, "fairway session upsert")
+	assertContains(t, contract, "fairway agent-guide")
 	assertContains(t, contract, "Role Resolution Order")
 	assertContains(t, contract, "Session Registration Expectation")
 	assertContains(t, contract, "Full Guide")
@@ -165,6 +166,39 @@ func TestCLI_InitPreservesEditedAgentBreadcrumb(t *testing.T) {
 	}
 	assertContains(t, string(body), "Fairway Agent Contract")
 	assertNotContains(t, string(body), "Do not overwrite this file.")
+}
+
+func TestCLI_AgentGuideOutputsEmbeddedGuide(t *testing.T) {
+	out := runCapture(t, "agent-guide")
+	assertContains(t, out, "# Agent Guide")
+	assertContains(t, out, "Fairway DB is the execution source of truth")
+	assertContains(t, out, "Start Of Session")
+}
+
+func TestCLI_AgentGuidePathAndOutputOptions(t *testing.T) {
+	out := runCapture(t, "agent-guide", "--path")
+	assertContains(t, out, "docs/agent-guide.md")
+	assertContains(t, out, "version=")
+	assertContains(t, out, "github.com/fairway-run/fairway")
+
+	repo := t.TempDir()
+	guidePath := filepath.Join(repo, "agent-guide.md")
+	out = runCapture(t, "agent-guide", "--output", guidePath)
+	assertContains(t, out, "wrote "+guidePath)
+	body, err := os.ReadFile(guidePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, string(body), "# Agent Guide")
+}
+
+func TestCLI_AgentGuideRejectsInvalidOptions(t *testing.T) {
+	if _, err := captureRun("agent-guide", "--path", "--output", filepath.Join(t.TempDir(), "guide.md")); err == nil {
+		t.Fatal("agent-guide accepted --path with --output, expected error")
+	}
+	if _, err := captureRun("agent-guide", "--bogus"); err == nil {
+		t.Fatal("agent-guide accepted --bogus, expected error")
+	}
 }
 
 func TestCLI_RulesValidateAndEvidenceTypes(t *testing.T) {

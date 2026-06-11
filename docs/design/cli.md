@@ -2,6 +2,7 @@
 
 ```
 fairway init [--refresh-agent-contract]                # scaffold .fairway/config.toml + DB + .fairway/AGENTS.md
+fairway agent-guide [--path | --output <path>]          # print or write the embedded offline agent guide
 fairway ready [--in <epic-id>] [--priority <n>]         # list tasks ready for the caller's role (sorted by priority, sequence, created_at)
 fairway claim <task-id>                                 # transition todo → in_progress, assign owner
 fairway claim --in <epic-id>                            # claim next ready descendant within an epic

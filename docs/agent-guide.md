@@ -21,6 +21,15 @@ Re-running `fairway init` preserves an edited `.fairway/AGENTS.md`. Use
 `fairway init --refresh-agent-contract` only when intentionally replacing the
 local breadcrumb with the current generated contract.
 
+For agents without a Fairway source checkout or network access, the installed
+binary carries this guide:
+
+```bash
+fairway agent-guide
+fairway agent-guide --path
+fairway agent-guide --output .fairway/agent-guide.md
+```
+
 ## First Rule
 
 The Fairway DB is the execution source of truth. Do not edit queue state files,

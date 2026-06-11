@@ -95,6 +95,7 @@ brew install --cask fairway
 
 ```bash
 fairway init                  # scaffold config, SQLite DB, and .fairway/AGENTS.md
+fairway agent-guide           # print the offline agent operating guide embedded in the binary
 fairway help                  # print the command summary (-h/--help also work)
 $EDITOR .fairway/config.toml  # define roles, branches, worktree root, review routes
 fairway config validate
