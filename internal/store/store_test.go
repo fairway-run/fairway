@@ -444,6 +444,12 @@ func TestNotificationTracksHandoffDeliveryState(t *testing.T) {
 	if _, err := s.RecordNotification(ctx, Notification{TaskID: "T-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "thread_steered"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.RecordNotification(ctx, Notification{TaskID: "T-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "review_acknowledged"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, Notification{TaskID: "T-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "notification_failed", Reason: "thread tool unavailable"}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestHandoffNotificationGapsEscalateStaleSentNotifications(t *testing.T) {

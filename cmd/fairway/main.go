@@ -29,6 +29,7 @@ import (
 	"github.com/subashram/fairway/internal/importer"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/registry"
+	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/rules"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
@@ -1182,12 +1183,13 @@ func worktreeForBranch(root, branch string) (fairwaygit.Worktree, bool) {
 
 func printCloseoutReport(report reconcile.CloseoutReport) {
 	fmt.Printf("lane_closeout: %t\ntask: %s\nrole: %s\nbranch: %s\nworktree: %s\ncommit: %s\n", report.OK, report.TaskID, report.Role, report.Branch, report.Worktree, report.Commit)
-	fmt.Printf("summary: blockers=%d warnings=%d active_sessions=%d active_watchers=%d missing_review_domains=%d missing_commits=%d verification_evidence=%d pending_verification=%d dirty_worktrees=%d unmerged_branches=%d remote_branches=%d remote_branches_without_intent=%d safe_branches=%d preserved_branches=%d\n",
+	fmt.Printf("summary: blockers=%d warnings=%d active_sessions=%d active_watchers=%d missing_review_domains=%d review_notifications=%d missing_commits=%d verification_evidence=%d pending_verification=%d dirty_worktrees=%d unmerged_branches=%d remote_branches=%d remote_branches_without_intent=%d safe_branches=%d preserved_branches=%d\n",
 		report.Summary.Blockers,
 		report.Summary.Warnings,
 		report.Summary.ActiveSessions,
 		report.Summary.ActiveWatchers,
 		report.Summary.MissingReviewDomains,
+		report.Summary.ReviewNotifications,
 		report.Summary.MissingCommits,
 		report.Summary.VerificationEvidence,
 		report.Summary.PendingVerification,
@@ -1217,6 +1219,12 @@ func printCloseoutReport(report reconcile.CloseoutReport) {
 		}
 		if finding.PushIntent != "" {
 			extra += " push_intent=" + finding.PushIntent
+		}
+		if finding.Domain != "" {
+			extra += " domain=" + finding.Domain
+		}
+		if finding.NotificationStatus != "" {
+			extra += " notification_status=" + finding.NotificationStatus
 		}
 		if finding.Path != "" {
 			extra += " path=" + finding.Path
@@ -3189,6 +3197,19 @@ func printCoordinatorPlan(plan coord.Plan) {
 					firstNonEmpty(strings.Join(action.ReviewHandback.MissingDomains, ","), "none"),
 					action.ReviewHandback.SuggestedCommand,
 					action.ReviewHandback.MergeReadyStatus,
+				)
+			}
+			if action.ReviewNotify != nil {
+				fmt.Printf("  review_notification: domain=%s status=%s handoff_id=%d last_handoff_at=%s last_notification_state=%s last_notification_at=%s provider=%s target=%s suggested_action=%s\n",
+					action.ReviewNotify.Domain,
+					action.ReviewNotify.Status,
+					action.ReviewNotify.HandoffID,
+					firstNonEmpty(action.ReviewNotify.LastHandoffAt, "none"),
+					firstNonEmpty(action.ReviewNotify.LastState, "none"),
+					firstNonEmpty(action.ReviewNotify.LastNotificationAt, "none"),
+					firstNonEmpty(action.ReviewNotify.Provider, "none"),
+					firstNonEmpty(action.ReviewNotify.Target, "none"),
+					action.ReviewNotify.SuggestedAction,
 				)
 			}
 		}
@@ -7349,7 +7370,7 @@ func recordNotification(ctx context.Context, opts globalOptions, args []string) 
 	domain := fs.String("domain", "", "review domain or target role")
 	provider := fs.String("provider", "", "provider name")
 	target := fs.String("target", "", "provider target such as thread id, tmux pane, or adapter destination")
-	state := fs.String("state", "intent", "notification state: intent, handoff_recorded, sent, notification_delivered, thread_steered, acknowledged, review_recorded, failed")
+	state := fs.String("state", "intent", "notification state: intent, handoff_recorded, sent, notification_delivered, thread_steered, acknowledged, review_acknowledged, review_recorded, failed, notification_failed")
 	reason := fs.String("reason", "", "reason or failure detail")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -8202,25 +8223,28 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
+		reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
 		return printJSON(struct {
-			Task                 store.Task                      `json:"task"`
-			ReviewStatus         string                          `json:"review_status"`
-			Transitions          []store.Transition              `json:"transitions"`
-			Evidence             []store.Evidence                `json:"evidence"`
-			Handoffs             []store.Handoff                 `json:"handoffs"`
-			Reviews              []store.Review                  `json:"reviews"`
-			MissingReviewDomains []string                        `json:"missing_review_domains,omitempty"`
-			ReviewHandback       *coord.ReviewCompletionHandback `json:"review_handback,omitempty"`
-			Sessions             []store.Session                 `json:"sessions"`
-			Usage                []store.ProviderUsage           `json:"usage"`
-			UsageRollups         []store.UsageRollup             `json:"usage_rollups"`
-			Batches              []store.WorkBatch               `json:"batches"`
-			Notifications        []store.Notification            `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, handoffs, reviews, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), sessions, usageEvents, usageRollups, batches, notifications})
+			Task                 store.Task                             `json:"task"`
+			ReviewStatus         string                                 `json:"review_status"`
+			Transitions          []store.Transition                     `json:"transitions"`
+			Evidence             []store.Evidence                       `json:"evidence"`
+			Handoffs             []store.Handoff                        `json:"handoffs"`
+			Reviews              []store.Review                         `json:"reviews"`
+			MissingReviewDomains []string                               `json:"missing_review_domains,omitempty"`
+			ReviewHandback       *coord.ReviewCompletionHandback        `json:"review_handback,omitempty"`
+			ReviewNotifications  []reviewstate.ReviewNotificationStatus `json:"review_notifications,omitempty"`
+			Sessions             []store.Session                        `json:"sessions"`
+			Usage                []store.ProviderUsage                  `json:"usage"`
+			UsageRollups         []store.UsageRollup                    `json:"usage_rollups"`
+			Batches              []store.WorkBatch                      `json:"batches"`
+			Notifications        []store.Notification                   `json:"notifications"`
+		}{task, reviewStatus, transitions, evidence, handoffs, reviews, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
+	reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, reviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
 	fmt.Println("\ndependencies:")
@@ -8257,6 +8281,21 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	}
 	for _, n := range notifications {
 		fmt.Printf("- %s domain=%s provider=%s target=%s reason=%s\n", n.State, n.Domain, firstNonEmpty(n.Provider, "none"), firstNonEmpty(n.Target, "none"), firstNonEmpty(n.Reason, "none"))
+	}
+	if len(reviewNotifications) > 0 {
+		fmt.Println("\nreview notification status:")
+		for _, status := range reviewNotifications {
+			fmt.Printf("- domain=%s status=%s blocking=%t handoff_id=%d last_notification_state=%s provider=%s target=%s action=%s\n",
+				status.Domain,
+				status.Status,
+				status.Blocking,
+				status.HandoffID,
+				firstNonEmpty(status.LastState, "none"),
+				firstNonEmpty(status.Provider, "none"),
+				firstNonEmpty(status.Target, "none"),
+				status.SuggestedAction,
+			)
+		}
 	}
 	fmt.Println("\nreviews:")
 	for _, r := range reviews {

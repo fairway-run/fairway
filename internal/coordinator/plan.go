@@ -9,6 +9,7 @@ import (
 
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/reconcile"
+	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -77,18 +78,19 @@ type PlanSummary struct {
 }
 
 type PlanAction struct {
-	Priority       int                       `json:"priority"`
-	Classification string                    `json:"classification"`
-	Action         string                    `json:"action"`
-	Reason         string                    `json:"reason"`
-	TaskID         string                    `json:"task_id,omitempty"`
-	Role           string                    `json:"role,omitempty"`
-	SessionID      string                    `json:"session_id,omitempty"`
-	WatcherID      string                    `json:"watcher_id,omitempty"`
-	BatchKey       string                    `json:"batch_key,omitempty"`
-	TaskIDs        []string                  `json:"task_ids,omitempty"`
-	ReviewHandback *ReviewCompletionHandback `json:"review_handback,omitempty"`
-	Stop           bool                      `json:"stop,omitempty"`
+	Priority       int                                   `json:"priority"`
+	Classification string                                `json:"classification"`
+	Action         string                                `json:"action"`
+	Reason         string                                `json:"reason"`
+	TaskID         string                                `json:"task_id,omitempty"`
+	Role           string                                `json:"role,omitempty"`
+	SessionID      string                                `json:"session_id,omitempty"`
+	WatcherID      string                                `json:"watcher_id,omitempty"`
+	BatchKey       string                                `json:"batch_key,omitempty"`
+	TaskIDs        []string                              `json:"task_ids,omitempty"`
+	ReviewHandback *ReviewCompletionHandback             `json:"review_handback,omitempty"`
+	ReviewNotify   *reviewstate.ReviewNotificationStatus `json:"review_notification,omitempty"`
+	Stop           bool                                  `json:"stop,omitempty"`
 }
 
 type PlanStopCondition struct {
@@ -346,6 +348,32 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 					plan.ReviewDebt = appendTaskRef(plan.ReviewDebt, taskRef(task))
 					addAction(&plan, 45, "review-debt", "sweep_historical_review_debt", reason, task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
 				} else {
+					notifications, err := s.Notifications(ctx, task.Definition.ID)
+					if err != nil {
+						return Plan{}, err
+					}
+					statuses := reviewstate.StatusesForTask(detailTask, handoffs, reviews, notifications)
+					blockedNotifications := reviewstate.BlockingStatuses(statuses, missing)
+					if len(blockedNotifications) > 0 {
+						for _, status := range blockedNotifications {
+							plan.Summary.NotificationGated++
+							plan.NotificationGated = appendTaskRef(plan.NotificationGated, TaskRef{ID: task.Definition.ID, Role: status.Domain, Status: status.Status})
+							reason := fmt.Sprintf("required review domain %s is blocked on reviewer notification status=%s; last_handoff_id=%d last_handoff_at=%s last_notification_state=%s last_notification_at=%s provider=%s target=%s; action=%s",
+								status.Domain,
+								status.Status,
+								status.HandoffID,
+								firstNonEmpty(status.LastHandoffAt, "none"),
+								firstNonEmpty(status.LastState, "none"),
+								firstNonEmpty(status.LastNotificationAt, "none"),
+								firstNonEmpty(status.Provider, "none"),
+								firstNonEmpty(status.Target, "none"),
+								status.SuggestedAction,
+							)
+							addReviewNotificationAction(&plan, 14, "notification-blocked", "deliver_or_retry_review_notification", reason, task.Definition.ID, task.Definition.Role, status)
+							addStop(&plan, "notification-blocked", reason, task.Definition.ID, status.Domain)
+						}
+						continue
+					}
 					plan.Summary.ReviewGated++
 					plan.ReviewGated = appendTaskRef(plan.ReviewGated, taskRef(task))
 					addAction(&plan, 15, "review-gated", "record_required_reviews", reason, task.Definition.ID, task.Definition.Role, "", "", nil, nil, true)
@@ -555,6 +583,11 @@ func addAction(plan *Plan, priority int, classification, action, reason, taskID,
 			plan.Summary.ReviewDebt++
 		}
 	}
+}
+
+func addReviewNotificationAction(plan *Plan, priority int, classification, action, reason, taskID, role string, status reviewstate.ReviewNotificationStatus) {
+	addAction(plan, priority, classification, action, reason, taskID, role, "", "", nil, nil, true)
+	plan.Actions[len(plan.Actions)-1].ReviewNotify = &status
 }
 
 func addStop(plan *Plan, kind, reason, taskID, role string) {

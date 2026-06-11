@@ -200,6 +200,66 @@ func TestBuildPlanReportsHandoffWithoutDeliveredNotification(t *testing.T) {
 	}
 }
 
+func TestBuildPlanBlocksReviewWaitOnMissingReviewerNotification(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "HANDOFF-001", Title: "Handoff only", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "FAILED-001", Title: "Failed notification", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "DELIVERED-001", Title: "Delivered notification", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "ACK-001", Title: "Acknowledged notification", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "REVIEWED-001", Title: "Review recorded", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, taskID := range []string{"HANDOFF-001", "FAILED-001", "DELIVERED-001", "ACK-001", "REVIEWED-001"} {
+		if err := s.SetStatus(ctx, taskID, "review", "needs review", false); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.RecordHandoff(ctx, taskID, store.Handoff{ToRole: "arch", Payload: "please review"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "FAILED-001", Domain: "arch", Provider: "codex", Target: "thread-arch", State: "notification_failed", Reason: "thread steering tool unavailable"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "DELIVERED-001", Domain: "arch", Provider: "codex", Target: "thread-arch", State: "notification_delivered"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "ACK-001", Domain: "arch", Provider: "codex", Target: "thread-arch", State: "review_acknowledged"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "REVIEWED-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "changes", Reason: "needs fix"}); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, taskID := range []string{"HANDOFF-001", "FAILED-001"} {
+		action, ok := planAction(plan, "notification-blocked", "deliver_or_retry_review_notification", taskID)
+		if !ok {
+			t.Fatalf("%s did not produce notification-blocked action: %+v", taskID, plan.Actions)
+		}
+		if action.ReviewNotify == nil || !action.ReviewNotify.Blocking {
+			t.Fatalf("%s missing review notification payload: %+v", taskID, action)
+		}
+		if hasPlanAction(plan, "review-gated", "record_required_reviews", taskID) {
+			t.Fatalf("%s also produced normal review wait: %+v", taskID, plan.Actions)
+		}
+	}
+	for _, taskID := range []string{"DELIVERED-001", "ACK-001", "REVIEWED-001"} {
+		if hasPlanAction(plan, "notification-blocked", "deliver_or_retry_review_notification", taskID) {
+			t.Fatalf("%s produced unexpected notification block: %+v", taskID, plan.Actions)
+		}
+		if !hasPlanAction(plan, "review-gated", "record_required_reviews", taskID) {
+			t.Fatalf("%s did not produce normal review wait: %+v", taskID, plan.Actions)
+		}
+	}
+}
+
 func TestBuildPlanFiltersHistoricalTerminalNotificationGaps(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)

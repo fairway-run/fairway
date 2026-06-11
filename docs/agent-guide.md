@@ -1176,14 +1176,21 @@ fairway record notification T-001 \
   --state notification_delivered
 ```
 
-Use `--state failed --reason "<why>"` when the provider target could not be
-contacted. Use `handoff_recorded` when Fairway recorded the routing state but
-no provider delivery proof exists, `notification_delivered` when an adapter or
-provider confirms delivery, `thread_steered` only when direct thread tooling
-accepted the message, `acknowledged` only when the target confirmed receipt,
-and `review_recorded` only when the review was recorded in Fairway.
+Use `--state notification_failed --reason "<why>"` when the provider target
+could not be contacted. Use `handoff_recorded` when Fairway recorded the
+routing state but no provider delivery proof exists, `notification_delivered`
+when an adapter or provider confirms delivery, `thread_steered` only when
+direct thread tooling accepted the message, `review_acknowledged` when the
+target reviewer/control lane confirmed receipt, and `review_recorded` only when
+the review was recorded in Fairway.
 Notification state never substitutes for `fairway record review`, status
 changes, merge, push, deploy, or release gates.
+
+A review-gated task with missing required reviews and only a handoff, a failed
+notification, or no delivered reviewer notification is `notification-blocked`,
+not normal review wait. `fairway coordinator plan`, task detail, dashboard task
+detail, and workflow closeout expose that state so the coordinator retries or
+manually relays the reviewer notification before waiting for review.
 
 ## Review
 

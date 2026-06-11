@@ -58,13 +58,13 @@ func TestCloseoutReportsReviewSessionWatcherAndUnmergedBranchBlockers(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"missing_review_domains", "active_session", "verification_pending", "unmerged_branch"} {
+	for _, want := range []string{"missing_review_domains", "review_notification_blocked", "active_session", "verification_pending", "unmerged_branch"} {
 		if !hasCloseoutFinding(report, want) {
 			t.Fatalf("report missing %s: %+v", want, report)
 		}
 	}
-	if report.OK || report.Summary.Blockers != 4 || report.Summary.MissingReviewDomains != 2 || report.Summary.PendingVerification != 1 {
-		t.Fatalf("report=%+v, want blockers, missing domains, and pending verification", report)
+	if report.OK || report.Summary.Blockers != 6 || report.Summary.MissingReviewDomains != 2 || report.Summary.ReviewNotifications != 2 || report.Summary.PendingVerification != 1 {
+		t.Fatalf("report=%+v, want blockers, missing domains, review notifications, and pending verification", report)
 	}
 }
 

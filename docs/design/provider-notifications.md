@@ -25,9 +25,18 @@ claim direct delivery from chat memory alone.
 - `thread_steered`: direct thread tooling was available and a message was
   posted to the target thread.
 - `acknowledged`: the target acknowledged receipt.
+- `review_acknowledged`: the reviewer/control lane acknowledged receipt.
 - `review_recorded`: the notification is superseded by a matching Fairway
   review.
 - `failed`: delivery failed; a reason is required.
+- `notification_failed`: delivery failed; a reason is required.
+
+For required review domains, Fairway treats `handoff_recorded`, missing
+notification rows, `sent` without acknowledgement, `failed`, and
+`notification_failed` as notification-blocked until the notification is
+delivered, thread-steered, acknowledged, or the review is recorded. A Fairway
+handoff is durable queue state; it is not proof that a reviewer or control
+thread was contacted.
 
 ## Review Completion Resume Signal
 

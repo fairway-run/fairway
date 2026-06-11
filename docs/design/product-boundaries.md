@@ -96,3 +96,5 @@ thread capability existed. If a session does not expose tools such as
 route the manual relay through the coordinator/control track. A delivered or
 steered notification is a resume signal, not authority to approve, merge, push,
 deploy, release, or close work.
+For review-gated tasks, handoff-only or failed notification state is treated as
+notification-blocked rather than proof that a reviewer is actively waiting.

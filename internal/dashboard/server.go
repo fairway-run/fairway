@@ -21,6 +21,7 @@ import (
 	coord "github.com/subashram/fairway/internal/coordinator"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/reconcile"
+	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -305,6 +306,7 @@ type TaskDetailViewData struct {
 	MissingReviewDomains []string
 	ReviewStatus         string
 	ReviewHandback       *coord.ReviewCompletionHandback
+	ReviewNotifications  []reviewstate.ReviewNotificationStatus
 	TaskSessions         []store.Session
 	Usage                []store.ProviderUsage
 	UsageRollups         []store.UsageRollup
@@ -2286,6 +2288,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 	}
 	missingReviewDomains := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
+	reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -2300,6 +2303,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		MissingReviewDomains: missingReviewDomains,
 		ReviewStatus:         dashboardEffectiveReviewStatus(task.ReviewStatus, missingReviewDomains),
 		ReviewHandback:       optionalDashboardReviewHandback(reviewHandback, hasReviewHandback),
+		ReviewNotifications:  reviewNotifications,
 		TaskSessions:         sessionsForDashboardTask(sessions, id),
 		Usage:                usageEvents,
 		UsageRollups:         usageRollups,

@@ -74,6 +74,15 @@ such as required evidence or required handoff, `plan` emits
 `review-complete-blocked` instead of a false merge-ready handback. Fairway does
 not auto-merge, push, deploy, tag, or release from this signal.
 
+If required reviews are missing and Fairway has only durable handoff state, a
+failed notification, or no delivered reviewer notification, `plan` emits
+`notification-blocked` instead of ordinary review wait. The action includes the
+target review domain, latest handoff id/time, latest notification state/time,
+provider/target when known, and a suggested retry or manual relay action.
+Delivered notifications, direct `thread_steered` records, reviewer
+acknowledgements, and recorded reviews move the task back to ordinary review
+wait.
+
 Review-complete handbacks are next-action signals, not historical audit rows.
 Coordinator plan suppresses handbacks for terminal tasks that already have a
 recorded completion commit, closure evidence such as `push-intent`,

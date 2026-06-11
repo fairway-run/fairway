@@ -1274,6 +1274,40 @@ func TestTaskDetailRendersPartialApprovalWhenReviewDomainsMissing(t *testing.T) 
 	}
 }
 
+func TestTaskDetailRendersReviewNotificationStatus(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{
+		ID:            "T-001",
+		Title:         "Needs reviewer delivery",
+		Kind:          "dashboard",
+		Role:          "ui",
+		ReviewDomains: []string{"architecture"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "T-001", store.Handoff{ToRole: "architecture", Payload: "please review"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "T-001", Domain: "architecture", Provider: "codex", Target: "thread-arch", State: "notification_failed", Reason: "thread tool unavailable"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Review Notifications", "notification_failed", "blocked", "thread-arch", "retry or manually deliver architecture reviewer notification"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail review notification status missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestTaskDetailRendersReviewHandback(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

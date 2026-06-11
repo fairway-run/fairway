@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -59,28 +60,35 @@ type CloseoutSummary struct {
 	MissingCommits         int `json:"missing_commits"`
 	VerificationEvidence   int `json:"verification_evidence"`
 	PendingVerification    int `json:"pending_verification"`
+	ReviewNotifications    int `json:"review_notifications"`
 }
 
 type CloseoutFinding struct {
-	Kind           string   `json:"kind"`
-	Severity       string   `json:"severity"`
-	Action         string   `json:"action"`
-	Reason         string   `json:"reason"`
-	TaskID         string   `json:"task_id,omitempty"`
-	Role           string   `json:"role,omitempty"`
-	Branch         string   `json:"branch,omitempty"`
-	Path           string   `json:"path,omitempty"`
-	Worktree       string   `json:"worktree,omitempty"`
-	SessionID      string   `json:"session_id,omitempty"`
-	WatcherID      string   `json:"watcher_id,omitempty"`
-	Commit         string   `json:"commit,omitempty"`
-	EvidenceType   string   `json:"evidence_type,omitempty"`
-	PushIntent     string   `json:"push_intent,omitempty"`
-	MissingDomains []string `json:"missing_domains,omitempty"`
+	Kind               string   `json:"kind"`
+	Severity           string   `json:"severity"`
+	Action             string   `json:"action"`
+	Reason             string   `json:"reason"`
+	TaskID             string   `json:"task_id,omitempty"`
+	Role               string   `json:"role,omitempty"`
+	Branch             string   `json:"branch,omitempty"`
+	Path               string   `json:"path,omitempty"`
+	Worktree           string   `json:"worktree,omitempty"`
+	SessionID          string   `json:"session_id,omitempty"`
+	WatcherID          string   `json:"watcher_id,omitempty"`
+	Commit             string   `json:"commit,omitempty"`
+	EvidenceType       string   `json:"evidence_type,omitempty"`
+	PushIntent         string   `json:"push_intent,omitempty"`
+	MissingDomains     []string `json:"missing_domains,omitempty"`
+	Domain             string   `json:"domain,omitempty"`
+	NotificationStatus string   `json:"notification_status,omitempty"`
 }
 
 func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (CloseoutReport, error) {
-	task, _, evidence, _, reviews, err := s.TaskDetail(ctx, opts.TaskID)
+	task, _, evidence, handoffs, reviews, err := s.TaskDetail(ctx, opts.TaskID)
+	if err != nil {
+		return CloseoutReport{}, err
+	}
+	notifications, err := s.Notifications(ctx, opts.TaskID)
 	if err != nil {
 		return CloseoutReport{}, err
 	}
@@ -137,6 +145,9 @@ func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (Closeo
 	}
 	if missing := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews); len(missing) > 0 {
 		add(CloseoutFinding{Kind: "missing_review_domains", Severity: "blocker", Action: "record_required_reviews_or_waiver", Reason: "task is missing required review-domain approvals", MissingDomains: missing})
+		for _, status := range reviewstate.BlockingStatuses(reviewstate.StatusesForTask(task, handoffs, reviews, notifications), missing) {
+			add(CloseoutFinding{Kind: "review_notification_blocked", Severity: "blocker", Action: "deliver_or_retry_review_notification", Reason: status.Reason, Domain: status.Domain, NotificationStatus: status.Status})
+		}
 	}
 	for _, session := range sessions {
 		if session.TaskID != task.Definition.ID {
@@ -225,6 +236,8 @@ func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (Closeo
 			report.Summary.VerificationEvidence++
 		case "verification_pending":
 			report.Summary.PendingVerification++
+		case "review_notification_blocked":
+			report.Summary.ReviewNotifications++
 		}
 	}
 	report.OK = report.Summary.Blockers == 0
