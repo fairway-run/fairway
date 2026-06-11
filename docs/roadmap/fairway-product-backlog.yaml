@@ -2436,3 +2436,44 @@ tasks:
       - "The signal is not repeated after an acknowledged/delivered coordinator notification unless the task commit or required review set changes."
       - "Tests cover partial review, changes requested, all-approved review, amended commit/reset, and already-acknowledged review-complete notification paths."
       - "Docs explain that review completion notification is a resume signal only; it does not approve merge, push, deploy, or task completion."
+
+  - id: FW-177
+    title: Enforce review notification delivery before review-wait state
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator-notifications
+    source_paths:
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - internal/dashboard
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+      - docs/design/provider-notifications.md
+    target_paths:
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - internal/dashboard
+      - docs/agent-guide.md
+      - docs/design/coordinator-loop.md
+      - docs/design/provider-notifications.md
+      - docs/design/product-boundaries.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: review-notification-delivery-enforcement
+    acceptance_checks:
+      - "Coordinator plan distinguishes `handoff_recorded`, `notification_delivered`, `notification_failed`, `review_acknowledged`, and `review_recorded` for review-gated tasks."
+      - "A review-gated task with a Fairway handoff but failed or missing reviewer notification is surfaced as notification-blocked, not silently treated as normal review wait."
+      - "Dashboard and task detail show `handoff recorded; notification failed` distinctly from `reviewer notified` and `review pending`."
+      - "`workflow check` or `workflow closeout` reports failed reviewer notification state while required reviews are missing."
+      - "Providers cannot claim a reviewer thread was steered unless a delivered notification or thread-steered record exists."
+      - "Docs state that Fairway handoff is durable queue state, not proof that a reviewer/control thread was contacted."
+      - "Optional CLI retry path such as `fairway notify reviews <task-id>` or equivalent can re-attempt configured reviewer notifications."
+      - "Tests cover handoff-only, notification-failed, delivered notification, acknowledged notification, and review-recorded paths."
