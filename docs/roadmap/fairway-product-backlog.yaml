@@ -2418,6 +2418,7 @@ tasks:
       - docs/agent-guide.md
       - docs/design/coordinator-loop.md
       - docs/design/provider-notifications.md
+      - docs/design/product-boundaries.md
     review_domains:
       - arch
       - governance
@@ -2428,7 +2429,10 @@ tasks:
     acceptance_checks:
       - "When all required review domains for a task are approved, Fairway emits or surfaces a review-complete next-action notification for the configured coordinator/control target."
       - "`coordinator plan` reports a bounded `review_complete_next_action` item containing task id, commit, approved domains, missing domains if any, and suggested merge-ready/closeout command."
+      - "Provider/session capability checks distinguish direct thread steering from Fairway-only handoff recording, because Codex app thread tools may be available in one project/session and absent in another."
+      - "Docs require providers to verify `send_message_to_thread`/`read_thread` availability before claiming a thread was steered; otherwise they must record a Fairway handoff/notification and route through the control/orchestrator track."
       - "Dashboard or task detail clearly distinguishes `review pending`, `changes requested`, and `review complete; waiting for merge/push/CI` states."
+      - "Notification records distinguish at least `handoff_recorded`, `notification_delivered`, and `thread_steered` or equivalent states so operators can see whether a reviewer/control thread was actually contacted."
       - "The signal is not repeated after an acknowledged/delivered coordinator notification unless the task commit or required review set changes."
       - "Tests cover partial review, changes requested, all-approved review, amended commit/reset, and already-acknowledged review-complete notification paths."
       - "Docs explain that review completion notification is a resume signal only; it does not approve merge, push, deploy, or task completion."

@@ -66,7 +66,8 @@ When all required review domains for a task have approved latest verdicts,
 `plan` emits a `review-complete` handback action that tells the coordinator to
 run `fairway merge-ready <task-id>` and perform the configured merge/push/release
 step if it passes. The handback includes required domains, approved domains,
-latest verdicts, merge-ready posture, and the recommended next action.
+latest verdicts, the review signature used for notification acknowledgement,
+merge-ready posture, and the recommended next action.
 
 If reviews are complete but a store-visible non-review gate is still missing
 such as required evidence or required handoff, `plan` emits
@@ -80,6 +81,11 @@ recorded completion commit, closure evidence such as `push-intent`,
 `review-handback-ack` evidence row. Task detail, reports, and audits can still
 show the historical reviews and completion evidence without putting old work
 back into the coordinator's action list.
+
+For live review-complete notification delivery, record `notification_delivered`
+or `thread_steered` with the current `review_signature` from `coordinator plan`
+or task detail. Matching by commit alone is not enough because required review
+domains can change on the same commit.
 
 When the ready queue is empty but todo work remains, `plan` includes the same
 readiness explanation used by `fairway ready`: non-ready todo count, blocker
@@ -151,20 +157,34 @@ fairway record notification T-001 \
   --domain security \
   --provider codex \
   --target 019e... \
-  --state sent
+  --state notification_delivered
 ```
 
-Valid states are `intent`, `sent`, `acknowledged`, `review_recorded`, and
-`failed`. A sent or acknowledged notification does not approve review, close a
-task, merge, push, deploy, or release. It only proves the configured target was
-contacted. Review authority still comes from `fairway record review`; task
-authority still comes from normal status, evidence, and merge-ready gates.
+Valid states are `intent`, `handoff_recorded`, `sent`,
+`notification_delivered`, `thread_steered`, `acknowledged`,
+`review_recorded`, and `failed`.
+
+Use `handoff_recorded` when Fairway recorded the durable handoff but the
+provider or app surface could not prove delivery to the target. Use
+`notification_delivered` when an adapter or provider reports successful
+delivery. Use `thread_steered` only when the active provider surface has
+verified `send_message_to_thread` / `read_thread`-style capability and actually
+posted to the target thread. A notification state does not approve review,
+close a task, merge, push, deploy, or release. Review authority still comes
+from `fairway record review`; task authority still comes from normal status,
+evidence, and merge-ready gates.
 
 `sent` is not permanent quieting. If no acknowledgement, `review_recorded`
 notification, or real matching review arrives within
 `[coordinator].notification_ack_timeout` (default `24h`), coordinator plan
 surfaces the handoff as `stale-sent` and recommends escalation. Fresh sent
 notifications remain `sent-awaiting-ack` and do not create coordinator noise.
+
+When all required reviews are approved, coordinator plan may emit a
+`review_complete_next_action` recommendation. That is a resume signal for the
+coordinator/control lane to run `fairway merge-ready <task-id>` and then make
+the configured merge/push/CI decision. It is not approval, merge, push, deploy,
+or release authority.
 
 Coordinator notification-gap reporting is scoped to actionable work. It ignores
 handoffs that were explicitly acknowledged and suppresses historical handoffs

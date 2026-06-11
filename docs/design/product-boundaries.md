@@ -87,3 +87,12 @@ Adapters are edge contracts. Core Fairway remains provider-neutral.
 Adapters may feed Fairway evidence, sessions, checkpoints, usage, and links.
 They do not decide task status, review approval, merge readiness, or release
 promotion on their own.
+
+Provider thread steering is also an adapter boundary. Fairway may record that a
+handoff was recorded, a notification was delivered, or a provider thread was
+actually steered, but only the active provider/app surface can prove the direct
+thread capability existed. If a session does not expose tools such as
+`send_message_to_thread` and `read_thread`, agents must record Fairway state and
+route the manual relay through the coordinator/control track. A delivered or
+steered notification is a resume signal, not authority to approve, merge, push,
+deploy, release, or close work.

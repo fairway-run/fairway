@@ -434,6 +434,16 @@ func TestNotificationTracksHandoffDeliveryState(t *testing.T) {
 	if len(gaps) != 0 {
 		t.Fatalf("gaps after sent notification=%+v, want none", gaps)
 	}
+
+	if _, err := s.RecordNotification(ctx, Notification{TaskID: "T-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "handoff_recorded"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, Notification{TaskID: "T-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "notification_delivered"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, Notification{TaskID: "T-001", Domain: "security", Provider: "codex", Target: "thread-1", State: "thread_steered"}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestHandoffNotificationGapsEscalateStaleSentNotifications(t *testing.T) {

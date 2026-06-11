@@ -374,7 +374,7 @@ func TestBuildPlanReviewCompletionHandback(t *testing.T) {
 	if err := s.RecordReview(ctx, "CHANGES-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "fixed"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordReview(ctx, "CHANGES-001", store.Review{Reviewer: "gov-reviewer", Domain: "governance", Verdict: "approve", Reason: "governance ok"}); err != nil {
+	if err := s.RecordReview(ctx, "CHANGES-001", store.Review{Reviewer: "gov-reviewer", Domain: "governance", Verdict: "approve", Reason: "governance ok", Commit: "abc123"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RecordReview(ctx, "OPENCHANGES-001", store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "initial ok"}); err != nil {
@@ -406,6 +406,15 @@ func TestBuildPlanReviewCompletionHandback(t *testing.T) {
 	}
 	if action.ReviewHandback.MergeReadyStatus != "review_complete_next_merge_ready_check" {
 		t.Fatalf("merge-ready status=%q", action.ReviewHandback.MergeReadyStatus)
+	}
+	if action.ReviewHandback.Commit != "abc123" {
+		t.Fatalf("commit=%q, want abc123", action.ReviewHandback.Commit)
+	}
+	if action.ReviewHandback.SuggestedCommand != "fairway merge-ready CHANGES-001" {
+		t.Fatalf("suggested command=%q", action.ReviewHandback.SuggestedCommand)
+	}
+	if len(action.ReviewHandback.MissingDomains) != 0 {
+		t.Fatalf("missing domains=%v, want none", action.ReviewHandback.MissingDomains)
 	}
 	if !strings.Contains(action.Reason, "fairway merge-ready CHANGES-001") {
 		t.Fatalf("review-complete reason missing merge-ready command: %+v", action)
@@ -460,12 +469,15 @@ func TestBuildPlanSuppressesStaleReviewCompletionHandbacks(t *testing.T) {
 		{ID: "PUSHED-001", Title: "Pushed review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
 		{ID: "OLD-001", Title: "Old review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
 		{ID: "ACK-001", Title: "Acknowledged review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "NOTIFY-001", Title: "Delivered review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "AMENDED-001", Title: "Amended review", Kind: "task", Role: "backend", ReviewDomains: []string{"arch"}},
+		{ID: "RESET-001", Title: "Review set reset", Kind: "task", Role: "backend", ReviewDomains: []string{"arch", "ops"}},
 	}
 	if err := s.ImportTasks(ctx, tasks); err != nil {
 		t.Fatal(err)
 	}
 	for _, task := range tasks {
-		if task.ID == "FRESH-001" {
+		if task.ID == "FRESH-001" || task.ID == "NOTIFY-001" || task.ID == "AMENDED-001" || task.ID == "RESET-001" {
 			if err := s.SetStatus(ctx, task.ID, "review", "fresh review-complete handback", false); err != nil {
 				t.Fatal(err)
 			}
@@ -474,14 +486,37 @@ func TestBuildPlanSuppressesStaleReviewCompletionHandbacks(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := s.RecordReview(ctx, task.ID, store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "review ok"}); err != nil {
+		reviewCommit := ""
+		switch task.ID {
+		case "NOTIFY-001":
+			reviewCommit = "not123"
+		case "AMENDED-001":
+			reviewCommit = "new123"
+		case "RESET-001":
+			reviewCommit = "same123"
+		}
+		if err := s.RecordReview(ctx, task.ID, store.Review{Reviewer: "arch-reviewer", Domain: "arch", Verdict: "approve", Reason: "review ok", Commit: reviewCommit}); err != nil {
 			t.Fatal(err)
+		}
+		if task.ID == "RESET-001" {
+			if err := s.RecordReview(ctx, task.ID, store.Review{Reviewer: "ops-reviewer", Domain: "ops", Verdict: "approve", Reason: "review ok", Commit: reviewCommit}); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	if err := s.RecordEvidence(ctx, "PUSHED-001", store.Evidence{CommandText: "fairway record push-intent PUSHED-001", Result: "pass", ArtifactType: "push-intent"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RecordEvidence(ctx, "ACK-001", store.Evidence{CommandText: "fairway coordinator acknowledged review handback", Result: "pass", ArtifactType: "review-handback-ack"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "NOTIFY-001", Domain: "coordinator", Provider: "codex", Target: "control-thread", State: "notification_delivered", Reason: "review_complete review_signature=commit=not123|arch=approve@not123"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "AMENDED-001", Domain: "coordinator", Provider: "codex", Target: "control-thread", State: "thread_steered", Reason: "review_complete review_signature=commit=old123|arch=approve@old123"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "RESET-001", Domain: "coordinator", Provider: "codex", Target: "control-thread", State: "notification_delivered", Reason: "review_complete review_signature=commit=same123|arch=approve@same123 commit=same123"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -492,10 +527,16 @@ func TestBuildPlanSuppressesStaleReviewCompletionHandbacks(t *testing.T) {
 	if !hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", "FRESH-001") {
 		t.Fatalf("fresh review-complete handback missing: %+v", plan.Actions)
 	}
-	for _, suppressed := range []string{"PUSHED-001", "OLD-001", "ACK-001"} {
+	for _, suppressed := range []string{"PUSHED-001", "OLD-001", "ACK-001", "NOTIFY-001"} {
 		if hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", suppressed) {
 			t.Fatalf("suppressed task %s produced review-complete action: %+v", suppressed, plan.Actions)
 		}
+	}
+	if !hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", "AMENDED-001") {
+		t.Fatalf("amended commit should reset stale notification suppression: %+v", plan.Actions)
+	}
+	if !hasPlanAction(plan, "review-complete", "run_merge_ready_after_review", "RESET-001") {
+		t.Fatalf("changed review set on same commit should reset notification suppression: %+v", plan.Actions)
 	}
 }
 

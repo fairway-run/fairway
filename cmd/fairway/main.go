@@ -3180,6 +3180,17 @@ func printCoordinatorPlan(plan coord.Plan) {
 				target = strings.Join(action.TaskIDs, ",")
 			}
 			fmt.Printf("- [%s] %s task=%s role=%s reason=%s\n", action.Classification, action.Action, target, action.Role, action.Reason)
+			if action.ReviewHandback != nil {
+				fmt.Printf("  review_complete_next_action: task=%s commit=%s review_signature=%s approved=%s missing=%s command=%s status=%s\n",
+					action.ReviewHandback.TaskID,
+					firstNonEmpty(action.ReviewHandback.Commit, "unknown"),
+					firstNonEmpty(action.ReviewHandback.ReviewSignature, "unknown"),
+					strings.Join(action.ReviewHandback.ApprovedDomains, ","),
+					firstNonEmpty(strings.Join(action.ReviewHandback.MissingDomains, ","), "none"),
+					action.ReviewHandback.SuggestedCommand,
+					action.ReviewHandback.MergeReadyStatus,
+				)
+			}
 		}
 	}
 }
@@ -7338,7 +7349,7 @@ func recordNotification(ctx context.Context, opts globalOptions, args []string) 
 	domain := fs.String("domain", "", "review domain or target role")
 	provider := fs.String("provider", "", "provider name")
 	target := fs.String("target", "", "provider target such as thread id, tmux pane, or adapter destination")
-	state := fs.String("state", "intent", "notification state: intent, sent, acknowledged, review_recorded, failed")
+	state := fs.String("state", "intent", "notification state: intent, handoff_recorded, sent, notification_delivered, thread_steered, acknowledged, review_recorded, failed")
 	reason := fs.String("reason", "", "reason or failure detail")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -8190,7 +8201,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
-		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true})
+		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 		return printJSON(struct {
 			Task                 store.Task                      `json:"task"`
 			ReviewStatus         string                          `json:"review_status"`
@@ -8209,7 +8220,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	}
 	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
-	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true})
+	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, reviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
 	fmt.Println("\ndependencies:")
@@ -8264,9 +8275,16 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if hasReviewHandback {
 		fmt.Println("\nreview handback:")
 		fmt.Printf("- merge_ready_status: %s\n", reviewHandback.MergeReadyStatus)
+		fmt.Printf("- commit: %s\n", firstNonEmpty(reviewHandback.Commit, "unknown"))
+		fmt.Printf("- review_signature: %s\n", firstNonEmpty(reviewHandback.ReviewSignature, "unknown"))
+		fmt.Printf("- suggested_command: %s\n", reviewHandback.SuggestedCommand)
 		fmt.Printf("- recommended_action: %s\n", reviewHandback.RecommendedAction)
 		fmt.Printf("- required_domains: %s\n", strings.Join(reviewHandback.RequiredDomains, ", "))
 		fmt.Printf("- approved_domains: %s\n", strings.Join(reviewHandback.ApprovedDomains, ", "))
+		fmt.Println("- missing_domains: none")
+		if reviewHandback.NotificationState != "" {
+			fmt.Printf("- notification_state: %s\n", reviewHandback.NotificationState)
+		}
 		for _, verdict := range reviewHandback.LatestVerdicts {
 			fmt.Printf("- latest %s: %s by %s\n", verdict.Domain, firstNonEmpty(verdict.Verdict, "none"), firstNonEmpty(verdict.Reviewer, "unknown"))
 		}

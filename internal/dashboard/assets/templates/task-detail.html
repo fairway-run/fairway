@@ -60,9 +60,14 @@
 <h2>Review Handback</h2>
 <dl class="detail-list">
 <dt>Status</dt><dd><span class="status-pill {{statusClass .MergeReadyStatus}}">{{.MergeReadyStatus}}</span></dd>
+<dt>Commit</dt><dd>{{if .Commit}}<code>{{.Commit}}</code>{{else}}unknown{{end}}</dd>
+<dt>Review signature</dt><dd>{{if .ReviewSignature}}<code>{{.ReviewSignature}}</code>{{else}}unknown{{end}}</dd>
+<dt>Suggested command</dt><dd><code>{{.SuggestedCommand}}</code></dd>
 <dt>Next</dt><dd>{{.RecommendedAction}}</dd>
 <dt>Required</dt><dd>{{range .RequiredDomains}}<code>{{.}}</code> {{end}}</dd>
 <dt>Approved</dt><dd>{{range .ApprovedDomains}}<code>{{.}}</code> {{end}}</dd>
+<dt>Missing</dt><dd>{{range .MissingDomains}}<code>{{.}}</code> {{else}}none{{end}}</dd>
+{{if .NotificationState}}<dt>Notification</dt><dd>{{.NotificationState}}</dd>{{end}}
 <dt>Latest verdicts</dt><dd>{{range .LatestVerdicts}}<code>{{.Domain}}</code> {{if .Verdict}}{{.Verdict}}{{else}}none{{end}} {{if .Reviewer}}by {{.Reviewer}}{{end}}<br>{{end}}</dd>
 {{if .Blockers}}<dt>Blockers</dt><dd>{{range .Blockers}}{{.}}<br>{{end}}</dd>{{end}}
 </dl>

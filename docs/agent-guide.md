@@ -126,7 +126,9 @@ When the host environment exposes desktop thread tools, use this sequence:
 2. Confirm the target thread id when needed with `list_threads`.
 3. Send the exact prompt with the thread messaging tool.
 4. Record a Fairway handoff, notification, or checkpoint that includes the
-   target thread id, role/domain, task id, and prompt summary.
+   target thread id, role/domain, task id, and prompt summary. Use
+   `--state thread_steered` only after direct thread tooling accepts the
+   message.
 5. Later read the same thread to determine whether it is working, waiting,
    blocked, complete, or asking for input.
 6. Record the result back into Fairway as evidence, review, checkpoint,
@@ -136,6 +138,8 @@ When the host environment exposes desktop thread tools, use this sequence:
 When thread tools are not exposed:
 
 1. Record the Fairway handoff/checkpoint/notification normally.
+   Use `--state handoff_recorded` when Fairway state was updated but no
+   provider/thread delivery proof exists.
 2. Produce a clearly labeled manual relay block:
 
    ```text
@@ -1169,14 +1173,17 @@ fairway record notification T-001 \
   --domain ui \
   --provider codex \
   --target <thread-or-adapter-target> \
-  --state sent
+  --state notification_delivered
 ```
 
 Use `--state failed --reason "<why>"` when the provider target could not be
-contacted. Use `acknowledged` only when the target confirmed receipt, and
-`review_recorded` only when the review was recorded in Fairway. Notification
-state never substitutes for `fairway record review`, status changes, merge,
-push, deploy, or release gates.
+contacted. Use `handoff_recorded` when Fairway recorded the routing state but
+no provider delivery proof exists, `notification_delivered` when an adapter or
+provider confirms delivery, `thread_steered` only when direct thread tooling
+accepted the message, `acknowledged` only when the target confirmed receipt,
+and `review_recorded` only when the review was recorded in Fairway.
+Notification state never substitutes for `fairway record review`, status
+changes, merge, push, deploy, or release gates.
 
 ## Review
 
@@ -1213,7 +1220,10 @@ surfaces a `review-complete` handback for the coordinator or reviewer/merge
 lane. The handback prevents review completion from being trapped in provider
 chat, but it does not merge, push, deploy, or release. The coordinator still
 runs `fairway merge-ready <task-id>` and performs the configured promotion step
-explicitly.
+explicitly. If you record delivery of that handback, include the current
+`review_signature` from `coordinator plan` or task detail in the notification
+reason; commit-only acknowledgement is not enough when the required review set
+changes on the same commit.
 
 Use `changes` rather than `approve` when more work is required. No agent should
 approve its own work.

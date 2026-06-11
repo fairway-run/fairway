@@ -100,11 +100,16 @@ type PlanStopCondition struct {
 
 type ReviewCompletionHandback struct {
 	TaskID            string                `json:"task_id"`
+	Commit            string                `json:"commit,omitempty"`
+	ReviewSignature   string                `json:"review_signature,omitempty"`
 	RequiredDomains   []string              `json:"required_domains"`
 	ApprovedDomains   []string              `json:"approved_domains"`
+	MissingDomains    []string              `json:"missing_domains,omitempty"`
 	LatestVerdicts    []ReviewDomainVerdict `json:"latest_verdicts"`
 	MergeReadyStatus  string                `json:"merge_ready_status"`
+	SuggestedCommand  string                `json:"suggested_command"`
 	RecommendedAction string                `json:"recommended_action"`
+	NotificationState string                `json:"notification_state,omitempty"`
 	Blockers          []string              `json:"blockers,omitempty"`
 }
 
@@ -121,6 +126,7 @@ type ReviewHandbackOptions struct {
 	Now                  time.Time
 	IncludeHistorical    bool
 	SuppressAcknowledged bool
+	Notifications        []store.Notification
 }
 
 type TaskRef struct {
@@ -346,7 +352,11 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 					addStop(&plan, "review-gated", reason, task.Definition.ID, task.Definition.Role)
 				}
 			} else {
-				handback, ok := ReviewHandbackForTask(cfg, detailTask, evidence, handoffs, reviews, ReviewHandbackOptions{FreshFor: opts.ReviewHandbackFreshFor, Now: time.Now().UTC(), SuppressAcknowledged: true})
+				notifications, err := s.Notifications(ctx, task.Definition.ID)
+				if err != nil {
+					return Plan{}, err
+				}
+				handback, ok := ReviewHandbackForTask(cfg, detailTask, evidence, handoffs, reviews, ReviewHandbackOptions{FreshFor: opts.ReviewHandbackFreshFor, Now: time.Now().UTC(), SuppressAcknowledged: true, Notifications: notifications})
 				if ok {
 					if len(handback.Blockers) > 0 {
 						reason := "required reviews are approved but merge-ready has non-review blockers: " + strings.Join(handback.Blockers, "; ")
@@ -610,13 +620,29 @@ func ReviewHandbackForTask(cfg config.Config, task store.Task, evidence []store.
 	if !opts.IncludeHistorical && reviewHandbackIsHistorical(task, evidence, reviews, opts) {
 		return ReviewCompletionHandback{}, false
 	}
+	orderedVerdicts := orderedReviewVerdicts(required, latest)
+	commit := strings.TrimSpace(task.CommitSHA)
+	if commit == "" {
+		commit = latestReviewCommit(orderedVerdicts)
+	}
 	handback := ReviewCompletionHandback{
 		TaskID:            task.Definition.ID,
+		Commit:            commit,
 		RequiredDomains:   required,
 		ApprovedDomains:   approved,
-		LatestVerdicts:    orderedReviewVerdicts(required, latest),
+		MissingDomains:    []string{},
+		LatestVerdicts:    orderedVerdicts,
 		MergeReadyStatus:  "review_complete_next_merge_ready_check",
+		SuggestedCommand:  fmt.Sprintf("fairway merge-ready %s", task.Definition.ID),
 		RecommendedAction: fmt.Sprintf("run fairway merge-ready %s, then perform the configured coordinator merge/push/release action if it passes", task.Definition.ID),
+	}
+	handback.ReviewSignature = reviewHandbackSignature(handback)
+	if opts.SuppressAcknowledged {
+		if state, ok := reviewHandbackNotificationAcknowledged(opts.Notifications, handback); ok {
+			return ReviewCompletionHandback{}, false
+		} else if state != "" {
+			handback.NotificationState = state
+		}
 	}
 	if cfg.Gates.RequireEvidenceBeforeDone && len(evidence) == 0 {
 		handback.Blockers = append(handback.Blockers, "missing evidence")
@@ -629,6 +655,67 @@ func ReviewHandbackForTask(cfg config.Config, task store.Task, evidence []store.
 		handback.RecommendedAction = "resolve non-review merge-ready blockers before coordinator merge/push/release action"
 	}
 	return handback, true
+}
+
+func latestReviewCommit(verdicts []ReviewDomainVerdict) string {
+	for _, verdict := range verdicts {
+		if strings.TrimSpace(verdict.Commit) != "" {
+			return strings.TrimSpace(verdict.Commit)
+		}
+	}
+	return ""
+}
+
+func reviewHandbackNotificationAcknowledged(notifications []store.Notification, handback ReviewCompletionHandback) (string, bool) {
+	signature := strings.TrimSpace(handback.ReviewSignature)
+	if signature == "" {
+		signature = reviewHandbackSignature(handback)
+	}
+	latestState := ""
+	for _, notification := range notifications {
+		if !reviewHandbackNotificationStateAcknowledges(notification.State) {
+			continue
+		}
+		latestState = notification.State
+		reason := strings.TrimSpace(notification.Reason)
+		if signature != "" && notificationReasonHasReviewSignature(reason, signature) {
+			return notification.State, true
+		}
+	}
+	return latestState, false
+}
+
+func notificationReasonHasReviewSignature(reason, signature string) bool {
+	if strings.TrimSpace(signature) == "" {
+		return false
+	}
+	want := "review_signature=" + strings.TrimSpace(signature)
+	for _, field := range strings.Fields(reason) {
+		if strings.Trim(field, ",;") == want {
+			return true
+		}
+	}
+	return strings.Trim(reason, ",;") == want
+}
+
+func reviewHandbackNotificationStateAcknowledges(state string) bool {
+	switch strings.TrimSpace(state) {
+	case "acknowledged", "notification_delivered", "thread_steered", "review_recorded":
+		return true
+	default:
+		return false
+	}
+}
+
+func reviewHandbackSignature(handback ReviewCompletionHandback) string {
+	var parts []string
+	if strings.TrimSpace(handback.Commit) != "" {
+		parts = append(parts, "commit="+strings.TrimSpace(handback.Commit))
+	}
+	for _, verdict := range handback.LatestVerdicts {
+		parts = append(parts, verdict.Domain+"="+verdict.Verdict+"@"+verdict.Commit)
+	}
+	return strings.Join(parts, "|")
 }
 
 func reviewHandbackAcknowledged(evidence []store.Evidence) bool {

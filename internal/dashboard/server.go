@@ -2274,13 +2274,18 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	notifications, err := s.store.Notifications(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	activeReport, err := reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	missingReviewDomains := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
-	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true})
+	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),

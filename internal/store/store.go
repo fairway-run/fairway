@@ -1524,7 +1524,7 @@ func (s *Store) RecordNotification(ctx context.Context, n Notification) (Notific
 		return Notification{}, errors.New("notification domain is required")
 	}
 	switch n.State {
-	case "intent", "sent", "acknowledged", "review_recorded", "failed":
+	case "intent", "handoff_recorded", "sent", "notification_delivered", "thread_steered", "acknowledged", "review_recorded", "failed":
 	default:
 		return Notification{}, fmt.Errorf("invalid notification state %q", n.State)
 	}
@@ -1596,10 +1596,10 @@ SELECT hf.task_id, d.role, hf.to_role, hf.id, hf.created_at,
          ORDER BY n2.created_at DESC
          LIMIT 1
        ), '') AS last_state,
-       SUM(CASE WHEN n.state IN ('acknowledged', 'review_recorded') THEN 1 ELSE 0 END) AS resolved_count,
+       SUM(CASE WHEN n.state IN ('acknowledged', 'review_recorded', 'notification_delivered', 'thread_steered') THEN 1 ELSE 0 END) AS resolved_count,
        SUM(CASE WHEN n.state = 'sent' THEN 1 ELSE 0 END) AS sent_count,
        COALESCE(MAX(CASE WHEN n.state = 'sent' THEN n.created_at ELSE '' END), '') AS last_sent_at,
-       SUM(CASE WHEN n.state IN ('intent', 'failed') THEN 1 ELSE 0 END) AS unresolved_count,
+       SUM(CASE WHEN n.state IN ('intent', 'handoff_recorded', 'failed') THEN 1 ELSE 0 END) AS unresolved_count,
        (
          SELECT COUNT(*)
          FROM task_reviews r
@@ -1660,11 +1660,17 @@ func notificationGapStatus(lastState, lastNotificationAt, sentStaleBefore string
 	switch strings.TrimSpace(lastState) {
 	case "":
 		return "never-sent"
+	case "handoff_recorded":
+		return "handoff-recorded"
 	case "sent":
 		if sentStaleBefore != "" && lastNotificationAt != "" && lastNotificationAt < sentStaleBefore {
 			return "stale-sent"
 		}
 		return "sent-awaiting-ack"
+	case "notification_delivered":
+		return "notification-delivered"
+	case "thread_steered":
+		return "thread-steered"
 	case "acknowledged":
 		return "acknowledged"
 	case "review_recorded":
@@ -1679,7 +1685,7 @@ func terminalNotificationGapStillRelevant(reviewRequired bool, reviewStatus, las
 		return true
 	}
 	switch strings.TrimSpace(lastNotificationState) {
-	case "intent", "failed":
+	case "intent", "handoff_recorded", "failed":
 		return true
 	default:
 		return false

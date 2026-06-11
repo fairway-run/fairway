@@ -1304,7 +1304,7 @@ func TestTaskDetailRendersReviewHandback(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.task(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"Review Handback", "review_complete_next_merge_ready_check", "fairway merge-ready T-001", "architecture", "governance", "arch-reviewer", "gov-reviewer"} {
+	for _, want := range []string{"Review Handback", "review_complete_next_merge_ready_check", "Suggested command", "fairway merge-ready T-001", "Missing", "none", "architecture", "governance", "arch-reviewer", "gov-reviewer"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("task detail review handback missing %q:\n%s", want, body)
 		}
