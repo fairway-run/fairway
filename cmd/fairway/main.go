@@ -62,6 +62,11 @@ func run(ctx context.Context, args []string) error {
 		usage()
 		return nil
 	}
+	if len(args) > 1 && isHelpOnly(args[1:]) {
+		if printCommandHelp(args[0]) {
+			return nil
+		}
+	}
 	switch args[0] {
 	case "help", "-h", "--help":
 		if len(args) > 1 {
@@ -8393,7 +8398,72 @@ func exitCode(err error) int {
 }
 
 func usage() {
-	fmt.Println("fairway init|agent-guide|import|add|spawn|update|tree|list|ready|claim|set-status|record|usage report|task-detail|status-report|health-report|timing-report|dispatch-plan|git-check|preflight|workflow check|closeout|batch create|add|remove|evidence|link|show|list|audit work-coverage|ci-learning|release verify|merge-ready|route review|review checkout|worktree|session|reconcile active|coordinator|readiness|adoption|parity|checkpoint|packet|packet template|watcher|rules validate|evidence-types|match|regression-pack|tracker|register|unregister|projects|tui|config validate|dashboard [start|stop|restart|status]|version")
+	fmt.Println("fairway - Governed Agentic Engineering coordination")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  fairway <command> [args]")
+	fmt.Println("  fairway <command> --help")
+	fmt.Println()
+	fmt.Println("Queue and task state:")
+	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail")
+	fmt.Println("Evidence and review:")
+	fmt.Println("  record evidence|guard-report|handoff|notification|review|usage|push-intent, route review, merge-ready, review checkout")
+	fmt.Println("Sessions, worktrees, and workflow:")
+	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, batch")
+	fmt.Println("Coordinator and readiness:")
+	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
+	fmt.Println("Rules, packets, reports, and audits:")
+	fmt.Println("  rules, packet, regression-pack, usage report, audit work-coverage|ci-learning, status-report, health-report, timing-report")
+	fmt.Println("Dashboard, release, and configuration:")
+	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
+	fmt.Println()
+	fmt.Println("Run `fairway agent-guide` for the offline agent operating guide.")
+	fmt.Println("Run `fairway <command> --help` for concise command usage.")
+}
+
+func printCommandHelp(command string) bool {
+	help := map[string]string{
+		"init":          "fairway init [--refresh-agent-contract]\n  Scaffold .fairway/config.toml, the SQLite DB, and .fairway/AGENTS.md.",
+		"agent-guide":   "fairway agent-guide [--path | --output <path>]\n  Print the embedded offline agent guide, show its source/version path, or write it to a file.",
+		"import":        "fairway import <yaml-or-json-path> [--state-once]\n  Import task definitions from YAML or JSON.",
+		"add":           "fairway add <task-id> --title <title> [--role <role>] [metadata flags]\n  Add one task definition.",
+		"spawn":         "fairway spawn --id <task-id> --title <title> [--child|--sibling|--root] [metadata flags]\n  Spawn related work from an existing task context.",
+		"update":        "fairway update <task-id> [--title <title>] [--dependencies <ids>] [metadata flags]\n  Update task definition metadata.",
+		"list":          "fairway list [--status <state[,state]>]... [--role <role>] [--ready]\n  List tasks with dependency visibility.",
+		"ready":         "fairway ready [--in <epic-id>] [--priority <n>]\n  Show claimable work for the current role and explain empty queues.",
+		"claim":         "fairway claim <task-id> | fairway claim --in <epic-id>\n  Claim a ready task.",
+		"set-status":    "fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]\n  Move a task through the configured state machine.",
+		"task-detail":   "fairway task-detail <task-id>\n  Show task state, metadata, evidence, sessions, reviews, and readiness.",
+		"status-report": "fairway status-report\n  Print task counts by status.",
+		"health-report": "fairway health-report\n  Print aggregate health diagnostics for the local Fairway state.",
+		"timing-report": "fairway timing-report\n  Print task timing and flow metrics.",
+		"dispatch-plan": "fairway dispatch-plan [--role <role>] [--limit <n>]\n  Print a ready-work dispatch plan for a role.",
+		"git-check":     "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
+		"preflight":     "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
+		"record":        "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"session":       "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
+		"worktree":      "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
+		"workflow":      "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",
+		"coordinator":   "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
+		"rules":         "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
+		"dashboard":     "fairway dashboard [--listen <addr>] [--multi] [--no-open]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
+		"release":       "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
+		"config":        "fairway config validate\n  Validate .fairway/config.toml.",
+		"db":            "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
+		"audit":         "fairway audit work-coverage|ci-learning ...\n  Run advisory coverage and CI/deploy learning reports.",
+		"usage":         "fairway usage report [--by <provider|task|epic|role|day|kind|phase>]\n  Report provider-neutral usage attribution.",
+		"register":      "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",
+		"unregister":    "fairway unregister [<name>]\n  Remove a project from the local Fairway registry.",
+		"projects":      "fairway projects\n  List registered Fairway projects.",
+		"tui":           "fairway tui [--once]\n  Open the interactive terminal workflow.",
+		"version":       "fairway version\n  Print the Fairway binary version.",
+	}
+	text, ok := help[command]
+	if !ok {
+		return false
+	}
+	fmt.Println(text)
+	return true
 }
 
 func isHelpOnly(args []string) bool {

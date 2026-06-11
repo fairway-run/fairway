@@ -65,8 +65,56 @@ func TestCLI_HelpAliases(t *testing.T) {
 		{"-h"},
 	} {
 		out := runCapture(t, args...)
-		assertContains(t, out, "fairway init|agent-guide|import|add")
+		assertContains(t, out, "fairway - Governed Agentic Engineering coordination")
+		assertContains(t, out, "Queue and task state:")
+		assertContains(t, out, "Evidence and review:")
+		assertContains(t, out, "Sessions, worktrees, and workflow:")
+		assertContains(t, out, "Coordinator and readiness:")
+		assertContains(t, out, "Rules, packets, reports, and audits:")
+		assertContains(t, out, "Dashboard, release, and configuration:")
+		assertContains(t, out, "fairway agent-guide")
 	}
+}
+
+func TestCLI_CommandHelpCleanExit(t *testing.T) {
+	out := runCapture(t, "import", "--help")
+	assertContains(t, out, "fairway import <yaml-or-json-path> [--state-once]")
+	assertContains(t, out, "Import task definitions")
+	assertNotContains(t, out, "error:")
+
+	out = runCapture(t, "agent-guide", "--help")
+	assertContains(t, out, "fairway agent-guide [--path | --output <path>]")
+}
+
+func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		want    string
+	}{
+		{"preflight", "fairway preflight [--role <role>]"},
+		{"git-check", "fairway git-check [--base <ref>]"},
+		{"status-report", "fairway status-report"},
+		{"health-report", "fairway health-report"},
+		{"timing-report", "fairway timing-report"},
+		{"dispatch-plan", "fairway dispatch-plan [--role <role>]"},
+		{"register", "fairway register [--name <name>]"},
+		{"unregister", "fairway unregister [<name>]"},
+		{"projects", "fairway projects"},
+		{"tui", "fairway tui [--once]"},
+	} {
+		out := runCapture(t, tc.command, "--help")
+		assertContains(t, out, tc.want)
+		assertNotContains(t, out, "error:")
+		assertNotContains(t, out, "Usage of")
+	}
+}
+
+func TestCLI_UnknownCommandStillErrors(t *testing.T) {
+	out, err := captureRun("does-not-exist")
+	if err == nil {
+		t.Fatal("unknown command succeeded, expected error")
+	}
+	assertNotContains(t, out, "Queue and task state:")
 }
 
 func TestCLI_GroupHelpAliases(t *testing.T) {

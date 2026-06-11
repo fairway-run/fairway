@@ -101,6 +101,12 @@ fairway projects                                        # list registered projec
 fairway version
 ```
 
+`fairway help`, `fairway -h`, and `fairway --help` print a grouped command
+summary by workflow area. `fairway <command> --help` exits successfully with
+concise command usage for top-level commands, including file-taking commands
+such as `fairway import --help`; longer examples live in `fairway agent-guide`
+and the docs.
+
 ## Granularity guardrail
 
 `fairway spawn --child` prints a warning when invoked from a leaf-kind task (`kind` in `{task, bug, spike}`):
