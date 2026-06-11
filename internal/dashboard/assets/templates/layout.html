@@ -46,6 +46,7 @@
 <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark theme">light</button>
 </div>
 </header>
+{{if dashboardReadOnly .}}<section class="readonly-banner" role="status">Shared read-only dashboard. Mutating actions are disabled; use the Fairway CLI in a trusted local worktree for changes.</section>{{end}}
 {{template "content" .}}
 <script src="/assets/js/common.js" defer></script>
 {{if eq .View "wall"}}<script src="/assets/js/wall.js" defer></script>{{end}}

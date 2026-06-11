@@ -2960,12 +2960,12 @@ func TestDashboardLifecycleChildArgsPreservesGlobalOptions(t *testing.T) {
 		ConfigPath: "/tmp/fairway.toml",
 		DBPath:     "/tmp/fairway.db",
 		Role:       "backend",
-	}, "127.0.0.1:7878", true, true)
+	}, "127.0.0.1:7878", true, true, true)
 	want := []string{
 		"--config", "/tmp/fairway.toml",
 		"--db", "/tmp/fairway.db",
 		"--as", "backend",
-		"dashboard", "--listen", "127.0.0.1:7878", "--no-open", "--multi",
+		"dashboard", "--listen", "127.0.0.1:7878", "--no-open", "--read-only", "--multi",
 	}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("args = %#v, want %#v", args, want)

@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -318,6 +319,7 @@ type TaskDetailViewData struct {
 	States               []string
 	Audit                AuditDiagnostics
 	ActiveFindings       []reconcile.ActiveFinding
+	ReadOnly             bool
 }
 
 type TaskGateStatus struct {
@@ -562,6 +564,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		CoordinatorPlan:      coordinatorPlan,
 		CloseoutReports:      closeoutReports,
 		Audit:                auditDiagnostics,
+		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 		CSRFToken:            s.csrfToken,
 		MutableStates:        dashboardMutableStates(s.cfg),
 		Roles:                append([]string(nil), s.roles...),
@@ -2315,6 +2318,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		States:               dashboardMutableStates(s.cfg),
 		Audit:                s.auditDiagnostics(r.Context(), id),
 		ActiveFindings:       activeFindingsForTask(activeReport.Findings, id),
+		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 	}
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
 }
@@ -2458,6 +2462,9 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.allowMutation(w) {
+		return
+	}
 	if r.FormValue("csrf") != s.csrfToken {
 		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return
@@ -2479,6 +2486,9 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 func (s *Server) setStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.allowMutation(w) {
 		return
 	}
 	if r.FormValue("csrf") != s.csrfToken {
@@ -2615,6 +2625,9 @@ func (s *Server) saveView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !s.allowMutation(w) {
+		return
+	}
 	if r.FormValue("csrf") != s.csrfToken {
 		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return
@@ -2633,6 +2646,9 @@ func (s *Server) bulkActionRequest(w http.ResponseWriter, r *http.Request) ([]st
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return nil, false
 	}
+	if !s.allowMutation(w) {
+		return nil, false
+	}
 	if r.FormValue("csrf") != s.csrfToken {
 		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return nil, false
@@ -2647,6 +2663,14 @@ func (s *Server) bulkActionRequest(w http.ResponseWriter, r *http.Request) ([]st
 		return nil, false
 	}
 	return taskIDs, true
+}
+
+func (s *Server) allowMutation(w http.ResponseWriter) bool {
+	if s.cfg.Dashboard.ReadOnly {
+		http.Error(w, "dashboard is running in read-only shared mode", http.StatusForbidden)
+		return false
+	}
+	return true
 }
 
 func bulkReturnTo(r *http.Request) string {
@@ -2916,9 +2940,25 @@ func dashboardTemplateFuncs() template.FuncMap {
 		"contains":                 containsString,
 		"statusClass":              safeDashboardClass,
 		"safeClass":                safeDashboardClass,
+		"dashboardReadOnly":        dashboardReadOnly,
 		"dict":                     templateDict,
 	}
 	return funcs
+}
+
+func dashboardReadOnly(data any) bool {
+	value := reflect.ValueOf(data)
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return false
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return false
+	}
+	field := value.FieldByName("ReadOnly")
+	return field.IsValid() && field.Kind() == reflect.Bool && field.Bool()
 }
 
 func mustEmbeddedTemplate(name, path string, funcs template.FuncMap) *template.Template {

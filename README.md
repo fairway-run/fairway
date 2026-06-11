@@ -56,6 +56,8 @@ model practical.
 - A single Go binary (`fairway`) plus an embedded SQLite store.
 - A CLI for claiming tasks, recording handoffs / evidence / reviews, managing sessions.
 - A local web dashboard with wall, board, diagnostics, and task-detail flows.
+- Optional shared read-only dashboard mode for small-team viewing behind a
+  trusted identity-aware proxy or tunnel.
 - Config-driven: roles, branches, worktree paths, review routing, workstream profiles, packet templates, and the state machine are all defined in `.fairway/config.toml`.
 - Tracker-friendly: Plane, Jira, Linear, GitHub Issues, and similar tools can
   mirror planning context, but Fairway remains authoritative for local execution

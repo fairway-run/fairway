@@ -37,6 +37,15 @@
   opacity: 0.75;
 }
 
+.readonly-banner {
+  margin: var(--space-3) var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 .pill.claude {
   color: var(--claude);
   border-color: var(--claude);

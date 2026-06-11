@@ -42,8 +42,10 @@ type FairwayConfig struct {
 }
 
 type DashboardConfig struct {
-	Listen   string `toml:"listen"`
-	AutoOpen bool   `toml:"auto_open"`
+	Listen       string `toml:"listen"`
+	AutoOpen     bool   `toml:"auto_open"`
+	ReadOnly     bool   `toml:"read_only"`
+	TrustedProxy string `toml:"trusted_proxy"`
 }
 
 type WorktreesConfig struct {
@@ -169,8 +171,9 @@ func Defaults(root string) Config {
 			TaskIDPattern: `^[A-Z]+-[0-9]+$`,
 		},
 		Dashboard: DashboardConfig{
-			Listen:   "127.0.0.1:7878",
-			AutoOpen: true,
+			Listen:       "127.0.0.1:7878",
+			AutoOpen:     true,
+			TrustedProxy: "none",
 		},
 		Worktrees: WorktreesConfig{
 			Root:               "../worktrees",
@@ -267,6 +270,11 @@ func Validate(cfg Config) error {
 	}
 	if _, err := regexp.Compile(cfg.Fairway.TaskIDPattern); err != nil {
 		return fmt.Errorf("[fairway] task_id_pattern is invalid: %w", err)
+	}
+	switch strings.TrimSpace(cfg.Dashboard.TrustedProxy) {
+	case "", "none", "cloudflare_access", "identity_aware_proxy":
+	default:
+		return fmt.Errorf("[dashboard] trusted_proxy %q is unsupported", cfg.Dashboard.TrustedProxy)
 	}
 	if cfg.Worktrees.Root == "" {
 		return errors.New("[worktrees] root is required")
@@ -698,6 +706,8 @@ task_id_pattern = "^[A-Z]+-[0-9]+$"
 [dashboard]
 listen = "127.0.0.1:7878"
 auto_open = true
+read_only = false
+trusted_proxy = "none"
 
 [worktrees]
 root = "../worktrees"

@@ -22,10 +22,13 @@
 <a class="btn" href="{{.BackHref}}">Back</a>
 <a class="btn" href="/board">Board</a>
 <a class="btn" href="/board?tab=diagnostics">Diagnostics</a>
+{{if not .ReadOnly}}
 <form method="post" action="/actions/claim"><input type="hidden" name="csrf" value="{{.CSRFToken}}"><input type="hidden" name="task_id" value="{{.Task.Definition.ID}}"><button class="btn" type="submit">Claim</button></form>
+{{end}}
 </div>
 </section>
 <section class="detail-grid">
+{{if not .ReadOnly}}
 <article class="detail-panel">
 <h2>Status</h2>
 <form class="status-form" method="post" action="/actions/set-status">
@@ -36,6 +39,7 @@
 <button class="btn" type="submit">Set status</button>
 </form>
 </article>
+{{end}}
 <article class="detail-panel">
 <h2>Metadata</h2>
 <dl class="detail-list">

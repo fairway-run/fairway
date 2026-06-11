@@ -219,6 +219,65 @@ default = "task"
 	}
 }
 
+func TestLoadDashboardSharedReadOnlyConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".fairway", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`
+[fairway]
+project_name = "fairway-test"
+db_path = ".fairway/state.db"
+queue_source = "inline"
+main_branch = "main"
+task_id_pattern = "^[A-Z]+-[0-9]+$"
+
+[dashboard]
+listen = "127.0.0.1:7878"
+auto_open = false
+read_only = true
+trusted_proxy = "cloudflare_access"
+
+[worktrees]
+root = "../worktrees"
+naming = "{repo}-{role}"
+review_branch_naming = "review/{role}"
+
+[sessions]
+default_backend = "shell"
+stale_after = "12h"
+
+[states]
+allowed = ["todo", "in_progress", "blocked", "done"]
+terminal = ["done"]
+
+[gates]
+require_blocked_reason = true
+allow_force_without_reason = false
+
+[task_kinds]
+default = "task"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Dashboard.ReadOnly || cfg.Dashboard.TrustedProxy != "cloudflare_access" || cfg.Dashboard.AutoOpen {
+		t.Fatalf("dashboard config=%+v, want read-only cloudflare_access with auto_open false", cfg.Dashboard)
+	}
+}
+
+func TestValidateRejectsUnsupportedDashboardTrustedProxy(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Dashboard.TrustedProxy = "cloudflare"
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "trusted_proxy") {
+		t.Fatalf("Validate unsupported trusted_proxy err=%v, want trusted_proxy error", err)
+	}
+}
+
 func TestWorktreePathUsesTemplate(t *testing.T) {
 	cfg := Defaults("/tmp/repo")
 	got := WorktreePath(cfg, "/tmp/repo", Role{Name: "backend"})

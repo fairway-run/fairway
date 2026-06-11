@@ -840,6 +840,18 @@ For deploy work, create one deploy-run task for the attempt and create
 `CI-FIX-*`, `CD-FIX-*`, `UAT-BUG-*`, `OPS-FIX-*`, `HARNESS-FIX-*`, or
 `DOC-FIX-*` follow-ups only for actionable findings.
 
+## Shared Dashboard Access
+
+If the dashboard is exposed to teammates through a tunnel or identity-aware
+proxy, run it in shared read-only mode. Read-only dashboard access is for
+observation, review context, and coordination visibility; it is not permission
+to mutate tasks. Record task changes, evidence, reviews, handoffs, and release
+actions through the Fairway CLI from a trusted local worktree.
+
+Do not trust proxy identity headers unless the origin is reachable only through
+that trusted proxy/tunnel and JWT/header verification is in place. See
+[dashboard-sharing.md](design/dashboard-sharing.md).
+
 ## Lane Closeout Rule
 
 Fairway task completion is not the same as lane completion. The older lane

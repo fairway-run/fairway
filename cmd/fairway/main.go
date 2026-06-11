@@ -7438,7 +7438,7 @@ func recordReview(ctx context.Context, opts globalOptions, args []string) error 
 func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) > 0 {
 		if isHelpOnly(args) {
-			subcommandUsage("dashboard", "[--listen <addr>] [--no-open] [--multi] | start|stop|restart|status")
+			subcommandUsage("dashboard", "[--listen <addr>] [--no-open] [--read-only] [--multi] | start|stop|restart|status")
 			return nil
 		}
 		switch args[0] {
@@ -7455,6 +7455,7 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 	fs := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	listen := fs.String("listen", "", "listen address")
 	noOpen := fs.Bool("no-open", false, "do not open browser")
+	readOnly := fs.Bool("read-only", false, "serve dashboard in shared read-only mode")
 	multi := fs.Bool("multi", false, "show registered projects")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -7468,9 +7469,16 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		if *listen != "" {
 			addr = *listen
 		}
+		if *readOnly {
+			cfg.Dashboard.ReadOnly = true
+		}
 		url := dashboard.URL(addr)
 		if !isLoopbackAddr(addr) {
-			fmt.Fprintln(os.Stderr, "warning: dashboard is not bound to a loopback address; v0.1 has no authentication")
+			if cfg.Dashboard.ReadOnly {
+				fmt.Fprintln(os.Stderr, "warning: dashboard is not bound to a loopback address; read-only mode is not authentication")
+			} else {
+				fmt.Fprintln(os.Stderr, "warning: dashboard is not bound to a loopback address; v0.1 has no authentication")
+			}
 		}
 		fmt.Println("dashboard", url)
 		if cfg.Dashboard.AutoOpen && !*noOpen {
@@ -7537,6 +7545,7 @@ func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action strin
 	listen := fs.String("listen", "", "listen address")
 	noOpen := fs.Bool("no-open", false, "do not open browser")
 	open := fs.Bool("open", false, "open browser after starting")
+	readOnly := fs.Bool("read-only", false, "serve dashboard in shared read-only mode")
 	multi := fs.Bool("multi", false, "show registered projects")
 	pidFile := fs.String("pid-file", "", "pid file")
 	logFile := fs.String("log-file", "", "log file")
@@ -7586,12 +7595,12 @@ func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action strin
 				return err
 			}
 		}
-		return startDashboardLifecycle(opts, addr, childNoOpen, *multi, resolvedPIDFile, resolvedLogFile, true)
+		return startDashboardLifecycle(opts, addr, childNoOpen, *readOnly, *multi, resolvedPIDFile, resolvedLogFile, true)
 	case "start":
 		if status.Running {
 			return printDashboardLifecycleStatus(status, opts.JSON)
 		}
-		return startDashboardLifecycle(opts, addr, childNoOpen, *multi, resolvedPIDFile, resolvedLogFile, false)
+		return startDashboardLifecycle(opts, addr, childNoOpen, *readOnly, *multi, resolvedPIDFile, resolvedLogFile, false)
 	default:
 		return fmt.Errorf("unknown dashboard lifecycle action %q", action)
 	}
@@ -7678,7 +7687,7 @@ func stopDashboardLifecycle(status dashboardLifecycleStatus) error {
 	return nil
 }
 
-func startDashboardLifecycle(opts globalOptions, addr string, noOpen bool, multi bool, pidFile string, logFile string, restarted bool) error {
+func startDashboardLifecycle(opts globalOptions, addr string, noOpen bool, readOnly bool, multi bool, pidFile string, logFile string, restarted bool) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -7694,7 +7703,7 @@ func startDashboardLifecycle(opts globalOptions, addr string, noOpen bool, multi
 		return err
 	}
 	defer log.Close()
-	childArgs := dashboardLifecycleChildArgs(opts, addr, noOpen, multi)
+	childArgs := dashboardLifecycleChildArgs(opts, addr, noOpen, readOnly, multi)
 	cmd := exec.Command(exe, childArgs...)
 	cmd.Stdout = log
 	cmd.Stderr = log
@@ -7715,7 +7724,7 @@ func startDashboardLifecycle(opts globalOptions, addr string, noOpen bool, multi
 	return nil
 }
 
-func dashboardLifecycleChildArgs(opts globalOptions, addr string, noOpen bool, multi bool) []string {
+func dashboardLifecycleChildArgs(opts globalOptions, addr string, noOpen bool, readOnly bool, multi bool) []string {
 	var args []string
 	if opts.ConfigPath != "" {
 		args = append(args, "--config", opts.ConfigPath)
@@ -7729,6 +7738,9 @@ func dashboardLifecycleChildArgs(opts globalOptions, addr string, noOpen bool, m
 	args = append(args, "dashboard", "--listen", addr)
 	if noOpen {
 		args = append(args, "--no-open")
+	}
+	if readOnly {
+		args = append(args, "--read-only")
 	}
 	if multi {
 		args = append(args, "--multi")
@@ -8512,7 +8524,7 @@ func printCommandHelp(command string) bool {
 		"workflow":      "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",
 		"coordinator":   "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
 		"rules":         "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
-		"dashboard":     "fairway dashboard [--listen <addr>] [--multi] [--no-open]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
+		"dashboard":     "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"release":       "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
 		"config":        "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":            "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",

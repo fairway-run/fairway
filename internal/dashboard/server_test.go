@@ -1379,6 +1379,76 @@ func TestDashboardClaimRequiresCSRFAndAudits(t *testing.T) {
 	}
 }
 
+func TestDashboardReadOnlyBlocksMutationsAndRendersPages(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.Dashboard.ReadOnly = true
+	cfg.Dashboard.TrustedProxy = "cloudflare_access"
+	server := New(s, cfg, []string{"backend"}, nil)
+
+	pageReq := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	pageRec := httptest.NewRecorder()
+	server.task(pageRec, pageReq)
+	body := pageRec.Body.String()
+	if pageRec.Code != http.StatusOK || !strings.Contains(body, "Shared read-only dashboard") {
+		t.Fatalf("read-only task detail status=%d body=%s", pageRec.Code, body)
+	}
+	if strings.Contains(body, `action="/actions/claim"`) || strings.Contains(body, `action="/actions/set-status"`) {
+		t.Fatalf("read-only task detail rendered mutation forms:\n%s", body)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/actions/claim", strings.NewReader("task_id=T-001&csrf="+server.csrfToken))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	server.claim(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "read-only shared mode") {
+		t.Fatalf("read-only claim status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != "todo" {
+		t.Fatalf("read-only claim mutated status=%q, want todo", task.Status)
+	}
+
+	form := url.Values{}
+	form.Set("csrf", server.csrfToken)
+	form.Set("task_id", "T-001")
+	form.Set("command_text", "go test ./...")
+	form.Set("result", "pass")
+	bulkReq := httptest.NewRequest(http.MethodPost, "/actions/bulk/evidence", strings.NewReader(form.Encode()))
+	bulkReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	bulkRec := httptest.NewRecorder()
+	server.bulkEvidence(bulkRec, bulkReq)
+	if bulkRec.Code != http.StatusForbidden {
+		t.Fatalf("read-only bulk evidence status=%d body=%s", bulkRec.Code, bulkRec.Body.String())
+	}
+	_, _, evidence, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence) != 0 {
+		t.Fatalf("read-only bulk evidence mutated evidence=%+v", evidence)
+	}
+
+	saveReq := httptest.NewRequest(http.MethodPost, "/actions/views/save", strings.NewReader("csrf="+server.csrfToken+"&name=Mine&query=status%3Dtodo"))
+	saveReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	saveRec := httptest.NewRecorder()
+	server.saveView(saveRec, saveReq)
+	if saveRec.Code != http.StatusForbidden {
+		t.Fatalf("read-only save view status=%d body=%s", saveRec.Code, saveRec.Body.String())
+	}
+}
+
 func TestDashboardSetStatusRequiresCSRFAndAudits(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

@@ -15,6 +15,8 @@ accounting, and dashboard features do not drift into hidden decision-making.
   sessions, watchers, worktrees, batches, and closeout.
 - Surface stale, unsafe, review-gated, approval-gated, utility-gated, or
   incomplete work.
+- Serve a shared read-only dashboard suitable for exposure through an
+  identity-aware proxy or tunnel.
 - Recommend next actions through CLI reports, dashboard diagnostics, and
   dry-run controller plans.
 - Record provider-neutral usage metadata when an adapter supplies it.
@@ -34,6 +36,9 @@ accounting, and dashboard features do not drift into hidden decision-making.
   actions without an explicit stop condition and operator decision.
 - Become a CI runner. Fairway records CI evidence and monitor handbacks; CI
   systems still execute CI.
+- Become an IAM or public web gateway. Shared dashboard mode blocks writes, but
+  the user/project owns domains, identity providers, Access policies, tunnels,
+  and JWT/header verification.
 - Become a workflow/DAG engine. Fairway coordinates human-paced engineering
   lanes; it does not replace Temporal, Cadence, Argo Workflows, or similar
   systems.

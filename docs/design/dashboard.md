@@ -29,6 +29,20 @@ because unknown TOML keys are ignored.
 
 `fairway tui` covers headless basics for SSH sessions.
 
+## Shared Read-Only Mode
+
+Set `[dashboard] read_only = true` or start with `fairway dashboard
+--read-only` when the dashboard is being shared outside the local operator
+session. Read-only mode blocks dashboard mutation endpoints and hides mutation
+controls; task changes still happen through the CLI from a trusted local
+worktree.
+
+For identity-aware proxy exposure, keep the Fairway origin bound to localhost
+and put Cloudflare Access, Tailscale, an internal reverse proxy, or another
+trusted access layer in front of it. See
+[dashboard-sharing.md](dashboard-sharing.md) for the Cloudflare Tunnel +
+Cloudflare Access One-Time PIN reference pattern and trust-boundary warnings.
+
 ## Flow
 
 The dashboard is organized as a user flow, not independent pages:
