@@ -40,6 +40,24 @@ Semver. Pre-1.0 means breaking changes are allowed in minor versions; document t
 3. Homebrew cask updated in `fairway-run/homebrew-tap`.
 4. No automatic publishing to other package registries until v1.0.
 
+## GitHub Actions runtime posture
+
+Fairway workflows use Node 24-capable GitHub Action majors to avoid Node.js 20
+runtime deprecation warnings:
+
+- `actions/checkout@v5`
+- `actions/setup-go@v6`
+- `actions/setup-node@v5`
+- `actions/upload-artifact@v6`
+- `goreleaser/goreleaser-action@v7`
+
+The release workflow must pass `goreleaser check` before the next tag. The Docs
+Portal workflow must still run `npm ci` and `npm run build`; the deploy step is
+validated on pushed `main` with the Cloudflare secrets present. Hosted GitHub
+runners satisfy the required action runner version; self-hosted runners must be
+kept current enough for Node 24 action runtimes before using these workflow
+versions.
+
 ## Release repositories
 
 - Source/release repo: `fairway-run/fairway`.
