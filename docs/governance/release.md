@@ -306,14 +306,19 @@ fairway release verify \
   --release-state public \
   --release-url "https://github.com/fairway-run/fairway/releases/tag/v0.1.2" \
   --asset "https://github.com/fairway-run/fairway/releases/download/v0.1.2/fairway_v0.1.2_checksums.txt=200" \
-  --homebrew-version v0.1.2 \
+  --homebrew-version 0.1.2 \
   --homebrew-tap-commit <tap-commit-sha> \
   --brew-fetch-status pass \
   --verification-command "brew fetch --cask --force fairway-run/tap/fairway"
 ```
 
+Git tags include the `v` prefix (`v0.1.2`), while Homebrew cask versions
+normally omit it (`0.1.2`). `fairway release verify` normalizes that prefix for
+the Homebrew comparison but still fails real semantic mismatches.
+
 The v0.1.2 lesson is explicit: if `--release-state draft` while
-`--homebrew-version` matches the release tag, `fairway release verify` fails.
+`--homebrew-version` matches the release tag after prefix normalization,
+`fairway release verify` fails.
 Publish the reviewed GitHub release draft first, then verify asset URLs and
 `brew fetch` before treating the Homebrew cask as usable.
 

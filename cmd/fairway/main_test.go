@@ -2439,6 +2439,25 @@ func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
 	cleanJSON := runCapture(t, append([]string{"--json"}, cleanArgs...)...)
 	assertContains(t, cleanJSON, `"ok": true`)
 
+	homebrewNormalizedArgs := append([]string{}, cleanArgs...)
+	for i := range homebrewNormalizedArgs {
+		if homebrewNormalizedArgs[i] == "v0.1.2" && i > 0 && homebrewNormalizedArgs[i-1] == "--homebrew-version" {
+			homebrewNormalizedArgs[i] = "0.1.2"
+			break
+		}
+	}
+	runOK(t, homebrewNormalizedArgs...)
+
+	homebrewMismatchArgs := append([]string{}, cleanArgs...)
+	for i := range homebrewMismatchArgs {
+		if homebrewMismatchArgs[i] == "v0.1.2" && i > 0 && homebrewMismatchArgs[i-1] == "--homebrew-version" {
+			homebrewMismatchArgs[i] = "0.1.3"
+			break
+		}
+	}
+	homebrewMismatch := runCaptureAllowError(t, homebrewMismatchArgs...)
+	assertContains(t, homebrewMismatch, `Homebrew cask version "0.1.3" does not match release version "v0.1.2"`)
+
 	draftArgs := append([]string{}, cleanArgs...)
 	for i := range draftArgs {
 		if draftArgs[i] == "public" {

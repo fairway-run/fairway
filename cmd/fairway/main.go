@@ -2434,13 +2434,13 @@ func buildReleaseVerifyReport(input releaseVerifyInput) (releaseVerifyReport, er
 	}
 	if report.HomebrewVersion == "" {
 		report.Issues = append(report.Issues, "missing Homebrew cask version")
-	} else if report.Version != "" && report.HomebrewVersion != report.Version {
+	} else if report.Version != "" && !sameReleaseVersion(report.HomebrewVersion, report.Version) {
 		report.Issues = append(report.Issues, fmt.Sprintf("Homebrew cask version %q does not match release version %q", report.HomebrewVersion, report.Version))
 	}
 	if report.HomebrewTapCommit == "" {
 		report.Issues = append(report.Issues, "missing Homebrew tap commit")
 	}
-	if report.ReleaseState == "draft" && report.HomebrewVersion != "" && report.HomebrewVersion == report.Version {
+	if report.ReleaseState == "draft" && report.HomebrewVersion != "" && sameReleaseVersion(report.HomebrewVersion, report.Version) {
 		report.Issues = append(report.Issues, "Homebrew cask points to this version while GitHub release is still draft")
 		report.Recommendations = append(report.Recommendations, "publish the reviewed GitHub release draft before treating the Homebrew cask as usable")
 	}
@@ -2449,6 +2449,15 @@ func buildReleaseVerifyReport(input releaseVerifyInput) (releaseVerifyReport, er
 	}
 	report.OK = len(report.Issues) == 0
 	return report, nil
+}
+
+func sameReleaseVersion(a, b string) bool {
+	return normalizeReleaseVersion(a) == normalizeReleaseVersion(b)
+}
+
+func normalizeReleaseVersion(value string) string {
+	value = strings.TrimSpace(value)
+	return strings.TrimPrefix(value, "v")
 }
 
 func checkReleaseDoc(report *releaseVerifyReport, label, path, version string) {
