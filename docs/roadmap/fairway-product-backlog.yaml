@@ -2271,3 +2271,94 @@ tasks:
       - Highlights are written for readers who do not follow the repository and summarize the release in no more than three bullets.
       - Release runbook documents where highlights come from and who approves them before tagging.
       - Automated or documented release process preserves detailed changelog content while adding the user-facing summary.
+
+  - id: FW-168
+    title: Add consumer-repo agent breadcrumb during init
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: init
+    source_paths:
+      - cmd/fairway
+      - docs/agent-guide.md
+      - docs/design/cli.md
+      - README.md
+    target_paths:
+      - cmd/fairway
+      - cmd/fairway/main_test.go
+      - docs/agent-guide.md
+      - docs/design/cli.md
+      - README.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: low
+    migration_type: agent-cold-start-discovery
+    acceptance_checks:
+      - "`fairway init` in a fresh consumer repo writes `.fairway/AGENTS.md` with the condensed Fairway operating contract."
+      - "The generated agent contract states the execution source of truth, start-of-session ritual, role resolution order, session registration expectation, and where to find the full guide."
+      - "`fairway init` prints a ready-to-paste root `AGENTS.md` / `CLAUDE.md` block pointing agents at `.fairway/AGENTS.md` and the versioned Fairway guide."
+      - "Re-running `fairway init` does not clobber an edited `.fairway/AGENTS.md`; it reports that the file already exists and how to refresh it explicitly."
+      - "Tests cover fresh init, existing edited contract preservation, and generated output text."
+
+  - id: FW-169
+    title: Embed agent guide in Fairway CLI
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: docs
+    source_paths:
+      - cmd/fairway
+      - docs/agent-guide.md
+      - docs/design/cli.md
+      - README.md
+    target_paths:
+      - cmd/fairway
+      - cmd/fairway/main_test.go
+      - docs/agent-guide.md
+      - docs/design/cli.md
+      - README.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: low
+    migration_type: embedded-agent-operating-contract
+    acceptance_checks:
+      - "`fairway agent-guide` prints the agent guide embedded in the built binary without requiring network access or a Fairway source checkout."
+      - "Embedded guide content is version-matched to the released binary and sourced from `docs/agent-guide.md` at build time."
+      - "`fairway agent-guide --path` or an equivalent documented option prints the source/version path or writes the guide to a requested file."
+      - "`fairway help` and `fairway init` output reference `fairway agent-guide` as the offline fallback for agents in consumer repos."
+      - "Tests cover command output and failure behavior for invalid guide output options."
+
+  - id: FW-174
+    title: Add structured command help and clean help exits
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli
+    source_paths:
+      - cmd/fairway
+      - docs/design/cli.md
+      - README.md
+    target_paths:
+      - cmd/fairway
+      - cmd/fairway/main_test.go
+      - docs/design/cli.md
+      - README.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+    risk_level: low
+    migration_type: cli-help-discoverability
+    acceptance_checks:
+      - "`fairway help` groups commands by workflow area with one-line descriptions instead of printing a single pipe-delimited command list."
+      - "`fairway <command> --help` exits with status 0 and usage text, without an `error:` prefix or treating `--help` as a positional argument."
+      - "High-use groups include queue/task state, evidence/review, sessions, worktrees, coordinator, rules, reports, dashboard, release, and configuration."
+      - "Help text stays concise enough for humans and agents to scan, with longer examples deferred to `fairway agent-guide` or docs."
+      - "Regression tests cover top-level help, at least one file-taking command help path, and an unknown command error path."
