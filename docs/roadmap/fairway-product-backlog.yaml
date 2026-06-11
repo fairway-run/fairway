@@ -2477,3 +2477,45 @@ tasks:
       - "Docs state that Fairway handoff is durable queue state, not proof that a reviewer/control thread was contacted."
       - "Optional CLI retry path such as `fairway notify reviews <task-id>` or equivalent can re-attempt configured reviewer notifications."
       - "Tests cover handoff-only, notification-failed, delivered notification, acknowledged notification, and review-recorded paths."
+
+  - id: FW-178
+    title: Add Cloudflare Access read-only dashboard sharing model
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-security
+    source_paths:
+      - internal/dashboard
+      - cmd/fairway
+      - docs/design/dashboard.md
+      - docs/design/product-boundaries.md
+      - docs/config-reference.md
+      - docs/agent-guide.md
+      - README.md
+    target_paths:
+      - internal/dashboard
+      - cmd/fairway
+      - docs/design/dashboard.md
+      - docs/design/dashboard-sharing.md
+      - docs/design/product-boundaries.md
+      - docs/config-reference.md
+      - docs/agent-guide.md
+      - README.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+      - security
+    risk_level: medium
+    migration_type: dashboard-shared-access-hardening
+    acceptance_checks:
+      - "Fairway defines a generic shared/read-only dashboard mode suitable for identity-aware proxy exposure."
+      - "Shared mode disables or blocks mutating dashboard/API actions by default; write actions require explicit future opt-in and authorization."
+      - "Docs describe Cloudflare Tunnel plus Cloudflare Access One-Time PIN as a reference deployment, with `fairway.core42.dev` only as an example user/project hostname."
+      - "Docs clearly separate Fairway product capability from user/project-owned deployment config such as domain, Cloudflare account, Access policy, and allowed users/domains."
+      - "Reference config supports binding the origin to localhost, setting read-only mode, and declaring a trusted proxy mode such as Cloudflare Access."
+      - "Docs state that identity headers are only trusted when the origin is reachable exclusively through the trusted proxy/tunnel, and recommend Access JWT verification before trusting headers beyond local/dev usage."
+      - "Dashboard sharing docs include named-email and email-domain allowlist examples, audit/logging expectations, teardown steps, and a warning not to expose the dashboard directly to the public internet."
+      - "Tests or documented smoke checks cover shared/read-only mode blocking mutation paths while preserving normal read-only dashboard pages."
