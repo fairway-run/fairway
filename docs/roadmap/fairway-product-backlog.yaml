@@ -2519,3 +2519,170 @@ tasks:
       - "Docs state that identity headers are only trusted when the origin is reachable exclusively through the trusted proxy/tunnel, and recommend Access JWT verification before trusting headers beyond local/dev usage."
       - "Dashboard sharing docs include named-email and email-domain allowlist examples, audit/logging expectations, teardown steps, and a warning not to expose the dashboard directly to the public internet."
       - "Tests or documented smoke checks cover shared/read-only mode blocking mutation paths while preserving normal read-only dashboard pages."
+
+  - id: FW-179
+    title: Define review-wait notification model
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator-notifications
+    source_paths:
+      - docs/design/coordinator-loop.md
+      - docs/design/provider-notifications.md
+      - docs/design/dashboard.md
+      - docs/agent-guide.md
+    target_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/coordinator-loop.md
+      - docs/design/provider-notifications.md
+      - docs/design/dashboard.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: review-wait-notification-model
+    acceptance_checks:
+      - "A review-wait model is documented as a projection from existing tasks, handoffs, reviews, notifications, provider targets, and review routes without introducing a parallel wait store."
+      - "The model defines pending, stale, notification_failed, resolved, and cancelled review-wait states and maps existing reviewstate notification statuses into those states."
+      - "The staleness clock has one canonical source derived from notification acknowledgement timeout, with defined fallback origins for handoff-only waits."
+      - "Wake prompts are generated from fixed templates at send time; no untrusted stored prompt text becomes a provider message."
+      - "Read-only dashboard sharing is explicitly outside wake/send authority; wake delivery belongs to coordinator/watcher/provider-adapter surfaces."
+      - "Static routability validation is required before providers enter ambiguous review waits."
+      - "Deferred slices for CLI/read model, dashboard/SSE, and watcher delivery are identified as product backlog tasks."
+
+  - id: FW-180
+    title: Add review-wait read model and CLI projection
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator-notifications
+    source_paths:
+      - cmd/fairway
+      - internal/reviewstate
+      - internal/coordinator
+      - internal/store
+      - docs/design/review-wait-notification-model.md
+      - docs/design/coordinator-loop.md
+      - docs/design/cli.md
+    target_paths:
+      - cmd/fairway
+      - internal/reviewstate
+      - internal/coordinator
+      - internal/store
+      - docs/design/review-wait-notification-model.md
+      - docs/design/coordinator-loop.md
+      - docs/design/cli.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: review-wait-read-model
+    acceptance_checks:
+      - "`fairway review-waits list --blocking --task <task-id> --stale` exposes deterministic review-wait rows projected from existing state."
+      - "Projection covers pending, stale, notification_failed, resolved, and cancelled without adding a second wait store or wait table."
+      - "Routable missing notification is pending with action deliver_notification; missing delivery proof is pending with action record_delivery_proof; unroutable missing notification is notification_failed with action mapping_required."
+      - "`fairway route review` and `coordinator preflight` report required review domains with no routable reviewer role or provider target before ambiguous review wait."
+      - "Coordinator plan surfaces the same review-wait rows or equivalent action payloads used by the CLI."
+      - "Focused tests cover projection, CLI JSON/human output, static routability validation, stale clock origin, and the no-second-store invariant."
+
+  - id: FW-181
+    title: Clarify DB and YAML queue visibility for reviewers
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: backlog-source-authority
+    source_paths:
+      - docs/design/backlog-sources.md
+      - docs/agent-guide.md
+      - docs/governance/review-guards.md
+    target_paths:
+      - docs/design/backlog-sources.md
+      - docs/agent-guide.md
+      - docs/governance/review-guards.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: low
+    migration_type: backlog-visibility-docs
+    acceptance_checks:
+      - "Docs explain that Fairway DB/runtime state is authoritative for task status, evidence, reviews, sessions, handoffs, notifications, and batches."
+      - "Reviewer guidance requires `fairway task-detail`, `list`, `ready`, `reconcile active --dry-run`, or `db export` before treating a YAML text-search miss as a blocker."
+      - "YAML misses are actionable only for real config/import/export drift or missing portable review artifacts."
+      - "Agent and review guard docs prevent blocking an implementation solely because a DB-visible task is absent from a configured YAML queue search."
+
+  - id: FW-182
+    title: Show review-wait state in read-only dashboard
+    kind: task
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - internal/dashboard
+      - internal/reviewstate
+      - docs/design/dashboard.md
+      - docs/design/review-wait-notification-model.md
+    target_paths:
+      - internal/dashboard
+      - internal/reviewstate
+      - docs/design/dashboard.md
+      - docs/design/review-wait-notification-model.md
+    review_domains:
+      - arch
+      - governance
+      - frontend
+      - ops
+    risk_level: medium
+    migration_type: review-wait-dashboard-sse
+    acceptance_checks:
+      - "Dashboard task detail renders read-only review-wait rows from the same projection as `fairway review-waits list`."
+      - "Dashboard may emit advisory SSE events for stale, notification_failed, and resolved review waits, derived from existing DB polling."
+      - "No dashboard mutation, provider wake send, external notifier dependency, approval authority, merge authority, deploy authority, user subscription feature, or parallel wait store is introduced."
+      - "Focused dashboard tests cover task-detail rendering and advisory SSE event names."
+      - "Docs keep the read-only dashboard trust boundary and no-wake authority rule explicit."
+
+  - id: FW-183
+    title: Add review-wait wake watcher
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator-notifications
+    source_paths:
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - examples/session-adapters
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+    target_paths:
+      - cmd/fairway
+      - internal/coordinator
+      - internal/store
+      - examples/session-adapters
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: review-wait-wake-watcher
+    acceptance_checks:
+      - "A coordinator/watch surface can detect parked provider threads from review-wait rows and emit bounded wake prompts using fixed templates."
+      - "Wake delivery uses existing provider adapter/session notification patterns and records notification evidence under the trust boundary."
+      - "Dashboard remains read-only and never gains send/wake authority."
+      - "No Slack/email/external notifier dependency or user subscription application is introduced in this slice."
+      - "Watcher degrades to polling/tick behavior and never becomes the only source of review-wait truth."
+      - "Tests cover stale wait wake selection, notification failure handling, resolved waits, duplicate suppression, and fixed-template rendering."

@@ -67,6 +67,28 @@ record that as a follow-up or governance/export task. Do not block an otherwise
 reviewable implementation solely because `rg <task-id> <queue-source.yaml>`
 does not find the id.
 
+## Cross-Program Mirror Tasks
+
+Product gaps may be discovered while Fairway is being used by another program,
+such as GPUaaS stabilization. In that case, the program backlog can carry a
+mirror or dependency task explaining why the program needs the Fairway
+capability, but Fairway product implementation still belongs in the Fairway
+active backlog with an `FW-*` id.
+
+Use this boundary:
+
+- the program backlog records impact, dependency, and coordination evidence;
+- the Fairway backlog records product implementation scope, reviews, merge
+  readiness, commits, and release state;
+- the program task links to the Fairway task or commit as dependency evidence;
+- Fairway repo closeout uses Fairway repo validation and Fairway repo git state,
+  not the program worktree's dirty files or merge-ready checks.
+
+Do not use a program-specific Fairway config as the code merge gate for Fairway
+repo implementation. If cross-program visibility is useful, record evidence in
+both places, but keep the implementation authority on the Fairway-owned `FW-*`
+task.
+
 ## Current Roles
 
 | Path | Role |
