@@ -29,6 +29,7 @@ const sidebars = {
         'design/context-packets',
         'design/checkpoints',
         'design/review-lanes',
+        'design/review-wait-notification-model',
         'design/session-launch',
         'design/provider-usage-accounting',
         'design/watchers'

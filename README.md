@@ -160,6 +160,7 @@ Core Design:
 - [Watchers](docs/design/watchers.md)
 - [Checkpoints](docs/design/checkpoints.md)
 - [Review lanes](docs/design/review-lanes.md)
+- [Review wait notification model](docs/design/review-wait-notification-model.md)
 - [Session launch](docs/design/session-launch.md)
 - [Provider usage accounting](docs/design/provider-usage-accounting.md)
 - [Work batch model](docs/design/work-batch-model.md)
