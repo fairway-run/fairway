@@ -20,6 +20,7 @@ fairway record usage <task-id> --provider <name> [--session-id <id>] [--external
 fairway route review <task-id> [--reviewer <role>] [--path <path>]... [--reason <text>] # mark pending review
 fairway merge-ready <task-id> [--base <ref>]          # verify evidence/review/handoff/git/profile gates
 fairway review checkout <task-id> [--source-role <role>] # create/reset named review branch
+fairway review-waits list [--blocking] [--task <task-id>] [--stale] # read-only review wait projection
 fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <name>] [--provider <name>] [--task-id <id>] [--pid <pid>] [--monitor-kind <kind>] [--automation-id <id>] [--external-run-id <id>] [--poll-command <cmd>] [--manual-until <date-or-rfc3339>]
 fairway session status [--all]
 fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]

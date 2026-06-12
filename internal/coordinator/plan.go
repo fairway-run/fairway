@@ -35,28 +35,29 @@ type PlanOptions struct {
 }
 
 type Plan struct {
-	OK                bool                   `json:"ok"`
-	DryRun            bool                   `json:"dry_run"`
-	GeneratedAt       string                 `json:"generated_at"`
-	Summary           PlanSummary            `json:"summary"`
-	Actions           []PlanAction           `json:"actions"`
-	Ready             []TaskRef              `json:"ready,omitempty"`
-	Active            []TaskRef              `json:"active,omitempty"`
-	Waiting           []TaskRef              `json:"waiting,omitempty"`
-	Blocked           []TaskRef              `json:"blocked,omitempty"`
-	ReviewGated       []TaskRef              `json:"review_gated,omitempty"`
-	ReviewComplete    []TaskRef              `json:"review_complete,omitempty"`
-	ReviewDebt        []TaskRef              `json:"review_debt,omitempty"`
-	NotificationGated []TaskRef              `json:"notification_gated,omitempty"`
-	UtilityGated      []TaskRef              `json:"utility_gated,omitempty"`
-	Readiness         ReadinessExplanation   `json:"readiness"`
-	StopConditions    []PlanStopCondition    `json:"stop_conditions,omitempty"`
-	Reconcile         reconcile.ActiveReport `json:"reconcile"`
-	SessionCount      int                    `json:"session_count"`
-	WatcherCount      int                    `json:"watcher_count"`
-	CheckpointCount   int                    `json:"checkpoint_count"`
-	WorktreeCount     int                    `json:"worktree_count"`
-	WorkBatchCount    int                    `json:"work_batch_count"`
+	OK                bool                     `json:"ok"`
+	DryRun            bool                     `json:"dry_run"`
+	GeneratedAt       string                   `json:"generated_at"`
+	Summary           PlanSummary              `json:"summary"`
+	Actions           []PlanAction             `json:"actions"`
+	Ready             []TaskRef                `json:"ready,omitempty"`
+	Active            []TaskRef                `json:"active,omitempty"`
+	Waiting           []TaskRef                `json:"waiting,omitempty"`
+	Blocked           []TaskRef                `json:"blocked,omitempty"`
+	ReviewGated       []TaskRef                `json:"review_gated,omitempty"`
+	ReviewComplete    []TaskRef                `json:"review_complete,omitempty"`
+	ReviewDebt        []TaskRef                `json:"review_debt,omitempty"`
+	NotificationGated []TaskRef                `json:"notification_gated,omitempty"`
+	ReviewWaits       []reviewstate.ReviewWait `json:"review_waits,omitempty"`
+	UtilityGated      []TaskRef                `json:"utility_gated,omitempty"`
+	Readiness         ReadinessExplanation     `json:"readiness"`
+	StopConditions    []PlanStopCondition      `json:"stop_conditions,omitempty"`
+	Reconcile         reconcile.ActiveReport   `json:"reconcile"`
+	SessionCount      int                      `json:"session_count"`
+	WatcherCount      int                      `json:"watcher_count"`
+	CheckpointCount   int                      `json:"checkpoint_count"`
+	WorktreeCount     int                      `json:"worktree_count"`
+	WorkBatchCount    int                      `json:"work_batch_count"`
 }
 
 type PlanSummary struct {
@@ -90,6 +91,7 @@ type PlanAction struct {
 	TaskIDs        []string                              `json:"task_ids,omitempty"`
 	ReviewHandback *ReviewCompletionHandback             `json:"review_handback,omitempty"`
 	ReviewNotify   *reviewstate.ReviewNotificationStatus `json:"review_notification,omitempty"`
+	ReviewWait     *reviewstate.ReviewWait               `json:"review_wait,omitempty"`
 	Stop           bool                                  `json:"stop,omitempty"`
 }
 
@@ -353,9 +355,19 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 						return Plan{}, err
 					}
 					statuses := reviewstate.StatusesForTask(detailTask, handoffs, reviews, notifications)
+					waits := reviewstate.WaitsForTask(detailTask, handoffs, reviews, notifications, reviewstate.ReviewWaitOptions{
+						ProviderTargets: cfg.ProviderTargets,
+						ReviewRoutes:    cfg.ReviewRoutes,
+						Roles:           cfg.Roles,
+						AckTimeout:      ackTimeout,
+						Now:             time.Now().UTC(),
+						Terminal:        cfg.States.Terminal,
+					})
+					plan.ReviewWaits = append(plan.ReviewWaits, waits...)
 					blockedNotifications := reviewstate.BlockingStatuses(statuses, missing)
 					if len(blockedNotifications) > 0 {
 						for _, status := range blockedNotifications {
+							wait := reviewWaitForDomain(waits, status.Domain)
 							plan.Summary.NotificationGated++
 							plan.NotificationGated = appendTaskRef(plan.NotificationGated, TaskRef{ID: task.Definition.ID, Role: status.Domain, Status: status.Status})
 							reason := fmt.Sprintf("required review domain %s is blocked on reviewer notification status=%s; last_handoff_id=%d last_handoff_at=%s last_notification_state=%s last_notification_at=%s provider=%s target=%s; action=%s",
@@ -369,14 +381,23 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 								firstNonEmpty(status.Target, "none"),
 								status.SuggestedAction,
 							)
-							addReviewNotificationAction(&plan, 14, "notification-blocked", "deliver_or_retry_review_notification", reason, task.Definition.ID, task.Definition.Role, status)
+							actionName := "deliver_or_retry_review_notification"
+							if wait.Action != "" {
+								actionName = wait.Action
+							}
+							addReviewNotificationAction(&plan, 14, "notification-blocked", actionName, reason, task.Definition.ID, task.Definition.Role, status, wait)
 							addStop(&plan, "notification-blocked", reason, task.Definition.ID, status.Domain)
 						}
 						continue
 					}
 					plan.Summary.ReviewGated++
 					plan.ReviewGated = appendTaskRef(plan.ReviewGated, taskRef(task))
-					addAction(&plan, 15, "review-gated", "record_required_reviews", reason, task.Definition.ID, task.Definition.Role, "", "", nil, nil, true)
+					for _, wait := range waits {
+						addReviewWaitAction(&plan, 15, "review-gated", wait.Action, reason, task.Definition.ID, task.Definition.Role, wait, true)
+					}
+					if len(waits) == 0 {
+						addAction(&plan, 15, "review-gated", "record_required_reviews", reason, task.Definition.ID, task.Definition.Role, "", "", nil, nil, true)
+					}
 					addStop(&plan, "review-gated", reason, task.Definition.ID, task.Definition.Role)
 				}
 			} else {
@@ -585,9 +606,29 @@ func addAction(plan *Plan, priority int, classification, action, reason, taskID,
 	}
 }
 
-func addReviewNotificationAction(plan *Plan, priority int, classification, action, reason, taskID, role string, status reviewstate.ReviewNotificationStatus) {
+func addReviewNotificationAction(plan *Plan, priority int, classification, action, reason, taskID, role string, status reviewstate.ReviewNotificationStatus, wait reviewstate.ReviewWait) {
 	addAction(plan, priority, classification, action, reason, taskID, role, "", "", nil, nil, true)
 	plan.Actions[len(plan.Actions)-1].ReviewNotify = &status
+	if wait.WaitID != "" {
+		plan.Actions[len(plan.Actions)-1].ReviewWait = &wait
+	}
+}
+
+func addReviewWaitAction(plan *Plan, priority int, classification, action, reason, taskID, role string, wait reviewstate.ReviewWait, stop bool) {
+	if action == "" {
+		action = "record_required_reviews"
+	}
+	addAction(plan, priority, classification, action, reason, taskID, role, "", "", nil, nil, stop)
+	plan.Actions[len(plan.Actions)-1].ReviewWait = &wait
+}
+
+func reviewWaitForDomain(waits []reviewstate.ReviewWait, domain string) reviewstate.ReviewWait {
+	for _, wait := range waits {
+		if wait.Domain == domain {
+			return wait
+		}
+	}
+	return reviewstate.ReviewWait{}
 }
 
 func addStop(plan *Plan, kind, reason, taskID, role string) {

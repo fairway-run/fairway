@@ -127,6 +127,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
 		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent"},
+		{[]string{"review-waits", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
+		{[]string{"review-waits", "list", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
 		{[]string{"usage", "--help"}, "fairway usage report"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
@@ -2089,6 +2091,88 @@ name = "backend"
 	runOK(t, "coordinator", "preflight")
 	runOK(t, "dispatch-plan")
 	runOK(t, "--json", "dispatch-plan", "--role", "backend")
+}
+
+func TestCLI_ReviewWaitsListHumanAndJSON(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+
+[[roles]]
+name = "arch"
+provider = "codex"
+`)
+	runOK(t, "add", "T-001", "--title", "Needs review", "--role", "backend", "--review-domains", "arch")
+	runOK(t, "add", "T-002", "--title", "Backlog review later", "--role", "backend", "--review-domains", "arch")
+	runOK(t, "set-status", "T-001", "in_progress", "--reason", "entered review wait")
+
+	out := runCapture(t, "review-waits", "list", "--task", "T-001", "--blocking")
+	assertContains(t, out, "review_waits:")
+	assertContains(t, out, "domain=arch")
+	assertContains(t, out, "state=pending")
+	assertContains(t, out, "action=deliver_notification")
+
+	jsonOut := runCapture(t, "--json", "review-waits", "list", "--task", "T-001")
+	assertContains(t, jsonOut, `"wait_id": "T-001/arch"`)
+	assertContains(t, jsonOut, `"action": "deliver_notification"`)
+
+	staleOut := runCapture(t, "review-waits", "list", "--task", "T-001", "--stale")
+	assertContains(t, staleOut, "review_waits: none")
+
+	todoOut := runCapture(t, "review-waits", "list", "--task", "T-002", "--blocking")
+	assertContains(t, todoOut, "review_waits: none")
+}
+
+func TestCLI_RouteReviewAndPreflightReportUnroutableDomains(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+
+[[roles]]
+name = "arch"
+`)
+	runOK(t, "add", "T-001", "--title", "Unroutable review", "--role", "backend", "--review-domains", "product")
+
+	_, err = captureRun("route", "review", "T-001", "--reviewer", "arch", "--reason", "manual")
+	if err == nil {
+		t.Fatal("route review succeeded, expected unroutable-domain failure")
+	}
+	if !strings.Contains(err.Error(), "required review domain product") || !strings.Contains(err.Error(), "not routable") {
+		t.Fatalf("route review error = %v", err)
+	}
+
+	runOK(t, "set-status", "T-001", "in_progress", "--reason", "active review routing check")
+	preflight, err := captureRun("coordinator", "preflight")
+	if err == nil {
+		t.Fatalf("coordinator preflight succeeded, expected unroutable-domain issue:\n%s", preflight)
+	}
+	assertContains(t, preflight, "required review domain product is not routable")
+	assertContains(t, preflight, "action=mapping_required")
 }
 
 func TestCLI_CheckpointAndPacket(t *testing.T) {

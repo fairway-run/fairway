@@ -129,6 +129,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdAudit(ctx, opts, args[1:])
 	case "merge-ready":
 		return cmdMergeReady(ctx, opts, args[1:])
+	case "review-waits":
+		return cmdReviewWaits(ctx, opts, args[1:])
 	case "route":
 		if len(args) >= 2 && args[1] == "review" {
 			return cmdRouteReview(ctx, opts, args[2:])
@@ -1839,6 +1841,9 @@ func cmdRouteReview(ctx context.Context, opts globalOptions, args []string) erro
 		if err := validateReviewer(selected, cfg); err != nil {
 			return err
 		}
+		if issues := reviewstate.UnroutableRequiredDomains(task, reviewWaitOptions(cfg)); len(issues) > 0 {
+			return fmt.Errorf("required review domain %s for %s is not routable: %s", issues[0].Domain, taskID, issues[0].Reason)
+		}
 		if routeReason == "" {
 			routeReason = "manual route"
 		}
@@ -1855,6 +1860,129 @@ func cmdRouteReview(ctx context.Context, opts globalOptions, args []string) erro
 		fmt.Printf("routed %s to %s: %s\n", taskID, selected, routeReason)
 		return nil
 	})
+}
+
+func cmdReviewWaits(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("review-waits requires subcommand: list")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("review-waits", "list [--blocking] [--task <task-id>] [--stale]")
+		return nil
+	}
+	if args[0] != "list" {
+		return fmt.Errorf("unknown review-waits subcommand %q", args[0])
+	}
+	if len(args) > 1 && isHelpOnly(args[1:]) {
+		subcommandUsage("review-waits", "list [--blocking] [--task <task-id>] [--stale]")
+		return nil
+	}
+	fs := flag.NewFlagSet("review-waits list", flag.ContinueOnError)
+	blockingOnly := fs.Bool("blocking", false, "show only blocking waits")
+	taskID := fs.String("task", "", "task id")
+	staleOnly := fs.Bool("stale", false, "show only stale waits")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected review-waits list arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		waits, err := reviewWaitRows(ctx, cfg, s, *taskID)
+		if err != nil {
+			return err
+		}
+		var filtered []reviewstate.ReviewWait
+		for _, wait := range waits {
+			if *blockingOnly && !wait.Blocking {
+				continue
+			}
+			if *staleOnly && wait.State != "stale" {
+				continue
+			}
+			filtered = append(filtered, wait)
+		}
+		if opts.JSON {
+			return printJSON(filtered)
+		}
+		if len(filtered) == 0 {
+			fmt.Println("review_waits: none")
+			return nil
+		}
+		fmt.Println("review_waits:")
+		for _, wait := range filtered {
+			fmt.Printf("- %s domain=%s state=%s blocking=%t action=%s target=%s:%s expected_response_at=%s reason=%s\n",
+				wait.TaskID,
+				wait.Domain,
+				wait.State,
+				wait.Blocking,
+				wait.Action,
+				firstNonEmpty(wait.TargetProvider, "none"),
+				firstNonEmpty(wait.TargetID, "none"),
+				firstNonEmpty(wait.ExpectedResponseAt, "none"),
+				wait.Reason,
+			)
+		}
+		return nil
+	})
+}
+
+func reviewWaitRows(ctx context.Context, cfg config.Config, s *store.Store, taskID string) ([]reviewstate.ReviewWait, error) {
+	ackTimeout, err := reviewWaitAckTimeout(cfg)
+	if err != nil {
+		return nil, err
+	}
+	waitOpts := reviewWaitOptions(cfg)
+	waitOpts.AckTimeout = ackTimeout
+	waitOpts.Now = time.Now().UTC()
+	waitOpts.Terminal = cfg.States.Terminal
+	var tasks []store.Task
+	if strings.TrimSpace(taskID) != "" {
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		tasks = []store.Task{task}
+	} else {
+		tasks, err = s.AllTasks(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var waits []reviewstate.ReviewWait
+	for _, task := range tasks {
+		detailTask, _, _, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, err
+		}
+		notifications, err := s.Notifications(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, err
+		}
+		waits = append(waits, reviewstate.WaitsForTask(detailTask, handoffs, reviews, notifications, waitOpts)...)
+	}
+	return waits, nil
+}
+
+func reviewWaitOptions(cfg config.Config) reviewstate.ReviewWaitOptions {
+	return reviewstate.ReviewWaitOptions{
+		ProviderTargets: cfg.ProviderTargets,
+		ReviewRoutes:    cfg.ReviewRoutes,
+		Roles:           cfg.Roles,
+		Terminal:        cfg.States.Terminal,
+	}
+}
+
+func reviewWaitAckTimeout(cfg config.Config) (time.Duration, error) {
+	raw := strings.TrimSpace(cfg.Coordinator.NotificationAckTimeout)
+	if raw == "" {
+		raw = "24h"
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid coordinator notification_ack_timeout %q: %w", raw, err)
+	}
+	return timeout, nil
 }
 
 func cmdReviewCheckout(ctx context.Context, opts globalOptions, args []string) error {
@@ -3212,6 +3340,18 @@ func printCoordinatorPlan(plan coord.Plan) {
 					action.ReviewNotify.SuggestedAction,
 				)
 			}
+			if action.ReviewWait != nil {
+				fmt.Printf("  review_wait: wait_id=%s domain=%s state=%s blocking=%t action=%s target=%s:%s expected_response_at=%s\n",
+					action.ReviewWait.WaitID,
+					action.ReviewWait.Domain,
+					action.ReviewWait.State,
+					action.ReviewWait.Blocking,
+					action.ReviewWait.Action,
+					firstNonEmpty(action.ReviewWait.TargetProvider, "none"),
+					firstNonEmpty(action.ReviewWait.TargetID, "none"),
+					firstNonEmpty(action.ReviewWait.ExpectedResponseAt, "none"),
+				)
+			}
 		}
 	}
 }
@@ -3250,6 +3390,10 @@ func buildCoordinatorReport(ctx context.Context, cfg config.Config, root string,
 	if err != nil {
 		return coordinatorReport{}, err
 	}
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return coordinatorReport{}, err
+	}
 	sessions, err := s.Sessions(ctx, false)
 	if err != nil {
 		return coordinatorReport{}, err
@@ -3285,6 +3429,14 @@ func buildCoordinatorReport(ctx context.Context, cfg config.Config, root string,
 	}
 	if health.UnacknowledgedOver1Hour > 0 {
 		report.Issues = append(report.Issues, fmt.Sprintf("%d handoff(s) unacknowledged over 1h", health.UnacknowledgedOver1Hour))
+	}
+	for _, task := range tasks {
+		if task.Status == "todo" || isTerminal(task.Status, cfg.States.Terminal) {
+			continue
+		}
+		for _, issue := range reviewstate.UnroutableRequiredDomains(task, reviewWaitOptions(cfg)) {
+			report.Issues = append(report.Issues, fmt.Sprintf("task %s required review domain %s is not routable: %s; action=%s", issue.TaskID, issue.Domain, issue.Reason, issue.Action))
+		}
 	}
 	if report.ReadyCount > 0 {
 		report.Recommendations = append(report.Recommendations, fmt.Sprintf("claim from %d ready task(s)", report.ReadyCount))
@@ -8485,7 +8637,7 @@ func usage() {
 	fmt.Println("Queue and task state:")
 	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail")
 	fmt.Println("Evidence and review:")
-	fmt.Println("  record evidence|guard-report|handoff|notification|review|usage|push-intent, route review, merge-ready, review checkout")
+	fmt.Println("  record evidence|guard-report|handoff|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits")
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, batch")
 	fmt.Println("Coordinator and readiness:")
@@ -8519,6 +8671,7 @@ func printCommandHelp(command string) bool {
 		"git-check":     "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
 		"preflight":     "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"record":        "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"review-waits":  "fairway review-waits list [--blocking] [--task <task-id>] [--stale]\n  List derived review-wait rows from reviews, handoffs, notifications, and provider targets.",
 		"session":       "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"worktree":      "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":      "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

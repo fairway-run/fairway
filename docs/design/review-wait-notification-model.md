@@ -1,6 +1,7 @@
 # Fairway Review Wait Notification Model
 
-Status: design draft accepted for implementation planning
+Status: design accepted; first read-model/CLI/static-routability slice
+implemented
 
 ## Problem
 
@@ -168,7 +169,7 @@ reported at routing time and in preflight, before a provider thread parks on it.
 
 ## CLI Surface
 
-Minimum command surface:
+Implemented first-slice command surface:
 
 ```bash
 fairway review-waits list --blocking
@@ -191,11 +192,21 @@ Useful JSON fields:
 }
 ```
 
-`review-waits` is a presentation of the `reviewstate` projection. The same
-rows must be visible as coordinator plan actions; the command exists so the
-orchestrator active-wait loop has one focused query to run before idling.
+`review-waits` is a read-only presentation of the `reviewstate` projection. It
+does not approve reviews, send notifications, wake providers, merge, push, or
+close work. The same rows are also visible through coordinator plan actions so
+the orchestrator active-wait loop can use the same state as the CLI before
+idling.
+
+The first slice also validates static routability before ambiguous wait states:
+`fairway route review` fails when a task declares a required review domain that
+has no configured role, review route, or provider target, and
+`fairway coordinator preflight` reports the same issue across non-terminal
+tasks.
 
 ## Dashboard Surface
+
+Deferred first-slice follow-up: `OPS-FAIRWAY-REVIEW-WAIT-DASHBOARD-SSE-001`.
 
 The dashboard server remains read-only. Its responsibilities for review waits:
 
@@ -222,6 +233,8 @@ small local implementation is sufficient; it should remain an internal
 dashboard dependency rather than a Fairway workflow boundary.
 
 ## Wake Adapter
+
+Deferred first-slice follow-up: `OPS-FAIRWAY-REVIEW-WAIT-WAKE-WATCHER-001`.
 
 Waking a parked provider thread reuses the existing watcher/utility-adapter
 pattern. A review-wait wake is structurally the same as a CI monitor: poll a

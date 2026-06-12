@@ -238,25 +238,34 @@ func TestBuildPlanBlocksReviewWaitOnMissingReviewerNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, taskID := range []string{"HANDOFF-001", "FAILED-001"} {
-		action, ok := planAction(plan, "notification-blocked", "deliver_or_retry_review_notification", taskID)
+	for _, tc := range []struct {
+		taskID string
+		action string
+	}{
+		{"HANDOFF-001", "record_delivery_proof"},
+		{"FAILED-001", "mapping_required"},
+	} {
+		action, ok := planAction(plan, "notification-blocked", tc.action, tc.taskID)
 		if !ok {
-			t.Fatalf("%s did not produce notification-blocked action: %+v", taskID, plan.Actions)
+			t.Fatalf("%s did not produce notification-blocked %s action: %+v", tc.taskID, tc.action, plan.Actions)
 		}
-		if action.ReviewNotify == nil || !action.ReviewNotify.Blocking {
-			t.Fatalf("%s missing review notification payload: %+v", taskID, action)
+		if action.ReviewNotify == nil || !action.ReviewNotify.Blocking || action.ReviewWait == nil {
+			t.Fatalf("%s missing review notification/wait payload: %+v", tc.taskID, action)
 		}
-		if hasPlanAction(plan, "review-gated", "record_required_reviews", taskID) {
-			t.Fatalf("%s also produced normal review wait: %+v", taskID, plan.Actions)
+		if hasPlanAction(plan, "review-gated", "record_required_reviews", tc.taskID) {
+			t.Fatalf("%s also produced normal review wait: %+v", tc.taskID, plan.Actions)
 		}
 	}
 	for _, taskID := range []string{"DELIVERED-001", "ACK-001", "REVIEWED-001"} {
 		if hasPlanAction(plan, "notification-blocked", "deliver_or_retry_review_notification", taskID) {
 			t.Fatalf("%s produced unexpected notification block: %+v", taskID, plan.Actions)
 		}
-		if !hasPlanAction(plan, "review-gated", "record_required_reviews", taskID) {
+		if !hasPlanClassification(plan, "review-gated", taskID) {
 			t.Fatalf("%s did not produce normal review wait: %+v", taskID, plan.Actions)
 		}
+	}
+	if len(plan.ReviewWaits) == 0 {
+		t.Fatalf("plan did not expose review wait rows")
 	}
 }
 
@@ -613,6 +622,15 @@ func openPlanStore(t *testing.T, ctx context.Context) *store.Store {
 func hasPlanAction(plan Plan, classification, action, taskID string) bool {
 	_, ok := planAction(plan, classification, action, taskID)
 	return ok
+}
+
+func hasPlanClassification(plan Plan, classification, taskID string) bool {
+	for _, candidate := range plan.Actions {
+		if candidate.Classification == classification && (taskID == "" || candidate.TaskID == taskID) {
+			return true
+		}
+	}
+	return false
 }
 
 func planAction(plan Plan, classification, action, taskID string) (PlanAction, bool) {
