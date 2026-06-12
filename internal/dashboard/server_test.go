@@ -1308,6 +1308,42 @@ func TestTaskDetailRendersReviewNotificationStatus(t *testing.T) {
 	}
 }
 
+func TestTaskDetailRendersReviewWaitProjectionReadOnly(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{
+		ID:            "T-001",
+		Title:         "Needs reviewer mapping",
+		Kind:          "dashboard",
+		Role:          "ui",
+		ReviewDomains: []string{"product"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "in_progress", "entered review wait", false); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.Dashboard.ReadOnly = true
+	server := New(s, cfg, []string{"ui"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Shared read-only dashboard", "Review Waits", "product", "notification_failed", "mapping_required", "required review domain has no configured reviewer role"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail review wait missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `action="/actions/claim"`) || strings.Contains(body, `wake`) {
+		t.Fatalf("read-only review wait detail rendered mutation or wake authority:\n%s", body)
+	}
+}
+
 func TestTaskDetailRendersReviewHandback(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

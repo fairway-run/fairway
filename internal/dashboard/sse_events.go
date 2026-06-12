@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
+	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -140,6 +142,61 @@ func (s *Server) gateChangeEvents(ctx context.Context, sourceID, at string) ([]s
 		})
 	}
 	return out, nil
+}
+
+func (s *Server) reviewWaitEvents(ctx context.Context, at string) ([]sseEvent, error) {
+	waits, err := s.reviewWaits(ctx, "", dashboardEventTime(at))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]sseEvent, 0, len(waits))
+	for _, wait := range waits {
+		name := reviewWaitEventName(wait)
+		if name == "" {
+			continue
+		}
+		out = append(out, sseEvent{
+			ID:   "review_wait:" + wait.WaitID + ":" + wait.State + ":" + wait.Action + ":" + wait.ExpectedResponseAt + ":" + wait.ResolvedAt,
+			Name: name,
+			Payload: map[string]any{
+				"task_id":              wait.TaskID,
+				"wait_id":              wait.WaitID,
+				"domain":               wait.Domain,
+				"state":                wait.State,
+				"blocking":             wait.Blocking,
+				"action":               wait.Action,
+				"target_provider":      wait.TargetProvider,
+				"target_id":            wait.TargetID,
+				"last_notified_at":     wait.LastNotifiedAt,
+				"expected_response_at": wait.ExpectedResponseAt,
+				"resolved_at":          wait.ResolvedAt,
+				"resolved_by":          wait.ResolvedBy,
+				"reason":               wait.Reason,
+				"at":                   at,
+			},
+		})
+	}
+	return out, nil
+}
+
+func reviewWaitEventName(wait reviewstate.ReviewWait) string {
+	switch wait.State {
+	case "stale":
+		return "review_wait.stale"
+	case "notification_failed":
+		return "review_wait.notification_failed"
+	case "resolved":
+		return "review_wait.resolved"
+	default:
+		return ""
+	}
+}
+
+func dashboardEventTime(at string) time.Time {
+	if parsed, err := time.Parse(time.RFC3339Nano, at); err == nil {
+		return parsed
+	}
+	return time.Now().UTC()
 }
 
 func writeSSEEvent(w io.Writer, event sseEvent) error {

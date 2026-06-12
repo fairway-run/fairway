@@ -82,6 +82,13 @@ Session heartbeat events pulse the attached working task pill while fresh,
 soften the pulse after one minute, and mute the pill after five minutes without
 inventing synthetic heartbeat state.
 
+Review wait SSE events are advisory updates derived from the Fairway DB review
+wait projection. The dashboard may emit `review_wait.stale`,
+`review_wait.notification_failed`, and `review_wait.resolved` so open clients
+can refresh operator-visible state. These events are safe to lose because
+Fairway DB remains authoritative and the next poll or page load reconstructs
+the current wait rows.
+
 The lane header distinguishes live provider attachments from task status. An
 `active session` label means Fairway has a running session row attached to a
 task. An `in_progress without session` label means the task state is active but
@@ -162,6 +169,12 @@ The task table is the drill-down layer after the gate and workstream highlights.
 It links to task detail. The board preserves role/status/project/profile/kind/
 domain/risk/review/search/sort/column state when switching between task and
 diagnostics tabs.
+
+Task detail shows review waits from the same read model as
+`fairway review-waits list`, including state, blocking flag, target
+provider/target, expected response time, suggested action, and reason. This is
+a read-only visibility surface; it does not approve reviews, send provider
+wake prompts, merge, deploy, or create notification subscriptions.
 
 ## Diagnostics
 

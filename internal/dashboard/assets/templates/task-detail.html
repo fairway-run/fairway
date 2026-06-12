@@ -170,6 +170,14 @@
 </tbody></table>
 {{else}}<p class="muted">no review notification status applies to this task</p>{{end}}
 </article>
+<article class="detail-panel wide">
+<h2>Review Waits</h2>
+{{if .ReviewWaits}}
+<table class="detail-table"><thead><tr><th>Domain</th><th>State</th><th>Target</th><th>Expected response</th><th>Suggested action</th><th>Reason</th></tr></thead><tbody>
+{{range .ReviewWaits}}<tr><td><code>{{.Domain}}</code></td><td><span class="status-pill {{statusClass .State}}">{{.State}}</span>{{if .Blocking}} <b>blocking</b>{{end}}</td><td>{{if .TargetProvider}}{{.TargetProvider}}{{else}}none{{end}}{{if .TargetID}}<br><code>{{.TargetID}}</code>{{end}}</td><td>{{if .ExpectedResponseAt}}{{.ExpectedResponseAt}}{{else}}{{if .ResolvedAt}}resolved {{.ResolvedAt}}{{else}}none{{end}}{{end}}</td><td>{{.Action}}</td><td>{{.Reason}}</td></tr>{{end}}
+</tbody></table>
+{{else}}<p class="muted">no review waits projected for this task</p>{{end}}
+</article>
 <article class="detail-panel">
 <h2>Reviews</h2>
 <div class="detail-stack">

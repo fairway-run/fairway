@@ -206,14 +206,17 @@ tasks.
 
 ## Dashboard Surface
 
-Deferred first-slice follow-up: `OPS-FAIRWAY-REVIEW-WAIT-DASHBOARD-SSE-001`.
+Implemented follow-up: `OPS-FAIRWAY-REVIEW-WAIT-DASHBOARD-SSE-001`.
 
-The dashboard server remains read-only. Its responsibilities for review waits:
+The dashboard server remains read-only. Its responsibilities for review waits
+are:
 
 1. poll Fairway DB for review-wait state changes;
 2. derive advisory events such as `review_wait.stale`,
    `review_wait.notification_failed`, and `review_wait.resolved`;
 3. fan events out to connected dashboard clients with Server-Sent Events.
+4. show task-level review wait rows with state, blocking flag, target
+   domain/provider, expected response time, suggested action, and reason.
 
 The dashboard server does not send wake prompts. Sending messages to provider
 threads is an acting capability and belongs in the coordinator/watcher surface,

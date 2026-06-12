@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/store"
@@ -120,6 +121,55 @@ func TestStoreEventSourcesCoverDashboardTaxonomyInputs(t *testing.T) {
 		if !seen[want] {
 			t.Fatalf("missing %s in events from sources %#v", want, sources)
 		}
+	}
+}
+
+func TestReviewWaitEventsUseSharedProjection(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "Stale wait", Kind: "dashboard", Role: "ui", ReviewDomains: []string{"architecture"}},
+		{ID: "T-002", Title: "Failed wait", Kind: "dashboard", Role: "ui", ReviewDomains: []string{"product"}},
+		{ID: "T-003", Title: "Resolved wait", Kind: "dashboard", Role: "ui", ReviewDomains: []string{"ops"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, taskID := range []string{"T-001", "T-002", "T-003"} {
+		if err := s.SetStatus(ctx, taskID, "in_progress", "entered review wait", false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "T-001", Domain: "architecture", Provider: "codex", Target: "thread-arch", State: "notification_delivered"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "T-002", Domain: "product", State: "notification_failed", Reason: "no reviewer mapping"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-003", store.Review{Reviewer: "ops-reviewer", Domain: "ops", Verdict: "approve", Reason: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.Coordinator.NotificationAckTimeout = "1ns"
+	cfg.Roles = []config.Role{{Name: "architecture"}, {Name: "ops"}}
+	server := New(s, cfg, []string{"ui"}, nil)
+	events, err := server.reviewWaitEvents(ctx, time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]sseEvent{}
+	for _, event := range events {
+		seen[event.Name] = event
+	}
+	for _, want := range []string{"review_wait.stale", "review_wait.notification_failed", "review_wait.resolved"} {
+		if _, ok := seen[want]; !ok {
+			t.Fatalf("missing %s in review wait events %#v", want, events)
+		}
+	}
+	if seen["review_wait.notification_failed"].Payload["action"] != "mapping_required" {
+		t.Fatalf("notification_failed payload = %#v", seen["review_wait.notification_failed"].Payload)
+	}
+	if seen["review_wait.resolved"].Payload["task_id"] != "T-003" {
+		t.Fatalf("resolved payload = %#v", seen["review_wait.resolved"].Payload)
 	}
 }
 

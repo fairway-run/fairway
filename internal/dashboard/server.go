@@ -308,6 +308,7 @@ type TaskDetailViewData struct {
 	ReviewStatus         string
 	ReviewHandback       *coord.ReviewCompletionHandback
 	ReviewNotifications  []reviewstate.ReviewNotificationStatus
+	ReviewWaits          []reviewstate.ReviewWait
 	TaskSessions         []store.Session
 	Usage                []store.ProviderUsage
 	UsageRollups         []store.UsageRollup
@@ -2292,6 +2293,12 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 	missingReviewDomains := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 	reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
+	reviewWaitOptions, err := s.reviewWaitOptions(time.Now().UTC())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	reviewWaits := reviewstate.WaitsForTask(task, handoffs, reviews, notifications, reviewWaitOptions)
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -2307,6 +2314,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		ReviewStatus:         dashboardEffectiveReviewStatus(task.ReviewStatus, missingReviewDomains),
 		ReviewHandback:       optionalDashboardReviewHandback(reviewHandback, hasReviewHandback),
 		ReviewNotifications:  reviewNotifications,
+		ReviewWaits:          reviewWaits,
 		TaskSessions:         sessionsForDashboardTask(sessions, id),
 		Usage:                usageEvents,
 		UsageRollups:         usageRollups,
@@ -2321,6 +2329,59 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 	}
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
+}
+
+func (s *Server) reviewWaitOptions(now time.Time) (reviewstate.ReviewWaitOptions, error) {
+	ackTimeout := 24 * time.Hour
+	if raw := strings.TrimSpace(s.cfg.Coordinator.NotificationAckTimeout); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return reviewstate.ReviewWaitOptions{}, fmt.Errorf("invalid coordinator notification_ack_timeout %q: %w", raw, err)
+		}
+		ackTimeout = parsed
+	}
+	return reviewstate.ReviewWaitOptions{
+		ProviderTargets: s.cfg.ProviderTargets,
+		ReviewRoutes:    s.cfg.ReviewRoutes,
+		Roles:           s.cfg.Roles,
+		AckTimeout:      ackTimeout,
+		Now:             now,
+		Terminal:        s.cfg.States.Terminal,
+	}, nil
+}
+
+func (s *Server) reviewWaits(ctx context.Context, taskID string, now time.Time) ([]reviewstate.ReviewWait, error) {
+	opts, err := s.reviewWaitOptions(now)
+	if err != nil {
+		return nil, err
+	}
+	var tasks []store.Task
+	if strings.TrimSpace(taskID) != "" {
+		task, _, _, _, _, err := s.store.TaskDetail(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		tasks = []store.Task{task}
+	} else {
+		var err error
+		tasks, err = s.store.AllTasks(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var waits []reviewstate.ReviewWait
+	for _, task := range tasks {
+		detailTask, _, _, handoffs, reviews, err := s.store.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, err
+		}
+		notifications, err := s.store.Notifications(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, err
+		}
+		waits = append(waits, reviewstate.WaitsForTask(detailTask, handoffs, reviews, notifications, opts)...)
+	}
+	return waits, nil
 }
 
 func (s *Server) auditDiagnostics(ctx context.Context, taskID string) AuditDiagnostics {
@@ -2758,6 +2819,15 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			seen[event.ID] = true
 		}
 	}
+	initialWaitEvents, err := s.reviewWaitEvents(r.Context(), time.Now().UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	for _, event := range initialWaitEvents {
+		seen[event.ID] = true
+	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -2820,6 +2890,25 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 					flusher.Flush()
 					return
 				}
+				flusher.Flush()
+			}
+			at := time.Now().UTC().Format(time.RFC3339Nano)
+			waitEvents, err := s.reviewWaitEvents(r.Context(), at)
+			if err != nil {
+				fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+				flusher.Flush()
+				return
+			}
+			for _, event := range waitEvents {
+				if seen[event.ID] {
+					continue
+				}
+				if err := writeSSEEvent(w, event); err != nil {
+					fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
+					flusher.Flush()
+					return
+				}
+				seen[event.ID] = true
 				flusher.Flush()
 			}
 		}
