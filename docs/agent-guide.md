@@ -179,6 +179,24 @@ queue. In this repository that is
 from those files becomes active work, promote it into the active backlog and
 import/reconcile the DB before claiming it.
 
+When reviewing a task, check Fairway DB visibility before treating a YAML text
+search miss as a blocker. The runtime DB is authoritative for task status,
+evidence, handoffs, notifications, reviews, sessions, checkpoints, batches, and
+usage, and it can contain valid tasks that have not yet been exported back to a
+configured YAML queue file. Use:
+
+```bash
+fairway task-detail <task-id>
+fairway list --status todo --status in_progress --status blocked --status done
+fairway reconcile active --dry-run
+fairway db export .fairway/fairway-state-snapshot.json
+```
+
+Escalate a YAML miss only when it indicates real config/import/export drift or
+when the reviewer needs a portable queue artifact that has not been provided.
+Do not block an implementation solely because `rg <task-id> <queue-source.yaml>`
+does not find a DB-visible task.
+
 Product boundaries are explicit: Fairway coordinates work; it does not
 auto-claim, auto-approve, auto-merge, auto-push, deploy, perform destructive
 cleanup, store provider credentials/transcripts/prompts by default, or gate

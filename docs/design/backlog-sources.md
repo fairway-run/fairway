@@ -29,6 +29,44 @@ The dashboard and CLI read runtime state from the DB. Updating a YAML file does
 not change live task state until the task is imported or reconciled through
 Fairway commands.
 
+## DB Visibility And YAML Search Misses
+
+Fairway reviewers must verify task existence through Fairway commands before
+using text search in a configured YAML queue as evidence that a task is
+missing. A task can be present in the DB and valid runtime state even when the
+configured `queue_source` file has not yet been exported or refreshed. That is
+not, by itself, an implementation blocker.
+
+Use this order when reviewing or coordinating a task id:
+
+```bash
+fairway task-detail <task-id>
+fairway list --status todo --status in_progress --status blocked --status done
+fairway reconcile active --dry-run
+fairway db export .fairway/fairway-state-snapshot.json
+```
+
+`task-detail` is the first source for task definition metadata, status,
+evidence, handoffs, notifications, reviews, sessions, and batches. `list` and
+`ready` answer queue questions from the DB. `reconcile active --dry-run`
+reports runtime inconsistencies that need operator action. `db export` provides
+a review artifact when a reviewer needs a durable snapshot of DB-visible tasks.
+
+A YAML text-search miss is actionable only when it points to real definition or
+import drift, for example:
+
+- the active config points at the wrong `queue_source`,
+- a task should be promoted into the active backlog definition but only exists
+  in chat, an example file, or an archived queue,
+- a task definition changed in YAML but was never imported or reconciled,
+- a reviewer needs a portable queue artifact and no DB export or task detail
+  artifact was provided.
+
+When a DB-visible task should also be represented in the configured YAML queue,
+record that as a follow-up or governance/export task. Do not block an otherwise
+reviewable implementation solely because `rg <task-id> <queue-source.yaml>`
+does not find the id.
+
 ## Current Roles
 
 | Path | Role |

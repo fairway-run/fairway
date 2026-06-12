@@ -125,6 +125,11 @@ A PR touching multiple `[[review_routes]]` matches requires approval from each m
 A reviewer:
 
 - Reads the diff and the task definition.
+- Verifies task existence and runtime state with `fairway task-detail <task-id>`
+  before treating a configured YAML queue text-search miss as a blocker. A
+  DB-visible task can be valid even when the queue file has not been exported
+  or refreshed; block only on real config/import/export drift or missing
+  review artifacts.
 - Runs the acceptance checks locally when reasonable.
 - Verifies the [pre-merge checks](#pre-merge-checks-automated) actually ran (not just claimed).
 - Requires exact verification command evidence for CI scripts, release gates,
