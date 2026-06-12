@@ -206,7 +206,13 @@ it records a provider notification row on the `coordinator` domain using the
 current prompt signature. Duplicate signatures are suppressed. A missing wake
 target records `notification_failed` instead of pretending delivery occurred.
 The prompt text is rendered at send time and is not stored as arbitrary
-operator-authored wake text for future replay.
+operator-authored wake text for future replay. The resolved-wait prompt is
+status-aware: if all review waits are resolved but the task is still blocked,
+in progress, todo, or otherwise outside a review-ready status, the wake names
+the task status and gives review-wait-only guidance instead of telling the
+operator to run `merge-ready` or continue closeout. Blocking stale or
+notification-failed waits likewise instruct operators to address the review
+wait before closeout.
 
 The first slice also validates static routability before ambiguous wait states:
 `fairway route review` fails when a task declares a required review domain that

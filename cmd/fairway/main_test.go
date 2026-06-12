@@ -2176,14 +2176,17 @@ type = "thread"
 	runOK(t, "add", "T-002", "--title", "Failed review wait", "--role", "backend", "--review-domains", "product")
 	runOK(t, "add", "T-003", "--title", "Resolved review wait", "--role", "backend", "--review-domains", "ops")
 	runOK(t, "add", "T-004", "--title", "Historical resolved wait", "--role", "backend", "--review-domains", "ops")
-	for _, taskID := range []string{"T-001", "T-002", "T-003", "T-004"} {
+	runOK(t, "add", "T-005", "--title", "Blocked resolved review wait", "--role", "backend", "--review-domains", "ops")
+	for _, taskID := range []string{"T-001", "T-002", "T-003", "T-004", "T-005"} {
 		runOK(t, "set-status", taskID, "in_progress", "--reason", "entered review wait")
 	}
 	runOK(t, "record", "notification", "T-001", "--domain", "arch", "--provider", "codex", "--target", "thread-arch", "--state", "notification_delivered", "--reason", "sent")
 	runOK(t, "record", "notification", "T-002", "--domain", "product", "--provider", "codex", "--target", "missing", "--state", "notification_failed", "--reason", "no mapping")
 	runOK(t, "record", "review", "T-003", "--reviewer", "ops-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "ok")
 	runOK(t, "record", "review", "T-004", "--reviewer", "ops-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "ok")
+	runOK(t, "record", "review", "T-005", "--reviewer", "ops-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "ok")
 	runOK(t, "set-status", "T-004", "done", "--reason", "closed already")
+	runOK(t, "set-status", "T-005", "blocked", "--reason", "task-level blocker remains")
 
 	time.Sleep(time.Millisecond)
 	dryRun := runCapture(t, "review-waits", "wake", "--task", "T-001")
@@ -2192,14 +2195,15 @@ type = "thread"
 	assertContains(t, dryRun, "target=thread-arch")
 	assertContains(t, dryRun, "Review wait update for T-001:")
 	assertContains(t, dryRun, "1. Re-run fairway review-waits list --task T-001.")
-	assertContains(t, dryRun, "3. If gates pass, continue reviewed-lane closeout.")
+	assertContains(t, dryRun, "2. Address the blocking review wait before merge-ready or closeout.")
+	assertNotContains(t, dryRun, "fairway merge-ready T-001")
 
 	sent := runCapture(t, "review-waits", "wake", "--task", "T-001", "--send", "--state", "thread_steered")
 	assertContains(t, sent, "kind=stale")
-	assertContains(t, sent, "signature=T-001|stale|")
+	assertContains(t, sent, "signature=T-001|stale|task_status=in_progress|")
 	detail := runCapture(t, "task-detail", "T-001")
 	assertContains(t, detail, "thread_steered domain=coordinator provider=codex target=thread-arch")
-	assertContains(t, detail, "review_wait_wake signature=T-001|stale|")
+	assertContains(t, detail, "review_wait_wake signature=T-001|stale|task_status=in_progress|")
 
 	suppressed := runCapture(t, "review-waits", "wake", "--task", "T-001", "--send", "--state", "thread_steered")
 	assertContains(t, suppressed, "status=suppressed")
@@ -2213,8 +2217,22 @@ type = "thread"
 
 	resolved := runCapture(t, "review-waits", "wake", "--task", "T-003")
 	assertContains(t, resolved, "kind=resolved")
+	assertContains(t, resolved, "task_status=in_progress")
+	assertContains(t, resolved, "review_only=true")
 	assertContains(t, resolved, "target=thread-ops")
 	assertContains(t, resolved, "- ops: resolved action=run_merge_ready")
+	assertNotContains(t, resolved, "fairway merge-ready T-003")
+	assertContains(t, resolved, "review resolution does not authorize merge-ready or closeout")
+
+	blockedResolved := runCapture(t, "review-waits", "wake", "--task", "T-005")
+	assertContains(t, blockedResolved, "kind=resolved")
+	assertContains(t, blockedResolved, "task_status=blocked")
+	assertContains(t, blockedResolved, "review_only=true")
+	assertContains(t, blockedResolved, "Task status: blocked")
+	assertContains(t, blockedResolved, "task status is blocked")
+	assertContains(t, blockedResolved, "- ops: resolved action=run_merge_ready")
+	assertNotContains(t, blockedResolved, "fairway merge-ready T-005")
+	assertNotContains(t, blockedResolved, "If gates pass, continue reviewed-lane closeout.")
 
 	historical := runCapture(t, "review-waits", "wake", "--task", "T-004")
 	assertContains(t, historical, "review_wait_wakes: none")

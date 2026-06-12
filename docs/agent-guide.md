@@ -1234,8 +1234,10 @@ The first command renders the fixed wake prompt without writing notification
 state. The second records a provider delivery fact on the `coordinator` domain
 after a coordinator/provider adapter has sent or accepted the prompt. Fairway
 suppresses duplicate wake signatures and records `notification_failed` if no
-wake target is configured. The dashboard remains read-only and does not send
-wake prompts.
+wake target is configured. Wake prompts are status-aware: resolved review waits
+on blocked, in-progress, todo, or otherwise non-review tasks are review-wait
+only and do not authorize `merge-ready` or reviewed-lane closeout. The
+dashboard remains read-only and does not send wake prompts.
 
 ## Review
 

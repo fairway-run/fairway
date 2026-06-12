@@ -73,12 +73,14 @@ parked review waits. It renders a fixed prompt from current review-wait rows:
 
 ```text
 Review wait update for <task-id>:
+- Task status: <status>
 - <domain>: <state>
 
 Next action:
 1. Re-run fairway review-waits list --task <task-id>.
-2. Re-run fairway merge-ready <task-id>.
-3. If gates pass, continue reviewed-lane closeout.
+2. Follow the status-aware review-wait guidance in the prompt.
+3. Do not treat review-wait resolution as task closeout unless task-level gates
+   support it.
 ```
 
 Without `--send`, the command is dry-run output for a coordinator or provider
@@ -86,7 +88,11 @@ adapter. With `--send`, it records a `task_notifications` row on the
 `coordinator` domain using the current review-wait signature. A matching
 previous successful notification suppresses duplicates. If no wake target is
 configured, Fairway records `notification_failed` with the signature instead of
-claiming delivery.
+claiming delivery. Resolved review waits on a blocked, in-progress, todo, or
+otherwise non-review task produce review-wait-only guidance naming the task
+status; they do not tell operators to run `merge-ready` or continue closeout.
+Blocking `stale` or `notification_failed` waits instruct operators to address
+the review-wait blocker before closeout.
 
 The dashboard does not call this path. Dashboard review-wait state and SSE
 events remain read-only visibility surfaces.

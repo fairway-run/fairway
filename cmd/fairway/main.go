@@ -1937,6 +1937,7 @@ func cmdReviewWaitsList(ctx context.Context, opts globalOptions, args []string) 
 
 type reviewWaitWake struct {
 	TaskID     string                   `json:"task_id"`
+	TaskStatus string                   `json:"task_status,omitempty"`
 	Kind       string                   `json:"kind"`
 	Provider   string                   `json:"provider,omitempty"`
 	Target     string                   `json:"target,omitempty"`
@@ -1944,6 +1945,7 @@ type reviewWaitWake struct {
 	Prompt     string                   `json:"prompt"`
 	Waits      []reviewstate.ReviewWait `json:"waits"`
 	Signature  string                   `json:"signature"`
+	ReviewOnly bool                     `json:"review_only,omitempty"`
 	Suppressed bool                     `json:"suppressed,omitempty"`
 	Error      string                   `json:"error,omitempty"`
 }
@@ -2033,7 +2035,11 @@ func cmdReviewWaitsWake(ctx context.Context, opts globalOptions, args []string) 
 			if wake.Error != "" {
 				status = "failed"
 			}
-			fmt.Printf("- %s kind=%s status=%s provider=%s target=%s signature=%s\n", wake.TaskID, wake.Kind, status, firstNonEmpty(wake.Provider, "none"), firstNonEmpty(wake.Target, "none"), wake.Signature)
+			reviewOnly := ""
+			if wake.ReviewOnly {
+				reviewOnly = " review_only=true"
+			}
+			fmt.Printf("- %s kind=%s status=%s task_status=%s provider=%s target=%s signature=%s%s\n", wake.TaskID, wake.Kind, status, firstNonEmpty(wake.TaskStatus, "unknown"), firstNonEmpty(wake.Provider, "none"), firstNonEmpty(wake.Target, "none"), wake.Signature, reviewOnly)
 			fmt.Print(wake.Prompt)
 			if !strings.HasSuffix(wake.Prompt, "\n") {
 				fmt.Println()
@@ -2099,7 +2105,8 @@ func selectReviewWaitWakes(waits []reviewstate.ReviewWait, statusByTask map[stri
 	sort.Strings(taskIDs)
 	var wakes []reviewWaitWake
 	for _, taskID := range taskIDs {
-		if terminal[strings.TrimSpace(statusByTask[taskID])] {
+		taskStatus := strings.TrimSpace(statusByTask[taskID])
+		if terminal[taskStatus] {
 			continue
 		}
 		taskWaits := byTask[taskID]
@@ -2110,11 +2117,11 @@ func selectReviewWaitWakes(waits []reviewstate.ReviewWait, statusByTask map[stri
 				resolved = false
 			}
 			if wait.Blocking && (wait.State == "stale" || wait.State == "notification_failed") {
-				wakes = append(wakes, buildReviewWaitWake(taskID, wait.State, taskWaits, wait))
+				wakes = append(wakes, buildReviewWaitWake(taskID, taskStatus, wait.State, taskWaits, wait))
 			}
 		}
 		if resolved {
-			wakes = append(wakes, buildReviewWaitWake(taskID, "resolved", taskWaits, firstWakeTarget(taskWaits)))
+			wakes = append(wakes, buildReviewWaitWake(taskID, taskStatus, "resolved", taskWaits, firstWakeTarget(taskWaits)))
 		}
 	}
 	return wakes
@@ -2128,16 +2135,19 @@ func terminalStatusSet(statuses []string) map[string]bool {
 	return out
 }
 
-func buildReviewWaitWake(taskID, kind string, waits []reviewstate.ReviewWait, target reviewstate.ReviewWait) reviewWaitWake {
-	signature := reviewWaitWakeSignature(taskID, kind, waits)
+func buildReviewWaitWake(taskID, taskStatus, kind string, waits []reviewstate.ReviewWait, target reviewstate.ReviewWait) reviewWaitWake {
+	reviewOnly := kind == "resolved" && taskStatus != "review"
+	signature := reviewWaitWakeSignature(taskID, taskStatus, kind, reviewOnly, waits)
 	return reviewWaitWake{
-		TaskID:    taskID,
-		Kind:      kind,
-		Provider:  target.TargetProvider,
-		Target:    firstNonEmpty(target.WakeThreadID, target.TargetID),
-		Prompt:    renderReviewWaitWakePrompt(taskID, waits),
-		Waits:     waits,
-		Signature: signature,
+		TaskID:     taskID,
+		TaskStatus: taskStatus,
+		Kind:       kind,
+		Provider:   target.TargetProvider,
+		Target:     firstNonEmpty(target.WakeThreadID, target.TargetID),
+		Prompt:     renderReviewWaitWakePrompt(taskID, taskStatus, kind, reviewOnly, waits),
+		Waits:      waits,
+		Signature:  signature,
+		ReviewOnly: reviewOnly,
 	}
 }
 
@@ -2153,17 +2163,23 @@ func firstWakeTarget(waits []reviewstate.ReviewWait) reviewstate.ReviewWait {
 	return reviewstate.ReviewWait{}
 }
 
-func reviewWaitWakeSignature(taskID, kind string, waits []reviewstate.ReviewWait) string {
-	parts := []string{taskID, kind}
+func reviewWaitWakeSignature(taskID, taskStatus, kind string, reviewOnly bool, waits []reviewstate.ReviewWait) string {
+	parts := []string{taskID, kind, "task_status=" + taskStatus}
+	if reviewOnly {
+		parts = append(parts, "review_only=true")
+	}
 	for _, wait := range waits {
 		parts = append(parts, wait.WaitID+"="+wait.State+"/"+wait.Action+"/"+wait.ExpectedResponseAt+"/"+wait.ResolvedAt)
 	}
 	return strings.Join(parts, "|")
 }
 
-func renderReviewWaitWakePrompt(taskID string, waits []reviewstate.ReviewWait) string {
+func renderReviewWaitWakePrompt(taskID, taskStatus, kind string, reviewOnly bool, waits []reviewstate.ReviewWait) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Review wait update for %s:\n", taskID)
+	if taskStatus != "" {
+		fmt.Fprintf(&b, "Task status: %s\n", taskStatus)
+	}
 	for _, wait := range waits {
 		fmt.Fprintf(&b, "- %s: %s", wait.Domain, wait.State)
 		if wait.Action != "" {
@@ -2179,8 +2195,17 @@ func renderReviewWaitWakePrompt(taskID string, waits []reviewstate.ReviewWait) s
 	}
 	b.WriteString("\nNext action:\n")
 	fmt.Fprintf(&b, "1. Re-run fairway review-waits list --task %s.\n", taskID)
-	fmt.Fprintf(&b, "2. Re-run fairway merge-ready %s.\n", taskID)
-	b.WriteString("3. If gates pass, continue reviewed-lane closeout.\n")
+	switch {
+	case kind == "resolved" && reviewOnly:
+		fmt.Fprintf(&b, "2. Treat this as review-wait-only; task status is %s, so review resolution does not authorize merge-ready or closeout.\n", firstNonEmpty(taskStatus, "unknown"))
+		b.WriteString("3. Resolve the task status and task-level gates before reviewed-lane closeout.\n")
+	case kind == "resolved":
+		fmt.Fprintf(&b, "2. Re-run fairway merge-ready %s.\n", taskID)
+		b.WriteString("3. If gates pass, continue reviewed-lane closeout.\n")
+	default:
+		b.WriteString("2. Address the blocking review wait before merge-ready or closeout.\n")
+		b.WriteString("3. Re-run this wake or the list command after notification or mapping state changes.\n")
+	}
 	return b.String()
 }
 
