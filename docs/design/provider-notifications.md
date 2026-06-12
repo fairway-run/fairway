@@ -65,3 +65,28 @@ change required review domains without changing the implementation commit.
 The signal does not authorize merge, push, CI, deploy, release, or task
 completion. Those remain explicit coordinator/operator actions guarded by
 Fairway evidence, review, workflow, and merge-ready checks.
+
+## Review Wait Wake Signals
+
+`fairway review-waits wake` is a bounded provider-notification surface for
+parked review waits. It renders a fixed prompt from current review-wait rows:
+
+```text
+Review wait update for <task-id>:
+- <domain>: <state>
+
+Next action:
+1. Re-run fairway review-waits list --task <task-id>.
+2. Re-run fairway merge-ready <task-id>.
+3. If gates pass, continue reviewed-lane closeout.
+```
+
+Without `--send`, the command is dry-run output for a coordinator or provider
+adapter. With `--send`, it records a `task_notifications` row on the
+`coordinator` domain using the current review-wait signature. A matching
+previous successful notification suppresses duplicates. If no wake target is
+configured, Fairway records `notification_failed` with the signature instead of
+claiming delivery.
+
+The dashboard does not call this path. Dashboard review-wait state and SSE
+events remain read-only visibility surfaces.

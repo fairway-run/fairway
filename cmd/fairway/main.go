@@ -1864,16 +1864,24 @@ func cmdRouteReview(ctx context.Context, opts globalOptions, args []string) erro
 
 func cmdReviewWaits(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("review-waits requires subcommand: list")
+		return errors.New("review-waits requires subcommand: list, wake")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("review-waits", "list [--blocking] [--task <task-id>] [--stale]")
+		subcommandUsage("review-waits", "list [--blocking] [--task <task-id>] [--stale] | wake [--task <task-id>] [--send]")
 		return nil
 	}
-	if args[0] != "list" {
+	switch args[0] {
+	case "list":
+		return cmdReviewWaitsList(ctx, opts, args[1:])
+	case "wake":
+		return cmdReviewWaitsWake(ctx, opts, args[1:])
+	default:
 		return fmt.Errorf("unknown review-waits subcommand %q", args[0])
 	}
-	if len(args) > 1 && isHelpOnly(args[1:]) {
+}
+
+func cmdReviewWaitsList(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
 		subcommandUsage("review-waits", "list [--blocking] [--task <task-id>] [--stale]")
 		return nil
 	}
@@ -1881,7 +1889,7 @@ func cmdReviewWaits(ctx context.Context, opts globalOptions, args []string) erro
 	blockingOnly := fs.Bool("blocking", false, "show only blocking waits")
 	taskID := fs.String("task", "", "task id")
 	staleOnly := fs.Bool("stale", false, "show only stale waits")
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
@@ -1927,10 +1935,123 @@ func cmdReviewWaits(ctx context.Context, opts globalOptions, args []string) erro
 	})
 }
 
+type reviewWaitWake struct {
+	TaskID     string                   `json:"task_id"`
+	Kind       string                   `json:"kind"`
+	Provider   string                   `json:"provider,omitempty"`
+	Target     string                   `json:"target,omitempty"`
+	State      string                   `json:"state,omitempty"`
+	Prompt     string                   `json:"prompt"`
+	Waits      []reviewstate.ReviewWait `json:"waits"`
+	Signature  string                   `json:"signature"`
+	Suppressed bool                     `json:"suppressed,omitempty"`
+	Error      string                   `json:"error,omitempty"`
+}
+
+func cmdReviewWaitsWake(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("review-waits", "wake [--task <task-id>] [--send] [--state <sent|notification_delivered|thread_steered>] [--provider <name>] [--target <thread-id>]")
+		return nil
+	}
+	fs := flag.NewFlagSet("review-waits wake", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	send := fs.Bool("send", false, "record bounded wake delivery/failure notification rows")
+	state := fs.String("state", "sent", "notification state to record with --send")
+	provider := fs.String("provider", "", "override provider label")
+	target := fs.String("target", "", "override provider thread/adapter target")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected review-waits wake arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if !*send && (*provider != "" || *target != "" || *state != "sent") {
+		return errors.New("--provider, --target, and --state require --send")
+	}
+	switch *state {
+	case "sent", "notification_delivered", "thread_steered":
+	default:
+		return fmt.Errorf("invalid review-waits wake --state %q", *state)
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		waits, statusByTask, err := reviewWaitRowsWithTaskStatus(ctx, cfg, s, *taskID)
+		if err != nil {
+			return err
+		}
+		wakes := selectReviewWaitWakes(waits, statusByTask, terminalStatusSet(cfg.States.Terminal))
+		for i := range wakes {
+			if *provider != "" {
+				wakes[i].Provider = *provider
+			}
+			if *target != "" {
+				wakes[i].Target = *target
+			}
+			wakes[i].State = *state
+			notifications, err := s.Notifications(ctx, wakes[i].TaskID)
+			if err != nil {
+				return err
+			}
+			if reviewWaitWakeSuppressed(wakes[i], notifications) {
+				wakes[i].Suppressed = true
+				continue
+			}
+			if !*send {
+				continue
+			}
+			recordState := *state
+			reason := "review_wait_wake signature=" + wakes[i].Signature + " kind=" + wakes[i].Kind
+			if strings.TrimSpace(wakes[i].Target) == "" {
+				recordState = "notification_failed"
+				reason += " failed=no_wake_target"
+				wakes[i].Error = "no wake target configured"
+			}
+			if _, err := s.RecordNotification(ctx, store.Notification{
+				TaskID:   wakes[i].TaskID,
+				Domain:   "coordinator",
+				Provider: wakes[i].Provider,
+				Target:   wakes[i].Target,
+				State:    recordState,
+				Reason:   reason,
+			}); err != nil {
+				return err
+			}
+			wakes[i].State = recordState
+		}
+		if opts.JSON {
+			return printJSON(wakes)
+		}
+		if len(wakes) == 0 {
+			fmt.Println("review_wait_wakes: none")
+			return nil
+		}
+		fmt.Println("review_wait_wakes:")
+		for _, wake := range wakes {
+			status := "ready"
+			if wake.Suppressed {
+				status = "suppressed"
+			}
+			if wake.Error != "" {
+				status = "failed"
+			}
+			fmt.Printf("- %s kind=%s status=%s provider=%s target=%s signature=%s\n", wake.TaskID, wake.Kind, status, firstNonEmpty(wake.Provider, "none"), firstNonEmpty(wake.Target, "none"), wake.Signature)
+			fmt.Print(wake.Prompt)
+			if !strings.HasSuffix(wake.Prompt, "\n") {
+				fmt.Println()
+			}
+		}
+		return nil
+	})
+}
+
 func reviewWaitRows(ctx context.Context, cfg config.Config, s *store.Store, taskID string) ([]reviewstate.ReviewWait, error) {
+	waits, _, err := reviewWaitRowsWithTaskStatus(ctx, cfg, s, taskID)
+	return waits, err
+}
+
+func reviewWaitRowsWithTaskStatus(ctx context.Context, cfg config.Config, s *store.Store, taskID string) ([]reviewstate.ReviewWait, map[string]string, error) {
 	ackTimeout, err := reviewWaitAckTimeout(cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	waitOpts := reviewWaitOptions(cfg)
 	waitOpts.AckTimeout = ackTimeout
@@ -1940,28 +2061,140 @@ func reviewWaitRows(ctx context.Context, cfg config.Config, s *store.Store, task
 	if strings.TrimSpace(taskID) != "" {
 		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		tasks = []store.Task{task}
 	} else {
 		tasks, err = s.AllTasks(ctx)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	var waits []reviewstate.ReviewWait
+	statusByTask := map[string]string{}
 	for _, task := range tasks {
+		statusByTask[task.Definition.ID] = task.Status
 		detailTask, _, _, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		notifications, err := s.Notifications(ctx, task.Definition.ID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		waits = append(waits, reviewstate.WaitsForTask(detailTask, handoffs, reviews, notifications, waitOpts)...)
 	}
-	return waits, nil
+	return waits, statusByTask, nil
+}
+
+func selectReviewWaitWakes(waits []reviewstate.ReviewWait, statusByTask map[string]string, terminal map[string]bool) []reviewWaitWake {
+	byTask := map[string][]reviewstate.ReviewWait{}
+	for _, wait := range waits {
+		byTask[wait.TaskID] = append(byTask[wait.TaskID], wait)
+	}
+	var taskIDs []string
+	for taskID := range byTask {
+		taskIDs = append(taskIDs, taskID)
+	}
+	sort.Strings(taskIDs)
+	var wakes []reviewWaitWake
+	for _, taskID := range taskIDs {
+		if terminal[strings.TrimSpace(statusByTask[taskID])] {
+			continue
+		}
+		taskWaits := byTask[taskID]
+		sort.SliceStable(taskWaits, func(i, j int) bool { return taskWaits[i].WaitID < taskWaits[j].WaitID })
+		resolved := len(taskWaits) > 0
+		for _, wait := range taskWaits {
+			if wait.Blocking || wait.State != "resolved" {
+				resolved = false
+			}
+			if wait.Blocking && (wait.State == "stale" || wait.State == "notification_failed") {
+				wakes = append(wakes, buildReviewWaitWake(taskID, wait.State, taskWaits, wait))
+			}
+		}
+		if resolved {
+			wakes = append(wakes, buildReviewWaitWake(taskID, "resolved", taskWaits, firstWakeTarget(taskWaits)))
+		}
+	}
+	return wakes
+}
+
+func terminalStatusSet(statuses []string) map[string]bool {
+	out := map[string]bool{}
+	for _, status := range statuses {
+		out[strings.TrimSpace(status)] = true
+	}
+	return out
+}
+
+func buildReviewWaitWake(taskID, kind string, waits []reviewstate.ReviewWait, target reviewstate.ReviewWait) reviewWaitWake {
+	signature := reviewWaitWakeSignature(taskID, kind, waits)
+	return reviewWaitWake{
+		TaskID:    taskID,
+		Kind:      kind,
+		Provider:  target.TargetProvider,
+		Target:    firstNonEmpty(target.WakeThreadID, target.TargetID),
+		Prompt:    renderReviewWaitWakePrompt(taskID, waits),
+		Waits:     waits,
+		Signature: signature,
+	}
+}
+
+func firstWakeTarget(waits []reviewstate.ReviewWait) reviewstate.ReviewWait {
+	for _, wait := range waits {
+		if wait.WakeThreadID != "" {
+			return wait
+		}
+	}
+	if len(waits) > 0 {
+		return waits[0]
+	}
+	return reviewstate.ReviewWait{}
+}
+
+func reviewWaitWakeSignature(taskID, kind string, waits []reviewstate.ReviewWait) string {
+	parts := []string{taskID, kind}
+	for _, wait := range waits {
+		parts = append(parts, wait.WaitID+"="+wait.State+"/"+wait.Action+"/"+wait.ExpectedResponseAt+"/"+wait.ResolvedAt)
+	}
+	return strings.Join(parts, "|")
+}
+
+func renderReviewWaitWakePrompt(taskID string, waits []reviewstate.ReviewWait) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Review wait update for %s:\n", taskID)
+	for _, wait := range waits {
+		fmt.Fprintf(&b, "- %s: %s", wait.Domain, wait.State)
+		if wait.Action != "" {
+			fmt.Fprintf(&b, " action=%s", wait.Action)
+		}
+		if wait.ExpectedResponseAt != "" {
+			fmt.Fprintf(&b, " expected_response_at=%s", wait.ExpectedResponseAt)
+		}
+		if wait.Reason != "" {
+			fmt.Fprintf(&b, " reason=%s", wait.Reason)
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\nNext action:\n")
+	fmt.Fprintf(&b, "1. Re-run fairway review-waits list --task %s.\n", taskID)
+	fmt.Fprintf(&b, "2. Re-run fairway merge-ready %s.\n", taskID)
+	b.WriteString("3. If gates pass, continue reviewed-lane closeout.\n")
+	return b.String()
+}
+
+func reviewWaitWakeSuppressed(wake reviewWaitWake, notifications []store.Notification) bool {
+	needle := "review_wait_wake signature=" + wake.Signature
+	for _, notification := range notifications {
+		if notification.Domain == "coordinator" && strings.Contains(notification.Reason, needle) {
+			switch notification.State {
+			case "sent", "notification_delivered", "thread_steered", "acknowledged", "review_acknowledged":
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func reviewWaitOptions(cfg config.Config) reviewstate.ReviewWaitOptions {
@@ -8671,7 +8904,7 @@ func printCommandHelp(command string) bool {
 		"git-check":     "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
 		"preflight":     "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"record":        "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
-		"review-waits":  "fairway review-waits list [--blocking] [--task <task-id>] [--stale]\n  List derived review-wait rows from reviews, handoffs, notifications, and provider targets.",
+		"review-waits":  "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"session":       "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"worktree":      "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":      "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

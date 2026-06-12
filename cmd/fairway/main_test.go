@@ -127,8 +127,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
 		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent"},
-		{[]string{"review-waits", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
+		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
 		{[]string{"review-waits", "list", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
+		{[]string{"review-waits", "wake", "--help"}, "fairway review-waits wake [--task <task-id>]"},
 		{[]string{"usage", "--help"}, "fairway usage report"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
@@ -2132,6 +2133,91 @@ provider = "codex"
 
 	todoOut := runCapture(t, "review-waits", "list", "--task", "T-002", "--blocking")
 	assertContains(t, todoOut, "review_waits: none")
+}
+
+func TestCLI_ReviewWaitsWakeSelectionAndSuppression(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `notification_ack_timeout = "24h"`, `notification_ack_timeout = "1ns"`)
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+
+[[roles]]
+name = "arch"
+provider = "codex"
+
+[[roles]]
+name = "ops"
+provider = "codex"
+
+[[provider_targets]]
+domain = "arch"
+provider = "codex"
+target = "thread-arch"
+type = "thread"
+
+[[provider_targets]]
+domain = "ops"
+provider = "codex"
+target = "thread-ops"
+type = "thread"
+`)
+	runOK(t, "add", "T-001", "--title", "Stale review wait", "--role", "backend", "--review-domains", "arch")
+	runOK(t, "add", "T-002", "--title", "Failed review wait", "--role", "backend", "--review-domains", "product")
+	runOK(t, "add", "T-003", "--title", "Resolved review wait", "--role", "backend", "--review-domains", "ops")
+	runOK(t, "add", "T-004", "--title", "Historical resolved wait", "--role", "backend", "--review-domains", "ops")
+	for _, taskID := range []string{"T-001", "T-002", "T-003", "T-004"} {
+		runOK(t, "set-status", taskID, "in_progress", "--reason", "entered review wait")
+	}
+	runOK(t, "record", "notification", "T-001", "--domain", "arch", "--provider", "codex", "--target", "thread-arch", "--state", "notification_delivered", "--reason", "sent")
+	runOK(t, "record", "notification", "T-002", "--domain", "product", "--provider", "codex", "--target", "missing", "--state", "notification_failed", "--reason", "no mapping")
+	runOK(t, "record", "review", "T-003", "--reviewer", "ops-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "ok")
+	runOK(t, "record", "review", "T-004", "--reviewer", "ops-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "ok")
+	runOK(t, "set-status", "T-004", "done", "--reason", "closed already")
+
+	time.Sleep(time.Millisecond)
+	dryRun := runCapture(t, "review-waits", "wake", "--task", "T-001")
+	assertContains(t, dryRun, "review_wait_wakes:")
+	assertContains(t, dryRun, "kind=stale")
+	assertContains(t, dryRun, "target=thread-arch")
+	assertContains(t, dryRun, "Review wait update for T-001:")
+	assertContains(t, dryRun, "1. Re-run fairway review-waits list --task T-001.")
+	assertContains(t, dryRun, "3. If gates pass, continue reviewed-lane closeout.")
+
+	sent := runCapture(t, "review-waits", "wake", "--task", "T-001", "--send", "--state", "thread_steered")
+	assertContains(t, sent, "kind=stale")
+	assertContains(t, sent, "signature=T-001|stale|")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "thread_steered domain=coordinator provider=codex target=thread-arch")
+	assertContains(t, detail, "review_wait_wake signature=T-001|stale|")
+
+	suppressed := runCapture(t, "review-waits", "wake", "--task", "T-001", "--send", "--state", "thread_steered")
+	assertContains(t, suppressed, "status=suppressed")
+
+	failed := runCapture(t, "review-waits", "wake", "--task", "T-002", "--send")
+	assertContains(t, failed, "kind=notification_failed")
+	assertContains(t, failed, "status=failed")
+	failedDetail := runCapture(t, "task-detail", "T-002")
+	assertContains(t, failedDetail, "notification_failed domain=coordinator")
+	assertContains(t, failedDetail, "failed=no_wake_target")
+
+	resolved := runCapture(t, "review-waits", "wake", "--task", "T-003")
+	assertContains(t, resolved, "kind=resolved")
+	assertContains(t, resolved, "target=thread-ops")
+	assertContains(t, resolved, "- ops: resolved action=run_merge_ready")
+
+	historical := runCapture(t, "review-waits", "wake", "--task", "T-004")
+	assertContains(t, historical, "review_wait_wakes: none")
 }
 
 func TestCLI_RouteReviewAndPreflightReportUnroutableDomains(t *testing.T) {

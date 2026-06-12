@@ -1222,6 +1222,21 @@ not normal review wait. `fairway coordinator plan`, task detail, dashboard task
 detail, and workflow closeout expose that state so the coordinator retries or
 manually relays the reviewer notification before waiting for review.
 
+For parked review waits, use the bounded wake surface rather than writing custom
+provider prompts into Fairway state:
+
+```bash
+fairway review-waits wake --task <task-id>
+fairway review-waits wake --task <task-id> --send --state thread_steered
+```
+
+The first command renders the fixed wake prompt without writing notification
+state. The second records a provider delivery fact on the `coordinator` domain
+after a coordinator/provider adapter has sent or accepted the prompt. Fairway
+suppresses duplicate wake signatures and records `notification_failed` if no
+wake target is configured. The dashboard remains read-only and does not send
+wake prompts.
+
 ## Review
 
 Route review based on changed paths:

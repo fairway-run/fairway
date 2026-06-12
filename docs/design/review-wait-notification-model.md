@@ -175,6 +175,7 @@ Implemented first-slice command surface:
 fairway review-waits list --blocking
 fairway review-waits list --task <task-id>
 fairway review-waits list --stale
+fairway review-waits wake --task <task-id>
 ```
 
 Useful JSON fields:
@@ -192,11 +193,20 @@ Useful JSON fields:
 }
 ```
 
-`review-waits` is a read-only presentation of the `reviewstate` projection. It
+`review-waits list` is a read-only presentation of the `reviewstate` projection. It
 does not approve reviews, send notifications, wake providers, merge, push, or
 close work. The same rows are also visible through coordinator plan actions so
 the orchestrator active-wait loop can use the same state as the CLI before
 idling.
+
+`review-waits wake` is the bounded acting companion for coordinator/watch
+loops. Without `--send`, it renders fixed wake prompts from current
+review-wait rows and exits without writing notification state. With `--send`,
+it records a provider notification row on the `coordinator` domain using the
+current prompt signature. Duplicate signatures are suppressed. A missing wake
+target records `notification_failed` instead of pretending delivery occurred.
+The prompt text is rendered at send time and is not stored as arbitrary
+operator-authored wake text for future replay.
 
 The first slice also validates static routability before ambiguous wait states:
 `fairway route review` fails when a task declares a required review domain that
@@ -237,7 +247,7 @@ dashboard dependency rather than a Fairway workflow boundary.
 
 ## Wake Adapter
 
-Deferred first-slice follow-up: `OPS-FAIRWAY-REVIEW-WAIT-WAKE-WATCHER-001`.
+Implemented follow-up: `FW-183`.
 
 Waking a parked provider thread reuses the existing watcher/utility-adapter
 pattern. A review-wait wake is structurally the same as a CI monitor: poll a
@@ -250,8 +260,8 @@ condition, then hand a bounded prompt back to a lane.
   domains remain pending.
 - The watcher also wakes when all blocking waits are `resolved`, or when the
   task becomes merge-ready actionable after review completion.
-- Each wake prompt is rendered from a fixed template and delivered to the
-  configured `wake_thread_id` through the provider adapter.
+- Each wake prompt is rendered from a fixed template at send time and delivered
+  or recorded through the configured `wake_thread_id`/provider adapter target.
 - Delivery is recorded with `fairway record notification` like any other
   provider send, subject to the provider event trust boundary.
 
