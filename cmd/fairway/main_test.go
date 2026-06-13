@@ -55,6 +55,8 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "--json", "health-report")
 	runOK(t, "timing-report")
 	runOK(t, "--json", "timing-report")
+	runOK(t, "completion-handback-report")
+	runOK(t, "--json", "completion-handback-report")
 	runOK(t, "db", "export", "snapshot.json")
 	runOK(t, "db", "backup", "backup.db")
 }
@@ -97,6 +99,7 @@ func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
 		{"status-report", "fairway status-report"},
 		{"health-report", "fairway health-report"},
 		{"timing-report", "fairway timing-report"},
+		{"completion-handback-report", "fairway completion-handback-report"},
 		{"dispatch-plan", "fairway dispatch-plan [--role <role>]"},
 		{"register", "fairway register [--name <name>]"},
 		{"unregister", "fairway unregister [<name>]"},
@@ -1671,6 +1674,68 @@ func TestCodexUsageAdapter(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err == nil {
 		t.Fatalf("expected sensitive Codex usage key rejection, got success:\n%s", out)
 	}
+}
+
+func TestCompletionHandbackReport(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	configPath := filepath.Join(repo, ".fairway", "config.toml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := strings.Replace(string(data), `notification_ack_timeout = "24h"`, `notification_ack_timeout = "1ns"`, 1)
+	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: Delivered handback
+  role: ops
+  profile: drill
+- id: T-002
+  title: Open handback
+  role: ops
+  profile: drill
+- id: T-003
+  title: Closed handback
+  role: ops
+  profile: closed-drill
+`)
+	runOK(t, "import", "tasks.yaml")
+	runOK(t, "record", "completion-handback", "T-001", "--to", "arch", "--next-action", "assign follow-up", "--completion-state", "blocked-with-follow-up", "--state", "thread_steered", "--provider", "codex", "--target", "thread-arch")
+	runOK(t, "checkpoint", "record", "T-001", "--owner", "arch", "--state", "active", "--summary", "assigned follow-up owner")
+	runOK(t, "record", "completion-handback", "T-002", "--to", "arch", "--next-action", "assign next packet", "--completion-state", "live-window-closeout")
+	runOK(t, "record", "completion-handback", "T-003", "--to", "arch", "--next-action", "closed follow-up", "--completion-state", "done", "--state", "thread_steered", "--provider", "codex", "--target", "thread-arch")
+	runOK(t, "set-status", "T-003", "done", "--reason", "closed task excluded from default idle report")
+
+	out := runCapture(t, "completion-handback-report")
+	for _, want := range []string{"completion_handback_idle_report", "rows=2", "stale=1", "completed=1", "open=1", "T-001", "T-002", "by workstream", "drill"} {
+		assertContains(t, out, want)
+	}
+	assertNotContains(t, out, "T-003")
+	assertNotContains(t, out, "by role")
+
+	markdown := runCapture(t, "completion-handback-report", "--format", "markdown")
+	assertContains(t, markdown, "# Completion Handback Idle Report")
+	assertContains(t, markdown, "| Workstream | Rows | Stale | Completed | Open | Max idle seconds |")
+
+	jsonOut := runCapture(t, "--json", "completion-handback-report")
+	assertContains(t, jsonOut, `"total_rows": 2`)
+	assertContains(t, jsonOut, `"stale_count": 1`)
+	assertContains(t, jsonOut, `"completed_count": 1`)
+	assertNotContains(t, jsonOut, "Closed handback")
+
+	includeClosed := runCapture(t, "completion-handback-report", "--include-closed")
+	assertContains(t, includeClosed, "T-003")
 }
 
 func TestCIMonitorAdapterDryRun(t *testing.T) {

@@ -117,6 +117,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdHealthReport(ctx, opts, args[1:])
 	case "timing-report":
 		return cmdTimingReport(ctx, opts, args[1:])
+	case "completion-handback-report":
+		return cmdCompletionHandbackReport(ctx, opts, args[1:])
 	case "dispatch-plan":
 		return cmdDispatchPlan(ctx, opts, args[1:])
 	case "git-check":
@@ -618,6 +620,294 @@ func cmdTimingReport(ctx context.Context, opts globalOptions, args []string) err
 		}
 		return nil
 	})
+}
+
+type completionHandbackIdleReport struct {
+	GeneratedAt    string                                   `json:"generated_at"`
+	IncludeClosed  bool                                     `json:"include_closed"`
+	AckTimeout     string                                   `json:"ack_timeout"`
+	TotalRows      int                                      `json:"total_rows"`
+	StaleCount     int                                      `json:"stale_count"`
+	CompletedCount int                                      `json:"completed_count"`
+	OpenCount      int                                      `json:"open_count"`
+	Rows           []completionHandbackIdleRow              `json:"rows"`
+	ByTask         map[string]completionHandbackIdleSummary `json:"by_task"`
+	ByWorkstream   map[string]completionHandbackIdleSummary `json:"by_workstream"`
+}
+
+type completionHandbackIdleRow struct {
+	TaskID            string `json:"task_id"`
+	Title             string `json:"title,omitempty"`
+	Workstream        string `json:"workstream"`
+	TaskStatus        string `json:"task_status"`
+	CompletionState   string `json:"completion_state,omitempty"`
+	DeliveryStatus    string `json:"delivery_status"`
+	DeliveryState     string `json:"delivery_state,omitempty"`
+	ToRole            string `json:"to_role"`
+	NextAction        string `json:"next_action"`
+	HandbackAt        string `json:"handback_at"`
+	DecisionAt        string `json:"decision_at,omitempty"`
+	DecisionOwner     string `json:"decision_owner,omitempty"`
+	DecisionSummary   string `json:"decision_summary,omitempty"`
+	IdleSeconds       int64  `json:"idle_seconds"`
+	Stale             bool   `json:"stale"`
+	StaleAge          string `json:"stale_age,omitempty"`
+	Provider          string `json:"provider,omitempty"`
+	Target            string `json:"target,omitempty"`
+	SuggestedAction   string `json:"suggested_action,omitempty"`
+	SuggestedCommand  string `json:"suggested_command,omitempty"`
+	LiveWindowPhase   string `json:"live_window_phase,omitempty"`
+	ApprovalBoundary  string `json:"approval_boundary,omitempty"`
+	ActualThreadProof bool   `json:"actual_thread_proof"`
+}
+
+type completionHandbackIdleSummary struct {
+	Rows             int   `json:"rows"`
+	StaleCount       int   `json:"stale_count"`
+	CompletedCount   int   `json:"completed_count"`
+	OpenCount        int   `json:"open_count"`
+	TotalIdleSeconds int64 `json:"total_idle_seconds"`
+	MaxIdleSeconds   int64 `json:"max_idle_seconds"`
+}
+
+func cmdCompletionHandbackReport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("completion-handback-report", "[--include-closed] [--format human|markdown]")
+		return nil
+	}
+	fs := flag.NewFlagSet("completion-handback-report", flag.ContinueOnError)
+	includeClosed := fs.Bool("include-closed", false, "include tasks in terminal states")
+	format := fs.String("format", "human", "human or markdown")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected completion-handback-report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	switch *format {
+	case "human", "markdown":
+	default:
+		return fmt.Errorf("unsupported --format %q", *format)
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		report, err := buildCompletionHandbackIdleReport(ctx, cfg, s, *includeClosed, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		if *format == "markdown" {
+			printCompletionHandbackIdleMarkdown(report)
+			return nil
+		}
+		printCompletionHandbackIdleHuman(report)
+		return nil
+	})
+}
+
+func buildCompletionHandbackIdleReport(ctx context.Context, cfg config.Config, s *store.Store, includeClosed bool, now time.Time) (completionHandbackIdleReport, error) {
+	ackTimeout, err := reviewWaitAckTimeout(cfg)
+	if err != nil {
+		return completionHandbackIdleReport{}, err
+	}
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return completionHandbackIdleReport{}, err
+	}
+	checkpoints, err := s.Checkpoints(ctx, "", true)
+	if err != nil {
+		return completionHandbackIdleReport{}, err
+	}
+	liveWindows := map[string]livewindow.Status{}
+	for _, status := range livewindow.StatusesFromCheckpoints(checkpoints) {
+		liveWindows[status.TaskID] = status
+	}
+	terminal := terminalStatusSet(cfg.States.Terminal)
+	report := completionHandbackIdleReport{
+		GeneratedAt:   now.Format(time.RFC3339Nano),
+		IncludeClosed: includeClosed,
+		AckTimeout:    ackTimeout.String(),
+		ByTask:        map[string]completionHandbackIdleSummary{},
+		ByWorkstream:  map[string]completionHandbackIdleSummary{},
+	}
+	for _, task := range tasks {
+		if !includeClosed && terminal[task.Status] {
+			continue
+		}
+		_, _, _, handoffs, _, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return completionHandbackIdleReport{}, err
+		}
+		notifications, err := s.Notifications(ctx, task.Definition.ID)
+		if err != nil {
+			return completionHandbackIdleReport{}, err
+		}
+		liveWindowPhase := liveWindows[task.Definition.ID].Phase
+		for _, handback := range completionhandback.RowsWithOptions(task.Definition.ID, handoffs, notifications, completionhandback.RowOptions{
+			Now:             now,
+			AckTimeout:      ackTimeout,
+			TaskStatus:      task.Status,
+			LiveWindowPhase: liveWindowPhase,
+		}) {
+			row := completionHandbackIdleRow{
+				TaskID:            task.Definition.ID,
+				Title:             task.Definition.Title,
+				Workstream:        taskWorkstream(task),
+				TaskStatus:        task.Status,
+				CompletionState:   handback.CompletionState,
+				DeliveryStatus:    handback.DeliveryStatus,
+				DeliveryState:     handback.DeliveryState,
+				ToRole:            handback.ToRole,
+				NextAction:        handback.NextAction,
+				HandbackAt:        firstNonEmpty(handback.DeliveredAt, handback.CreatedAt),
+				Provider:          handback.Provider,
+				Target:            handback.Target,
+				SuggestedAction:   handback.SuggestedAction,
+				SuggestedCommand:  handback.SuggestedCommand,
+				LiveWindowPhase:   handback.LiveWindowPhase,
+				ApprovalBoundary:  handback.ApprovalBoundary,
+				ActualThreadProof: handback.ActualThreadDelivery,
+			}
+			if decision, ok := nextCompletionHandbackDecision(checkpoints, handback, row.HandbackAt); ok {
+				row.DecisionAt = decision.CreatedAt
+				row.DecisionOwner = decision.Owner
+				row.DecisionSummary = decision.Summary
+			}
+			row.IdleSeconds = elapsedSeconds(row.HandbackAt, firstNonEmpty(row.DecisionAt, now.Format(time.RFC3339Nano)))
+			if row.DecisionAt == "" && ackTimeout > 0 && time.Duration(row.IdleSeconds)*time.Second >= ackTimeout {
+				row.Stale = true
+				row.StaleAge = (time.Duration(row.IdleSeconds) * time.Second).Truncate(time.Second).String()
+			}
+			if handback.Stale {
+				row.Stale = true
+				row.StaleAge = firstNonEmpty(row.StaleAge, handback.StaleAge)
+			}
+			report.Rows = append(report.Rows, row)
+			addCompletionHandbackIdleSummary(report.ByTask, row.TaskID, row)
+			addCompletionHandbackIdleSummary(report.ByWorkstream, row.Workstream, row)
+		}
+	}
+	sort.SliceStable(report.Rows, func(i, j int) bool {
+		if report.Rows[i].Stale != report.Rows[j].Stale {
+			return report.Rows[i].Stale
+		}
+		if report.Rows[i].IdleSeconds != report.Rows[j].IdleSeconds {
+			return report.Rows[i].IdleSeconds > report.Rows[j].IdleSeconds
+		}
+		return report.Rows[i].TaskID < report.Rows[j].TaskID
+	})
+	report.TotalRows = len(report.Rows)
+	for _, row := range report.Rows {
+		if row.Stale {
+			report.StaleCount++
+		}
+		if row.DecisionAt != "" {
+			report.CompletedCount++
+		} else {
+			report.OpenCount++
+		}
+	}
+	return report, nil
+}
+
+func nextCompletionHandbackDecision(checkpoints []store.Checkpoint, handback completionhandback.Handback, origin string) (store.Checkpoint, bool) {
+	originAt, err := time.Parse(time.RFC3339Nano, origin)
+	if err != nil {
+		return store.Checkpoint{}, false
+	}
+	var best store.Checkpoint
+	for _, checkpoint := range checkpoints {
+		if checkpoint.TaskID != handback.TaskID {
+			continue
+		}
+		createdAt, err := time.Parse(time.RFC3339Nano, checkpoint.CreatedAt)
+		if err != nil || !createdAt.After(originAt) {
+			continue
+		}
+		owner := strings.TrimSpace(checkpoint.Owner)
+		if owner != handback.ToRole && owner != "arch" && owner != "architecture" && owner != "coordinator" && owner != "orchestrator" {
+			continue
+		}
+		if best.CreatedAt == "" || checkpoint.CreatedAt < best.CreatedAt {
+			best = checkpoint
+		}
+	}
+	return best, best.CreatedAt != ""
+}
+
+func elapsedSeconds(start, end string) int64 {
+	startAt, err := time.Parse(time.RFC3339Nano, start)
+	if err != nil {
+		return 0
+	}
+	endAt, err := time.Parse(time.RFC3339Nano, end)
+	if err != nil || endAt.Before(startAt) {
+		return 0
+	}
+	return int64(endAt.Sub(startAt).Truncate(time.Second).Seconds())
+}
+
+func taskWorkstream(task store.Task) string {
+	return firstNonEmpty(task.Definition.Profile, task.Definition.OwningDomain, task.Definition.Role, "unassigned")
+}
+
+func addCompletionHandbackIdleSummary(m map[string]completionHandbackIdleSummary, key string, row completionHandbackIdleRow) {
+	summary := m[key]
+	summary.Rows++
+	summary.TotalIdleSeconds += row.IdleSeconds
+	if row.IdleSeconds > summary.MaxIdleSeconds {
+		summary.MaxIdleSeconds = row.IdleSeconds
+	}
+	if row.Stale {
+		summary.StaleCount++
+	}
+	if row.DecisionAt != "" {
+		summary.CompletedCount++
+	} else {
+		summary.OpenCount++
+	}
+	m[key] = summary
+}
+
+func printCompletionHandbackIdleHuman(report completionHandbackIdleReport) {
+	fmt.Printf("completion_handback_idle_report: rows=%d stale=%d completed=%d open=%d ack_timeout=%s\n", report.TotalRows, report.StaleCount, report.CompletedCount, report.OpenCount, report.AckTimeout)
+	fmt.Println("by workstream:")
+	for _, key := range sortedSummaryKeys(report.ByWorkstream) {
+		summary := report.ByWorkstream[key]
+		fmt.Printf("- %s: rows=%d stale=%d completed=%d open=%d max_idle_seconds=%d\n", key, summary.Rows, summary.StaleCount, summary.CompletedCount, summary.OpenCount, summary.MaxIdleSeconds)
+	}
+	fmt.Println("rows:")
+	for _, row := range report.Rows {
+		fmt.Printf("- %s workstream=%s status=%s completion_state=%s delivery_status=%s stale=%t idle_seconds=%d decision_at=%s next_action=%s\n", row.TaskID, row.Workstream, row.TaskStatus, firstNonEmpty(row.CompletionState, "unspecified"), row.DeliveryStatus, row.Stale, row.IdleSeconds, firstNonEmpty(row.DecisionAt, "none"), row.NextAction)
+	}
+}
+
+func printCompletionHandbackIdleMarkdown(report completionHandbackIdleReport) {
+	fmt.Println("# Completion Handback Idle Report")
+	fmt.Printf("\nRows: %d  Stale: %d  Completed: %d  Open: %d  Ack timeout: `%s`\n", report.TotalRows, report.StaleCount, report.CompletedCount, report.OpenCount, report.AckTimeout)
+	fmt.Println("\n## By Workstream")
+	fmt.Println("| Workstream | Rows | Stale | Completed | Open | Max idle seconds |")
+	fmt.Println("|---|---:|---:|---:|---:|---:|")
+	for _, key := range sortedSummaryKeys(report.ByWorkstream) {
+		summary := report.ByWorkstream[key]
+		fmt.Printf("| %s | %d | %d | %d | %d | %d |\n", key, summary.Rows, summary.StaleCount, summary.CompletedCount, summary.OpenCount, summary.MaxIdleSeconds)
+	}
+	fmt.Println("\n## Rows")
+	fmt.Println("| Task | Workstream | State | Delivery | Stale | Idle seconds | Decision | Next action |")
+	fmt.Println("|---|---|---|---|---:|---:|---|---|")
+	for _, row := range report.Rows {
+		fmt.Printf("| %s | %s | %s | %s | %t | %d | %s | %s |\n", row.TaskID, row.Workstream, firstNonEmpty(row.CompletionState, "unspecified"), row.DeliveryStatus, row.Stale, row.IdleSeconds, firstNonEmpty(row.DecisionAt, "none"), row.NextAction)
+	}
+}
+
+func sortedSummaryKeys[T any](m map[string]T) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 type statusReport struct {
@@ -9499,7 +9789,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, usage report, audit work-coverage|ci-learning, status-report, health-report, timing-report")
+	fmt.Println("  rules, packet, regression-pack, usage report, audit work-coverage|ci-learning, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -9509,42 +9799,43 @@ func usage() {
 
 func printCommandHelp(command string) bool {
 	help := map[string]string{
-		"init":          "fairway init [--refresh-agent-contract]\n  Scaffold .fairway/config.toml, the SQLite DB, and .fairway/AGENTS.md.",
-		"agent-guide":   "fairway agent-guide [--path | --output <path>]\n  Print the embedded offline agent guide, show its source/version path, or write it to a file.",
-		"import":        "fairway import <yaml-or-json-path> [--state-once]\n  Import task definitions from YAML or JSON.",
-		"add":           "fairway add <task-id> --title <title> [--role <role>] [metadata flags]\n  Add one task definition.",
-		"spawn":         "fairway spawn --id <task-id> --title <title> [--child|--sibling|--root] [metadata flags]\n  Spawn related work from an existing task context.",
-		"update":        "fairway update <task-id> [--title <title>] [--dependencies <ids>] [metadata flags]\n  Update task definition metadata.",
-		"list":          "fairway list [--status <state[,state]>]... [--role <role>] [--ready]\n  List tasks with dependency visibility.",
-		"ready":         "fairway ready [--in <epic-id>] [--priority <n>]\n  Show claimable work for the current role and explain empty queues.",
-		"claim":         "fairway claim <task-id> | fairway claim --in <epic-id>\n  Claim a ready task.",
-		"set-status":    "fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]\n  Move a task through the configured state machine.",
-		"task-detail":   "fairway task-detail <task-id>\n  Show task state, metadata, evidence, sessions, reviews, and readiness.",
-		"status-report": "fairway status-report\n  Print task counts by status.",
-		"health-report": "fairway health-report\n  Print aggregate health diagnostics for the local Fairway state.",
-		"timing-report": "fairway timing-report\n  Print task timing and flow metrics.",
-		"dispatch-plan": "fairway dispatch-plan [--role <role>] [--limit <n>]\n  Print a ready-work dispatch plan for a role.",
-		"git-check":     "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
-		"preflight":     "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
-		"record":        "fairway record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
-		"review-waits":  "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
-		"live-window":   "fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] | fairway live-window status [--task <task-id>]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
-		"session":       "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
-		"worktree":      "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
-		"workflow":      "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",
-		"coordinator":   "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
-		"rules":         "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
-		"dashboard":     "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
-		"release":       "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
-		"config":        "fairway config validate\n  Validate .fairway/config.toml.",
-		"db":            "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
-		"audit":         "fairway audit work-coverage|ci-learning ...\n  Run advisory coverage and CI/deploy learning reports.",
-		"usage":         "fairway usage report [--by <provider|task|epic|role|day|kind|phase>]\n  Report provider-neutral usage attribution.",
-		"register":      "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",
-		"unregister":    "fairway unregister [<name>]\n  Remove a project from the local Fairway registry.",
-		"projects":      "fairway projects\n  List registered Fairway projects.",
-		"tui":           "fairway tui [--once]\n  Open the interactive terminal workflow.",
-		"version":       "fairway version\n  Print the Fairway binary version.",
+		"init":                       "fairway init [--refresh-agent-contract]\n  Scaffold .fairway/config.toml, the SQLite DB, and .fairway/AGENTS.md.",
+		"agent-guide":                "fairway agent-guide [--path | --output <path>]\n  Print the embedded offline agent guide, show its source/version path, or write it to a file.",
+		"import":                     "fairway import <yaml-or-json-path> [--state-once]\n  Import task definitions from YAML or JSON.",
+		"add":                        "fairway add <task-id> --title <title> [--role <role>] [metadata flags]\n  Add one task definition.",
+		"spawn":                      "fairway spawn --id <task-id> --title <title> [--child|--sibling|--root] [metadata flags]\n  Spawn related work from an existing task context.",
+		"update":                     "fairway update <task-id> [--title <title>] [--dependencies <ids>] [metadata flags]\n  Update task definition metadata.",
+		"list":                       "fairway list [--status <state[,state]>]... [--role <role>] [--ready]\n  List tasks with dependency visibility.",
+		"ready":                      "fairway ready [--in <epic-id>] [--priority <n>]\n  Show claimable work for the current role and explain empty queues.",
+		"claim":                      "fairway claim <task-id> | fairway claim --in <epic-id>\n  Claim a ready task.",
+		"set-status":                 "fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]\n  Move a task through the configured state machine.",
+		"task-detail":                "fairway task-detail <task-id>\n  Show task state, metadata, evidence, sessions, reviews, and readiness.",
+		"status-report":              "fairway status-report\n  Print task counts by status.",
+		"health-report":              "fairway health-report\n  Print aggregate health diagnostics for the local Fairway state.",
+		"timing-report":              "fairway timing-report\n  Print task timing and flow metrics.",
+		"completion-handback-report": "fairway completion-handback-report [--include-closed] [--format human|markdown]\n  Print completion handback idle-time metrics by task and workstream.",
+		"dispatch-plan":              "fairway dispatch-plan [--role <role>] [--limit <n>]\n  Print a ready-work dispatch plan for a role.",
+		"git-check":                  "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
+		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
+		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
+		"live-window":                "fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] | fairway live-window status [--task <task-id>]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
+		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
+		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
+		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",
+		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
+		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
+		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
+		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
+		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
+		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
+		"audit":                      "fairway audit work-coverage|ci-learning ...\n  Run advisory coverage and CI/deploy learning reports.",
+		"usage":                      "fairway usage report [--by <provider|task|epic|role|day|kind|phase>]\n  Report provider-neutral usage attribution.",
+		"register":                   "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",
+		"unregister":                 "fairway unregister [<name>]\n  Remove a project from the local Fairway registry.",
+		"projects":                   "fairway projects\n  List registered Fairway projects.",
+		"tui":                        "fairway tui [--once]\n  Open the interactive terminal workflow.",
+		"version":                    "fairway version\n  Print the Fairway binary version.",
 	}
 	text, ok := help[command]
 	if !ok {

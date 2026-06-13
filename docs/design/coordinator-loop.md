@@ -267,6 +267,7 @@ The coordinator commands compose lower-level commands:
 - `fairway status-report`,
 - `fairway health-report`,
 - `fairway timing-report`,
+- `fairway completion-handback-report`,
 - `fairway dispatch-plan`,
 - `fairway git-check`,
 - `fairway audit work-coverage --dry-run`,
@@ -280,3 +281,12 @@ The coordinator commands compose lower-level commands:
 
 The lower-level reports remain useful for focused debugging. The coordinator
 loop is the daily operating view.
+
+`fairway completion-handback-report` is the retrospective closeout-latency view
+for completion handbacks. It derives rows from existing handbacks,
+notifications, checkpoints, task status, and the configured notification ack
+timeout. It reports idle seconds from handback delivery or recording to the next
+architecture, orchestrator, coordinator, or target-owner checkpoint, plus stale
+and open counts by task and workstream. It deliberately avoids per-person
+scoring and excludes terminal tasks by default; pass `--include-closed` only
+when a closeout retrospective needs closed-task history.

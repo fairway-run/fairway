@@ -32,6 +32,7 @@ fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider
 fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>                          # includes missing required review domains before merge-ready
 fairway status-report | health-report | timing-report
+fairway completion-handback-report [--include-closed] [--format human|markdown]
 fairway coordinator plan [--ready-limit <n>] [--recommendation-limit <n>] [--allow-utility-monitor] # deterministic dry-run next-action plan
 fairway coordinator tick [--completion-handback-wake] [--task <task-id>] [--send] # daily plan plus optional stale completion-handback wake prompts
 fairway usage report [--by <provider|task|epic|role|day|kind|phase>] [--task-id <id>] [--since-duration <duration>]
@@ -272,6 +273,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   missing release status, and failed Homebrew fetch verification.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
+- `completion-handback-report` derives idle-time metrics from existing
+  completion handbacks, notification rows, checkpoints, task status, and
+  `[coordinator].notification_ack_timeout`. It reports task/workstream closeout
+  latency, open/stale counts, and next-decision timing for retrospective
+  evidence. It intentionally avoids per-person productivity scoring and excludes
+  terminal tasks unless `--include-closed` is passed. Use global `--json` for
+  structured output or `--format markdown` for a report artifact.
 - Utility adapters such as `examples/session-adapters/utility-event.sh` and
   `examples/session-adapters/ci-monitor.sh` are shell-level conventions over
   existing Fairway commands, not new core subcommands. They should record
