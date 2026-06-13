@@ -359,6 +359,36 @@ func TestBuildPlanIgnoresAwaitingInputSupersededByDoneCheckpoint(t *testing.T) {
 	}
 }
 
+func TestBuildPlanSurfacesLiveWindowPhase(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "LIVE-001", Title: "Repeated live drill", Kind: "task", Role: "ops"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+		TaskID:        "LIVE-001",
+		State:         "active",
+		Owner:         "ops",
+		TargetCloseBy: "2026-06-13T03:15:00Z",
+		Summary:       "live-window phase=gate-running next_owner=ops next_action=run_browser_smoke",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	action, ok := planAction(plan, "live-window", "run browser smoke", "LIVE-001")
+	if !ok {
+		t.Fatalf("live-window action missing: %+v", plan.Actions)
+	}
+	if action.LiveWindow == nil || action.LiveWindow.Phase != "gate-running" || action.LiveWindow.NextOwner != "ops" || action.LiveWindow.TargetCloseBy != "2026-06-13T03:15:00Z" {
+		t.Fatalf("live-window detail missing: %+v", action)
+	}
+}
+
 func TestBuildPlanSegmentsTerminalMissingReviewDomainsAsReviewDebt(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)

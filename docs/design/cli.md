@@ -74,6 +74,8 @@ fairway rules match <task-id>                          # show selected, disabled
 fairway checkpoint record <task-id> --summary <text> [--state <state>] [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path>]
 fairway checkpoint status [--all]
 fairway checkpoint stale [--before <date>] [--all]
+fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <date>] [--artifact <path>]
+fairway live-window status [--task <task-id>]
 fairway prune-stale                                     # remove state rows for deleted task definitions
 fairway db backup | export
 fairway db migrate [--dry-run]
@@ -184,6 +186,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   checkpoint, or closeout marker is missing, evidence recorded after activation
   again reports `status_decision_required` until the operator sets the task to
   `done`, `blocked`, `todo`, or another configured closeout state.
+- `live-window record` is a typed checkpoint helper for repeated exact-window
+  live-operation loops. It records one of `packet-prepared`, `reviews-routed`,
+  `approvals-readback`, `gate-authorized`, `gate-running`, `closeout`, or
+  `next-decision` with the next owner and next safe action. The command writes a
+  normal `task_checkpoints` row; there is no second wait or phase store.
+  `live-window status` and `coordinator plan` project the latest phase so the
+  control thread can see where the loop is parked without polling provider chat.
 - `workflow check` composes git and active-work checks into the operating-model
   guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
   active reconciliation findings. Use `--mode deploy` before deploy/UAT work;

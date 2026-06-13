@@ -27,6 +27,7 @@ import (
 	"github.com/subashram/fairway/internal/dashboard"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
+	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/registry"
 	"github.com/subashram/fairway/internal/reviewstate"
@@ -131,6 +132,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdMergeReady(ctx, opts, args[1:])
 	case "review-waits":
 		return cmdReviewWaits(ctx, opts, args[1:])
+	case "live-window":
+		return cmdLiveWindow(ctx, opts, args[1:])
 	case "route":
 		if len(args) >= 2 && args[1] == "review" {
 			return cmdRouteReview(ctx, opts, args[2:])
@@ -2243,6 +2246,117 @@ func reviewWaitAckTimeout(cfg config.Config) (time.Duration, error) {
 	return timeout, nil
 }
 
+func cmdLiveWindow(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("live-window", "record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <time>] [--artifact <path>] | status [--task <task-id>]")
+		return nil
+	}
+	switch args[0] {
+	case "record":
+		return cmdLiveWindowRecord(ctx, opts, args[1:])
+	case "status":
+		return cmdLiveWindowStatus(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown live-window subcommand %q", args[0])
+	}
+}
+
+func cmdLiveWindowRecord(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("live-window", "record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <time>] [--artifact <path>]")
+		return nil
+	}
+	if len(args) < 1 {
+		return errors.New("live-window record requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("live-window record", flag.ContinueOnError)
+	phase := fs.String("phase", "", "phase: "+strings.Join(livewindow.PhaseList(), ", "))
+	nextOwner := fs.String("next-owner", "", "next actor/role")
+	nextAction := fs.String("next-action", "", "next safe action")
+	targetCloseBy := fs.String("target-close-by", "", "expected closeout/window end in YYYY-MM-DD or RFC3339")
+	artifact := fs.String("artifact", "", "phase artifact path")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected live-window record arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	summary, err := livewindow.Summary(*phase, *nextOwner, *nextAction)
+	if err != nil {
+		return err
+	}
+	state := "awaiting_input"
+	if strings.TrimSpace(*phase) == "gate-running" {
+		state = "active"
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: taskID, State: state, Owner: *nextOwner, TargetCloseBy: *targetCloseBy, Summary: summary, ArtifactPath: *artifact}); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(struct {
+				TaskID string `json:"task_id"`
+				Phase  string `json:"phase"`
+				State  string `json:"checkpoint_state"`
+			}{taskID, *phase, state})
+		}
+		fmt.Printf("live_window recorded %s phase=%s state=%s\n", taskID, *phase, state)
+		return nil
+	})
+}
+
+func cmdLiveWindowStatus(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("live-window", "status [--task <task-id>]")
+		return nil
+	}
+	fs := flag.NewFlagSet("live-window status", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected live-window status arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		checkpoints, err := s.Checkpoints(ctx, "", true)
+		if err != nil {
+			return err
+		}
+		statuses := livewindow.StatusesFromCheckpoints(checkpoints)
+		if strings.TrimSpace(*taskID) != "" {
+			var filtered []livewindow.Status
+			for _, status := range statuses {
+				if status.TaskID == *taskID {
+					filtered = append(filtered, status)
+				}
+			}
+			statuses = filtered
+		}
+		if opts.JSON {
+			return printJSON(statuses)
+		}
+		if len(statuses) == 0 {
+			fmt.Println("live_windows: none")
+			return nil
+		}
+		fmt.Println("live_windows:")
+		for _, status := range statuses {
+			fmt.Printf("- %s phase=%s next_owner=%s next_action=%s target_close_by=%s artifact=%s checkpoint_at=%s\n",
+				status.TaskID,
+				status.Phase,
+				firstNonEmpty(status.NextOwner, "none"),
+				firstNonEmpty(status.NextAction, "none"),
+				firstNonEmpty(status.TargetCloseBy, "none"),
+				firstNonEmpty(status.ArtifactPath, "none"),
+				firstNonEmpty(status.CheckpointAt, "none"),
+			)
+		}
+		return nil
+	})
+}
+
 func cmdReviewCheckout(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 1 {
 		return errors.New("review checkout requires task id")
@@ -3608,6 +3722,15 @@ func printCoordinatorPlan(plan coord.Plan) {
 					firstNonEmpty(action.ReviewWait.TargetProvider, "none"),
 					firstNonEmpty(action.ReviewWait.TargetID, "none"),
 					firstNonEmpty(action.ReviewWait.ExpectedResponseAt, "none"),
+				)
+			}
+			if action.LiveWindow != nil {
+				fmt.Printf("  live_window: phase=%s next_owner=%s next_action=%s target_close_by=%s checkpoint_at=%s\n",
+					action.LiveWindow.Phase,
+					firstNonEmpty(action.LiveWindow.NextOwner, "none"),
+					firstNonEmpty(action.LiveWindow.NextAction, "none"),
+					firstNonEmpty(action.LiveWindow.TargetCloseBy, "none"),
+					firstNonEmpty(action.LiveWindow.CheckpointAt, "none"),
 				)
 			}
 		}
@@ -8895,7 +9018,7 @@ func usage() {
 	fmt.Println("Queue and task state:")
 	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail")
 	fmt.Println("Evidence and review:")
-	fmt.Println("  record evidence|guard-report|handoff|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits")
+	fmt.Println("  record evidence|guard-report|handoff|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, batch")
 	fmt.Println("Coordinator and readiness:")
@@ -8930,6 +9053,7 @@ func printCommandHelp(command string) bool {
 		"preflight":     "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"record":        "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":  "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
+		"live-window":   "fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] | fairway live-window status [--task <task-id>]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
 		"session":       "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"worktree":      "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":      "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

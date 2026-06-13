@@ -130,6 +130,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
 		{[]string{"review-waits", "list", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
 		{[]string{"review-waits", "wake", "--help"}, "fairway review-waits wake [--task <task-id>]"},
+		{[]string{"live-window", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
+		{[]string{"live-window", "record", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
+		{[]string{"live-window", "status", "--help"}, "fairway live-window status [--task <task-id>]"},
 		{[]string{"usage", "--help"}, "fairway usage report"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
@@ -2471,6 +2474,40 @@ func TestCLI_ReconcileActiveAllowsBoundedLiveOperationEvidence(t *testing.T) {
 	report := runCapture(t, "reconcile", "active", "--dry-run")
 	assertContains(t, report, "no active reconciliation findings")
 	assertNotContains(t, report, "status_decision_required")
+}
+
+func TestCLI_LiveWindowRecordAndStatus(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Repeated live drill", "--role", "ops")
+	out := runCapture(t, "live-window", "record", "T-001",
+		"--phase", "gate-running",
+		"--next-owner", "ops",
+		"--next-action", "run browser smoke",
+		"--target-close-by", "2026-06-13T03:15:00Z",
+		"--artifact", "packet.md",
+	)
+	assertContains(t, out, "live_window recorded T-001 phase=gate-running state=active")
+
+	status := runCapture(t, "live-window", "status", "--task", "T-001")
+	assertContains(t, status, "live_windows:")
+	assertContains(t, status, "T-001 phase=gate-running")
+	assertContains(t, status, "next_owner=ops")
+	assertContains(t, status, "next_action=run browser smoke")
+	assertContains(t, status, "target_close_by=2026-06-13T03:15:00Z")
+
+	jsonStatus := runCapture(t, "--json", "live-window", "status", "--task", "T-001")
+	assertContains(t, jsonStatus, `"phase": "gate-running"`)
+	assertContains(t, jsonStatus, `"next_action": "run browser smoke"`)
 }
 
 func TestCLI_ReconcileActiveReportsMonitorSessionsWithoutBackingProof(t *testing.T) {

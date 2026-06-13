@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/store"
@@ -49,6 +50,7 @@ type Plan struct {
 	ReviewDebt        []TaskRef                `json:"review_debt,omitempty"`
 	NotificationGated []TaskRef                `json:"notification_gated,omitempty"`
 	ReviewWaits       []reviewstate.ReviewWait `json:"review_waits,omitempty"`
+	LiveWindows       []livewindow.Status      `json:"live_windows,omitempty"`
 	UtilityGated      []TaskRef                `json:"utility_gated,omitempty"`
 	Readiness         ReadinessExplanation     `json:"readiness"`
 	StopConditions    []PlanStopCondition      `json:"stop_conditions,omitempty"`
@@ -92,6 +94,7 @@ type PlanAction struct {
 	ReviewHandback *ReviewCompletionHandback             `json:"review_handback,omitempty"`
 	ReviewNotify   *reviewstate.ReviewNotificationStatus `json:"review_notification,omitempty"`
 	ReviewWait     *reviewstate.ReviewWait               `json:"review_wait,omitempty"`
+	LiveWindow     *livewindow.Status                    `json:"live_window,omitempty"`
 	Stop           bool                                  `json:"stop,omitempty"`
 }
 
@@ -232,6 +235,16 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			addStop(&plan, "approval-gated", "provider session is waiting on approval", session.TaskID, session.Role)
 			addAction(&plan, 5, "approval-gated", "request_or_record_approval", "provider session is waiting on approval", session.TaskID, session.Role, session.ID, "", nil, nil, true)
 		}
+	}
+	for _, status := range livewindow.StatusesFromCheckpoints(checkpoints) {
+		if terminal[taskStatusByID[status.TaskID]] {
+			continue
+		}
+		plan.LiveWindows = append(plan.LiveWindows, status)
+		owner := firstNonEmpty(status.NextOwner, taskRole(tasks, status.TaskID))
+		action := firstNonEmpty(status.NextAction, "advance_live_window_phase")
+		reason := fmt.Sprintf("live-window phase=%s next_owner=%s next_action=%s", status.Phase, firstNonEmpty(status.NextOwner, "none"), firstNonEmpty(status.NextAction, "none"))
+		addLiveWindowAction(&plan, 13, "live-window", action, reason, status.TaskID, owner, status, status.Phase == "reviews-routed" || status.Phase == "approvals-readback" || status.Phase == "gate-authorized")
 	}
 	for _, watcher := range watchers {
 		plan.Summary.UtilityGated++
@@ -622,6 +635,11 @@ func addReviewWaitAction(plan *Plan, priority int, classification, action, reaso
 	plan.Actions[len(plan.Actions)-1].ReviewWait = &wait
 }
 
+func addLiveWindowAction(plan *Plan, priority int, classification, action, reason, taskID, role string, status livewindow.Status, stop bool) {
+	addAction(plan, priority, classification, action, reason, taskID, role, "", "", nil, nil, stop)
+	plan.Actions[len(plan.Actions)-1].LiveWindow = &status
+}
+
 func reviewWaitForDomain(waits []reviewstate.ReviewWait, domain string) reviewstate.ReviewWait {
 	for _, wait := range waits {
 		if wait.Domain == domain {
@@ -662,6 +680,15 @@ func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return value
+		}
+	}
+	return ""
+}
+
+func taskRole(tasks []store.Task, taskID string) string {
+	for _, task := range tasks {
+		if task.Definition.ID == taskID {
+			return task.Definition.Role
 		}
 	}
 	return ""

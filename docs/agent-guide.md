@@ -1065,6 +1065,33 @@ again reports `status_decision_required` until the task is explicitly moved to
 `done`, `blocked`, `todo`, or a configured closeout state. Do not use this
 pattern to park unbounded live work.
 
+For repeated exact-window live operations, also record the current handshake
+phase so the coordinator/control thread can see the loop state without polling
+chat:
+
+```bash
+fairway live-window record <task-id> \
+  --phase packet-prepared \
+  --next-owner governance \
+  --next-action route exact-window reviews \
+  --artifact .fairway/artifacts/<packet>.md
+
+fairway live-window record <task-id> \
+  --phase gate-running \
+  --next-owner ops \
+  --next-action run browser smoke \
+  --target-close-by 2026-06-13T03:15:00Z
+
+fairway live-window status --task <task-id>
+fairway coordinator plan
+```
+
+The supported phases are `packet-prepared`, `reviews-routed`,
+`approvals-readback`, `gate-authorized`, `gate-running`, `closeout`, and
+`next-decision`. These records are normal checkpoints with typed summaries, not
+a second phase store. Use them to name the next owner and next safe action after
+every blocked/done/retry handoff.
+
 ## Side Work
 
 Do not split your assigned task into Fairway subtasks for ordinary execution
