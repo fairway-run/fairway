@@ -197,8 +197,10 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		terminal[status] = true
 	}
 	taskStatusByID := map[string]string{}
+	taskByID := map[string]store.Task{}
 	for _, task := range tasks {
 		taskStatusByID[task.Definition.ID] = task.Status
+		taskByID[task.Definition.ID] = task
 	}
 	if opts.ReadyLimit <= 0 {
 		opts.ReadyLimit = 10
@@ -240,16 +242,22 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			addAction(&plan, 5, "approval-gated", "request_or_record_approval", "provider session is waiting on approval", session.TaskID, session.Role, session.ID, "", nil, nil, true)
 		}
 	}
+	liveWindowByTask := map[string]livewindow.Status{}
 	for _, status := range livewindow.StatusesFromCheckpoints(checkpoints) {
-		if terminal[taskStatusByID[status.TaskID]] {
+		liveWindowByTask[status.TaskID] = status
+		if terminal[taskStatusByID[status.TaskID]] && !liveWindowCloseoutPhase(status.Phase) {
 			continue
 		}
 		plan.LiveWindows = append(plan.LiveWindows, status)
+		if liveWindowCloseoutPhase(status.Phase) {
+			continue
+		}
 		owner := firstNonEmpty(status.NextOwner, taskRole(tasks, status.TaskID))
 		action := firstNonEmpty(status.NextAction, "advance_live_window_phase")
 		reason := fmt.Sprintf("live-window phase=%s next_owner=%s next_action=%s", status.Phase, firstNonEmpty(status.NextOwner, "none"), firstNonEmpty(status.NextAction, "none"))
 		addLiveWindowAction(&plan, 13, "live-window", action, reason, status.TaskID, owner, status, status.Phase == "reviews-routed" || status.Phase == "approvals-readback" || status.Phase == "gate-authorized")
 	}
+	completionHandbacksByTask := map[string][]completionhandback.Handback{}
 	for _, task := range tasks {
 		_, _, _, handoffs, _, err := s.TaskDetail(ctx, task.Definition.ID)
 		if err != nil {
@@ -259,17 +267,64 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		if err != nil {
 			return Plan{}, err
 		}
-		for _, handback := range completionhandback.Rows(task.Definition.ID, handoffs, notifications) {
+		liveWindowStatus := liveWindowByTask[task.Definition.ID]
+		for _, handback := range completionhandback.RowsWithOptions(task.Definition.ID, handoffs, notifications, completionhandback.RowOptions{
+			AckTimeout:      ackTimeout,
+			TaskStatus:      task.Status,
+			LiveWindowPhase: liveWindowStatus.Phase,
+		}) {
+			completionHandbacksByTask[task.Definition.ID] = append(completionHandbacksByTask[task.Definition.ID], handback)
 			plan.CompletionHandbacks = append(plan.CompletionHandbacks, handback)
 			if completionhandback.IsResolved(handback) {
 				continue
 			}
 			plan.Summary.NotificationGated++
 			plan.NotificationGated = appendTaskRef(plan.NotificationGated, TaskRef{ID: task.Definition.ID, Role: handback.ToRole, Status: handback.DeliveryStatus})
-			reason := fmt.Sprintf("completion handback %d to %s has no delivered or failed provider notification; next_action=%s", handback.HandoffID, handback.ToRole, handback.NextAction)
-			addCompletionHandbackAction(&plan, 11, "completion-handback", "deliver_or_record_completion_handback", reason, task.Definition.ID, handback.ToRole, handback, true)
+			reason := fmt.Sprintf("completion handback %d to %s has no delivered or failed provider notification; task_status=%s completion_state=%s live_window_phase=%s next_action=%s",
+				handback.HandoffID,
+				handback.ToRole,
+				firstNonEmpty(handback.TaskStatus, "unknown"),
+				firstNonEmpty(handback.CompletionState, "unspecified"),
+				firstNonEmpty(handback.LiveWindowPhase, "none"),
+				handback.NextAction,
+			)
+			action := firstNonEmpty(handback.SuggestedAction, "deliver_or_record_completion_handback")
+			if handback.Stale {
+				reason += fmt.Sprintf("; stale_age=%s suggested_command=%s", handback.StaleAge, handback.SuggestedCommand)
+			}
+			addCompletionHandbackAction(&plan, 11, "completion-handback", action, reason, task.Definition.ID, handback.ToRole, handback, true)
 			addStop(&plan, "completion-handback", reason, task.Definition.ID, handback.ToRole)
 		}
+	}
+	for _, status := range liveWindowByTask {
+		if !liveWindowCloseoutPhase(status.Phase) || closeoutCoveredByCompletionHandback(status, completionHandbacksByTask[status.TaskID]) {
+			continue
+		}
+		task := taskByID[status.TaskID]
+		owner := firstNonEmpty(status.NextOwner, task.Definition.Role)
+		action := "record_closeout_completion_handback"
+		statusLabel := "closeout-awaiting-handback"
+		staleAge := liveWindowStaleAge(status, ackTimeout, time.Now().UTC())
+		reason := fmt.Sprintf("live-window phase=%s needs completion handback to next owner=%s; task_status=%s next_action=%s",
+			status.Phase,
+			firstNonEmpty(owner, "unknown"),
+			firstNonEmpty(task.Status, "unknown"),
+			firstNonEmpty(status.NextAction, "record next decision"),
+		)
+		if staleAge != "" {
+			action = "escalate_closeout_completion_handback"
+			statusLabel = "stale-closeout-awaiting-handback"
+			reason += fmt.Sprintf("; stale_age=%s suggested_command=fairway record completion-handback %s --to %s --next-action %q --completion-state live-window-closeout --state thread_steered --provider <provider> --target <target>",
+				staleAge,
+				status.TaskID,
+				firstNonEmpty(owner, "<role>"),
+				firstNonEmpty(status.NextAction, "record next decision"),
+			)
+		}
+		plan.Summary.NotificationGated++
+		plan.NotificationGated = appendTaskRef(plan.NotificationGated, TaskRef{ID: status.TaskID, Role: owner, Status: statusLabel})
+		addLiveWindowAction(&plan, 11, "completion-handback", action, reason, status.TaskID, owner, status, true)
+		addStop(&plan, "completion-handback", reason, status.TaskID, owner)
 	}
 	for _, watcher := range watchers {
 		plan.Summary.UtilityGated++
@@ -549,6 +604,46 @@ func notificationStaleBefore(timeout time.Duration) string {
 		return ""
 	}
 	return time.Now().UTC().Add(-timeout).Format(time.RFC3339Nano)
+}
+
+func liveWindowCloseoutPhase(phase string) bool {
+	switch strings.TrimSpace(phase) {
+	case "closeout", "next-decision":
+		return true
+	default:
+		return false
+	}
+}
+
+func liveWindowStaleAge(status livewindow.Status, timeout time.Duration, now time.Time) string {
+	if timeout <= 0 || strings.TrimSpace(status.CheckpointAt) == "" {
+		return ""
+	}
+	checkpointAt, err := time.Parse(time.RFC3339Nano, status.CheckpointAt)
+	if err != nil {
+		return ""
+	}
+	age := now.Sub(checkpointAt)
+	if age < timeout {
+		return ""
+	}
+	return age.Truncate(time.Second).String()
+}
+
+func closeoutCoveredByCompletionHandback(status livewindow.Status, handbacks []completionhandback.Handback) bool {
+	if len(handbacks) == 0 {
+		return false
+	}
+	checkpointAt := strings.TrimSpace(status.CheckpointAt)
+	if checkpointAt == "" {
+		return false
+	}
+	for _, handback := range handbacks {
+		if strings.TrimSpace(handback.CreatedAt) >= checkpointAt {
+			return true
+		}
+	}
+	return false
 }
 
 func latestCheckpointByTask(checkpoints []store.Checkpoint) map[string]store.Checkpoint {

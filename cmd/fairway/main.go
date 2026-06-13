@@ -3735,14 +3735,20 @@ func printCoordinatorPlan(plan coord.Plan) {
 				)
 			}
 			if action.CompletionHandback != nil {
-				fmt.Printf("  completion_handback: handoff_id=%d to=%s delivery_status=%s delivery_state=%s actual_thread_delivery=%t provider=%s target=%s next_action=%s\n",
+				fmt.Printf("  completion_handback: handoff_id=%d to=%s delivery_status=%s delivery_state=%s completion_state=%s task_status=%s live_window_phase=%s stale=%t stale_age=%s actual_thread_delivery=%t provider=%s target=%s suggested_action=%s next_action=%s\n",
 					action.CompletionHandback.HandoffID,
 					action.CompletionHandback.ToRole,
 					action.CompletionHandback.DeliveryStatus,
 					firstNonEmpty(action.CompletionHandback.DeliveryState, "none"),
+					firstNonEmpty(action.CompletionHandback.CompletionState, "unspecified"),
+					firstNonEmpty(action.CompletionHandback.TaskStatus, "unknown"),
+					firstNonEmpty(action.CompletionHandback.LiveWindowPhase, "none"),
+					action.CompletionHandback.Stale,
+					firstNonEmpty(action.CompletionHandback.StaleAge, "none"),
 					action.CompletionHandback.ActualThreadDelivery,
 					firstNonEmpty(action.CompletionHandback.Provider, "none"),
 					firstNonEmpty(action.CompletionHandback.Target, "none"),
+					firstNonEmpty(action.CompletionHandback.SuggestedAction, "none"),
 					action.CompletionHandback.NextAction,
 				)
 			}
@@ -7910,7 +7916,7 @@ func recordHandoff(ctx context.Context, opts globalOptions, args []string) error
 
 func recordCompletionHandback(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
-		subcommandUsage("record", "completion-handback <task-id> --to <role> --next-action <text> [--evidence <path>]... [--approval-boundary <text>] [--provider <name>] [--target <thread-or-adapter>] [--state <handoff_recorded|notification_delivered|thread_steered|notification_failed>] [--reason <text>]")
+		subcommandUsage("record", "completion-handback <task-id> --to <role> --next-action <text> [--completion-state <state>] [--evidence <path>]... [--approval-boundary <text>] [--provider <name>] [--target <thread-or-adapter>] [--state <handoff_recorded|notification_delivered|thread_steered|notification_failed>] [--reason <text>]")
 		return nil
 	}
 	if len(args) < 1 {
@@ -7920,6 +7926,7 @@ func recordCompletionHandback(ctx context.Context, opts globalOptions, args []st
 	fs := flag.NewFlagSet("completion-handback", flag.ContinueOnError)
 	to := fs.String("to", "", "next actor role or lane")
 	nextAction := fs.String("next-action", "", "next safe action for the receiving actor")
+	completionState := fs.String("completion-state", "", "completion outcome: "+strings.Join(completionhandback.CompletionStateList(), ", "))
 	approvalBoundary := fs.String("approval-boundary", "", "approval, authority, or no-authority boundary for the handback")
 	provider := fs.String("provider", "", "provider name for delivery proof")
 	target := fs.String("target", "", "provider target such as thread id, tmux pane, or adapter destination")
@@ -7936,7 +7943,7 @@ func recordCompletionHandback(ctx context.Context, opts globalOptions, args []st
 	if strings.TrimSpace(*to) == "" {
 		return errors.New("--to is required")
 	}
-	payload, err := completionhandback.RenderPayload(*nextAction, evidence, *approvalBoundary)
+	payload, err := completionhandback.RenderPayloadWithState(*nextAction, *completionState, evidence, *approvalBoundary)
 	if err != nil {
 		return err
 	}
@@ -7973,10 +7980,11 @@ func recordCompletionHandback(ctx context.Context, opts globalOptions, args []st
 		if opts.JSON {
 			return printJSON(row)
 		}
-		fmt.Printf("completion_handback recorded %s handoff_id=%d to=%s delivery_status=%s delivery_state=%s actual_thread_delivery=%t next_action=%s\n",
+		fmt.Printf("completion_handback recorded %s handoff_id=%d to=%s completion_state=%s delivery_status=%s delivery_state=%s actual_thread_delivery=%t next_action=%s\n",
 			taskID,
 			row.HandoffID,
 			row.ToRole,
+			firstNonEmpty(row.CompletionState, "unspecified"),
 			row.DeliveryStatus,
 			firstNonEmpty(row.DeliveryState, "none"),
 			row.ActualThreadDelivery,
@@ -8905,12 +8913,31 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if err != nil {
 		return err
 	}
+	ackTimeout, err := reviewWaitAckTimeout(cfg)
+	if err != nil {
+		return err
+	}
+	checkpoints, err := s.Checkpoints(ctx, "", true)
+	if err != nil {
+		return err
+	}
+	liveWindowPhase := ""
+	for _, status := range livewindow.StatusesFromCheckpoints(checkpoints) {
+		if status.TaskID == taskID {
+			liveWindowPhase = status.Phase
+			break
+		}
+	}
+	completionHandbacks := completionhandback.RowsWithOptions(taskID, handoffs, notifications, completionhandback.RowOptions{
+		AckTimeout:      ackTimeout,
+		TaskStatus:      task.Status,
+		LiveWindowPhase: liveWindowPhase,
+	})
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 		reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
-		completionHandbacks := completionhandback.Rows(taskID, handoffs, notifications)
 		return printJSON(struct {
 			Task                 store.Task                             `json:"task"`
 			ReviewStatus         string                                 `json:"review_status"`
@@ -8933,7 +8960,6 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 	reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
-	completionHandbacks := completionhandback.Rows(taskID, handoffs, notifications)
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, reviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
 	fmt.Println("\ndependencies:")
@@ -8967,14 +8993,20 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if len(completionHandbacks) > 0 {
 		fmt.Println("\ncompletion handbacks:")
 		for _, handback := range completionHandbacks {
-			fmt.Printf("- handoff_id=%d to=%s delivery_status=%s delivery_state=%s actual_thread_delivery=%t provider=%s target=%s next_action=%s evidence=%s approval_boundary=%s\n",
+			fmt.Printf("- handoff_id=%d to=%s completion_state=%s delivery_status=%s delivery_state=%s task_status=%s live_window_phase=%s stale=%t stale_age=%s actual_thread_delivery=%t provider=%s target=%s suggested_action=%s next_action=%s evidence=%s approval_boundary=%s\n",
 				handback.HandoffID,
 				handback.ToRole,
+				firstNonEmpty(handback.CompletionState, "unspecified"),
 				handback.DeliveryStatus,
 				firstNonEmpty(handback.DeliveryState, "none"),
+				firstNonEmpty(handback.TaskStatus, "unknown"),
+				firstNonEmpty(handback.LiveWindowPhase, "none"),
+				handback.Stale,
+				firstNonEmpty(handback.StaleAge, "none"),
 				handback.ActualThreadDelivery,
 				firstNonEmpty(handback.Provider, "none"),
 				firstNonEmpty(handback.Target, "none"),
+				firstNonEmpty(handback.SuggestedAction, "none"),
 				handback.NextAction,
 				firstNonEmpty(strings.Join(handback.EvidencePaths, ","), "none"),
 				firstNonEmpty(handback.ApprovalBoundary, "none"),

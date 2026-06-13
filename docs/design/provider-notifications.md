@@ -47,6 +47,7 @@ to another actor, use a completion handback instead of relying on chat state:
 fairway record completion-handback FW-123 \
   --to coordinator \
   --next-action "decide whether to schedule the next live window" \
+  --completion-state blocked-with-follow-up \
   --evidence .fairway/artifacts/FW-123/closeout.md \
   --approval-boundary "implementation handback only" \
   --provider codex \
@@ -61,6 +62,16 @@ closeout until a delivered state or an explicit failure state is recorded; a
 clean Fairway task status alone is not proof that the next actor was informed.
 The handback record does not grant approval, merge, deploy, provider wake, or
 dashboard send authority.
+
+`--completion-state` records the outcome being handed back, separate from
+notification delivery. Supported outcomes include `done`, `reviewed`,
+`merge-ready`, `blocked-with-follow-up`, `monitor-completed`,
+`live-window-closeout`, and `live-window-next-decision`. Coordinator plan uses
+the same `[coordinator].notification_ack_timeout` clock as review/provider
+notification waits to mark pending completion handbacks stale. It also projects a
+`live-window closeout` or `next-decision` checkpoint with no completion handback
+as a closeout-to-next-owner wait, so operator closeout cannot disappear into
+silent idle when the control thread was not woken.
 
 ## Review Completion Resume Signal
 

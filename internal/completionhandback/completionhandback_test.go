@@ -2,6 +2,7 @@ package completionhandback
 
 import (
 	"testing"
+	"time"
 
 	"github.com/subashram/fairway/internal/store"
 )
@@ -33,6 +34,45 @@ func TestRenderAndProjectCompletionHandback(t *testing.T) {
 	}
 	if row.DeliveryStatus != "delivered" || !row.ActualThreadDelivery {
 		t.Fatalf("delivery=%+v", row)
+	}
+}
+
+func TestCompletionHandbackStateAndStaleProjection(t *testing.T) {
+	payload, err := RenderPayloadWithState("assign harness fix", "blocked-with-follow-up", []string{"rollback.md"}, "ops closeout only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := RowsWithOptions("DRILL-001", []store.Handoff{{
+		ID:        23,
+		FromRole:  "ops",
+		ToRole:    "arch",
+		Payload:   payload,
+		CreatedAt: "2026-06-13T04:55:00Z",
+	}}, []store.Notification{{
+		ID:        24,
+		TaskID:    "DRILL-001",
+		HandoffID: int64Ptr(23),
+		Domain:    "arch",
+		State:     "handoff_recorded",
+		CreatedAt: "2026-06-13T04:55:00Z",
+	}}, RowOptions{
+		Now:             time.Date(2026, 6, 13, 12, 55, 0, 0, time.UTC),
+		AckTimeout:      time.Hour,
+		TaskStatus:      "blocked",
+		LiveWindowPhase: "closeout",
+	})
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.CompletionState != "blocked-with-follow-up" || row.TaskStatus != "blocked" || row.LiveWindowPhase != "closeout" {
+		t.Fatalf("row context=%+v", row)
+	}
+	if row.DeliveryStatus != "stale" || !row.Stale || row.StaleAge != "8h0m0s" || IsResolved(row) {
+		t.Fatalf("stale row=%+v", row)
+	}
+	if row.SuggestedAction != "escalate_completion_handback" || row.SuggestedCommand == "" {
+		t.Fatalf("suggestion missing: %+v", row)
 	}
 }
 

@@ -15,7 +15,7 @@ fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reope
 fairway record evidence <task-id> --command-text <text> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <text>]
 fairway record guard-report <task-id> --guard <name> [--mode <report_only|warning|blocking>] [--finding <text>]... [--false-positive <text>]... [--allowed-debt <text>]... [--graduation-criteria <text>] [--artifact <path>] [--result <result>]
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
-fairway record completion-handback <task-id> --to <role> --next-action <text> [--evidence <path>]... [--approval-boundary <text>] [--provider <name>] [--target <thread-or-adapter>] [--state <handoff_recorded|notification_delivered|thread_steered|notification_failed>] [--reason <text>]
+fairway record completion-handback <task-id> --to <role> --next-action <text> [--completion-state <state>] [--evidence <path>]... [--approval-boundary <text>] [--provider <name>] [--target <thread-or-adapter>] [--state <handoff_recorded|notification_delivered|thread_steered|notification_failed>] [--reason <text>]
 fairway record review <task-id> --reviewer <role-or-user> [--domain <review-domain>] --verdict <approve|changes|reject> [--reason <text>] [--commit <sha>]
 fairway record usage <task-id> --provider <name> [--session-id <id>] [--external-session-id <id>] [--role <role>] [--phase <phase>] [--source <provider_reported|derived_snapshot|manual|unknown>] [--confidence <exact|estimated|unknown>] [--input-tokens <n>] [--cached-input-tokens <n>] [--output-tokens <n>] [--total-tokens <n>]
 fairway route review <task-id> [--reviewer <role>] [--path <path>]... [--reason <text>] # mark pending review
@@ -196,12 +196,18 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   control thread can see where the loop is parked without polling provider chat.
 - `record completion-handback` is a typed closeout helper for delegated work.
   It writes a normal handoff plus a linked notification row. The handoff payload
-  records the next actor, next safe action, evidence paths, and approval
-  boundary; the notification state records whether provider/thread delivery was
-  accepted, failed, or only recorded in Fairway. Pending cross-role completion
-  handbacks block terminal closeout until delivery or failure proof is recorded.
-  This does not authorize approval, merge, push, deploy, wake delivery, or any
-  dashboard mutation.
+  records the next actor, next safe action, optional completion outcome,
+  evidence paths, and approval boundary; the notification state records whether
+  provider/thread delivery was accepted, failed, or only recorded in Fairway.
+  Supported completion outcomes are `done`, `reviewed`, `merge-ready`,
+  `blocked-with-follow-up`, `monitor-completed`, `live-window-closeout`, and
+  `live-window-next-decision`. Pending cross-role completion handbacks block
+  terminal closeout until delivery or failure proof is recorded and age by
+  `[coordinator].notification_ack_timeout` in `coordinator plan`/task detail.
+  A `live-window closeout` or `next-decision` checkpoint with no handback is
+  projected as a closeout-to-next-owner wait so repeated live windows do not
+  depend on polling chat. This does not authorize approval, merge, push, deploy,
+  wake delivery, or any dashboard mutation.
 - `workflow check` composes git and active-work checks into the operating-model
   guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
   active reconciliation findings. Use `--mode deploy` before deploy/UAT work;

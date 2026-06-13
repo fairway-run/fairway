@@ -445,6 +445,128 @@ func TestBuildPlanSurfacesLiveWindowPhase(t *testing.T) {
 	}
 }
 
+func TestBuildPlanSurfacesStaleLiveWindowCloseoutHandbackGap(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DRILL-001", Title: "MFA drill", Kind: "task", Role: "ops"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DRILL-001", "blocked", "browser smoke failed; follow-up created", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+		TaskID:       "DRILL-001",
+		State:        "awaiting_input",
+		Owner:        "arch",
+		Summary:      "live-window phase=closeout next_owner=arch next_action=assign_macos_launch_fix",
+		ArtifactPath: "final_drill_blocked_summary_2355.md",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{NotificationAckTimeout: time.Nanosecond, StaleCheckpointAfter: time.Hour, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	action, ok := planAction(plan, "completion-handback", "escalate_closeout_completion_handback", "DRILL-001")
+	if !ok {
+		t.Fatalf("closeout handback gap missing: actions=%+v", plan.Actions)
+	}
+	if action.LiveWindow == nil || action.LiveWindow.Phase != "closeout" || action.Role != "arch" {
+		t.Fatalf("closeout action missing live-window detail: %+v", action)
+	}
+	if !strings.Contains(action.Reason, "stale_age=") || !strings.Contains(action.Reason, "suggested_command=fairway record completion-handback DRILL-001") {
+		t.Fatalf("closeout action reason missing stale handback guidance: %s", action.Reason)
+	}
+}
+
+func TestBuildPlanSurfacesStaleCompletionHandbackForBlockedFollowUp(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DRILL-001", Title: "MFA drill", Kind: "task", Role: "ops"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DRILL-001", "blocked", "browser smoke failed; follow-up created", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+		TaskID:       "DRILL-001",
+		State:        "awaiting_input",
+		Owner:        "arch",
+		Summary:      "live-window phase=closeout next_owner=arch next_action=assign_macos_launch_fix",
+		ArtifactPath: "final_drill_blocked_summary_2355.md",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := completionhandback.RenderPayloadWithState("assign HARNESS-FIX-MFA-BROWSER-SMOKE-MACOS-LAUNCH-001", "blocked-with-follow-up", []string{"rollback-proof.md"}, "operator closeout only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handoff, err := s.RecordHandoffWithID(ctx, "DRILL-001", store.Handoff{ToRole: "arch", Payload: payload})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "DRILL-001", HandoffID: &handoff.ID, Domain: "arch", State: "handoff_recorded"}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{NotificationAckTimeout: time.Nanosecond, StaleCheckpointAfter: time.Hour, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	action, ok := planAction(plan, "completion-handback", "escalate_completion_handback", "DRILL-001")
+	if !ok {
+		t.Fatalf("stale completion handback missing: actions=%+v", plan.Actions)
+	}
+	if action.CompletionHandback == nil {
+		t.Fatalf("completion handback detail missing: %+v", action)
+	}
+	row := action.CompletionHandback
+	if row.CompletionState != "blocked-with-follow-up" || row.TaskStatus != "blocked" || row.LiveWindowPhase != "closeout" || !row.Stale {
+		t.Fatalf("completion handback context missing: %+v", row)
+	}
+	if hasPlanAction(plan, "completion-handback", "escalate_closeout_completion_handback", "DRILL-001") {
+		t.Fatalf("explicit handback should suppress closeout fallback: %+v", plan.Actions)
+	}
+}
+
+func TestBuildPlanDoesNotLetHistoricalCompletionHandbackHideNewCloseout(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "DRILL-001", Title: "MFA drill", Kind: "task", Role: "ops"}}); err != nil {
+		t.Fatal(err)
+	}
+	historicalPayload, err := completionhandback.RenderPayloadWithState("schedule prior drill", "live-window-next-decision", nil, "prior closeout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	historical, err := s.RecordHandoffWithID(ctx, "DRILL-001", store.Handoff{ToRole: "arch", Payload: historicalPayload})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "DRILL-001", HandoffID: &historical.ID, Domain: "arch", Provider: "codex", Target: "thread-arch", State: "thread_steered"}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+		TaskID:       "DRILL-001",
+		State:        "awaiting_input",
+		Owner:        "arch",
+		Summary:      "live-window phase=closeout next_owner=arch next_action=assign_macos_launch_fix",
+		ArtifactPath: "final_drill_blocked_summary_2355.md",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{NotificationAckTimeout: time.Nanosecond, StaleCheckpointAfter: time.Hour, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := planAction(plan, "completion-handback", "escalate_closeout_completion_handback", "DRILL-001"); !ok {
+		t.Fatalf("historical handback suppressed new closeout gap: actions=%+v handbacks=%+v", plan.Actions, plan.CompletionHandbacks)
+	}
+}
+
 func TestBuildPlanSegmentsTerminalMissingReviewDomainsAsReviewDebt(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)

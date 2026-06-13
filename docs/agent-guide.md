@@ -1249,6 +1249,7 @@ to another actor, record a completion handback instead of relying on chat state:
 fairway record completion-handback T-001 \
   --to ops \
   --next-action "schedule the next exact-window drill packet" \
+  --completion-state blocked-with-follow-up \
   --evidence .fairway/artifacts/T-001/closeout.md \
   --approval-boundary "review-only handback; no deploy authority" \
   --provider codex \
@@ -1263,6 +1264,15 @@ path. A pending cross-role completion handback (`handoff_recorded`) blocks
 terminal closeout until delivery or failure proof is recorded. The handback does
 not approve, merge, push, deploy, wake providers from the dashboard, or replace
 task status closeout.
+
+Use `--completion-state` for the closeout outcome, not for delivery proof.
+Supported outcomes are `done`, `reviewed`, `merge-ready`,
+`blocked-with-follow-up`, `monitor-completed`, `live-window-closeout`, and
+`live-window-next-decision`. For repeated live-operation loops, a
+`live-window closeout` or `next-decision` checkpoint without a completion
+handback is surfaced by `fairway coordinator plan` as a closeout-to-next-owner
+wait. Pending completion handbacks age by `[coordinator].notification_ack_timeout`
+and become stale coordinator actions rather than silent idle work.
 
 A handoff is not the same thing as a delivered provider/thread message. When the
 coordinator actually sends, attempts, or receives acknowledgement for a provider

@@ -2535,9 +2535,15 @@ func TestCLI_RecordCompletionHandback(t *testing.T) {
 		"--next-action", "schedule next live window",
 		"--state", "acknowledged",
 	)
+	_ = runCaptureAllowError(t, "record", "completion-handback", "T-001",
+		"--to", "ops",
+		"--next-action", "schedule next live window",
+		"--completion-state", "chat-only",
+	)
 	out := runCapture(t, "record", "completion-handback", "T-001",
 		"--to", "ops",
 		"--next-action", "schedule next live window",
+		"--completion-state", "blocked-with-follow-up",
 		"--evidence", "packet.md",
 		"--evidence", "rollback-proof.md",
 		"--approval-boundary", "no deploy authority",
@@ -2546,6 +2552,7 @@ func TestCLI_RecordCompletionHandback(t *testing.T) {
 		"--state", "thread_steered",
 	)
 	assertContains(t, out, "completion_handback recorded T-001")
+	assertContains(t, out, "completion_state=blocked-with-follow-up")
 	assertContains(t, out, "delivery_status=delivered")
 	assertContains(t, out, "actual_thread_delivery=true")
 
@@ -2553,11 +2560,13 @@ func TestCLI_RecordCompletionHandback(t *testing.T) {
 	assertContains(t, detail, "completion handbacks:")
 	assertContains(t, detail, "to=ops")
 	assertContains(t, detail, "next_action=schedule next live window")
+	assertContains(t, detail, "completion_state=blocked-with-follow-up")
 	assertContains(t, detail, "evidence=packet.md,rollback-proof.md")
 	assertContains(t, detail, "approval_boundary=no deploy authority")
 
 	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
 	assertContains(t, jsonDetail, `"completion_handbacks": [`)
+	assertContains(t, jsonDetail, `"completion_state": "blocked-with-follow-up"`)
 	assertContains(t, jsonDetail, `"delivery_status": "delivered"`)
 	assertContains(t, jsonDetail, `"actual_thread_delivery": true`)
 }
