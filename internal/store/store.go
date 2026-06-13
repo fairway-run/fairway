@@ -1978,6 +1978,8 @@ func usageRollupKey(ev ProviderUsage, groupBy string, tasks map[string]Task) str
 		return "unknown"
 	case "phase":
 		return firstNonEmpty(ev.Phase, "unknown")
+	case "model":
+		return firstNonEmpty(ev.Model, "unknown")
 	case "provider":
 		fallthrough
 	default:

@@ -15,21 +15,22 @@ import (
 const DefaultConfigPath = ".fairway/config.toml"
 
 type Config struct {
-	Fairway            FairwayConfig        `toml:"fairway"`
-	Dashboard          DashboardConfig      `toml:"dashboard"`
-	Worktrees          WorktreesConfig      `toml:"worktrees"`
-	Sessions           SessionsConfig       `toml:"sessions"`
-	Coordinator        CoordinatorConfig    `toml:"coordinator"`
-	States             StatesConfig         `toml:"states"`
-	Gates              GatesConfig          `toml:"gates"`
-	TaskKinds          TaskKindsConfig      `toml:"task_kinds"`
-	TaskPriorities     TaskPrioritiesConfig `toml:"task_priorities"`
-	Roles              []Role               `toml:"roles"`
-	ReviewRoutes       []ReviewRoute        `toml:"review_routes"`
-	WorkstreamProfiles []WorkstreamProfile  `toml:"workstream_profiles"`
-	PacketTemplates    []PacketTemplate     `toml:"packet_templates"`
-	RuleSources        []RuleSource         `toml:"rule_sources"`
-	ProviderTargets    []ProviderTarget     `toml:"provider_targets"`
+	Fairway             FairwayConfig        `toml:"fairway"`
+	Dashboard           DashboardConfig      `toml:"dashboard"`
+	Worktrees           WorktreesConfig      `toml:"worktrees"`
+	Sessions            SessionsConfig       `toml:"sessions"`
+	Coordinator         CoordinatorConfig    `toml:"coordinator"`
+	States              StatesConfig         `toml:"states"`
+	Gates               GatesConfig          `toml:"gates"`
+	TaskKinds           TaskKindsConfig      `toml:"task_kinds"`
+	TaskPriorities      TaskPrioritiesConfig `toml:"task_priorities"`
+	Roles               []Role               `toml:"roles"`
+	ReviewRoutes        []ReviewRoute        `toml:"review_routes"`
+	WorkstreamProfiles  []WorkstreamProfile  `toml:"workstream_profiles"`
+	PacketTemplates     []PacketTemplate     `toml:"packet_templates"`
+	RuleSources         []RuleSource         `toml:"rule_sources"`
+	ProviderTargets     []ProviderTarget     `toml:"provider_targets"`
+	ProviderModelPrices []ProviderModelPrice `toml:"provider_model_prices"`
 }
 
 type FairwayConfig struct {
@@ -155,6 +156,16 @@ type ProviderTarget struct {
 	Provider string `toml:"provider"`
 	Target   string `toml:"target"`
 	Type     string `toml:"type"`
+}
+
+type ProviderModelPrice struct {
+	Provider              string   `toml:"provider"`
+	Model                 string   `toml:"model"`
+	InputPerMillion       *float64 `toml:"input_per_million"`
+	CachedInputPerMillion *float64 `toml:"cached_input_per_million"`
+	OutputPerMillion      *float64 `toml:"output_per_million"`
+	ReasoningPerMillion   *float64 `toml:"reasoning_per_million"`
+	TotalPerMillion       *float64 `toml:"total_per_million"`
 }
 
 func Defaults(root string) Config {
@@ -375,6 +386,52 @@ func Validate(cfg Config) error {
 	}
 	if err := validateProviderTargets(cfg.ProviderTargets); err != nil {
 		return err
+	}
+	if err := validateProviderModelPrices(cfg.ProviderModelPrices); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateProviderModelPrices(prices []ProviderModelPrice) error {
+	seen := map[string]bool{}
+	for _, price := range prices {
+		provider := strings.TrimSpace(price.Provider)
+		model := strings.TrimSpace(price.Model)
+		if provider == "" {
+			return errors.New("[[provider_model_prices]] provider is required")
+		}
+		if model == "" {
+			return errors.New("[[provider_model_prices]] model is required; use * for a provider default")
+		}
+		key := provider + "\x00" + model
+		if seen[key] {
+			return fmt.Errorf("duplicate provider model price for provider %q model %q", provider, model)
+		}
+		seen[key] = true
+		values := []struct {
+			name  string
+			value *float64
+		}{
+			{"input_per_million", price.InputPerMillion},
+			{"cached_input_per_million", price.CachedInputPerMillion},
+			{"output_per_million", price.OutputPerMillion},
+			{"reasoning_per_million", price.ReasoningPerMillion},
+			{"total_per_million", price.TotalPerMillion},
+		}
+		known := false
+		for _, item := range values {
+			if item.value == nil {
+				continue
+			}
+			known = true
+			if *item.value < 0 {
+				return fmt.Errorf("[[provider_model_prices]] %s must not be negative", item.name)
+			}
+		}
+		if !known {
+			return fmt.Errorf("[[provider_model_prices]] provider %q model %q must set at least one price field", provider, model)
+		}
 	}
 	return nil
 }

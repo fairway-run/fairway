@@ -57,6 +57,8 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "--json", "timing-report")
 	runOK(t, "completion-handback-report")
 	runOK(t, "--json", "completion-handback-report")
+	runOK(t, "usage", "cost-report")
+	runOK(t, "--json", "usage", "cost-report")
 	runOK(t, "db", "export", "snapshot.json")
 	runOK(t, "db", "backup", "backup.db")
 }
@@ -139,7 +141,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"live-window", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "record", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "status", "--help"}, "fairway live-window status [--task <task-id>]"},
-		{[]string{"usage", "--help"}, "fairway usage report"},
+		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
+		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
+		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check|closeout"},
@@ -1426,6 +1430,105 @@ func TestCLI_ProviderUsageAccounting(t *testing.T) {
 	if err := run(context.Background(), []string{"record", "usage", "T-001", "--provider", "codex", "--metadata", "access_token=do not store"}); err == nil {
 		t.Fatal("expected token-like usage metadata key to be rejected")
 	}
+}
+
+func TestCLI_UsageCostReport(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	cfgPath := filepath.Join(".fairway", "config.toml")
+	cfgBytes, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgText := string(cfgBytes) + `
+
+[[provider_model_prices]]
+provider = "codex"
+model = "gpt-5-codex"
+input_per_million = 1.0
+cached_input_per_million = 0.1
+output_per_million = 10.0
+reasoning_per_million = 10.0
+
+[[provider_model_prices]]
+provider = "codex"
+model = "snapshot-model"
+total_per_million = 2.0
+`
+	if err := os.WriteFile(cfgPath, []byte(cfgText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, "tasks.yaml", `- id: EPIC-001
+  title: Usage epic
+  role: governance
+  kind: epic
+- id: T-001
+  title: Exact usage
+  role: backend
+  kind: feature
+  parent_id: EPIC-001
+- id: T-002
+  title: Snapshot usage
+  role: ops
+  kind: readiness-guard
+- id: T-003
+  title: Unknown usage
+  role: governance
+  kind: docs
+`)
+	runOK(t, "import", "tasks.yaml")
+	runOK(t, "record", "usage", "T-001", "--provider", "codex", "--role", "backend", "--phase", "implementation", "--source", "provider_reported", "--confidence", "exact", "--input-tokens", "1000", "--cached-input-tokens", "400", "--output-tokens", "200", "--reasoning-tokens", "50", "--total-tokens", "1250", "--model", "gpt-5-codex")
+	runOK(t, "record", "usage", "T-002", "--provider", "codex", "--role", "ops", "--phase", "review", "--source", "derived_snapshot", "--confidence", "estimated", "--started-token-snapshot", "10000", "--completed-token-snapshot", "13000", "--model", "snapshot-model")
+	runOK(t, "record", "usage", "T-003", "--provider", "codex", "--role", "governance", "--source", "manual", "--confidence", "unknown", "--model", "unknown-model")
+
+	human := runCapture(t, "usage", "cost-report", "--by", "task", "--since-duration", "24h", "--forecast-days", "7")
+	assertContains(t, human, "usage cost report by task")
+	assertContains(t, human, "T-001 events=1 cost=$0.003140")
+	assertContains(t, human, "cache_read=40.0%")
+	assertContains(t, human, "T-002 events=1 cost=$0.006000")
+	assertContains(t, human, "T-003 events=1 cost=unknown")
+	assertContains(t, human, "unknown_cost_events=1")
+
+	modelReport := runCapture(t, "usage", "report", "--by", "model")
+	assertContains(t, modelReport, "gpt-5-codex events=1 total=1250")
+	assertContains(t, modelReport, "snapshot-model events=1 total=3000")
+
+	markdown := runCapture(t, "usage", "cost-report", "--by", "provider", "--format", "markdown")
+	assertContains(t, markdown, "# Usage Cost Report")
+	assertContains(t, markdown, "| group | events | estimated cost | forecast | total tokens | cache read | price status | unknown cost events |")
+
+	jsonOut := runCapture(t, "--json", "usage", "cost-report", "--by", "model")
+	var report usageCostReport
+	if err := json.Unmarshal([]byte(jsonOut), &report); err != nil {
+		t.Fatalf("usage cost JSON: %v\n%s", err, jsonOut)
+	}
+	if report.GroupBy != "model" || len(report.Rows) != 3 {
+		t.Fatalf("unexpected report shape: %#v", report)
+	}
+	for _, row := range report.Rows {
+		if row.Group == "unknown-model" && row.EstimatedCostUSD != nil {
+			t.Fatalf("unknown model cost should remain unknown, got %#v", row.EstimatedCostUSD)
+		}
+		if row.Group == "gpt-5-codex" && row.EstimatedCostUSD == nil {
+			t.Fatalf("priced model cost missing: %#v", row)
+		}
+	}
+
+	cfgText = strings.Replace(cfgText, "output_per_million = 10.0", "output_per_million = 20.0", 1)
+	if err := os.WriteFile(cfgPath, []byte(cfgText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed := runCapture(t, "usage", "cost-report", "--by", "task")
+	assertContains(t, changed, "T-001 events=1 cost=$0.005140")
 }
 
 func TestCLI_WorkBatches(t *testing.T) {

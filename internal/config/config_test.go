@@ -138,6 +138,66 @@ func TestValidateProviderTargets(t *testing.T) {
 	}
 }
 
+func TestValidateProviderModelPrices(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	input := 1.25
+	cached := 0.125
+	output := 10.0
+	cfg.ProviderModelPrices = []ProviderModelPrice{
+		{Provider: "codex", Model: "gpt-5-codex", InputPerMillion: &input, CachedInputPerMillion: &cached, OutputPerMillion: &output},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		prices []ProviderModelPrice
+		want   string
+	}{
+		{
+			name:   "missing provider",
+			prices: []ProviderModelPrice{{Model: "*", InputPerMillion: &input}},
+			want:   "provider is required",
+		},
+		{
+			name:   "missing model",
+			prices: []ProviderModelPrice{{Provider: "codex", InputPerMillion: &input}},
+			want:   "model is required",
+		},
+		{
+			name: "duplicate",
+			prices: []ProviderModelPrice{
+				{Provider: "codex", Model: "*", InputPerMillion: &input},
+				{Provider: "codex", Model: "*", OutputPerMillion: &output},
+			},
+			want: "duplicate provider model price",
+		},
+		{
+			name:   "empty price",
+			prices: []ProviderModelPrice{{Provider: "codex", Model: "*"}},
+			want:   "must set at least one price field",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Defaults(t.TempDir())
+			cfg.ProviderModelPrices = tc.prices
+			err := Validate(cfg)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+
+	negative := -1.0
+	cfg = Defaults(t.TempDir())
+	cfg.ProviderModelPrices = []ProviderModelPrice{{Provider: "codex", Model: "*", InputPerMillion: &negative}}
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "must not be negative") {
+		t.Fatalf("Validate() error = %v, want negative price rejection", err)
+	}
+}
+
 func TestRootForConfigPath_CustomConfig(t *testing.T) {
 	got := RootForConfigPath(filepath.Join("/tmp", "repo", "fairway.toml"))
 	want := filepath.Join("/tmp", "repo")

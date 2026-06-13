@@ -8385,18 +8385,24 @@ func validGuardMode(mode string) bool {
 
 func cmdUsage(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("usage", "report")
+		subcommandUsage("usage", "report|cost-report")
 		return nil
 	}
 	switch args[0] {
 	case "report":
 		return cmdUsageReport(ctx, opts, args[1:])
+	case "cost-report":
+		return cmdUsageCostReport(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown usage subcommand %q", args[0])
 	}
 }
 
 func cmdUsageReport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("usage", "report [--by <provider|task|epic|role|day|kind|phase|model>]")
+		return nil
+	}
 	fs := flag.NewFlagSet("usage report", flag.ContinueOnError)
 	groupBy := fs.String("by", "provider", "group by provider, task, epic, role, day, kind, or phase")
 	taskID := fs.String("task-id", "", "limit to task id")
@@ -8439,11 +8445,384 @@ func cmdUsageReport(ctx context.Context, opts globalOptions, args []string) erro
 
 func validUsageRollupGroup(group string) bool {
 	switch group {
-	case "provider", "task", "epic", "role", "day", "kind", "phase":
+	case "provider", "task", "epic", "role", "day", "kind", "phase", "model":
 		return true
 	default:
 		return false
 	}
+}
+
+type usageCostReport struct {
+	GroupBy           string               `json:"group_by"`
+	Since             string               `json:"since,omitempty"`
+	ForecastDays      float64              `json:"forecast_days,omitempty"`
+	PricingConfigured int                  `json:"pricing_configured"`
+	Rows              []usageCostReportRow `json:"rows"`
+	Totals            usageCostReportRow   `json:"totals"`
+}
+
+type usageCostReportRow struct {
+	Group               string   `json:"group"`
+	Events              int      `json:"events"`
+	KnownCostEvents     int      `json:"known_cost_events"`
+	UnknownCostEvents   int      `json:"unknown_cost_events"`
+	TotalTokens         *int     `json:"total_tokens,omitempty"`
+	InputTokens         *int     `json:"input_tokens,omitempty"`
+	CachedInputTokens   *int     `json:"cached_input_tokens,omitempty"`
+	UncachedInputTokens *int     `json:"uncached_input_tokens,omitempty"`
+	OutputTokens        *int     `json:"output_tokens,omitempty"`
+	ReasoningTokens     *int     `json:"reasoning_tokens,omitempty"`
+	EstimatedCostUSD    *float64 `json:"estimated_cost_usd,omitempty"`
+	ForecastCostUSD     *float64 `json:"forecast_cost_usd,omitempty"`
+	CacheReadRatio      *float64 `json:"cache_read_ratio,omitempty"`
+	PriceStatus         string   `json:"price_status"`
+}
+
+type modelPrice struct {
+	Provider              string
+	Model                 string
+	InputPerMillion       *float64
+	CachedInputPerMillion *float64
+	OutputPerMillion      *float64
+	ReasoningPerMillion   *float64
+	TotalPerMillion       *float64
+}
+
+func cmdUsageCostReport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("usage", "cost-report [--by <provider|task|epic|role|day|kind|phase|model>] [--forecast-days <n>]")
+		return nil
+	}
+	fs := flag.NewFlagSet("usage cost-report", flag.ContinueOnError)
+	groupBy := fs.String("by", "task", "group by provider, task, epic, role, day, kind, phase, or model")
+	taskID := fs.String("task-id", "", "limit to task id")
+	sinceDuration := fs.String("since-duration", "", "limit to usage recorded within duration")
+	forecastDays := fs.Float64("forecast-days", 0, "forecast cost for this many days from the since-duration rate")
+	format := fs.String("format", "human", "output format: human or markdown")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected usage cost-report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if !validUsageRollupGroup(*groupBy) {
+		return fmt.Errorf("invalid usage cost-report group %q", *groupBy)
+	}
+	if *forecastDays < 0 {
+		return errors.New("--forecast-days must not be negative")
+	}
+	if *forecastDays > 0 && *sinceDuration == "" {
+		return errors.New("--forecast-days requires --since-duration so the forecast window is explicit")
+	}
+	if *format != "human" && *format != "markdown" {
+		return fmt.Errorf("invalid usage cost-report format %q", *format)
+	}
+	since := ""
+	var sinceWindow time.Duration
+	if *sinceDuration != "" {
+		duration, err := time.ParseDuration(*sinceDuration)
+		if err != nil {
+			return err
+		}
+		if duration <= 0 {
+			return errors.New("--since-duration must be positive")
+		}
+		sinceWindow = duration
+		since = time.Now().UTC().Add(-duration).Format(time.RFC3339Nano)
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		events, err := s.ProviderUsageEvents(ctx, store.UsageRollupOptions{TaskID: *taskID, Since: since})
+		if err != nil {
+			return err
+		}
+		tasks := map[string]store.Task{}
+		if *groupBy == "kind" || *groupBy == "epic" {
+			all, err := s.AllTasks(ctx)
+			if err != nil {
+				return err
+			}
+			for _, task := range all {
+				tasks[task.Definition.ID] = task
+			}
+		}
+		report := buildUsageCostReport(events, cfg.ProviderModelPrices, *groupBy, tasks, since, sinceWindow, *forecastDays)
+		if opts.JSON {
+			return printJSON(report)
+		}
+		switch *format {
+		case "markdown":
+			printUsageCostMarkdown(report)
+		default:
+			printUsageCostHuman(report)
+		}
+		return nil
+	})
+}
+
+func buildUsageCostReport(events []store.ProviderUsage, prices []config.ProviderModelPrice, groupBy string, tasks map[string]store.Task, since string, sinceWindow time.Duration, forecastDays float64) usageCostReport {
+	priceTable := buildModelPriceTable(prices)
+	report := usageCostReport{GroupBy: groupBy, Since: since, ForecastDays: forecastDays, PricingConfigured: len(prices)}
+	byGroup := map[string]*usageCostReportRow{}
+	for _, ev := range events {
+		key := usageCostGroupKey(ev, groupBy, tasks)
+		row := byGroup[key]
+		if row == nil {
+			row = &usageCostReportRow{Group: key, PriceStatus: "unknown_price"}
+			byGroup[key] = row
+		}
+		row.Events++
+		report.Totals.Events++
+		addUsageCostInt(&row.TotalTokens, ev.TotalTokens)
+		addUsageCostInt(&report.Totals.TotalTokens, ev.TotalTokens)
+		addUsageCostInt(&row.InputTokens, ev.InputTokens)
+		addUsageCostInt(&report.Totals.InputTokens, ev.InputTokens)
+		addUsageCostInt(&row.CachedInputTokens, ev.CachedInputTokens)
+		addUsageCostInt(&report.Totals.CachedInputTokens, ev.CachedInputTokens)
+		addUsageCostInt(&row.UncachedInputTokens, ev.UncachedInputTokens)
+		addUsageCostInt(&report.Totals.UncachedInputTokens, ev.UncachedInputTokens)
+		addUsageCostInt(&row.OutputTokens, ev.OutputTokens)
+		addUsageCostInt(&report.Totals.OutputTokens, ev.OutputTokens)
+		addUsageCostInt(&row.ReasoningTokens, ev.ReasoningTokens)
+		addUsageCostInt(&report.Totals.ReasoningTokens, ev.ReasoningTokens)
+		price, priced := lookupModelPrice(priceTable, ev.Provider, ev.Model)
+		if priced {
+			if cost, ok := estimateUsageCost(ev, price); ok {
+				addUsageFloat(&row.EstimatedCostUSD, cost)
+				addUsageFloat(&report.Totals.EstimatedCostUSD, cost)
+				row.KnownCostEvents++
+				report.Totals.KnownCostEvents++
+				row.PriceStatus = combinedPriceStatus(row.PriceStatus, "priced")
+				report.Totals.PriceStatus = combinedPriceStatus(report.Totals.PriceStatus, "priced")
+			} else {
+				row.UnknownCostEvents++
+				report.Totals.UnknownCostEvents++
+				row.PriceStatus = combinedPriceStatus(row.PriceStatus, "unknown_tokens")
+				report.Totals.PriceStatus = combinedPriceStatus(report.Totals.PriceStatus, "unknown_tokens")
+			}
+		} else {
+			row.UnknownCostEvents++
+			report.Totals.UnknownCostEvents++
+			row.PriceStatus = combinedPriceStatus(row.PriceStatus, "unknown_price")
+			report.Totals.PriceStatus = combinedPriceStatus(report.Totals.PriceStatus, "unknown_price")
+		}
+	}
+	report.Rows = make([]usageCostReportRow, 0, len(byGroup))
+	for _, row := range byGroup {
+		row.CacheReadRatio = usageCacheReadRatio(row.InputTokens, row.CachedInputTokens)
+		if forecastDays > 0 && row.EstimatedCostUSD != nil && sinceWindow > 0 {
+			forecast := *row.EstimatedCostUSD * forecastDays / sinceWindow.Hours() * 24
+			row.ForecastCostUSD = &forecast
+		}
+		report.Rows = append(report.Rows, *row)
+	}
+	report.Totals.Group = "total"
+	report.Totals.CacheReadRatio = usageCacheReadRatio(report.Totals.InputTokens, report.Totals.CachedInputTokens)
+	if forecastDays > 0 && report.Totals.EstimatedCostUSD != nil && sinceWindow > 0 {
+		forecast := *report.Totals.EstimatedCostUSD * forecastDays / sinceWindow.Hours() * 24
+		report.Totals.ForecastCostUSD = &forecast
+	}
+	if report.Totals.PriceStatus == "" {
+		report.Totals.PriceStatus = "unknown_price"
+	}
+	sort.Slice(report.Rows, func(i, j int) bool {
+		left, right := -1.0, -1.0
+		if report.Rows[i].EstimatedCostUSD != nil {
+			left = *report.Rows[i].EstimatedCostUSD
+		}
+		if report.Rows[j].EstimatedCostUSD != nil {
+			right = *report.Rows[j].EstimatedCostUSD
+		}
+		if left != right {
+			return left > right
+		}
+		return report.Rows[i].Group < report.Rows[j].Group
+	})
+	return report
+}
+
+func buildModelPriceTable(prices []config.ProviderModelPrice) map[string]modelPrice {
+	out := map[string]modelPrice{}
+	for _, price := range prices {
+		key := modelPriceKey(price.Provider, price.Model)
+		out[key] = modelPrice{
+			Provider:              strings.TrimSpace(price.Provider),
+			Model:                 strings.TrimSpace(price.Model),
+			InputPerMillion:       price.InputPerMillion,
+			CachedInputPerMillion: price.CachedInputPerMillion,
+			OutputPerMillion:      price.OutputPerMillion,
+			ReasoningPerMillion:   price.ReasoningPerMillion,
+			TotalPerMillion:       price.TotalPerMillion,
+		}
+	}
+	return out
+}
+
+func lookupModelPrice(prices map[string]modelPrice, provider, model string) (modelPrice, bool) {
+	for _, key := range []string{
+		modelPriceKey(provider, model),
+		modelPriceKey(provider, "*"),
+		modelPriceKey("*", model),
+		modelPriceKey("*", "*"),
+	} {
+		if price, ok := prices[key]; ok {
+			return price, true
+		}
+	}
+	return modelPrice{}, false
+}
+
+func modelPriceKey(provider, model string) string {
+	return strings.TrimSpace(provider) + "\x00" + strings.TrimSpace(model)
+}
+
+func estimateUsageCost(ev store.ProviderUsage, price modelPrice) (float64, bool) {
+	total := 0.0
+	charged := false
+	if price.InputPerMillion != nil {
+		uncached := ev.UncachedInputTokens
+		if uncached == nil && ev.InputTokens != nil && ev.CachedInputTokens != nil && *ev.InputTokens >= *ev.CachedInputTokens {
+			v := *ev.InputTokens - *ev.CachedInputTokens
+			uncached = &v
+		}
+		if uncached == nil && ev.InputTokens != nil && ev.CachedInputTokens == nil {
+			uncached = ev.InputTokens
+		}
+		if uncached != nil {
+			total += usageTokenCost(*uncached, *price.InputPerMillion)
+			charged = true
+		}
+	}
+	if price.CachedInputPerMillion != nil && ev.CachedInputTokens != nil {
+		total += usageTokenCost(*ev.CachedInputTokens, *price.CachedInputPerMillion)
+		charged = true
+	}
+	if price.OutputPerMillion != nil && ev.OutputTokens != nil {
+		total += usageTokenCost(*ev.OutputTokens, *price.OutputPerMillion)
+		charged = true
+	}
+	if price.ReasoningPerMillion != nil && ev.ReasoningTokens != nil {
+		total += usageTokenCost(*ev.ReasoningTokens, *price.ReasoningPerMillion)
+		charged = true
+	}
+	if !charged && price.TotalPerMillion != nil && ev.TotalTokens != nil {
+		total += usageTokenCost(*ev.TotalTokens, *price.TotalPerMillion)
+		charged = true
+	}
+	return total, charged
+}
+
+func usageTokenCost(tokens int, perMillion float64) float64 {
+	return float64(tokens) * perMillion / 1000000
+}
+
+func usageCostGroupKey(ev store.ProviderUsage, groupBy string, tasks map[string]store.Task) string {
+	switch groupBy {
+	case "task":
+		return firstNonEmpty(ev.TaskID, "unassigned")
+	case "epic":
+		if task, ok := tasks[ev.TaskID]; ok {
+			return firstNonEmpty(task.Definition.ParentID, task.Definition.ID, "unassigned")
+		}
+		return "unassigned"
+	case "role":
+		return firstNonEmpty(ev.Role, "unknown")
+	case "day":
+		if len(ev.CreatedAt) >= len("2006-01-02") {
+			return ev.CreatedAt[:len("2006-01-02")]
+		}
+		return "unknown"
+	case "kind":
+		if task, ok := tasks[ev.TaskID]; ok {
+			return firstNonEmpty(task.Definition.Kind, "unknown")
+		}
+		return "unknown"
+	case "phase":
+		return firstNonEmpty(ev.Phase, "unknown")
+	case "model":
+		return firstNonEmpty(ev.Model, "unknown")
+	case "provider":
+		fallthrough
+	default:
+		return firstNonEmpty(ev.Provider, "unknown")
+	}
+}
+
+func combinedPriceStatus(current, next string) string {
+	if current == "" {
+		return next
+	}
+	if current == next {
+		return current
+	}
+	return "partial_unknown"
+}
+
+func usageCacheReadRatio(inputTokens, cachedInputTokens *int) *float64 {
+	if inputTokens == nil || cachedInputTokens == nil || *inputTokens == 0 {
+		return nil
+	}
+	ratio := float64(*cachedInputTokens) / float64(*inputTokens)
+	return &ratio
+}
+
+func addUsageCostInt(total **int, value *int) {
+	if value == nil {
+		return
+	}
+	if *total == nil {
+		v := *value
+		*total = &v
+		return
+	}
+	**total += *value
+}
+
+func addUsageFloat(total **float64, value float64) {
+	if *total == nil {
+		v := value
+		*total = &v
+		return
+	}
+	**total += value
+}
+
+func printUsageCostHuman(report usageCostReport) {
+	fmt.Printf("usage cost report by %s\n", report.GroupBy)
+	if report.PricingConfigured == 0 {
+		fmt.Println("pricing: no [[provider_model_prices]] entries configured")
+	}
+	for _, row := range report.Rows {
+		fmt.Printf("- %s events=%d cost=%s forecast=%s total=%s cache_read=%s status=%s unknown_cost_events=%d\n", row.Group, row.Events, formatUsageCost(row.EstimatedCostUSD), formatUsageCost(row.ForecastCostUSD), formatUsageInt(row.TotalTokens), formatUsageRatio(row.CacheReadRatio), row.PriceStatus, row.UnknownCostEvents)
+	}
+	if len(report.Rows) == 0 {
+		fmt.Println("- no usage recorded")
+	}
+	fmt.Printf("total events=%d cost=%s forecast=%s total_tokens=%s cache_read=%s status=%s unknown_cost_events=%d\n", report.Totals.Events, formatUsageCost(report.Totals.EstimatedCostUSD), formatUsageCost(report.Totals.ForecastCostUSD), formatUsageInt(report.Totals.TotalTokens), formatUsageRatio(report.Totals.CacheReadRatio), report.Totals.PriceStatus, report.Totals.UnknownCostEvents)
+}
+
+func printUsageCostMarkdown(report usageCostReport) {
+	fmt.Printf("# Usage Cost Report\n\n")
+	fmt.Printf("Grouped by `%s`. Costs are advisory planning estimates and are not task gates.\n\n", report.GroupBy)
+	fmt.Println("| group | events | estimated cost | forecast | total tokens | cache read | price status | unknown cost events |")
+	fmt.Println("|---|---:|---:|---:|---:|---:|---|---:|")
+	for _, row := range report.Rows {
+		fmt.Printf("| %s | %d | %s | %s | %s | %s | %s | %d |\n", row.Group, row.Events, formatUsageCost(row.EstimatedCostUSD), formatUsageCost(row.ForecastCostUSD), formatUsageInt(row.TotalTokens), formatUsageRatio(row.CacheReadRatio), row.PriceStatus, row.UnknownCostEvents)
+	}
+	fmt.Printf("| total | %d | %s | %s | %s | %s | %s | %d |\n", report.Totals.Events, formatUsageCost(report.Totals.EstimatedCostUSD), formatUsageCost(report.Totals.ForecastCostUSD), formatUsageInt(report.Totals.TotalTokens), formatUsageRatio(report.Totals.CacheReadRatio), report.Totals.PriceStatus, report.Totals.UnknownCostEvents)
+}
+
+func formatUsageCost(value *float64) string {
+	if value == nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("$%.6f", *value)
+}
+
+func formatUsageRatio(value *float64) string {
+	if value == nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("%.1f%%", *value*100)
 }
 
 func guardModeResult(mode string) string {
@@ -9789,7 +10168,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, usage report, audit work-coverage|ci-learning, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, usage report|cost-report, audit work-coverage|ci-learning, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -9830,7 +10209,7 @@ func printCommandHelp(command string) bool {
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
 		"audit":                      "fairway audit work-coverage|ci-learning ...\n  Run advisory coverage and CI/deploy learning reports.",
-		"usage":                      "fairway usage report [--by <provider|task|epic|role|day|kind|phase>]\n  Report provider-neutral usage attribution.",
+		"usage":                      "fairway usage report|cost-report [--by <provider|task|epic|role|day|kind|phase|model>]\n  Report provider-neutral usage attribution and advisory cost forecasts.",
 		"register":                   "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",
 		"unregister":                 "fairway unregister [<name>]\n  Remove a project from the local Fairway registry.",
 		"projects":                   "fairway projects\n  List registered Fairway projects.",

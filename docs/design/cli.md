@@ -35,7 +35,8 @@ fairway status-report | health-report | timing-report
 fairway completion-handback-report [--include-closed] [--format human|markdown]
 fairway coordinator plan [--ready-limit <n>] [--recommendation-limit <n>] [--allow-utility-monitor] # deterministic dry-run next-action plan
 fairway coordinator tick [--completion-handback-wake] [--task <task-id>] [--send] # daily plan plus optional stale completion-handback wake prompts
-fairway usage report [--by <provider|task|epic|role|day|kind|phase>] [--task-id <id>] [--since-duration <duration>]
+fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>] [--task-id <id>] [--since-duration <duration>]
+fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>] [--task-id <id>] [--since-duration <duration>] [--forecast-days <n>] [--format human|markdown]
 fairway batch create <batch-id> --title <t> [--task <id>]... [--branch <b>] [--worktree <path>] [--validation-command <cmd>]... [--review-domain <domain>]... [--rollback-criteria <text>] [--split-criteria <text>] [--expected-ci <text>] [--deploy-run-id <id>] [--pipeline-id <id>]
 fairway batch add <batch-id> <task-id>...
 fairway batch remove <batch-id> <task-id>...

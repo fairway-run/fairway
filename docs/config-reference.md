@@ -203,6 +203,47 @@ does not expose a thread messaging tool. See
 | `type` | string | `generic` | Destination type: `generic`, `thread`, `tmux`, `cli`, or `webhook`. |
 | `target` | string | — | Provider-local target id. Do not put secrets or bearer URLs here. |
 
+### `[[provider_model_prices]]`
+
+Provider model prices are advisory calculator inputs for
+`fairway usage cost-report`. They convert already-recorded provider usage
+counts into planning estimates. They do not configure provider credentials, do
+not poll provider APIs, and do not create budget, approval, merge, completion,
+or release gates.
+
+Prices are expressed in dollars per million tokens. Use `model = "*"` for a
+provider default, `provider = "*"` for a model default, or both as a global
+fallback.
+
+```toml
+[[provider_model_prices]]
+provider = "codex"
+model = "gpt-5-codex"
+input_per_million = 1.25
+cached_input_per_million = 0.125
+output_per_million = 10.0
+reasoning_per_million = 10.0
+
+[[provider_model_prices]]
+provider = "codex"
+model = "snapshot-only-model"
+total_per_million = 2.0
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `provider` | string | — | Provider label matching `record usage --provider`, or `*` for a fallback. |
+| `model` | string | — | Model label matching `record usage --model`, or `*` for a fallback. |
+| `input_per_million` | float | — | Uncached input-token price. When cached tokens are known, Fairway charges `input - cached` here. |
+| `cached_input_per_million` | float | — | Cached input-token price. |
+| `output_per_million` | float | — | Output-token price. |
+| `reasoning_per_million` | float | — | Reasoning-token price when providers report it separately. |
+| `total_per_million` | float | — | Fallback total-token price for records that only have `total_tokens` or derived snapshots. |
+
+Each row must include `provider`, `model`, and at least one non-negative price
+field. Missing token counts or missing matching prices stay `unknown` in cost
+reports rather than being treated as zero.
+
 ### `[coordinator]`
 
 | Key | Type | Default | Description |

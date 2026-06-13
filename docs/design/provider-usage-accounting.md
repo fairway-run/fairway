@@ -161,10 +161,10 @@ For OTLP metrics, the adapter also maps token usage datapoints with
 `token.type` / `gen_ai.token.type` values such as `input`, `cache_read`,
 `cache_creation`, `output`, `reasoning`, `reasoning_output`, and `total`.
 
-Cost telemetry may exist in provider OTel streams, but Fairway does not perform
-pricing or cost accounting in this slice. The generic adapter may preserve a
-provider-reported `cost` value as safe metadata for later analysis; it does not
-calculate cost, enforce budgets, or use cost as a readiness gate.
+Cost telemetry may exist in provider OTel streams. Fairway keeps provider
+reported cost as optional safe metadata, and the advisory cost report can also
+calculate planning estimates from configured model prices. Neither path
+enforces budgets, changes task readiness, or becomes a completion gate.
 
 Expected adapter behavior:
 
@@ -253,8 +253,11 @@ command, which preserves them as unknown/null in Fairway.
 
 The Codex adapter maps only token counts from Desktop/API `event_msg`
 `token_count` events. It does not store prompts, transcripts, raw tool bodies,
-generated content, auth tokens, or provider-private state, and it is not a
-cost-estimation, budget-enforcement, or task-completion gate.
+generated content, auth tokens, or provider-private state. When structured
+events are unavailable, operators may record closeout totals manually with
+`fairway record usage --source manual --confidence exact|estimated|unknown`;
+manual records must carry only counts, attribution, phase/model labels, and
+safe metadata.
 
 Claude Code usage should use provider-supported OTel, not private local Claude
 logs or transcripts. Fairway maps these Claude Code attributes through
@@ -369,14 +372,41 @@ task pass/fail, block completion, or imply quality.
 Implemented visibility:
 
 - `fairway task-detail <task-id>` shows usage events and provider rollups.
-- `fairway usage report --by provider|task|epic|role|day|kind|phase` shows
+- `fairway usage report --by provider|task|epic|role|day|kind|phase|model` shows
   attribution rollups.
+- `fairway usage cost-report --by provider|task|epic|role|day|kind|phase|model`
+  estimates advisory planning cost from `[[provider_model_prices]]`. Unknown
+  token fields, unknown model prices, and partial records remain `unknown`
+  rather than being treated as zero.
 - `/tasks/<task-id>` shows provider usage for the task when present.
 - `/reports` shows provider, role, kind, phase, and day usage rollups for the
   selected report window.
 
-Pricing, budget enforcement, and cost accounting are intentionally out of scope
-for this slice.
+Pricing tables are calculator assumptions, not provider contracts. Configure
+prices in dollars per million tokens, for example:
+
+```toml
+[[provider_model_prices]]
+provider = "codex"
+model = "gpt-5-codex"
+input_per_million = 1.25
+cached_input_per_million = 0.125
+output_per_million = 10.0
+reasoning_per_million = 10.0
+
+[[provider_model_prices]]
+provider = "codex"
+model = "snapshot-only-model"
+total_per_million = 2.0
+```
+
+`model = "*"` can be used as a provider default. `fairway usage cost-report`
+uses exact provider/model prices first, then provider defaults, model defaults,
+and finally a global `*/*` default. `--forecast-days` requires
+`--since-duration`, so forecast evidence always names the historical window
+being extrapolated. Forecasts are useful for questions like "what would this
+task class cost for seven more days at the current recorded rate?" They are not
+approval, merge, completion, or budget-enforcement authority.
 
 Useful questions:
 
