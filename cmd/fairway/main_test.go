@@ -2433,6 +2433,46 @@ func TestCLI_ReconcileActiveReportsTaskEvidenceAndParentFindings(t *testing.T) {
 	assertContains(t, jsonReport, `"kind": "active_parent_without_rollup"`)
 }
 
+func TestCLI_ReconcileActiveAllowsBoundedLiveOperationEvidence(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Approved live drill", "--role", "ops")
+	t.Setenv("FAIRWAY_ROLE", "ops")
+	runOK(t, "claim", "T-001")
+	runOK(t, "session", "upsert",
+		"--id", "codex-live-op",
+		"--role", "ops",
+		"--backend", "codex-thread",
+		"--provider", "codex",
+		"--task-id", "T-001",
+	)
+	runOK(t, "checkpoint", "record", "T-001",
+		"--state", "active",
+		"--owner", "ops",
+		"--target-close-by", time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+		"--summary", "Provider session codex-live-op active; approved live operation window with expected closeout.",
+	)
+	runOK(t, "record", "evidence", "T-001",
+		"--command-text", "admin readiness gate && pre-mutation validator",
+		"--result", "pass",
+		"--artifact-type", "live-operation-gate",
+		"--notes", "GPUaaS 21:15 pattern: gate evidence captured during bounded active operation.",
+	)
+
+	report := runCapture(t, "reconcile", "active", "--dry-run")
+	assertContains(t, report, "no active reconciliation findings")
+	assertNotContains(t, report, "status_decision_required")
+}
+
 func TestCLI_ReconcileActiveReportsMonitorSessionsWithoutBackingProof(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

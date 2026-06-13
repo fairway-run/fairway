@@ -322,6 +322,141 @@ func TestActiveProviderSessionCompletedCheckpointIsClean(t *testing.T) {
 	}
 }
 
+func TestActiveEvidenceCaptureWithBoundedLiveOperationWindowIsClean(t *testing.T) {
+	ctx := context.Background()
+	s := newReconcileTestStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "LIVE-001", Title: "GPUaaS MFA live drill", Role: "ops"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "LIVE-001", "ops", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSession(ctx, store.Session{
+		ID:             "codex-live-op",
+		Role:           "ops",
+		TaskID:         "LIVE-001",
+		Status:         "running",
+		SessionBackend: "codex-thread",
+		Provider:       "codex",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	targetCloseBy := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+		TaskID:        "LIVE-001",
+		State:         "active",
+		Owner:         "ops",
+		TargetCloseBy: targetCloseBy,
+		Summary:       "Provider session codex-live-op active; approved live operation window with expected closeout.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "LIVE-001", store.Evidence{
+		CommandText:  "admin readiness gate && pre-mutation validator",
+		Result:       "pass",
+		ArtifactPath: "/Users/subash/dev/GPUasService/.fairway/artifacts/iam-mfa-keycloak-live-drill-20260611/final_drill_blocked_summary_flow_helper_2115.md",
+		ArtifactType: "live-operation-gate",
+		Notes:        "GPUaaS 21:15 pattern: gate evidence captured while bounded live operation remains active.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Active(ctx, s, ActiveOptions{Terminal: []string{"done"}, StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK || report.Summary.StatusDecisionRequired != 0 {
+		t.Fatalf("report=%+v, want bounded active live-operation evidence to be clean", report)
+	}
+}
+
+func TestActiveEvidenceCaptureStillRequiresBoundedFreshSession(t *testing.T) {
+	cases := []struct {
+		name                 string
+		withSession          bool
+		targetCloseBy        string
+		staleCheckpointAfter time.Duration
+		sleepBeforeReconcile time.Duration
+		wantKinds            []string
+	}{
+		{
+			name:          "missing session",
+			withSession:   false,
+			targetCloseBy: time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+			wantKinds:     []string{"status_decision_required", "unattended_in_progress"},
+		},
+		{
+			name:          "missing closeout window",
+			withSession:   true,
+			targetCloseBy: "",
+			wantKinds:     []string{"status_decision_required"},
+		},
+		{
+			name:          "expired closeout window",
+			withSession:   true,
+			targetCloseBy: time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano),
+			wantKinds:     []string{"status_decision_required"},
+		},
+		{
+			name:                 "stale checkpoint",
+			withSession:          true,
+			targetCloseBy:        time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+			staleCheckpointAfter: time.Nanosecond,
+			sleepBeforeReconcile: time.Millisecond,
+			wantKinds:            []string{"status_decision_required", "stale_checkpoint"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := newReconcileTestStore(t)
+			if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "LIVE-001", Title: "GPUaaS MFA live drill", Role: "ops"}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Claim(ctx, "LIVE-001", "ops", ""); err != nil {
+				t.Fatal(err)
+			}
+			if tc.withSession {
+				if err := s.UpsertSession(ctx, store.Session{
+					ID:             "codex-live-op",
+					Role:           "ops",
+					TaskID:         "LIVE-001",
+					Status:         "running",
+					SessionBackend: "codex-thread",
+					Provider:       "codex",
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+				TaskID:        "LIVE-001",
+				State:         "active",
+				Owner:         "ops",
+				TargetCloseBy: tc.targetCloseBy,
+				Summary:       "Provider session codex-live-op active; approved live operation window with expected closeout.",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.RecordEvidence(ctx, "LIVE-001", store.Evidence{CommandText: "admin readiness gate", Result: "pass"}); err != nil {
+				t.Fatal(err)
+			}
+			if tc.sleepBeforeReconcile > 0 {
+				time.Sleep(tc.sleepBeforeReconcile)
+			}
+			staleAfter := tc.staleCheckpointAfter
+			if staleAfter == 0 {
+				staleAfter = time.Hour
+			}
+			report, err := Active(ctx, s, ActiveOptions{Terminal: []string{"done"}, StaleCheckpointAfter: staleAfter})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, kind := range tc.wantKinds {
+				assertActiveFinding(t, report, kind, "LIVE-001")
+			}
+		})
+	}
+}
+
 func assertMonitorNoProof(t *testing.T, report ActiveReport, taskID, sessionID string) {
 	t.Helper()
 	if report.OK {
@@ -357,6 +492,19 @@ func assertProviderLifecycleMissing(t *testing.T, report ActiveReport, taskID, s
 		}
 	}
 	t.Fatalf("missing provider lifecycle finding for %s/%s in %+v", taskID, sessionID, report.Findings)
+}
+
+func assertActiveFinding(t *testing.T, report ActiveReport, kind, taskID string) {
+	t.Helper()
+	if report.OK {
+		t.Fatalf("report OK, want %s finding: %+v", kind, report)
+	}
+	for _, finding := range report.Findings {
+		if finding.Kind == kind && finding.TaskID == taskID {
+			return
+		}
+	}
+	t.Fatalf("missing %s finding for %s in %+v", kind, taskID, report.Findings)
 }
 
 func newReconcileTestStore(t *testing.T) *store.Store {

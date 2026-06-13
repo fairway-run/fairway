@@ -7351,7 +7351,7 @@ func printRulePackSummary(pack rules.Pack) {
 func printEvidenceStatusPrompt(result string) {
 	switch strings.ToLower(strings.TrimSpace(result)) {
 	case "pass":
-		fmt.Println("next: mark done, or record a checkpoint explaining why the task remains open")
+		fmt.Println("next: mark done, or record an active checkpoint with --target-close-by explaining the bounded closeout window")
 	case "fail", "partial", "skipped", "blocked":
 		fmt.Println("next: set blocked, reset to todo with a reason, or create/record explicit follow-up work")
 	default:

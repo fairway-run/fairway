@@ -176,6 +176,14 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   Provider sessions attached to tasks must also have a matching lifecycle
   checkpoint: `active` for started/running, `awaiting_input` for waiting,
   failed, stale, or no-progress, and `done` for completed.
+- `reconcile active` permits bounded active evidence capture for approved live
+  operations only while the task has a running session and a fresh `active`
+  checkpoint with `--target-close-by` still open. This allows gate/runtime
+  evidence during an operation window without treating it as abandoned work. It
+  does not close the task: once the window expires, or if the session,
+  checkpoint, or closeout marker is missing, evidence recorded after activation
+  again reports `status_decision_required` until the operator sets the task to
+  `done`, `blocked`, `todo`, or another configured closeout state.
 - `workflow check` composes git and active-work checks into the operating-model
   guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
   active reconciliation findings. Use `--mode deploy` before deploy/UAT work;

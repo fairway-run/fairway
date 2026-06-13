@@ -1044,6 +1044,27 @@ states such as `needs_followup`, `partial`, `waiting_for_prereq`, or `stale`,
 use those states consistently; otherwise use `blocked` with a clear reason or
 create a follow-up task and close/reset the parent.
 
+Approved live operations may record gate or runtime evidence while the task is
+still `in_progress`, but only with a bounded closeout marker. Keep the provider
+session running and record a fresh active checkpoint with `--target-close-by`
+covering the operation window:
+
+```bash
+fairway checkpoint record <task-id> \
+  --state active \
+  --owner ops \
+  --target-close-by 2026-06-13T03:15:00Z \
+  --summary "Provider session <session-id> active; approved live operation window with expected closeout"
+```
+
+While that window is open, `fairway reconcile active --dry-run` treats evidence
+recorded after activation as active evidence capture, not as final closeout
+debt. This is temporary. If the session is missing, the checkpoint is stale, the
+checkpoint has no open `target-close-by`, or the window expires, reconciliation
+again reports `status_decision_required` until the task is explicitly moved to
+`done`, `blocked`, `todo`, or a configured closeout state. Do not use this
+pattern to park unbounded live work.
+
 ## Side Work
 
 Do not split your assigned task into Fairway subtasks for ordinary execution

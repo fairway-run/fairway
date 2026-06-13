@@ -193,7 +193,7 @@ func Active(ctx context.Context, s *store.Store, opts ActiveOptions) (ActiveRepo
 		if !activeSessionByTask[task.Definition.ID] {
 			findings = append(findings, findingForTask("unattended_in_progress", "warning", "record_checkpoint_or_reset_status", "in_progress task has no running provider session", task, latestEvidence, checkpoint))
 		}
-		if latestEvidence.Result != "" && timeAfter(latestEvidence.CreatedAt, task.UpdatedAt) {
+		if latestEvidence.Result != "" && timeAfter(latestEvidence.CreatedAt, task.UpdatedAt) && !boundedActiveEvidenceCapture(activeSessionByTask[task.Definition.ID], latestEvidence, checkpoint, opts.StaleCheckpointAfter) {
 			findings = append(findings, findingForTask("status_decision_required", "warning", "set_done_blocked_todo_or_followup", "evidence was recorded after the task became active; task still needs an explicit status decision", task, latestEvidence, checkpoint))
 		}
 		if children[task.Definition.ID] > 0 && !hasRecentRollup(task, latestEvidence, checkpoint) {
@@ -458,6 +458,16 @@ func freshBoundedCheckpoint(checkpoint store.Checkpoint, staleCheckpointAfter ti
 		return false
 	}
 	return true
+}
+
+func boundedActiveEvidenceCapture(hasActiveSession bool, evidence store.Evidence, checkpoint store.Checkpoint, staleCheckpointAfter time.Duration) bool {
+	if !hasActiveSession || evidence.Result == "" {
+		return false
+	}
+	if checkpoint.State != "active" {
+		return false
+	}
+	return freshBoundedCheckpoint(checkpoint, staleCheckpointAfter)
 }
 
 func manualWindowOpen(raw string) bool {
