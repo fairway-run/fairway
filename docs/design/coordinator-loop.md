@@ -119,6 +119,26 @@ the coordinator do next?" A tick may recommend a claim, review, unblock,
 checkpoint, utility handback, batch, or merge-ready check, but it does not
 perform those actions automatically.
 
+For stale completion handbacks, `tick` can render a bounded provider wake
+surface:
+
+```bash
+fairway coordinator tick --completion-handback-wake --task <task-id>
+fairway coordinator tick --completion-handback-wake --task <task-id> --send --state thread_steered
+```
+
+The wake is selected from existing coordinator plan rows, completion handbacks,
+live-window checkpoints, and `task_notifications`; it does not introduce a
+second wait store. Without `--send`, it prints a fixed prompt naming the task,
+task status, stale handback or live-window closeout, next owner/action, and the
+suggested Fairway command. With `--send`, it records a coordinator-domain
+notification using a stable wake signature and suppresses duplicate successful
+signatures. If no provider target exists for the next owner, Fairway records
+`notification_failed` instead of claiming delivery. Fresh waits and terminal
+tasks are not woken; they remain visible through plan/task detail or historical
+task evidence. This path is a coordinator/provider-adapter action, not dashboard
+send authority.
+
 ## Orchestration Controller Direction
 
 The coordinator loop is becoming an orchestration surface. Fairway core remains

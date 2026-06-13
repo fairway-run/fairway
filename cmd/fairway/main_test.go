@@ -132,6 +132,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
 		{[]string{"review-waits", "list", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
 		{[]string{"review-waits", "wake", "--help"}, "fairway review-waits wake [--task <task-id>]"},
+		{[]string{"coordinator", "tick", "--help"}, "fairway coordinator tick [--completion-handback-wake]"},
 		{[]string{"live-window", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "record", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "status", "--help"}, "fairway live-window status [--task <task-id>]"},
@@ -2600,6 +2601,82 @@ func TestCLI_TerminalStatusRequiresCompletionHandbackDeliveryDecision(t *testing
 		"--reason", "thread steering unavailable; coordinator notified out of band",
 	)
 	runOK(t, "set-status", "T-001", "done")
+}
+
+func TestCLI_CoordinatorTickCompletionHandbackWake(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `notification_ack_timeout = "24h"`, `notification_ack_timeout = "24h"
+
+[[provider_targets]]
+domain = "arch"
+provider = "codex"
+target = "thread-arch"
+type = "thread"`)
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	for _, taskID := range []string{"T-001", "T-002", "T-003", "T-004", "T-005"} {
+		runOK(t, "add", taskID, "--title", "Completion handback wake", "--role", "backend")
+	}
+	runOK(t, "record", "completion-handback", "T-001", "--to", "arch", "--next-action", "decide retry", "--completion-state", "blocked-with-follow-up")
+	fresh := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-001")
+	assertContains(t, fresh, "completion_handback_wakes: none")
+
+	runOK(t, "record", "completion-handback", "T-002", "--to", "arch", "--next-action", "assign fix", "--completion-state", "blocked-with-follow-up")
+	runOK(t, "record", "completion-handback", "T-003", "--to", "product", "--next-action", "assign owner", "--completion-state", "blocked-with-follow-up")
+	runOK(t, "live-window", "record", "T-004", "--phase", "closeout", "--next-owner", "arch", "--next-action", "decide next window")
+	runOK(t, "set-status", "T-004", "done", "--reason", "closed")
+	runOK(t, "live-window", "record", "T-005", "--phase", "closeout", "--next-owner", "arch", "--next-action", "decide next window")
+	runOK(t, "set-status", "T-005", "blocked", "--reason", "awaiting control")
+
+	replaceInFile(t, ".fairway/config.toml", `notification_ack_timeout = "24h"`, `notification_ack_timeout = "1ns"`)
+	time.Sleep(time.Millisecond)
+
+	stale := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-001")
+	assertContains(t, stale, "completion_handback_wakes:")
+	assertContains(t, stale, "kind=stale-handback")
+	assertContains(t, stale, "target=thread-arch")
+	assertContains(t, stale, "Completion handback wake for T-001:")
+	assertContains(t, stale, "Do not treat this wake as approval, merge, deploy, or dashboard send authority.")
+	_ = runCaptureAllowError(t, "coordinator", "plan", "--completion-handback-wake", "--task", "T-001", "--send")
+	assertNotContains(t, runCapture(t, "task-detail", "T-001"), "completion_handback_wake signature=T-001|stale-handback|")
+
+	sent := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-001", "--send", "--state", "thread_steered")
+	assertContains(t, sent, "kind=stale-handback")
+	assertContains(t, sent, "signature=T-001|stale-handback|")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "thread_steered domain=coordinator provider=codex target=thread-arch")
+	assertContains(t, detail, "completion_handback_wake signature=T-001|stale-handback|")
+
+	suppressed := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-001", "--send", "--state", "thread_steered")
+	assertContains(t, suppressed, "status=suppressed")
+
+	failed := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-003", "--send")
+	assertContains(t, failed, "kind=stale-handback")
+	assertContains(t, failed, "status=failed")
+	failedDetail := runCapture(t, "task-detail", "T-003")
+	assertContains(t, failedDetail, "notification_failed domain=coordinator")
+	assertContains(t, failedDetail, "failed=no_wake_target")
+
+	closed := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-004")
+	assertContains(t, closed, "completion_handback_wakes: none")
+
+	closeout := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-005")
+	assertContains(t, closeout, "kind=stale-closeout")
+	assertContains(t, closeout, "Live-window phase: closeout")
+	assertContains(t, closeout, "target=thread-arch")
 }
 
 func TestCLI_ReconcileActiveReportsMonitorSessionsWithoutBackingProof(t *testing.T) {

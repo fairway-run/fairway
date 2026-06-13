@@ -33,7 +33,7 @@ fairway worktree setup | status | prune [--force]
 fairway task-detail <task-id>                          # includes missing required review domains before merge-ready
 fairway status-report | health-report | timing-report
 fairway coordinator plan [--ready-limit <n>] [--recommendation-limit <n>] [--allow-utility-monitor] # deterministic dry-run next-action plan
-fairway coordinator tick                               # prints the same plan in daily tick form
+fairway coordinator tick [--completion-handback-wake] [--task <task-id>] [--send] # daily plan plus optional stale completion-handback wake prompts
 fairway usage report [--by <provider|task|epic|role|day|kind|phase>] [--task-id <id>] [--since-duration <duration>]
 fairway batch create <batch-id> --title <t> [--task <id>]... [--branch <b>] [--worktree <path>] [--validation-command <cmd>]... [--review-domain <domain>]... [--rollback-criteria <text>] [--split-criteria <text>] [--expected-ci <text>] [--deploy-run-id <id>] [--pipeline-id <id>]
 fairway batch add <batch-id> <task-id>...
@@ -208,6 +208,14 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   projected as a closeout-to-next-owner wait so repeated live windows do not
   depend on polling chat. This does not authorize approval, merge, push, deploy,
   wake delivery, or any dashboard mutation.
+- `coordinator tick --completion-handback-wake` renders fixed stale
+  completion-handback wake prompts from the same coordinator plan projection.
+  With `--send`, it records a bounded `task_notifications` row on the
+  `coordinator` domain using a stable wake signature, suppresses duplicate
+  successful wake signatures, and records `notification_failed` when no provider
+  target is configured. It selects only stale handbacks/closeouts and suppresses
+  terminal tasks; fresh waits remain visible in plan/task detail without wake
+  delivery. The dashboard remains read-only and never calls this send path.
 - `workflow check` composes git and active-work checks into the operating-model
   guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
   active reconciliation findings. Use `--mode deploy` before deploy/UAT work;

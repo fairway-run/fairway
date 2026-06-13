@@ -1274,6 +1274,19 @@ handback is surfaced by `fairway coordinator plan` as a closeout-to-next-owner
 wait. Pending completion handbacks age by `[coordinator].notification_ack_timeout`
 and become stale coordinator actions rather than silent idle work.
 
+To render or record a bounded wake for stale completion handbacks, use the
+coordinator tick surface:
+
+```bash
+fairway coordinator tick --completion-handback-wake --task <task-id>
+fairway coordinator tick --completion-handback-wake --task <task-id> --send --state thread_steered
+```
+
+The command uses fixed prompts, stable duplicate-suppression signatures, and
+provider targets for the next owner. Missing targets are recorded as
+`notification_failed`. Fresh waits and terminal tasks are not woken, and the
+dashboard remains read-only.
+
 A handoff is not the same thing as a delivered provider/thread message. When the
 coordinator actually sends, attempts, or receives acknowledgement for a provider
 notification, record that state separately:

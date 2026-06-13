@@ -2226,6 +2226,205 @@ func reviewWaitWakeSuppressed(wake reviewWaitWake, notifications []store.Notific
 	return false
 }
 
+type completionHandbackWakeRow struct {
+	TaskID           string                       `json:"task_id"`
+	TaskStatus       string                       `json:"task_status,omitempty"`
+	Kind             string                       `json:"kind"`
+	Provider         string                       `json:"provider,omitempty"`
+	Target           string                       `json:"target,omitempty"`
+	State            string                       `json:"state,omitempty"`
+	Prompt           string                       `json:"prompt"`
+	Signature        string                       `json:"signature"`
+	Handback         *completionhandback.Handback `json:"completion_handback,omitempty"`
+	LiveWindow       *livewindow.Status           `json:"live_window,omitempty"`
+	SuggestedAction  string                       `json:"suggested_action,omitempty"`
+	SuggestedCommand string                       `json:"suggested_command,omitempty"`
+	Suppressed       bool                         `json:"suppressed,omitempty"`
+	Error            string                       `json:"error,omitempty"`
+}
+
+func selectCompletionHandbackWakes(plan coord.Plan, cfg config.Config, taskStatus map[string]string, terminal map[string]bool, onlyTaskID string) []completionHandbackWakeRow {
+	var wakes []completionHandbackWakeRow
+	for _, action := range plan.Actions {
+		if action.Classification != "completion-handback" {
+			continue
+		}
+		if strings.TrimSpace(onlyTaskID) != "" && action.TaskID != onlyTaskID {
+			continue
+		}
+		status := strings.TrimSpace(taskStatus[action.TaskID])
+		if terminal[status] {
+			continue
+		}
+		switch action.Action {
+		case "escalate_completion_handback":
+			if action.CompletionHandback == nil || !action.CompletionHandback.Stale {
+				continue
+			}
+			wakes = append(wakes, buildCompletionHandbackWake(action, cfg, status, "stale-handback"))
+		case "escalate_closeout_completion_handback":
+			if action.LiveWindow == nil {
+				continue
+			}
+			wakes = append(wakes, buildCompletionHandbackWake(action, cfg, status, "stale-closeout"))
+		}
+	}
+	sort.SliceStable(wakes, func(i, j int) bool {
+		if wakes[i].TaskID != wakes[j].TaskID {
+			return wakes[i].TaskID < wakes[j].TaskID
+		}
+		return wakes[i].Signature < wakes[j].Signature
+	})
+	return wakes
+}
+
+func buildCompletionHandbackWake(action coord.PlanAction, cfg config.Config, taskStatus, kind string) completionHandbackWakeRow {
+	provider, target := completionWakeTarget(cfg.ProviderTargets, action.Role)
+	row := completionHandbackWakeRow{
+		TaskID:     action.TaskID,
+		TaskStatus: taskStatus,
+		Kind:       kind,
+		Provider:   provider,
+		Target:     target,
+		State:      "sent",
+	}
+	if action.CompletionHandback != nil {
+		handback := *action.CompletionHandback
+		row.Handback = &handback
+		row.SuggestedAction = firstNonEmpty(handback.SuggestedAction, action.Action)
+		row.SuggestedCommand = handback.SuggestedCommand
+		row.Signature = completionHandbackWakeSignature(row.TaskID, taskStatus, kind, handback, nil)
+		row.Prompt = renderCompletionHandbackWakePrompt(row, action.Reason)
+		return row
+	}
+	if action.LiveWindow != nil {
+		liveWindow := *action.LiveWindow
+		row.LiveWindow = &liveWindow
+		row.SuggestedAction = action.Action
+		row.SuggestedCommand = fmt.Sprintf("fairway record completion-handback %s --to %s --next-action %q --completion-state live-window-closeout --state thread_steered --provider <provider> --target <target>", row.TaskID, firstNonEmpty(action.Role, "<role>"), firstNonEmpty(liveWindow.NextAction, "record next decision"))
+		row.Signature = completionHandbackWakeSignature(row.TaskID, taskStatus, kind, completionhandback.Handback{}, &liveWindow)
+		row.Prompt = renderCompletionHandbackWakePrompt(row, action.Reason)
+	}
+	return row
+}
+
+func completionWakeTarget(targets []config.ProviderTarget, role string) (string, string) {
+	role = strings.TrimSpace(role)
+	for _, target := range targets {
+		if strings.TrimSpace(target.Domain) != role {
+			continue
+		}
+		return strings.TrimSpace(target.Provider), strings.TrimSpace(target.Target)
+	}
+	return "", ""
+}
+
+func completionHandbackWakeSignature(taskID, taskStatus, kind string, handback completionhandback.Handback, liveWindow *livewindow.Status) string {
+	parts := []string{taskID, kind, "task_status=" + strings.TrimSpace(taskStatus)}
+	if liveWindow != nil {
+		parts = append(parts,
+			"phase="+strings.TrimSpace(liveWindow.Phase),
+			"checkpoint_at="+strings.TrimSpace(liveWindow.CheckpointAt),
+			"next_owner="+strings.TrimSpace(liveWindow.NextOwner),
+			"next_action="+strings.TrimSpace(liveWindow.NextAction),
+		)
+		return strings.Join(parts, "|")
+	}
+	parts = append(parts,
+		fmt.Sprintf("handoff_id=%d", handback.HandoffID),
+		"to="+strings.TrimSpace(handback.ToRole),
+		"completion_state="+strings.TrimSpace(handback.CompletionState),
+		"delivery_state="+strings.TrimSpace(handback.DeliveryState),
+		"created_at="+strings.TrimSpace(handback.CreatedAt),
+		"next_action="+strings.TrimSpace(handback.NextAction),
+	)
+	return strings.Join(parts, "|")
+}
+
+func renderCompletionHandbackWakePrompt(wake completionHandbackWakeRow, reason string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Completion handback wake for %s:\n", wake.TaskID)
+	if wake.TaskStatus != "" {
+		fmt.Fprintf(&b, "Task status: %s\n", wake.TaskStatus)
+	}
+	switch {
+	case wake.Handback != nil:
+		fmt.Fprintf(&b, "Kind: stale completion handback\n")
+		fmt.Fprintf(&b, "Handoff: %d to %s\n", wake.Handback.HandoffID, wake.Handback.ToRole)
+		fmt.Fprintf(&b, "Completion state: %s\n", firstNonEmpty(wake.Handback.CompletionState, "unspecified"))
+		fmt.Fprintf(&b, "Delivery status: %s", wake.Handback.DeliveryStatus)
+		if wake.Handback.StaleAge != "" {
+			fmt.Fprintf(&b, " stale_age=%s", wake.Handback.StaleAge)
+		}
+		b.WriteString("\n")
+		fmt.Fprintf(&b, "Next action: %s\n", wake.Handback.NextAction)
+	case wake.LiveWindow != nil:
+		fmt.Fprintf(&b, "Kind: stale live-window closeout\n")
+		fmt.Fprintf(&b, "Live-window phase: %s\n", wake.LiveWindow.Phase)
+		fmt.Fprintf(&b, "Next owner: %s\n", firstNonEmpty(wake.LiveWindow.NextOwner, "unknown"))
+		fmt.Fprintf(&b, "Next action: %s\n", firstNonEmpty(wake.LiveWindow.NextAction, "record next decision"))
+	}
+	if reason != "" {
+		fmt.Fprintf(&b, "Reason: %s\n", reason)
+	}
+	b.WriteString("\nNext action:\n")
+	fmt.Fprintf(&b, "1. Re-run fairway coordinator tick --completion-handback-wake --task %s.\n", wake.TaskID)
+	if wake.SuggestedCommand != "" {
+		fmt.Fprintf(&b, "2. Run or adapt: %s.\n", wake.SuggestedCommand)
+	} else {
+		b.WriteString("2. Record delivered or failed completion handback notification proof.\n")
+	}
+	b.WriteString("3. Do not treat this wake as approval, merge, deploy, or dashboard send authority.\n")
+	return b.String()
+}
+
+func completionHandbackWakeSuppressed(wake completionHandbackWakeRow, notifications []store.Notification) bool {
+	needle := "completion_handback_wake signature=" + wake.Signature
+	for _, notification := range notifications {
+		if notification.Domain == "coordinator" && strings.Contains(notification.Reason, needle) {
+			switch notification.State {
+			case "sent", "notification_delivered", "thread_steered", "acknowledged", "review_acknowledged":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func printCompletionHandbackWakes(wakes []completionHandbackWakeRow) {
+	if len(wakes) == 0 {
+		fmt.Println("completion_handback_wakes: none")
+		return
+	}
+	fmt.Println("completion_handback_wakes:")
+	for _, wake := range wakes {
+		status := "ready"
+		if wake.Suppressed {
+			status = "suppressed"
+		}
+		if wake.Error != "" {
+			status = "failed"
+		}
+		fmt.Printf("- %s kind=%s status=%s task_status=%s provider=%s target=%s signature=%s\n", wake.TaskID, wake.Kind, status, firstNonEmpty(wake.TaskStatus, "unknown"), firstNonEmpty(wake.Provider, "none"), firstNonEmpty(wake.Target, "none"), wake.Signature)
+		fmt.Print(wake.Prompt)
+		if !strings.HasSuffix(wake.Prompt, "\n") {
+			fmt.Println()
+		}
+	}
+}
+
+func taskStatuses(ctx context.Context, s *store.Store) (map[string]string, error) {
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, task := range tasks {
+		out[task.Definition.ID] = task.Status
+	}
+	return out, nil
+}
+
 func reviewWaitOptions(cfg config.Config) reviewstate.ReviewWaitOptions {
 	return reviewstate.ReviewWaitOptions{
 		ProviderTargets: cfg.ProviderTargets,
@@ -3598,17 +3797,45 @@ func cmdCoordinator(ctx context.Context, opts globalOptions, args []string) erro
 }
 
 func cmdCoordinatorPlan(ctx context.Context, opts globalOptions, args []string, tick bool) error {
+	if isHelpOnly(args) {
+		if tick {
+			subcommandUsage("coordinator", "tick [--completion-handback-wake] [--task <task-id>] [--send] [--state <sent|notification_delivered|thread_steered>] [--provider <name>] [--target <thread-id>]")
+		} else {
+			subcommandUsage("coordinator", "plan [--ready-limit <n>] [--recommendation-limit <n>] [--allow-utility-monitor]")
+		}
+		return nil
+	}
 	fs := flag.NewFlagSet("coordinator plan", flag.ContinueOnError)
 	readyLimit := fs.Int("ready-limit", 10, "maximum ready tasks to include")
 	recommendationLimit := fs.Int("recommendation-limit", 20, "maximum next actions to include")
 	staleAfter := fs.Duration("stale-checkpoint-after", 2*time.Hour, "active checkpoint stale threshold")
 	monitorHandbackAfter := fs.Duration("monitor-handback-after", 2*time.Hour, "recent monitor handback window")
 	allowUtility := fs.Bool("allow-utility-monitor", false, "recommend continuing configured utility monitors when present")
+	completionHandbackWake := fs.Bool("completion-handback-wake", false, "render stale completion-handback wake prompts during coordinator tick")
+	taskID := fs.String("task", "", "limit completion-handback wake prompts to one task")
+	send := fs.Bool("send", false, "record bounded completion-handback wake delivery/failure notification rows")
+	state := fs.String("state", "sent", "notification state to record with --send")
+	provider := fs.String("provider", "", "override provider label for completion-handback wake")
+	target := fs.String("target", "", "override provider thread/adapter target for completion-handback wake")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected coordinator plan arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if !tick && *completionHandbackWake {
+		return errors.New("--completion-handback-wake is only supported on coordinator tick")
+	}
+	if !*completionHandbackWake && (*send || *provider != "" || *target != "" || *state != "sent" || *taskID != "") {
+		return errors.New("--task, --send, --provider, --target, and --state require --completion-handback-wake")
+	}
+	if !*send && (*provider != "" || *target != "" || *state != "sent") {
+		return errors.New("--provider, --target, and --state require --send")
+	}
+	switch *state {
+	case "sent", "notification_delivered", "thread_steered":
+	default:
+		return fmt.Errorf("invalid completion-handback wake --state %q", *state)
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
 		worktrees, err := collectWorktreeStatus(cfg, root)
@@ -3626,7 +3853,59 @@ func cmdCoordinatorPlan(ctx context.Context, opts globalOptions, args []string, 
 		if err != nil {
 			return err
 		}
+		var wakes []completionHandbackWakeRow
+		if *completionHandbackWake {
+			taskStatuses, err := taskStatuses(ctx, s)
+			if err != nil {
+				return err
+			}
+			wakes = selectCompletionHandbackWakes(plan, cfg, taskStatuses, terminalStatusSet(cfg.States.Terminal), *taskID)
+			for i := range wakes {
+				if *provider != "" {
+					wakes[i].Provider = *provider
+				}
+				if *target != "" {
+					wakes[i].Target = *target
+				}
+				wakes[i].State = *state
+				notifications, err := s.Notifications(ctx, wakes[i].TaskID)
+				if err != nil {
+					return err
+				}
+				if completionHandbackWakeSuppressed(wakes[i], notifications) {
+					wakes[i].Suppressed = true
+					continue
+				}
+				if !*send {
+					continue
+				}
+				recordState := *state
+				reason := "completion_handback_wake signature=" + wakes[i].Signature + " kind=" + wakes[i].Kind
+				if strings.TrimSpace(wakes[i].Target) == "" {
+					recordState = "notification_failed"
+					reason += " failed=no_wake_target"
+					wakes[i].Error = "no wake target configured"
+				}
+				if _, err := s.RecordNotification(ctx, store.Notification{
+					TaskID:   wakes[i].TaskID,
+					Domain:   "coordinator",
+					Provider: wakes[i].Provider,
+					Target:   wakes[i].Target,
+					State:    recordState,
+					Reason:   reason,
+				}); err != nil {
+					return err
+				}
+				wakes[i].State = recordState
+			}
+		}
 		if opts.JSON {
+			if *completionHandbackWake {
+				return printJSON(struct {
+					Plan  coord.Plan                  `json:"plan"`
+					Wakes []completionHandbackWakeRow `json:"completion_handback_wakes"`
+				}{plan, wakes})
+			}
 			return printJSON(plan)
 		}
 		if tick {
@@ -3635,6 +3914,9 @@ func cmdCoordinatorPlan(ctx context.Context, opts globalOptions, args []string, 
 			fmt.Println("coordinator plan")
 		}
 		printCoordinatorPlan(plan)
+		if *completionHandbackWake {
+			printCompletionHandbackWakes(wakes)
+		}
 		return nil
 	})
 }

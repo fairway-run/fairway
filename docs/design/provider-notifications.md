@@ -73,6 +73,14 @@ notification waits to mark pending completion handbacks stale. It also projects 
 as a closeout-to-next-owner wait, so operator closeout cannot disappear into
 silent idle when the control thread was not woken.
 
+`fairway coordinator tick --completion-handback-wake` is the bounded wake
+surface for these stale waits. It renders fixed prompts from the current
+completion-handback/coordinator-plan rows. With `--send`, it records a
+coordinator-domain notification with a stable `completion_handback_wake`
+signature; a prior successful signature suppresses duplicates. If the next owner
+has no provider target, the tick records `notification_failed` with the same
+signature. The dashboard does not call this path and remains display-only.
+
 ## Review Completion Resume Signal
 
 When all required review domains for a task are approved, Fairway can surface a
