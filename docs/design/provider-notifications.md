@@ -63,6 +63,11 @@ clean Fairway task status alone is not proof that the next actor was informed.
 The handback record does not grant approval, merge, deploy, provider wake, or
 dashboard send authority.
 
+Dashboard task detail projects the same completion-handback rows and
+coordinator closeout waits as read-only state. It shows next owner/action,
+completion state, task/live-window context, delivery state, stale age, provider
+target, and suggested CLI action, but it never sends the handback or wake prompt.
+
 `--completion-state` records the outcome being handed back, separate from
 notification delivery. Supported outcomes include `done`, `reviewed`,
 `merge-ready`, `blocked-with-follow-up`, `monitor-completed`,

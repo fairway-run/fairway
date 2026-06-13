@@ -176,6 +176,14 @@ provider/target, expected response time, suggested action, and reason. This is
 a read-only visibility surface; it does not approve reviews, send provider
 wake prompts, merge, deploy, or create notification subscriptions.
 
+Task detail also shows completion-handback projection rows and coordinator
+completion-handback waits. The panel includes next owner/action, completion
+state, task/live-window context, delivery state, provider target, stale age, and
+suggested CLI action from the existing completion-handback/coordinator plan read
+models. This includes live-window closeout or next-decision waits that do not
+yet have a recorded completion handback. The dashboard remains display-only; it
+does not send completion-handback wake prompts or write notification rows.
+
 ## Diagnostics
 
 `/board?tab=diagnostics` shows operational tables for:

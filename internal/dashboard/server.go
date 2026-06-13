@@ -18,9 +18,11 @@ import (
 	"time"
 
 	"github.com/subashram/fairway/internal/audit"
+	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
 	coord "github.com/subashram/fairway/internal/coordinator"
 	fairwaygit "github.com/subashram/fairway/internal/git"
+	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/state"
@@ -35,6 +37,8 @@ type Server struct {
 	worktrees []WorktreeStatus
 	csrfToken string
 }
+
+const taskDetailCompletionActionLimit = 10000
 
 type WorktreeStatus struct {
 	Role       string
@@ -309,6 +313,8 @@ type TaskDetailViewData struct {
 	ReviewHandback       *coord.ReviewCompletionHandback
 	ReviewNotifications  []reviewstate.ReviewNotificationStatus
 	ReviewWaits          []reviewstate.ReviewWait
+	CompletionHandbacks  []completionhandback.Handback
+	CompletionActions    []coord.PlanAction
 	TaskSessions         []store.Session
 	Usage                []store.ProviderUsage
 	UsageRollups         []store.UsageRollup
@@ -2299,6 +2305,11 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reviewWaits := reviewstate.WaitsForTask(task, handoffs, reviews, notifications, reviewWaitOptions)
+	completionHandbacks, completionActions, err := s.completionHandbackProjection(r.Context(), task, handoffs, notifications, reviewWaitOptions.AckTimeout)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -2315,6 +2326,8 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		ReviewHandback:       optionalDashboardReviewHandback(reviewHandback, hasReviewHandback),
 		ReviewNotifications:  reviewNotifications,
 		ReviewWaits:          reviewWaits,
+		CompletionHandbacks:  completionHandbacks,
+		CompletionActions:    completionActions,
 		TaskSessions:         sessionsForDashboardTask(sessions, id),
 		Usage:                usageEvents,
 		UsageRollups:         usageRollups,
@@ -2329,6 +2342,43 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 	}
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
+}
+
+func (s *Server) completionHandbackProjection(ctx context.Context, task store.Task, handoffs []store.Handoff, notifications []store.Notification, ackTimeout time.Duration) ([]completionhandback.Handback, []coord.PlanAction, error) {
+	liveWindowPhase := ""
+	checkpoints, err := s.store.Checkpoints(ctx, "", true)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, status := range livewindow.StatusesFromCheckpoints(checkpoints) {
+		if status.TaskID == task.Definition.ID {
+			liveWindowPhase = status.Phase
+			break
+		}
+	}
+	handbacks := completionhandback.RowsWithOptions(task.Definition.ID, handoffs, notifications, completionhandback.RowOptions{
+		Now:             time.Now().UTC(),
+		AckTimeout:      ackTimeout,
+		TaskStatus:      task.Status,
+		LiveWindowPhase: liveWindowPhase,
+	})
+	plan, err := coord.BuildPlan(ctx, s.cfg, s.store, coord.PlanOptions{
+		StaleCheckpointAfter:   2 * time.Hour,
+		MonitorHandbackAfter:   2 * time.Hour,
+		NotificationAckTimeout: ackTimeout,
+		ReadyLimit:             5,
+		RecommendationLimit:    taskDetailCompletionActionLimit,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	var actions []coord.PlanAction
+	for _, action := range plan.Actions {
+		if action.TaskID == task.Definition.ID && action.Classification == "completion-handback" {
+			actions = append(actions, action)
+		}
+	}
+	return handbacks, actions, nil
 }
 
 func (s *Server) reviewWaitOptions(now time.Time) (reviewstate.ReviewWaitOptions, error) {

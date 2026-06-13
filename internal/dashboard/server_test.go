@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -1378,6 +1380,76 @@ func TestTaskDetailRendersReviewHandback(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("task detail review handback missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestTaskDetailRendersCompletionHandbackProjectionReadOnly(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	defs := []store.TaskDefinition{
+		{ID: "T-001", Title: "Blocked closeout", Kind: "dashboard", Role: "ops"},
+		{ID: "T-002", Title: "Live window closeout", Kind: "dashboard", Role: "ops"},
+	}
+	for i := 0; i < 25; i++ {
+		defs = append(defs, store.TaskDefinition{ID: fmt.Sprintf("A-%03d", i), Title: "Earlier completion wait", Kind: "dashboard", Role: "ops"})
+	}
+	if err := s.ImportTasks(ctx, defs); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "blocked", "operator closeout recorded", false); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := completionhandback.RenderPayloadWithState("assign harness follow-up", "blocked-with-follow-up", []string{"artifacts/closeout.md"}, "implementation handback only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "T-001", store.Handoff{ToRole: "arch", Payload: payload}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 25; i++ {
+		if err := s.RecordHandoff(ctx, fmt.Sprintf("A-%03d", i), store.Handoff{ToRole: "arch", Payload: payload}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.Dashboard.ReadOnly = true
+	cfg.Coordinator.NotificationAckTimeout = "1ns"
+	server := New(s, cfg, []string{"ops"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Shared read-only dashboard", "Completion Handbacks", "blocked-with-follow-up", "task blocked", "stale", "assign harness follow-up", "artifacts/closeout.md", "implementation handback only", "escalate_completion_handback", "fairway record notification T-001"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail completion handback missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `action="/actions/claim"`) || strings.Contains(body, `--send`) {
+		t.Fatalf("read-only completion handback detail rendered mutation authority:\n%s", body)
+	}
+
+	summary, err := livewindow.Summary("closeout", "arch", "assign next packet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "T-002", State: "active", Owner: "ops", Summary: summary}); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/tasks/T-002", nil)
+	rec = httptest.NewRecorder()
+	server.task(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{"Completion Handbacks", "Coordinator waits", "escalate_closeout_completion_handback", "live-window closeout", "assign next packet", "needs completion handback to next owner=arch"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail live-window closeout wait missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `action="/actions/claim"`) || strings.Contains(body, `--send`) {
+		t.Fatalf("read-only live-window closeout detail rendered mutation authority:\n%s", body)
 	}
 }
 

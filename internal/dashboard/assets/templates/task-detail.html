@@ -78,6 +78,20 @@
 </article>
 {{end}}
 <article class="detail-panel wide">
+<h2>Completion Handbacks</h2>
+{{if .CompletionHandbacks}}
+<table class="detail-table"><thead><tr><th>To</th><th>Completion</th><th>Delivery</th><th>Next action</th><th>Stale</th><th>Suggested action</th></tr></thead><tbody>
+{{range .CompletionHandbacks}}<tr><td><code>{{.ToRole}}</code>{{if .FromRole}}<br><span class="muted">from {{.FromRole}}</span>{{end}}</td><td>{{if .CompletionState}}{{.CompletionState}}{{else}}unspecified{{end}}{{if .TaskStatus}}<br><span class="muted">task {{.TaskStatus}}</span>{{end}}{{if .LiveWindowPhase}}<br><span class="muted">live-window {{.LiveWindowPhase}}</span>{{end}}</td><td><span class="status-pill {{statusClass .DeliveryStatus}}">{{.DeliveryStatus}}</span>{{if .DeliveryState}}<br><span class="muted">{{.DeliveryState}}</span>{{end}}{{if .Provider}}<br>{{.Provider}}{{end}}{{if .Target}} <code>{{.Target}}</code>{{end}}{{if .ActualThreadDelivery}}<br><span class="muted">provider delivery recorded</span>{{end}}</td><td>{{.NextAction}}{{if .EvidencePaths}}<br>{{range .EvidencePaths}}<code>{{.}}</code> {{end}}{{end}}{{if .ApprovalBoundary}}<br><span class="muted">{{.ApprovalBoundary}}</span>{{end}}</td><td>{{if .Stale}}<b>stale</b>{{if .StaleAge}}<br><span class="muted">{{.StaleAge}}</span>{{end}}{{else}}current{{end}}</td><td>{{.SuggestedAction}}{{if .SuggestedCommand}}<br><code>{{.SuggestedCommand}}</code>{{end}}{{if .Reason}}<br><span class="muted">{{.Reason}}</span>{{end}}</td></tr>{{end}}
+</tbody></table>
+{{else}}<p class="muted">no completion handback rows projected for this task</p>{{end}}
+{{if .CompletionActions}}
+<h3>Coordinator waits</h3>
+<table class="detail-table"><thead><tr><th>Action</th><th>Owner</th><th>Wait state</th><th>Reason</th></tr></thead><tbody>
+{{range .CompletionActions}}<tr><td><span class="status-pill {{statusClass .Action}}">{{.Action}}</span></td><td>{{if .Role}}<code>{{.Role}}</code>{{else}}none{{end}}</td><td>{{if .CompletionHandback}}{{.CompletionHandback.DeliveryStatus}}{{if .CompletionHandback.Stale}} stale{{end}}{{if .CompletionHandback.StaleAge}}<br><span class="muted">{{.CompletionHandback.StaleAge}}</span>{{end}}{{else if .LiveWindow}}live-window {{.LiveWindow.Phase}}{{if .LiveWindow.NextAction}}<br><span class="muted">{{.LiveWindow.NextAction}}</span>{{end}}{{else}}none{{end}}</td><td>{{.Reason}}</td></tr>{{end}}
+</tbody></table>
+{{end}}
+</article>
+<article class="detail-panel wide">
 <h2>Gate Readiness</h2>
 {{if .TaskGates}}
 <table class="detail-table"><thead><tr><th>Gate</th><th>Mode</th><th>Evidence</th><th>Status</th><th>Matched</th><th>Reason</th></tr></thead><tbody>
