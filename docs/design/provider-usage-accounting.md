@@ -198,6 +198,8 @@ Acceptable Codex ingestion paths:
 
 - OTel events that include token counts on response completion;
 - `codex exec --json` events that include `turn.completed.usage`;
+- Codex Desktop/API `event_msg` `token_count` events whose
+  `payload.info.last_token_usage` object contains token counts;
 - provider-reported response usage supplied by a Codex wrapper, hook, or
   observable event surface;
 - explicit start/end running-total snapshots supplied by the caller;
@@ -248,6 +250,11 @@ examples/session-adapters/codex-usage-adapter.sh \
 Use `--dry-run` before recording when introducing a new Codex surface. Unknown
 or absent token fields are omitted from the generated `fairway record usage`
 command, which preserves them as unknown/null in Fairway.
+
+The Codex adapter maps only token counts from Desktop/API `event_msg`
+`token_count` events. It does not store prompts, transcripts, raw tool bodies,
+generated content, auth tokens, or provider-private state, and it is not a
+cost-estimation, budget-enforcement, or task-completion gate.
 
 Claude Code usage should use provider-supported OTel, not private local Claude
 logs or transcripts. Fairway maps these Claude Code attributes through

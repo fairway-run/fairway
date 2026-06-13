@@ -191,6 +191,10 @@ end
 
 def usage_hash(event)
   type = first_string(event["type"], event["event"], event["event_name"], event["name"])
+  if type == "event_msg" && dig_any(event, [["payload", "type"]]) == "token_count"
+    usage = dig_any(event, [["payload", "info", "last_token_usage"]])
+    return usage if usage.is_a?(Hash)
+  end
   usage = dig_any(event, [
     ["turn", "completed", "usage"],
     ["turn.completed", "usage"],

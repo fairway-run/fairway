@@ -1627,6 +1627,17 @@ func TestCodexUsageAdapter(t *testing.T) {
 	}
 	assertNotContains(t, out, "ignored generated text")
 
+	desktopEventJSON := filepath.Join(repo, "codex-desktop-event-msg.jsonl")
+	if err := os.WriteFile(desktopEventJSON, []byte(`{"type":"event_msg","thread_id":"codex-thread-desktop","session_id":"codex-session-desktop","model":"gpt-5-codex","content":"ignored desktop transcript","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":321,"cache_read_input_tokens":100,"output_tokens":45,"reasoning_tokens":6,"total_tokens":372}}}}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = runAdapter(t, script, "--mode", "exec-json", "--input", desktopEventJSON, "--task-id", "T-DESKTOP", "--dry-run")
+	for _, want := range []string{"record usage T-DESKTOP", "--provider codex", "--session-id codex-session-desktop", "--external-session-id codex-thread-desktop", "--model gpt-5-codex", "--input-tokens 321", "--cached-input-tokens 100", "--output-tokens 45", "--reasoning-tokens 6", "--total-tokens 372"} {
+		assertContains(t, out, want)
+	}
+	assertNotContains(t, out, "ignored desktop transcript")
+
 	unknownJSON := filepath.Join(repo, "codex-unknown.json")
 	if err := os.WriteFile(unknownJSON, []byte(`{"type":"turn.completed","usage":{},"session_id":"codex-session-unknown"}`), 0o644); err != nil {
 		t.Fatal(err)
