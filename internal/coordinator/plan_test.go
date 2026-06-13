@@ -3,10 +3,12 @@ package coordinator
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -197,6 +199,60 @@ func TestBuildPlanReportsHandoffWithoutDeliveredNotification(t *testing.T) {
 	}
 	if hasPlanAction(plan, "notification-gated", "send_or_record_provider_notification", "REVR-001") {
 		t.Fatalf("review-recorded notification surfaced as gap: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+}
+
+func TestBuildPlanReportsPendingCompletionHandback(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "PENDING-001", Title: "Pending handback", Kind: "task", Role: "backend"},
+		{ID: "DELIVERED-001", Title: "Delivered handback", Kind: "task", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pendingPayload, err := completionhandback.RenderPayload("schedule retry window", []string{"packet.md"}, "review only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := s.RecordHandoffWithID(ctx, "PENDING-001", store.Handoff{ToRole: "ops", Payload: pendingPayload})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliveredPayload, err := completionhandback.RenderPayload("resume control loop", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := s.RecordHandoffWithID(ctx, "DELIVERED-001", store.Handoff{ToRole: "ops", Payload: deliveredPayload})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "DELIVERED-001", HandoffID: &delivered.ID, Domain: "ops", Provider: "codex", Target: "thread-ops", State: "thread_steered"}); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.CompletionHandbacks) != 2 {
+		t.Fatalf("completion handbacks=%+v", plan.CompletionHandbacks)
+	}
+	if !hasPlanAction(plan, "completion-handback", "deliver_or_record_completion_handback", "PENDING-001") {
+		t.Fatalf("pending completion handback action missing: %+v", plan.Actions)
+	}
+	if plan.OK || len(plan.StopConditions) == 0 {
+		t.Fatalf("pending completion handback should stop coordinator: ok=%t stops=%+v", plan.OK, plan.StopConditions)
+	}
+	if hasPlanAction(plan, "notification-gated", "send_or_record_provider_notification", "PENDING-001") {
+		t.Fatalf("completion handback also produced generic notification action: %+v", plan.Actions)
+	}
+	if hasPlanAction(plan, "completion-handback", "deliver_or_record_completion_handback", "DELIVERED-001") {
+		t.Fatalf("delivered completion handback produced action: %+v", plan.Actions)
+	}
+	if !hasPlanActionReason(plan, "completion-handback", "PENDING-001", "completion handback "+strconv.FormatInt(pending.ID, 10)) {
+		t.Fatalf("pending handback reason missing handoff id: %+v", plan.Actions)
 	}
 }
 

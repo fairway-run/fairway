@@ -22,6 +22,7 @@ import (
 
 	fairwaydocs "github.com/subashram/fairway/docs"
 	"github.com/subashram/fairway/internal/audit"
+	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
 	coord "github.com/subashram/fairway/internal/coordinator"
 	"github.com/subashram/fairway/internal/dashboard"
@@ -3733,6 +3734,18 @@ func printCoordinatorPlan(plan coord.Plan) {
 					firstNonEmpty(action.LiveWindow.CheckpointAt, "none"),
 				)
 			}
+			if action.CompletionHandback != nil {
+				fmt.Printf("  completion_handback: handoff_id=%d to=%s delivery_status=%s delivery_state=%s actual_thread_delivery=%t provider=%s target=%s next_action=%s\n",
+					action.CompletionHandback.HandoffID,
+					action.CompletionHandback.ToRole,
+					action.CompletionHandback.DeliveryStatus,
+					firstNonEmpty(action.CompletionHandback.DeliveryState, "none"),
+					action.CompletionHandback.ActualThreadDelivery,
+					firstNonEmpty(action.CompletionHandback.Provider, "none"),
+					firstNonEmpty(action.CompletionHandback.Target, "none"),
+					action.CompletionHandback.NextAction,
+				)
+			}
 		}
 	}
 }
@@ -7227,13 +7240,13 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, root string, s 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		if isHelpOnly(args) {
-			subcommandUsage("record", "evidence|guard-report|handoff|notification|review|usage|push-intent")
+			subcommandUsage("record", "evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent")
 			return nil
 		}
 		return errors.New("record requires type and task id")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("record", "evidence|guard-report|handoff|notification|review|usage|push-intent")
+		subcommandUsage("record", "evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent")
 		return nil
 	}
 	switch args[0] {
@@ -7243,6 +7256,8 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 		return recordGuardReport(ctx, opts, args[1:])
 	case "handoff":
 		return recordHandoff(ctx, opts, args[1:])
+	case "completion-handback":
+		return recordCompletionHandback(ctx, opts, args[1:])
 	case "notification":
 		return recordNotification(ctx, opts, args[1:])
 	case "review":
@@ -7893,6 +7908,102 @@ func recordHandoff(ctx context.Context, opts globalOptions, args []string) error
 	})
 }
 
+func recordCompletionHandback(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("record", "completion-handback <task-id> --to <role> --next-action <text> [--evidence <path>]... [--approval-boundary <text>] [--provider <name>] [--target <thread-or-adapter>] [--state <handoff_recorded|notification_delivered|thread_steered|notification_failed>] [--reason <text>]")
+		return nil
+	}
+	if len(args) < 1 {
+		return errors.New("record completion-handback requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("completion-handback", flag.ContinueOnError)
+	to := fs.String("to", "", "next actor role or lane")
+	nextAction := fs.String("next-action", "", "next safe action for the receiving actor")
+	approvalBoundary := fs.String("approval-boundary", "", "approval, authority, or no-authority boundary for the handback")
+	provider := fs.String("provider", "", "provider name for delivery proof")
+	target := fs.String("target", "", "provider target such as thread id, tmux pane, or adapter destination")
+	state := fs.String("state", "handoff_recorded", "notification state for the linked handback delivery")
+	reason := fs.String("reason", "", "delivery/failure reason or handback signature detail")
+	var evidence multiFlag
+	fs.Var(&evidence, "evidence", "evidence path; may be repeated")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected completion-handback arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*to) == "" {
+		return errors.New("--to is required")
+	}
+	payload, err := completionhandback.RenderPayload(*nextAction, evidence, *approvalBoundary)
+	if err != nil {
+		return err
+	}
+	if !validCompletionHandbackState(*state) {
+		return fmt.Errorf("invalid completion handback notification state %q", *state)
+	}
+	if (*state == "failed" || *state == "notification_failed") && strings.TrimSpace(*reason) == "" {
+		return errors.New("failed completion handback notification requires --reason")
+	}
+	switch strings.TrimSpace(*state) {
+	case "notification_delivered", "thread_steered":
+		if strings.TrimSpace(*provider) == "" || strings.TrimSpace(*target) == "" {
+			return errors.New("delivered completion handback states require --provider and --target")
+		}
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		handoff, err := s.RecordHandoffWithID(ctx, taskID, store.Handoff{ToRole: *to, Payload: payload})
+		if err != nil {
+			return err
+		}
+		notification, err := s.RecordNotification(ctx, store.Notification{
+			TaskID:    taskID,
+			HandoffID: &handoff.ID,
+			Domain:    *to,
+			Provider:  *provider,
+			Target:    *target,
+			State:     *state,
+			Reason:    *reason,
+		})
+		if err != nil {
+			return err
+		}
+		row := completionhandback.Rows(taskID, []store.Handoff{handoff}, []store.Notification{notification})[0]
+		if opts.JSON {
+			return printJSON(row)
+		}
+		fmt.Printf("completion_handback recorded %s handoff_id=%d to=%s delivery_status=%s delivery_state=%s actual_thread_delivery=%t next_action=%s\n",
+			taskID,
+			row.HandoffID,
+			row.ToRole,
+			row.DeliveryStatus,
+			firstNonEmpty(row.DeliveryState, "none"),
+			row.ActualThreadDelivery,
+			row.NextAction,
+		)
+		return nil
+	})
+}
+
+func validNotificationState(state string) bool {
+	switch strings.TrimSpace(state) {
+	case "intent", "handoff_recorded", "sent", "notification_delivered", "thread_steered", "acknowledged", "review_acknowledged", "review_recorded", "failed", "notification_failed":
+		return true
+	default:
+		return false
+	}
+}
+
+func validCompletionHandbackState(state string) bool {
+	switch strings.TrimSpace(state) {
+	case "handoff_recorded", "notification_delivered", "thread_steered", "notification_failed":
+		return true
+	default:
+		return false
+	}
+}
+
 func recordNotification(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 1 {
 		return errors.New("record notification requires task id")
@@ -8508,6 +8619,23 @@ func roleNames(cfg config.Config) []string {
 }
 
 func validateTerminalGates(ctx context.Context, cfg config.Config, s *store.Store, taskID string) error {
+	task, _, _, handoffs, _, err := s.TaskDetail(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	notifications, err := s.Notifications(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	for _, handback := range completionhandback.Rows(taskID, handoffs, notifications) {
+		if completionhandback.IsResolved(handback) {
+			continue
+		}
+		if sameActor(handback.ToRole, task.Definition.Role, task.Owner) {
+			continue
+		}
+		return fmt.Errorf("terminal transition requires completion handback delivery or failure proof for handoff %d to %s", handback.HandoffID, handback.ToRole)
+	}
 	if cfg.Gates.RequireEvidenceBeforeDone {
 		ok, err := s.HasEvidence(ctx, taskID)
 		if err != nil {
@@ -8527,6 +8655,19 @@ func validateTerminalGates(ctx context.Context, cfg config.Config, s *store.Stor
 		}
 	}
 	return nil
+}
+
+func sameActor(actor string, current ...string) bool {
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return false
+	}
+	for _, value := range current {
+		if actor == strings.TrimSpace(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func isLoopbackAddr(addr string) bool {
@@ -8769,12 +8910,14 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 		reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
+		completionHandbacks := completionhandback.Rows(taskID, handoffs, notifications)
 		return printJSON(struct {
 			Task                 store.Task                             `json:"task"`
 			ReviewStatus         string                                 `json:"review_status"`
 			Transitions          []store.Transition                     `json:"transitions"`
 			Evidence             []store.Evidence                       `json:"evidence"`
 			Handoffs             []store.Handoff                        `json:"handoffs"`
+			CompletionHandbacks  []completionhandback.Handback          `json:"completion_handbacks,omitempty"`
 			Reviews              []store.Review                         `json:"reviews"`
 			MissingReviewDomains []string                               `json:"missing_review_domains,omitempty"`
 			ReviewHandback       *coord.ReviewCompletionHandback        `json:"review_handback,omitempty"`
@@ -8784,12 +8927,13 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			UsageRollups         []store.UsageRollup                    `json:"usage_rollups"`
 			Batches              []store.WorkBatch                      `json:"batches"`
 			Notifications        []store.Notification                   `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, handoffs, reviews, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
+		}{task, reviewStatus, transitions, evidence, handoffs, completionHandbacks, reviews, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 	reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
+	completionHandbacks := completionhandback.Rows(taskID, handoffs, notifications)
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, reviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
 	fmt.Println("\ndependencies:")
@@ -8819,6 +8963,23 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	fmt.Println("\nhandoffs:")
 	for _, h := range handoffs {
 		fmt.Printf("- #%d to %s: %s\n", h.ID, h.ToRole, h.Payload)
+	}
+	if len(completionHandbacks) > 0 {
+		fmt.Println("\ncompletion handbacks:")
+		for _, handback := range completionHandbacks {
+			fmt.Printf("- handoff_id=%d to=%s delivery_status=%s delivery_state=%s actual_thread_delivery=%t provider=%s target=%s next_action=%s evidence=%s approval_boundary=%s\n",
+				handback.HandoffID,
+				handback.ToRole,
+				handback.DeliveryStatus,
+				firstNonEmpty(handback.DeliveryState, "none"),
+				handback.ActualThreadDelivery,
+				firstNonEmpty(handback.Provider, "none"),
+				firstNonEmpty(handback.Target, "none"),
+				handback.NextAction,
+				firstNonEmpty(strings.Join(handback.EvidencePaths, ","), "none"),
+				firstNonEmpty(handback.ApprovalBoundary, "none"),
+			)
+		}
 	}
 	fmt.Println("\nnotifications:")
 	if len(notifications) == 0 {
@@ -9018,7 +9179,7 @@ func usage() {
 	fmt.Println("Queue and task state:")
 	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail")
 	fmt.Println("Evidence and review:")
-	fmt.Println("  record evidence|guard-report|handoff|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, live-window")
+	fmt.Println("  record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, batch")
 	fmt.Println("Coordinator and readiness:")
@@ -9051,7 +9212,7 @@ func printCommandHelp(command string) bool {
 		"dispatch-plan": "fairway dispatch-plan [--role <role>] [--limit <n>]\n  Print a ready-work dispatch plan for a role.",
 		"git-check":     "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
 		"preflight":     "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
-		"record":        "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"record":        "fairway record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":  "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"live-window":   "fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] | fairway live-window status [--task <task-id>]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
 		"session":       "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",

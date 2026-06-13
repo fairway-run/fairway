@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -126,7 +127,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"session", "help"}, "fairway session upsert|status|end|reconcile|launch"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
-		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|notification|review|usage|push-intent"},
+		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent"},
+		{[]string{"record", "completion-handback", "--help"}, "fairway record completion-handback <task-id> --to <role> --next-action <text>"},
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
 		{[]string{"review-waits", "list", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
 		{[]string{"review-waits", "wake", "--help"}, "fairway review-waits wake [--task <task-id>]"},
@@ -2510,6 +2512,87 @@ func TestCLI_LiveWindowRecordAndStatus(t *testing.T) {
 	assertContains(t, jsonStatus, `"next_action": "run browser smoke"`)
 }
 
+func TestCLI_RecordCompletionHandback(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Delegated closeout", "--role", "backend")
+	_ = runCaptureAllowError(t, "record", "completion-handback", "T-001",
+		"--to", "ops",
+		"--next-action", "schedule next live window",
+		"--state", "review_recorded",
+	)
+	_ = runCaptureAllowError(t, "record", "completion-handback", "T-001",
+		"--to", "ops",
+		"--next-action", "schedule next live window",
+		"--state", "acknowledged",
+	)
+	out := runCapture(t, "record", "completion-handback", "T-001",
+		"--to", "ops",
+		"--next-action", "schedule next live window",
+		"--evidence", "packet.md",
+		"--evidence", "rollback-proof.md",
+		"--approval-boundary", "no deploy authority",
+		"--provider", "codex",
+		"--target", "thread-ops",
+		"--state", "thread_steered",
+	)
+	assertContains(t, out, "completion_handback recorded T-001")
+	assertContains(t, out, "delivery_status=delivered")
+	assertContains(t, out, "actual_thread_delivery=true")
+
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "completion handbacks:")
+	assertContains(t, detail, "to=ops")
+	assertContains(t, detail, "next_action=schedule next live window")
+	assertContains(t, detail, "evidence=packet.md,rollback-proof.md")
+	assertContains(t, detail, "approval_boundary=no deploy authority")
+
+	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, jsonDetail, `"completion_handbacks": [`)
+	assertContains(t, jsonDetail, `"delivery_status": "delivered"`)
+	assertContains(t, jsonDetail, `"actual_thread_delivery": true`)
+}
+
+func TestCLI_TerminalStatusRequiresCompletionHandbackDeliveryDecision(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Delegated closeout", "--role", "backend")
+	runOK(t, "record", "completion-handback", "T-001",
+		"--to", "ops",
+		"--next-action", "decide retry packet",
+	)
+	_ = runCaptureAllowError(t, "set-status", "T-001", "done")
+	assertContains(t, runCapture(t, "task-detail", "T-001"), "status: todo")
+
+	detail := runCapture(t, "--json", "task-detail", "T-001")
+	handoffID := jsonIntField(t, detail, "handoff_id")
+	runOK(t, "record", "notification", "T-001",
+		"--handoff-id", fmt.Sprintf("%d", handoffID),
+		"--domain", "ops",
+		"--state", "notification_failed",
+		"--reason", "thread steering unavailable; coordinator notified out of band",
+	)
+	runOK(t, "set-status", "T-001", "done")
+}
+
 func TestCLI_ReconcileActiveReportsMonitorSessionsWithoutBackingProof(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -3434,6 +3517,44 @@ func appendFile(t *testing.T, path, content string) {
 	if _, err := f.WriteString(content); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func jsonIntField(t *testing.T, raw, field string) int64 {
+	t.Helper()
+	var decoded any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("decode JSON: %v\n%s", err, raw)
+	}
+	value, ok := findJSONField(decoded, field)
+	if !ok {
+		t.Fatalf("field %q not found in JSON:\n%s", field, raw)
+	}
+	number, ok := value.(float64)
+	if !ok {
+		t.Fatalf("field %q=%T, want number", field, value)
+	}
+	return int64(number)
+}
+
+func findJSONField(value any, field string) (any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		if found, ok := typed[field]; ok {
+			return found, true
+		}
+		for _, child := range typed {
+			if found, ok := findJSONField(child, field); ok {
+				return found, true
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if found, ok := findJSONField(child, field); ok {
+				return found, true
+			}
+		}
+	}
+	return nil, false
 }
 
 func replaceInFile(t *testing.T, path, old, new string) {

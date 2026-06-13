@@ -134,8 +134,9 @@ type HandoffNotificationGap struct {
 }
 
 type HandoffNotificationGapOptions struct {
-	TerminalStatuses []string
-	SentStaleBefore  string
+	TerminalStatuses     []string
+	SentStaleBefore      string
+	ExcludePayloadPrefix string
 }
 
 type Session struct {
@@ -1496,18 +1497,33 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 func (s *Store) RecordHandoff(ctx context.Context, taskID string, h Handoff) error {
+	_, err := s.RecordHandoffWithID(ctx, taskID, h)
+	return err
+}
+
+func (s *Store) RecordHandoffWithID(ctx context.Context, taskID string, h Handoff) (Handoff, error) {
 	if h.ToRole == "" {
-		return errors.New("handoff target role is required")
+		return Handoff{}, errors.New("handoff target role is required")
 	}
 	if h.Payload == "" {
-		return errors.New("handoff payload is required")
+		return Handoff{}, errors.New("handoff payload is required")
 	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	res, err := s.db.ExecContext(ctx, `
 INSERT INTO task_handoffs (project_id, task_id, from_role, to_role, payload, created_at)
 SELECT project_id, task_id, COALESCE(owner, ''), ?, ?, ?
 FROM task_state WHERE project_id=? AND task_id=?`,
-		h.ToRole, h.Payload, time.Now().UTC().Format(time.RFC3339Nano), s.projectID, taskID)
-	return checkWriteResult(res, err)
+		h.ToRole, h.Payload, now, s.projectID, taskID)
+	if err := checkWriteResult(res, err); err != nil {
+		return Handoff{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Handoff{}, err
+	}
+	h.ID = id
+	h.CreatedAt = now
+	return h, nil
 }
 
 func (s *Store) RecordNotification(ctx context.Context, n Notification) (Notification, error) {
@@ -1616,6 +1632,7 @@ LEFT JOIN task_notifications n ON n.project_id=hf.project_id
   AND n.domain=hf.to_role
   AND n.created_at >= hf.created_at
 WHERE hf.project_id=?
+  AND (? = '' OR hf.payload NOT LIKE ? || '%')
   AND COALESCE(hf.acknowledged_at, '') = ''
 GROUP BY hf.task_id, d.role, hf.to_role, hf.id, hf.created_at, st.status, st.review_required, st.review_status
 HAVING resolved_count = 0
@@ -1625,7 +1642,7 @@ HAVING resolved_count = 0
     OR unresolved_count > 0
     OR (? <> '' AND sent_count > 0 AND last_sent_at < ?)
   )
-ORDER BY hf.created_at DESC`, s.projectID, opts.SentStaleBefore, opts.SentStaleBefore)
+ORDER BY hf.created_at DESC`, s.projectID, opts.ExcludePayloadPrefix, opts.ExcludePayloadPrefix, opts.SentStaleBefore, opts.SentStaleBefore)
 	if err != nil {
 		return nil, err
 	}

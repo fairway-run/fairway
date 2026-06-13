@@ -38,6 +38,30 @@ delivered, thread-steered, acknowledged, or the review is recorded. A Fairway
 handoff is durable queue state; it is not proof that a reviewer or control
 thread was contacted.
 
+## Completion Handback Signal
+
+When a delegated provider closes a slice and the next required action belongs
+to another actor, use a completion handback instead of relying on chat state:
+
+```bash
+fairway record completion-handback FW-123 \
+  --to coordinator \
+  --next-action "decide whether to schedule the next live window" \
+  --evidence .fairway/artifacts/FW-123/closeout.md \
+  --approval-boundary "implementation handback only" \
+  --provider codex \
+  --target 019e... \
+  --state thread_steered
+```
+
+The helper writes a normal handoff plus a linked `task_notifications` row. Task
+detail and coordinator plan show whether the handback is still pending,
+delivered, or failed. Pending cross-role completion handbacks block terminal
+closeout until a delivered state or an explicit failure state is recorded; a
+clean Fairway task status alone is not proof that the next actor was informed.
+The handback record does not grant approval, merge, deploy, provider wake, or
+dashboard send authority.
+
 ## Review Completion Resume Signal
 
 When all required review domains for a task are approved, Fairway can surface a

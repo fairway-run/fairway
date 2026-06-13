@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
@@ -36,30 +37,31 @@ type PlanOptions struct {
 }
 
 type Plan struct {
-	OK                bool                     `json:"ok"`
-	DryRun            bool                     `json:"dry_run"`
-	GeneratedAt       string                   `json:"generated_at"`
-	Summary           PlanSummary              `json:"summary"`
-	Actions           []PlanAction             `json:"actions"`
-	Ready             []TaskRef                `json:"ready,omitempty"`
-	Active            []TaskRef                `json:"active,omitempty"`
-	Waiting           []TaskRef                `json:"waiting,omitempty"`
-	Blocked           []TaskRef                `json:"blocked,omitempty"`
-	ReviewGated       []TaskRef                `json:"review_gated,omitempty"`
-	ReviewComplete    []TaskRef                `json:"review_complete,omitempty"`
-	ReviewDebt        []TaskRef                `json:"review_debt,omitempty"`
-	NotificationGated []TaskRef                `json:"notification_gated,omitempty"`
-	ReviewWaits       []reviewstate.ReviewWait `json:"review_waits,omitempty"`
-	LiveWindows       []livewindow.Status      `json:"live_windows,omitempty"`
-	UtilityGated      []TaskRef                `json:"utility_gated,omitempty"`
-	Readiness         ReadinessExplanation     `json:"readiness"`
-	StopConditions    []PlanStopCondition      `json:"stop_conditions,omitempty"`
-	Reconcile         reconcile.ActiveReport   `json:"reconcile"`
-	SessionCount      int                      `json:"session_count"`
-	WatcherCount      int                      `json:"watcher_count"`
-	CheckpointCount   int                      `json:"checkpoint_count"`
-	WorktreeCount     int                      `json:"worktree_count"`
-	WorkBatchCount    int                      `json:"work_batch_count"`
+	OK                  bool                          `json:"ok"`
+	DryRun              bool                          `json:"dry_run"`
+	GeneratedAt         string                        `json:"generated_at"`
+	Summary             PlanSummary                   `json:"summary"`
+	Actions             []PlanAction                  `json:"actions"`
+	Ready               []TaskRef                     `json:"ready,omitempty"`
+	Active              []TaskRef                     `json:"active,omitempty"`
+	Waiting             []TaskRef                     `json:"waiting,omitempty"`
+	Blocked             []TaskRef                     `json:"blocked,omitempty"`
+	ReviewGated         []TaskRef                     `json:"review_gated,omitempty"`
+	ReviewComplete      []TaskRef                     `json:"review_complete,omitempty"`
+	ReviewDebt          []TaskRef                     `json:"review_debt,omitempty"`
+	NotificationGated   []TaskRef                     `json:"notification_gated,omitempty"`
+	ReviewWaits         []reviewstate.ReviewWait      `json:"review_waits,omitempty"`
+	LiveWindows         []livewindow.Status           `json:"live_windows,omitempty"`
+	CompletionHandbacks []completionhandback.Handback `json:"completion_handbacks,omitempty"`
+	UtilityGated        []TaskRef                     `json:"utility_gated,omitempty"`
+	Readiness           ReadinessExplanation          `json:"readiness"`
+	StopConditions      []PlanStopCondition           `json:"stop_conditions,omitempty"`
+	Reconcile           reconcile.ActiveReport        `json:"reconcile"`
+	SessionCount        int                           `json:"session_count"`
+	WatcherCount        int                           `json:"watcher_count"`
+	CheckpointCount     int                           `json:"checkpoint_count"`
+	WorktreeCount       int                           `json:"worktree_count"`
+	WorkBatchCount      int                           `json:"work_batch_count"`
 }
 
 type PlanSummary struct {
@@ -81,21 +83,22 @@ type PlanSummary struct {
 }
 
 type PlanAction struct {
-	Priority       int                                   `json:"priority"`
-	Classification string                                `json:"classification"`
-	Action         string                                `json:"action"`
-	Reason         string                                `json:"reason"`
-	TaskID         string                                `json:"task_id,omitempty"`
-	Role           string                                `json:"role,omitempty"`
-	SessionID      string                                `json:"session_id,omitempty"`
-	WatcherID      string                                `json:"watcher_id,omitempty"`
-	BatchKey       string                                `json:"batch_key,omitempty"`
-	TaskIDs        []string                              `json:"task_ids,omitempty"`
-	ReviewHandback *ReviewCompletionHandback             `json:"review_handback,omitempty"`
-	ReviewNotify   *reviewstate.ReviewNotificationStatus `json:"review_notification,omitempty"`
-	ReviewWait     *reviewstate.ReviewWait               `json:"review_wait,omitempty"`
-	LiveWindow     *livewindow.Status                    `json:"live_window,omitempty"`
-	Stop           bool                                  `json:"stop,omitempty"`
+	Priority           int                                   `json:"priority"`
+	Classification     string                                `json:"classification"`
+	Action             string                                `json:"action"`
+	Reason             string                                `json:"reason"`
+	TaskID             string                                `json:"task_id,omitempty"`
+	Role               string                                `json:"role,omitempty"`
+	SessionID          string                                `json:"session_id,omitempty"`
+	WatcherID          string                                `json:"watcher_id,omitempty"`
+	BatchKey           string                                `json:"batch_key,omitempty"`
+	TaskIDs            []string                              `json:"task_ids,omitempty"`
+	ReviewHandback     *ReviewCompletionHandback             `json:"review_handback,omitempty"`
+	ReviewNotify       *reviewstate.ReviewNotificationStatus `json:"review_notification,omitempty"`
+	ReviewWait         *reviewstate.ReviewWait               `json:"review_wait,omitempty"`
+	LiveWindow         *livewindow.Status                    `json:"live_window,omitempty"`
+	CompletionHandback *completionhandback.Handback          `json:"completion_handback,omitempty"`
+	Stop               bool                                  `json:"stop,omitempty"`
 }
 
 type PlanStopCondition struct {
@@ -174,8 +177,9 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		return Plan{}, err
 	}
 	notificationGaps, err := s.HandoffNotificationGapsFiltered(ctx, store.HandoffNotificationGapOptions{
-		TerminalStatuses: cfg.States.Terminal,
-		SentStaleBefore:  notificationStaleBefore(ackTimeout),
+		TerminalStatuses:     cfg.States.Terminal,
+		SentStaleBefore:      notificationStaleBefore(ackTimeout),
+		ExcludePayloadPrefix: "completion-handback ",
 	})
 	if err != nil {
 		return Plan{}, err
@@ -245,6 +249,27 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		action := firstNonEmpty(status.NextAction, "advance_live_window_phase")
 		reason := fmt.Sprintf("live-window phase=%s next_owner=%s next_action=%s", status.Phase, firstNonEmpty(status.NextOwner, "none"), firstNonEmpty(status.NextAction, "none"))
 		addLiveWindowAction(&plan, 13, "live-window", action, reason, status.TaskID, owner, status, status.Phase == "reviews-routed" || status.Phase == "approvals-readback" || status.Phase == "gate-authorized")
+	}
+	for _, task := range tasks {
+		_, _, _, handoffs, _, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return Plan{}, err
+		}
+		notifications, err := s.Notifications(ctx, task.Definition.ID)
+		if err != nil {
+			return Plan{}, err
+		}
+		for _, handback := range completionhandback.Rows(task.Definition.ID, handoffs, notifications) {
+			plan.CompletionHandbacks = append(plan.CompletionHandbacks, handback)
+			if completionhandback.IsResolved(handback) {
+				continue
+			}
+			plan.Summary.NotificationGated++
+			plan.NotificationGated = appendTaskRef(plan.NotificationGated, TaskRef{ID: task.Definition.ID, Role: handback.ToRole, Status: handback.DeliveryStatus})
+			reason := fmt.Sprintf("completion handback %d to %s has no delivered or failed provider notification; next_action=%s", handback.HandoffID, handback.ToRole, handback.NextAction)
+			addCompletionHandbackAction(&plan, 11, "completion-handback", "deliver_or_record_completion_handback", reason, task.Definition.ID, handback.ToRole, handback, true)
+			addStop(&plan, "completion-handback", reason, task.Definition.ID, handback.ToRole)
+		}
 	}
 	for _, watcher := range watchers {
 		plan.Summary.UtilityGated++
@@ -638,6 +663,11 @@ func addReviewWaitAction(plan *Plan, priority int, classification, action, reaso
 func addLiveWindowAction(plan *Plan, priority int, classification, action, reason, taskID, role string, status livewindow.Status, stop bool) {
 	addAction(plan, priority, classification, action, reason, taskID, role, "", "", nil, nil, stop)
 	plan.Actions[len(plan.Actions)-1].LiveWindow = &status
+}
+
+func addCompletionHandbackAction(plan *Plan, priority int, classification, action, reason, taskID, role string, handback completionhandback.Handback, stop bool) {
+	addAction(plan, priority, classification, action, reason, taskID, role, "", "", nil, nil, stop)
+	plan.Actions[len(plan.Actions)-1].CompletionHandback = &handback
 }
 
 func reviewWaitForDomain(waits []reviewstate.ReviewWait, domain string) reviewstate.ReviewWait {

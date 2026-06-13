@@ -1242,6 +1242,28 @@ fairway record handoff T-001 \
 
 Use `--payload @path/to/file` for longer handoffs.
 
+When a delegated provider is closing a task and the next required action belongs
+to another actor, record a completion handback instead of relying on chat state:
+
+```bash
+fairway record completion-handback T-001 \
+  --to ops \
+  --next-action "schedule the next exact-window drill packet" \
+  --evidence .fairway/artifacts/T-001/closeout.md \
+  --approval-boundary "review-only handback; no deploy authority" \
+  --provider codex \
+  --target <thread-or-adapter-target> \
+  --state thread_steered
+```
+
+The command writes a normal handoff and a linked notification row. Use
+`--state notification_failed --reason "<why>"` when delivery cannot happen; that
+records the failure explicitly so the coordinator can decide the next relay
+path. A pending cross-role completion handback (`handoff_recorded`) blocks
+terminal closeout until delivery or failure proof is recorded. The handback does
+not approve, merge, push, deploy, wake providers from the dashboard, or replace
+task status closeout.
+
 A handoff is not the same thing as a delivered provider/thread message. When the
 coordinator actually sends, attempts, or receives acknowledgement for a provider
 notification, record that state separately:
