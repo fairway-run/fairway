@@ -254,8 +254,8 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		}
 		owner := firstNonEmpty(status.NextOwner, taskRole(tasks, status.TaskID))
 		action := firstNonEmpty(status.NextAction, "advance_live_window_phase")
-		reason := fmt.Sprintf("live-window phase=%s next_owner=%s next_action=%s", status.Phase, firstNonEmpty(status.NextOwner, "none"), firstNonEmpty(status.NextAction, "none"))
-		addLiveWindowAction(&plan, 13, "live-window", action, reason, status.TaskID, owner, status, status.Phase == "reviews-routed" || status.Phase == "approvals-readback" || status.Phase == "gate-authorized")
+		reason := liveWindowActionReason(status)
+		addLiveWindowAction(&plan, 13, "live-window", action, reason, status.TaskID, owner, status, liveWindowControlStopPhase(status.Phase))
 	}
 	completionHandbacksByTask := map[string][]completionhandback.Handback{}
 	for _, task := range tasks {
@@ -608,11 +608,51 @@ func notificationStaleBefore(timeout time.Duration) string {
 
 func liveWindowCloseoutPhase(phase string) bool {
 	switch strings.TrimSpace(phase) {
-	case "closeout", "next-decision":
+	case "closeout", "next-decision", "closeout_required":
 		return true
 	default:
 		return false
 	}
+}
+
+func liveWindowControlStopPhase(phase string) bool {
+	switch strings.TrimSpace(phase) {
+	case "reviews-routed", "approvals-readback", "gate-authorized", "packet_ready", "approvals_ready", "execution_authorized", "closeout_required":
+		return true
+	default:
+		return false
+	}
+}
+
+func liveWindowActionReason(status livewindow.Status) string {
+	reason := fmt.Sprintf("live-window phase=%s next_owner=%s next_action=%s", status.Phase, firstNonEmpty(status.NextOwner, "none"), firstNonEmpty(status.NextAction, "none"))
+	if status.TargetCloseBy != "" {
+		reason += " deadline=" + status.TargetCloseBy
+		if staleAge := liveWindowDeadlineAge(status.TargetCloseBy, time.Now().UTC()); staleAge != "" {
+			reason += " deadline_state=missed stale_age=" + staleAge
+		}
+	}
+	if status.AuthorizationState != "" {
+		reason += " authorization=" + status.AuthorizationState
+	}
+	if status.Command != "" {
+		reason += " command=" + status.Command
+	}
+	if status.Prompt != "" {
+		reason += " prompt=" + status.Prompt
+	}
+	if status.MissedDeadlineAction != "" {
+		reason += " missed_deadline_action=" + status.MissedDeadlineAction
+	}
+	return reason
+}
+
+func liveWindowDeadlineAge(raw string, now time.Time) string {
+	deadline, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(raw))
+	if err != nil || now.Before(deadline) {
+		return ""
+	}
+	return now.Sub(deadline).Round(time.Second).String()
 }
 
 func liveWindowStaleAge(status livewindow.Status, timeout time.Duration, now time.Time) string {

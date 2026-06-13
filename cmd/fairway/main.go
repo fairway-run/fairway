@@ -2738,7 +2738,7 @@ func reviewWaitAckTimeout(cfg config.Config) (time.Duration, error) {
 
 func cmdLiveWindow(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("live-window", "record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <time>] [--artifact <path>] | status [--task <task-id>]")
+		subcommandUsage("live-window", "record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <time>] [--artifact <path>] | status [--task <task-id>] | control-room [--task <task-id>] [--stale]")
 		return nil
 	}
 	switch args[0] {
@@ -2746,6 +2746,8 @@ func cmdLiveWindow(ctx context.Context, opts globalOptions, args []string) error
 		return cmdLiveWindowRecord(ctx, opts, args[1:])
 	case "status":
 		return cmdLiveWindowStatus(ctx, opts, args[1:])
+	case "control-room":
+		return cmdLiveWindowControlRoom(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown live-window subcommand %q", args[0])
 	}
@@ -2753,7 +2755,7 @@ func cmdLiveWindow(ctx context.Context, opts globalOptions, args []string) error
 
 func cmdLiveWindowRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
-		subcommandUsage("live-window", "record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <time>] [--artifact <path>]")
+		subcommandUsage("live-window", "record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--authorization-state <state>] [--prompt <text>] [--command <cmd>] [--missed-deadline-action <action>] [--target-close-by <time>] [--artifact <path>]")
 		return nil
 	}
 	if len(args) < 1 {
@@ -2764,6 +2766,10 @@ func cmdLiveWindowRecord(ctx context.Context, opts globalOptions, args []string)
 	phase := fs.String("phase", "", "phase: "+strings.Join(livewindow.PhaseList(), ", "))
 	nextOwner := fs.String("next-owner", "", "next actor/role")
 	nextAction := fs.String("next-action", "", "next safe action")
+	authorizationState := fs.String("authorization-state", "", "authorization state for the handoff")
+	prompt := fs.String("prompt", "", "fixed prompt to deliver to the next actor")
+	command := fs.String("command", "", "exact Fairway/operator command for the next actor")
+	missedDeadlineAction := fs.String("missed-deadline-action", "", "action if target close-by/deadline is missed")
 	targetCloseBy := fs.String("target-close-by", "", "expected closeout/window end in YYYY-MM-DD or RFC3339")
 	artifact := fs.String("artifact", "", "phase artifact path")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -2772,12 +2778,20 @@ func cmdLiveWindowRecord(ctx context.Context, opts globalOptions, args []string)
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected live-window record arguments: %s", strings.Join(fs.Args(), " "))
 	}
-	summary, err := livewindow.Summary(*phase, *nextOwner, *nextAction)
+	summary, err := livewindow.SummaryWithOptions(livewindow.SummaryOptions{
+		Phase:                *phase,
+		NextOwner:            *nextOwner,
+		NextAction:           *nextAction,
+		AuthorizationState:   *authorizationState,
+		Prompt:               *prompt,
+		Command:              *command,
+		MissedDeadlineAction: *missedDeadlineAction,
+	})
 	if err != nil {
 		return err
 	}
 	state := "awaiting_input"
-	if strings.TrimSpace(*phase) == "gate-running" {
+	if liveWindowActivePhase(*phase) {
 		state = "active"
 	}
 	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
@@ -2794,6 +2808,153 @@ func cmdLiveWindowRecord(ctx context.Context, opts globalOptions, args []string)
 		fmt.Printf("live_window recorded %s phase=%s state=%s\n", taskID, *phase, state)
 		return nil
 	})
+}
+
+type liveWindowControlRoomRow struct {
+	livewindow.Status
+	DeadlineState string `json:"deadline_state"`
+	StaleAge      string `json:"stale_age,omitempty"`
+	Suggested     string `json:"suggested_action,omitempty"`
+}
+
+func cmdLiveWindowControlRoom(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("live-window", "control-room [--task <task-id>] [--stale]")
+		return nil
+	}
+	fs := flag.NewFlagSet("live-window control-room", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	staleOnly := fs.Bool("stale", false, "show only missed-deadline control rows")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected live-window control-room arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		checkpoints, err := s.Checkpoints(ctx, "", true)
+		if err != nil {
+			return err
+		}
+		statuses := livewindow.StatusesFromCheckpoints(checkpoints)
+		now := time.Now().UTC()
+		rows := make([]liveWindowControlRoomRow, 0, len(statuses))
+		for _, status := range statuses {
+			if strings.TrimSpace(*taskID) != "" && status.TaskID != *taskID {
+				continue
+			}
+			row := buildLiveWindowControlRoomRow(status, now)
+			if *staleOnly && row.DeadlineState != "missed" {
+				continue
+			}
+			rows = append(rows, row)
+		}
+		if opts.JSON {
+			return printJSON(rows)
+		}
+		fmt.Println("live_operation_control_room:")
+		if len(rows) == 0 {
+			fmt.Println("- none")
+			return nil
+		}
+		for _, row := range rows {
+			fmt.Printf("- %s phase=%s next_actor=%s deadline=%s deadline_state=%s authorization=%s action=%s\n",
+				row.TaskID,
+				row.Phase,
+				firstNonEmpty(row.NextOwner, "unknown"),
+				firstNonEmpty(row.TargetCloseBy, "none"),
+				row.DeadlineState,
+				firstNonEmpty(row.AuthorizationState, "unspecified"),
+				firstNonEmpty(row.NextAction, "advance live-operation handoff"),
+			)
+			if row.Command != "" {
+				fmt.Printf("  command=%s\n", row.Command)
+			}
+			if row.Prompt != "" {
+				fmt.Printf("  prompt=%s\n", row.Prompt)
+			}
+			if row.MissedDeadlineAction != "" || row.Suggested != "" {
+				fmt.Printf("  missed_deadline_action=%s\n", firstNonEmpty(row.MissedDeadlineAction, row.Suggested))
+			}
+			if row.StaleAge != "" {
+				fmt.Printf("  stale_age=%s\n", row.StaleAge)
+			}
+		}
+		return nil
+	})
+}
+
+func buildLiveWindowControlRoomRow(status livewindow.Status, now time.Time) liveWindowControlRoomRow {
+	row := liveWindowControlRoomRow{Status: status, DeadlineState: "open"}
+	if liveWindowFinalPhase(status.Phase) {
+		row.DeadlineState = "closed"
+		return row
+	}
+	if strings.TrimSpace(status.TargetCloseBy) == "" {
+		row.DeadlineState = "unbounded"
+		row.Suggested = "record target close-by deadline"
+		return row
+	}
+	deadline, err := parseFlexibleTime(status.TargetCloseBy)
+	if err != nil {
+		row.DeadlineState = "invalid_deadline"
+		row.Suggested = "record RFC3339 target close-by deadline"
+		return row
+	}
+	if now.After(deadline) {
+		row.DeadlineState = "missed"
+		row.StaleAge = roundDuration(now.Sub(deadline)).String()
+		if row.MissedDeadlineAction == "" {
+			row.Suggested = "escalate live-operation handoff"
+		}
+	}
+	return row
+}
+
+func parseFlexibleTime(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, errors.New("empty time")
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return t, nil
+	}
+	if t, err := time.Parse("2006-01-02", raw); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("invalid time %q", raw)
+}
+
+func liveWindowActivePhase(phase string) bool {
+	switch strings.TrimSpace(phase) {
+	case "gate-running", "operator_running":
+		return true
+	default:
+		return false
+	}
+}
+
+func liveWindowFinalPhase(phase string) bool {
+	switch strings.TrimSpace(phase) {
+	case "done", "blocked":
+		return true
+	default:
+		return false
+	}
+}
+
+func roundDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		d = -d
+	}
+	switch {
+	case d >= time.Hour:
+		return d.Round(time.Minute)
+	case d >= time.Minute:
+		return d.Round(time.Second)
+	default:
+		return d.Round(time.Millisecond)
+	}
 }
 
 func cmdLiveWindowStatus(ctx context.Context, opts globalOptions, args []string) error {
@@ -2833,7 +2994,7 @@ func cmdLiveWindowStatus(ctx context.Context, opts globalOptions, args []string)
 		}
 		fmt.Println("live_windows:")
 		for _, status := range statuses {
-			fmt.Printf("- %s phase=%s next_owner=%s next_action=%s target_close_by=%s artifact=%s checkpoint_at=%s\n",
+			fmt.Printf("- %s phase=%s next_owner=%s next_action=%s target_close_by=%s artifact=%s checkpoint_at=%s",
 				status.TaskID,
 				status.Phase,
 				firstNonEmpty(status.NextOwner, "none"),
@@ -2842,6 +3003,19 @@ func cmdLiveWindowStatus(ctx context.Context, opts globalOptions, args []string)
 				firstNonEmpty(status.ArtifactPath, "none"),
 				firstNonEmpty(status.CheckpointAt, "none"),
 			)
+			if status.AuthorizationState != "" {
+				fmt.Printf(" authorization=%s", status.AuthorizationState)
+			}
+			if status.Command != "" {
+				fmt.Printf(" command=%s", status.Command)
+			}
+			if status.Prompt != "" {
+				fmt.Printf(" prompt=%s", status.Prompt)
+			}
+			if status.MissedDeadlineAction != "" {
+				fmt.Printf(" missed_deadline_action=%s", status.MissedDeadlineAction)
+			}
+			fmt.Println()
 		}
 		return nil
 	})
@@ -10198,7 +10372,7 @@ func printCommandHelp(command string) bool {
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
-		"live-window":                "fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] | fairway live-window status [--task <task-id>]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
+		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

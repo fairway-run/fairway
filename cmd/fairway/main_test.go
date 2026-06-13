@@ -141,6 +141,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"live-window", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "record", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "status", "--help"}, "fairway live-window status [--task <task-id>]"},
+		{[]string{"live-window", "control-room", "--help"}, "fairway live-window control-room [--task <task-id>] [--stale]"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -2690,6 +2691,65 @@ func TestCLI_LiveWindowRecordAndStatus(t *testing.T) {
 	jsonStatus := runCapture(t, "--json", "live-window", "status", "--task", "T-001")
 	assertContains(t, jsonStatus, `"phase": "gate-running"`)
 	assertContains(t, jsonStatus, `"next_action": "run browser smoke"`)
+}
+
+func TestCLI_LiveWindowControlRoom(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "MFA-1320", "--title", "MFA 13:20 drill", "--role", "ops")
+	runOK(t, "add", "DONE-001", "--title", "Completed drill", "--role", "ops")
+	deadline := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)
+	runOK(t, "live-window", "record", "MFA-1320",
+		"--phase", "approvals_ready",
+		"--next-owner", "architecture-control",
+		"--next-action", "authorize operator handoff",
+		"--authorization-state", "approvals recorded; execution not authorized",
+		"--command", "fairway live-window record MFA-1320 --phase execution_authorized",
+		"--prompt", "Authorize the drill operator for the approved 13:20 MFA window",
+		"--missed-deadline-action", "escalate to architecture control and reschedule window",
+		"--target-close-by", deadline,
+		"--artifact", ".fairway/artifacts/mfa-1320/packet.md",
+	)
+	runOK(t, "live-window", "record", "DONE-001",
+		"--phase", "done",
+		"--next-owner", "architecture-control",
+		"--next-action", "archive packet",
+		"--target-close-by", deadline,
+	)
+
+	status := runCapture(t, "live-window", "status", "--task", "MFA-1320")
+	assertContains(t, status, "phase=approvals_ready")
+	assertContains(t, status, "authorization=approvals recorded; execution not authorized")
+	assertContains(t, status, "command=fairway live-window record MFA-1320 --phase execution_authorized")
+	assertContains(t, status, "missed_deadline_action=escalate to architecture control and reschedule window")
+
+	room := runCapture(t, "live-window", "control-room", "--task", "MFA-1320")
+	assertContains(t, room, "live_operation_control_room:")
+	assertContains(t, room, "MFA-1320 phase=approvals_ready")
+	assertContains(t, room, "next_actor=architecture-control")
+	assertContains(t, room, "deadline_state=missed")
+	assertContains(t, room, "authorization=approvals recorded; execution not authorized")
+	assertContains(t, room, "command=fairway live-window record MFA-1320 --phase execution_authorized")
+	assertContains(t, room, "prompt=Authorize the drill operator for the approved 13:20 MFA window")
+	assertContains(t, room, "missed_deadline_action=escalate to architecture control and reschedule window")
+
+	stale := runCapture(t, "live-window", "control-room", "--stale")
+	assertContains(t, stale, "MFA-1320 phase=approvals_ready")
+	assertNotContains(t, stale, "DONE-001")
+
+	jsonRoom := runCapture(t, "--json", "live-window", "control-room", "--task", "MFA-1320")
+	assertContains(t, jsonRoom, `"phase": "approvals_ready"`)
+	assertContains(t, jsonRoom, `"deadline_state": "missed"`)
+	assertContains(t, jsonRoom, `"missed_deadline_action": "escalate to architecture control and reschedule window"`)
 }
 
 func TestCLI_RecordCompletionHandback(t *testing.T) {

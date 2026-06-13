@@ -10,6 +10,7 @@ import (
 
 	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -442,6 +443,56 @@ func TestBuildPlanSurfacesLiveWindowPhase(t *testing.T) {
 	}
 	if action.LiveWindow == nil || action.LiveWindow.Phase != "gate-running" || action.LiveWindow.NextOwner != "ops" || action.LiveWindow.TargetCloseBy != "2026-06-13T03:15:00Z" {
 		t.Fatalf("live-window detail missing: %+v", action)
+	}
+}
+
+func TestBuildPlanSurfacesMissedLiveOperationExecutionHandoff(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "MFA-1320", Title: "MFA drill window", Kind: "task", Role: "ops"}}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)
+	summary, err := livewindow.SummaryWithOptions(livewindow.SummaryOptions{
+		Phase:                "approvals_ready",
+		NextOwner:            "architecture-control",
+		NextAction:           "authorize operator handoff",
+		AuthorizationState:   "approvals recorded; execution not authorized",
+		Command:              "fairway live-window record MFA-1320 --phase execution_authorized",
+		MissedDeadlineAction: "escalate to architecture control and reschedule window",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+		TaskID:        "MFA-1320",
+		State:         "awaiting_input",
+		Owner:         "architecture-control",
+		TargetCloseBy: deadline,
+		Summary:       summary,
+		ArtifactPath:  ".fairway/artifacts/mfa-1320/packet.md",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	action, ok := planAction(plan, "live-window", "authorize operator handoff", "MFA-1320")
+	if !ok {
+		t.Fatalf("live operation handoff action missing: %+v", plan.Actions)
+	}
+	if action.LiveWindow == nil || action.LiveWindow.AuthorizationState == "" || action.LiveWindow.MissedDeadlineAction == "" {
+		t.Fatalf("live operation control fields missing: %+v", action)
+	}
+	for _, want := range []string{"deadline_state=missed", "authorization=approvals recorded; execution not authorized", "missed_deadline_action=escalate to architecture control and reschedule window"} {
+		if !strings.Contains(action.Reason, want) {
+			t.Fatalf("action reason missing %q: %s", want, action.Reason)
+		}
+	}
+	if plan.OK {
+		t.Fatalf("missed execution handoff should stop coordinator: %+v", plan.StopConditions)
 	}
 }
 

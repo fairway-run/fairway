@@ -184,6 +184,15 @@ models. This includes live-window closeout or next-decision waits that do not
 yet have a recorded completion handback. The dashboard remains display-only; it
 does not send completion-handback wake prompts or write notification rows.
 
+For approval-gated live operations, dashboard control-room state follows
+`docs/design/live-operation-control-room.md`. The dashboard may show live-window
+phase, next actor, deadline, authorization posture, stale/missed handoff state,
+command/prompt, missed-deadline behavior, and suggested commands derived from
+existing Fairway read models. It must remain read-only: provider prompting
+belongs to coordinator/watch/provider adapters, and live execution belongs to
+the accountable operator surface after explicit authorization. The dashboard
+must not authorize execution, mutate production, or send provider messages.
+
 ## Diagnostics
 
 `/board?tab=diagnostics` shows operational tables for:

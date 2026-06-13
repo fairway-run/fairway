@@ -2,6 +2,7 @@ package livewindow
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -9,24 +10,45 @@ import (
 )
 
 var phases = map[string]bool{
-	"packet-prepared":    true,
-	"reviews-routed":     true,
-	"approvals-readback": true,
-	"gate-authorized":    true,
-	"gate-running":       true,
-	"closeout":           true,
-	"next-decision":      true,
+	"packet-prepared":      true,
+	"reviews-routed":       true,
+	"approvals-readback":   true,
+	"gate-authorized":      true,
+	"gate-running":         true,
+	"closeout":             true,
+	"next-decision":        true,
+	"packet_ready":         true,
+	"approvals_ready":      true,
+	"execution_authorized": true,
+	"operator_running":     true,
+	"closeout_required":    true,
+	"done":                 true,
+	"blocked":              true,
 }
 
 type Status struct {
-	TaskID        string `json:"task_id"`
-	Phase         string `json:"phase"`
-	NextOwner     string `json:"next_owner,omitempty"`
-	NextAction    string `json:"next_action,omitempty"`
-	TargetCloseBy string `json:"target_close_by,omitempty"`
-	ArtifactPath  string `json:"artifact_path,omitempty"`
-	CheckpointAt  string `json:"checkpoint_at,omitempty"`
-	Summary       string `json:"summary,omitempty"`
+	TaskID               string `json:"task_id"`
+	Phase                string `json:"phase"`
+	NextOwner            string `json:"next_owner,omitempty"`
+	NextAction           string `json:"next_action,omitempty"`
+	AuthorizationState   string `json:"authorization_state,omitempty"`
+	Prompt               string `json:"prompt,omitempty"`
+	Command              string `json:"command,omitempty"`
+	MissedDeadlineAction string `json:"missed_deadline_action,omitempty"`
+	TargetCloseBy        string `json:"target_close_by,omitempty"`
+	ArtifactPath         string `json:"artifact_path,omitempty"`
+	CheckpointAt         string `json:"checkpoint_at,omitempty"`
+	Summary              string `json:"summary,omitempty"`
+}
+
+type SummaryOptions struct {
+	Phase                string
+	NextOwner            string
+	NextAction           string
+	AuthorizationState   string
+	Prompt               string
+	Command              string
+	MissedDeadlineAction string
 }
 
 func ValidPhase(phase string) bool {
@@ -43,17 +65,26 @@ func PhaseList() []string {
 }
 
 func Summary(phase, nextOwner, nextAction string) (string, error) {
-	phase = strings.TrimSpace(phase)
+	return SummaryWithOptions(SummaryOptions{Phase: phase, NextOwner: nextOwner, NextAction: nextAction})
+}
+
+func SummaryWithOptions(opts SummaryOptions) (string, error) {
+	phase := strings.TrimSpace(opts.Phase)
 	if !ValidPhase(phase) {
 		return "", fmt.Errorf("invalid live-window phase %q", phase)
 	}
 	parts := []string{"live-window", "phase=" + phase}
-	if strings.TrimSpace(nextOwner) != "" {
-		parts = append(parts, "next_owner="+encodeToken(nextOwner))
+	appendField := func(key, value string) {
+		if strings.TrimSpace(value) != "" {
+			parts = append(parts, key+"="+encodeToken(value))
+		}
 	}
-	if strings.TrimSpace(nextAction) != "" {
-		parts = append(parts, "next_action="+encodeToken(nextAction))
-	}
+	appendField("next_owner", opts.NextOwner)
+	appendField("next_action", opts.NextAction)
+	appendField("authorization", opts.AuthorizationState)
+	appendField("prompt", opts.Prompt)
+	appendField("command", opts.Command)
+	appendField("missed_deadline_action", opts.MissedDeadlineAction)
 	return strings.Join(parts, " "), nil
 }
 
@@ -99,6 +130,14 @@ func StatusFromCheckpoint(checkpoint store.Checkpoint) (Status, bool) {
 			status.NextOwner = decodeToken(value)
 		case "next_action":
 			status.NextAction = decodeToken(value)
+		case "authorization":
+			status.AuthorizationState = decodeToken(value)
+		case "prompt":
+			status.Prompt = decodeToken(value)
+		case "command":
+			status.Command = decodeToken(value)
+		case "missed_deadline_action":
+			status.MissedDeadlineAction = decodeToken(value)
 		}
 	}
 	if !ValidPhase(status.Phase) {
@@ -108,13 +147,14 @@ func StatusFromCheckpoint(checkpoint store.Checkpoint) (Status, bool) {
 }
 
 func encodeToken(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.ReplaceAll(value, " ", "_")
-	value = strings.ReplaceAll(value, "\t", "_")
-	value = strings.ReplaceAll(value, "\n", "_")
-	return value
+	return url.QueryEscape(strings.TrimSpace(value))
 }
 
 func decodeToken(value string) string {
+	if strings.Contains(value, "%") || strings.Contains(value, "+") {
+		if decoded, err := url.QueryUnescape(value); err == nil {
+			return decoded
+		}
+	}
 	return strings.ReplaceAll(value, "_", " ")
 }

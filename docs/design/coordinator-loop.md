@@ -62,6 +62,13 @@ tasks, sessions, watchers, batches, reviews, worktrees, checkpoints, and active
 reconciliation findings, then emits typed next actions without mutating task
 state.
 
+For approval-gated live operations, `plan` is also the control-room read model
+described in `docs/design/live-operation-control-room.md`. It should show the
+current live-window phase, next actor, deadline, authorization posture, exact
+next action, and missed-deadline behavior from existing Fairway records. The
+goal is to make approved-but-not-executed windows and operator closeout waits
+visible without asking provider chats to remember or poll for the next handoff.
+
 When all required review domains for a task have approved latest verdicts,
 `plan` emits a `review-complete` handback action that tells the coordinator to
 run `fairway merge-ready <task-id>` and perform the configured merge/push/release
@@ -119,6 +126,22 @@ the coordinator do next?" A tick may recommend a claim, review, unblock,
 checkpoint, utility handback, batch, or merge-ready check, but it does not
 perform those actions automatically.
 
+For approval-gated live operations, `plan` and `tick` also surface
+live-operation control-room checkpoints recorded through `fairway live-window`.
+Phases such as `approvals_ready`, `execution_authorized`, and
+`closeout_required` are treated as control stop conditions with the next actor,
+deadline, authorization state, exact action/prompt/command, and
+missed-deadline action in the plan reason. This is the control-channel layer for
+approved-but-not-executed windows: the coordinator should see missed execution
+handoffs as stale Fairway state instead of relying on provider chat polling.
+
+The live-operation control room is also a token-burn reduction mechanism. LLM
+providers should not spend most of their context reconstructing who acts next,
+what the approved window was, or whether a handoff was missed. Fairway holds
+that routine coordination state; provider turns are reserved for judgment,
+implementation, review, and exception handling. See
+[Live Operation Control Room](live-operation-control-room.md).
+
 For stale completion handbacks, `tick` can render a bounded provider wake
 surface:
 
@@ -151,6 +174,9 @@ like an operations controller:
 
 - reconcile active sessions, watchers, batches, reviews, and handbacks;
 - classify work as active, waiting, blocked, stale, complete, or ready;
+- surface live-operation control-room waits so provider/LLM turns are spent on
+  judgment, implementation, review, and exception handling rather than
+  scheduler bookkeeping;
 - recommend or continue configured utility monitors for deterministic/pollable
   work when `--allow-utility-monitor` is set;
 - recommend batching when related tasks share validation surfaces;

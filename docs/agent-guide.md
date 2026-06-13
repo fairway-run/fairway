@@ -1067,7 +1067,9 @@ pattern to park unbounded live work.
 
 For repeated exact-window live operations, also record the current handshake
 phase so the coordinator/control thread can see the loop state without polling
-chat:
+chat. The full architecture is in
+`docs/design/live-operation-control-room.md`; the examples below are the CLI
+surface for that model:
 
 ```bash
 fairway live-window record <task-id> \
@@ -1077,20 +1079,44 @@ fairway live-window record <task-id> \
   --artifact .fairway/artifacts/<packet>.md
 
 fairway live-window record <task-id> \
-  --phase gate-running \
+  --phase approvals_ready \
+  --next-owner architecture-control \
+  --next-action authorize operator handoff \
+  --authorization-state "approvals recorded; execution not authorized" \
+  --command "fairway live-window record <task-id> --phase execution_authorized" \
+  --prompt "Authorize the drill operator for the approved window" \
+  --target-close-by 2026-06-13T18:20:00Z \
+  --missed-deadline-action "escalate to Architecture Control and reschedule window"
+
+fairway live-window record <task-id> \
+  --phase operator_running \
   --next-owner ops \
   --next-action run browser smoke \
-  --target-close-by 2026-06-13T03:15:00Z
+  --authorization-state "execution authorized" \
+  --target-close-by 2026-06-13T19:20:00Z
 
 fairway live-window status --task <task-id>
+fairway live-window control-room --stale
 fairway coordinator plan
 ```
 
 The supported phases are `packet-prepared`, `reviews-routed`,
 `approvals-readback`, `gate-authorized`, `gate-running`, `closeout`, and
-`next-decision`. These records are normal checkpoints with typed summaries, not
-a second phase store. Use them to name the next owner and next safe action after
-every blocked/done/retry handoff.
+`next-decision`, plus live-operation control-room phases `packet_ready`,
+`approvals_ready`, `execution_authorized`, `operator_running`,
+`closeout_required`, `done`, and `blocked`. These records are normal
+checkpoints with typed summaries, not a second phase store. Use them to name the
+next owner, deadline, authorization state, exact prompt or command, and
+missed-deadline behavior after every approval/execution/blocked/done/retry
+handoff.
+
+This is also a token-budget boundary. LLM/provider turns should not be used as
+the scheduler for routine live-operation waits. Fairway should hold the durable
+phase, next actor, deadline, exact action/prompt/command, authorization status,
+and missed-deadline behavior so provider turns can focus on judgment,
+implementation, review, and exception handling. Optional tmux or zellij
+control-room panes should make this state visible without every agent rereading
+chat or asking Architecture Control what happened.
 
 ## Side Work
 

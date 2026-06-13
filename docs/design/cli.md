@@ -77,8 +77,9 @@ fairway rules match <task-id>                          # show selected, disabled
 fairway checkpoint record <task-id> --summary <text> [--state <state>] [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path>]
 fairway checkpoint status [--all]
 fairway checkpoint stale [--before <date>] [--all]
-fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <date>] [--artifact <path>]
+fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--authorization-state <state>] [--prompt <text>] [--command <cmd>] [--missed-deadline-action <action>] [--target-close-by <date>] [--artifact <path>]
 fairway live-window status [--task <task-id>]
+fairway live-window control-room [--task <task-id>] [--stale]
 fairway prune-stale                                     # remove state rows for deleted task definitions
 fairway db backup | export
 fairway db migrate [--dry-run]
@@ -190,12 +191,23 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   again reports `status_decision_required` until the operator sets the task to
   `done`, `blocked`, `todo`, or another configured closeout state.
 - `live-window record` is a typed checkpoint helper for repeated exact-window
-  live-operation loops. It records one of `packet-prepared`, `reviews-routed`,
-  `approvals-readback`, `gate-authorized`, `gate-running`, `closeout`, or
-  `next-decision` with the next owner and next safe action. The command writes a
-  normal `task_checkpoints` row; there is no second wait or phase store.
-  `live-window status` and `coordinator plan` project the latest phase so the
-  control thread can see where the loop is parked without polling provider chat.
+  live-operation loops. It records compatibility phases such as
+  `packet-prepared`, `reviews-routed`, `approvals-readback`,
+  `gate-authorized`, `gate-running`, `closeout`, and `next-decision`, plus
+  control-room phases `packet_ready`, `approvals_ready`,
+  `execution_authorized`, `operator_running`, `closeout_required`, `done`, and
+  `blocked`. Rows can include the next owner, next action, authorization state,
+  exact prompt or command, missed-deadline action, deadline, and artifact path.
+  The command writes a normal `task_checkpoints` row; there is no second wait
+  or phase store.
+- `live-window status`, `live-window control-room`, and `coordinator plan`
+  project the latest phase so the control thread can see where the loop is
+  parked without polling provider chat. `control-room --stale` filters to
+  missed-deadline handoffs such as approved-but-not-executed windows. This is
+  intentionally a token-burn reduction surface: Fairway holds routine
+  scheduling and handoff state so LLM/provider turns can focus on judgment,
+  implementation, review, and exception handling. The canonical design model is
+  `docs/design/live-operation-control-room.md`.
 - `record completion-handback` is a typed closeout helper for delegated work.
   It writes a normal handoff plus a linked notification row. The handoff payload
   records the next actor, next safe action, optional completion outcome,
