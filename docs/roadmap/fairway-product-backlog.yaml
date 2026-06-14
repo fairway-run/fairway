@@ -2953,3 +2953,35 @@ tasks:
       - "Dashboard may show advisory recommendations as non-authoritative findings with cited Fairway facts and confidence, not as approvals or commands."
       - "Dashboard does not send provider prompts, hold provider credentials, approve reviews, authorize execution, mutate environments, or change terminal task status."
       - "Focused dashboard tests cover display-only waits, stale state, advisory labels, and no send/approval controls."
+
+  - id: FW-208
+    title: Add consumer critical-flow governance template
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: consumer-governance
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/live-operation-control-room.md
+      - docs/design/context-packets.md
+      - docs/agent-guide.md
+      - /Users/subash/dev/GPUasService/doc/governance/Critical_Flow_Preflight_And_Drill_Gate_v1.md
+    target_paths:
+      - docs/agent-guide.md
+      - docs/design/consumer-critical-flow-governance.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/context-packets.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - security
+    risk_level: medium
+    migration_type: consumer-critical-flow-governance-template
+    acceptance_checks:
+      - "Fairway docs provide a reusable consumer-repo template for critical-flow governance: flow map before implementation, non-live preflight before live window, bounded retry before causal reset, and Fairway evidence before handoff."
+      - "The template separates Fairway-owned coordination primitives from product-owned scripts, fixtures, flows, and evidence contracts."
+      - "The template includes reviewer context packet fields for causal goal, last blocker, allowed proof, forbidden actions, reviewed commands, artifact paths, and next owner/action."
+      - "The template makes clear that Fairway can recommend and render packets but does not approve reviews, accept risk, merge, deploy, mutate environments, or authorize live execution."

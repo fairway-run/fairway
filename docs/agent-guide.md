@@ -243,6 +243,14 @@ completion on provider usage. See
 [design/product-boundaries.md](design/product-boundaries.md) before adding a
 new adapter, controller, tracker, usage, or release automation path.
 
+For approval-gated consumer critical flows, use the Fairway template in
+[design/consumer-critical-flow-governance.md](design/consumer-critical-flow-governance.md).
+The template keeps the durable rule explicit: flow map before implementation,
+non-live preflight before live window, bounded retry before causal reset, and
+Fairway evidence before handoff. Consumer repos own product scripts, fixtures,
+runbooks, and evidence contracts; Fairway owns the reusable coordination state,
+packets, waits, notifications, and review/handback evidence.
+
 ## Active Work Visibility
 
 Dashboard wall visibility is driven by both task state and session state. A task

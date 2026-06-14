@@ -64,6 +64,12 @@ LLM advisory can then explain, prioritize, or draft a prompt, but Fairway should
 validate the recommendation against task state, review gates, risk, and allowed
 actions.
 
+For approval-gated consumer flows, use the reusable critical-flow governance
+template in [consumer-critical-flow-governance.md](consumer-critical-flow-governance.md).
+It captures the rule learned from live drill loops: flow map before
+implementation, non-live preflight before live window, bounded retry before
+causal reset, and Fairway evidence before handoff.
+
 ## First-Class Track Memory
 
 Local `tmp-ux` memory files are a product signal. Fairway should support

@@ -113,3 +113,9 @@ provider prompts, or mutate task state.
 Bug fixes use a narrower review packet because reviewers need root cause,
 owning layer, proof, and regression coverage more than full execution context.
 See [regression-packets.md](regression-packets.md).
+
+Approval-gated consumer critical flows need a reviewer packet that includes the
+causal goal, last blocker, allowed proof, forbidden actions, reviewed commands,
+artifact paths, and next owner/action. See
+[consumer-critical-flow-governance.md](consumer-critical-flow-governance.md) for
+the reusable Fairway template.
