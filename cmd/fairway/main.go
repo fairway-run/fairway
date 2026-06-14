@@ -1814,14 +1814,16 @@ func splitRepeatedCSV(values []string) []string {
 
 func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("audit", "work-coverage|ci-learning")
+		subcommandUsage("audit", "work-coverage|ci-learning|failure-routing")
 		return nil
 	}
 	switch args[0] {
 	case "work-coverage":
 		return cmdAuditWorkCoverage(ctx, opts, args[1:])
 	case "ci-learning":
-		return cmdAuditCILearning(ctx, opts, args[1:])
+		return cmdAuditCILearning(ctx, opts, "ci-learning", args[1:])
+	case "failure-routing":
+		return cmdAuditCILearning(ctx, opts, "failure-routing", args[1:])
 	default:
 		return fmt.Errorf("unknown audit subcommand %q", args[0])
 	}
@@ -1895,15 +1897,26 @@ func cmdAuditWorkCoverage(ctx context.Context, opts globalOptions, args []string
 	})
 }
 
-func cmdAuditCILearning(ctx context.Context, opts globalOptions, args []string) error {
-	fs := flag.NewFlagSet("audit ci-learning", flag.ContinueOnError)
+func cmdAuditCILearning(ctx context.Context, opts globalOptions, command string, args []string) error {
+	if isHelpOnly(args) {
+		switch command {
+		case "failure-routing":
+			fmt.Println("fairway audit failure-routing [--task-id <task-id>] [--template]")
+			fmt.Println("  Print advisory known-failure routing recommendations without creating tasks or changing state.")
+		default:
+			fmt.Println("fairway audit ci-learning [--task-id <task-id>] [--template]")
+			fmt.Println("  Print advisory CI/deploy learning findings and optional follow-up templates.")
+		}
+		return nil
+	}
+	fs := flag.NewFlagSet("audit "+command, flag.ContinueOnError)
 	taskID := fs.String("task-id", "", "limit audit to one task")
 	template := fs.Bool("template", false, "render learning artifact templates")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
-		return fmt.Errorf("unexpected audit ci-learning arguments: %s", strings.Join(fs.Args(), " "))
+		return fmt.Errorf("unexpected audit %s arguments: %s", command, strings.Join(fs.Args(), " "))
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		report, err := audit.BuildCILearningReport(ctx, cfg, s, audit.CILearningOptions{TaskID: *taskID, RenderTemplates: *template})
@@ -1913,32 +1926,54 @@ func cmdAuditCILearning(ctx context.Context, opts globalOptions, args []string) 
 		if opts.JSON {
 			return printJSON(report)
 		}
-		fmt.Printf("ci_learning_ok: %t\n", report.OK)
+		if command == "failure-routing" {
+			fmt.Printf("failure_routing_ok: %t\n", report.OK)
+		} else {
+			fmt.Printf("ci_learning_ok: %t\n", report.OK)
+		}
 		if report.TaskID != "" {
 			fmt.Printf("task_id: %s\n", report.TaskID)
 		}
-		fmt.Printf("summary: failed_evidence=%d missing_follow_ups=%d missed_local_gates=%d missed_review_gates=%d ci_environment_only=%d flaky_runner_or_cache=%d approval_gated_blocker=%d\n",
+		fmt.Printf("summary: failed_evidence=%d missing_follow_ups=%d missed_local_gates=%d missed_review_gates=%d ci_environment_only=%d flaky_runner_or_cache=%d approval_gated_blocker=%d artifact_contract=%d provider_api=%d browser_surface=%d setup_gate=%d callback_missing=%d redaction_finding=%d commit_boundary=%d undelivered_handoff=%d\n",
 			report.Summary.FailedEvidence,
 			report.Summary.MissingFollowUps,
 			report.Summary.MissedLocalGates,
 			report.Summary.MissedReviewGates,
 			report.Summary.CIEnvironmentOnly,
 			report.Summary.FlakyRunnerOrCache,
-			report.Summary.ApprovalGatedBlocker)
+			report.Summary.ApprovalGatedBlocker,
+			report.Summary.ArtifactContract,
+			report.Summary.ProviderAPI,
+			report.Summary.BrowserSurface,
+			report.Summary.SetupGate,
+			report.Summary.CallbackMissing,
+			report.Summary.RedactionFinding,
+			report.Summary.CommitBoundary,
+			report.Summary.UndeliveredHandoff)
 		if len(report.Findings) == 0 {
-			fmt.Println("no CI/deploy learning findings")
+			if command == "failure-routing" {
+				fmt.Println("no known-failure routing findings")
+			} else {
+				fmt.Println("no CI/deploy learning findings")
+			}
 			return nil
 		}
 		for _, finding := range report.Findings {
 			fmt.Printf("warning\t%s\ttask=%s\tfollow_up=%s\tcommand=%s\n", finding.FailureClass, finding.TaskID, finding.FollowUpTask, finding.CommandText)
 			if finding.FollowUpMissing {
-				fmt.Printf("  missing follow-up: create %s-* task, suggested %s\n", finding.RecommendedFollowUpPrefix, finding.RecommendedFollowUpTaskID)
+				fmt.Printf("  missing follow-up: create %s-* task, suggested %s kind=%s owner=%s layer=%s\n", finding.RecommendedFollowUpPrefix, finding.RecommendedFollowUpTaskID, finding.RecommendedFollowUpTaskKind, firstNonEmpty(finding.OwningDomain, "unknown"), firstNonEmpty(finding.OwningLayer, "unknown"))
+			}
+			if finding.ArtifactPath != "" {
+				fmt.Printf("  artifact: %s\n", finding.ArtifactPath)
 			}
 			if finding.ExpectedLocalReproduction != "" {
 				fmt.Printf("  reproduce: %s\n", finding.ExpectedLocalReproduction)
 			}
 			if finding.MissedGate != "" {
 				fmt.Printf("  missed_gate: %s\n", finding.MissedGate)
+			}
+			if len(finding.ForbiddenActions) > 0 {
+				fmt.Printf("  forbidden_until_reviewed: %s\n", strings.Join(finding.ForbiddenActions, ", "))
 			}
 			fmt.Printf("  root_cause: %s\n", finding.RootCause)
 		}
@@ -11234,7 +11269,7 @@ func printCommandHelp(command string) bool {
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
-		"audit":                      "fairway audit work-coverage|ci-learning ...\n  Run advisory coverage and CI/deploy learning reports.",
+		"audit":                      "fairway audit work-coverage|ci-learning|failure-routing ...\n  Run advisory coverage, CI/deploy learning, and known-failure routing reports.",
 		"usage":                      "fairway usage report|cost-report [--by <provider|task|epic|role|day|kind|phase|model>]\n  Report provider-neutral usage attribution and advisory cost forecasts.",
 		"register":                   "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",
 		"unregister":                 "fairway unregister [<name>]\n  Remove a project from the local Fairway registry.",

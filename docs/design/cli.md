@@ -292,12 +292,19 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `target_paths`, evidence rows, and required review domains. Use it before
   review, deploy, and release boundaries to catch real work that happened
   outside task/evidence/review coverage.
-- `audit ci-learning` is advisory by default. It classifies failed CI, deploy,
-  smoke, and UAT evidence as missed local gate, missed review gate,
-  CI-environment-only, flaky runner/cache, or approval-gated blocker, then
-  checks for matching `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`, `HARNESS-FIX-*`,
-  `UAT-BUG-*`, or `DOC-FIX-*` follow-up tasks. Use `--template` to render a
-  learning artifact for review or release notes.
+- `audit ci-learning` and `audit failure-routing` are advisory by default. They
+  share the same deterministic read model; `failure-routing` uses
+  failure-routing help text and a `failure_routing_ok` human status label for
+  operator clarity. They classify failed CI, deploy, smoke, UAT, and known
+  coordination evidence as
+  missed local gate, missed review gate, CI-environment-only, flaky
+  runner/cache, approval-gated blocker, artifact contract, provider API,
+  browser surface, setup gate, callback missing, redaction finding, commit
+  boundary, or undelivered handoff. The report recommends scoped follow-up task
+  prefixes/kinds, owning domain/layer, evidence artifact paths, and forbidden
+  actions until review; it does not create tasks unless an explicit
+  operator/configured apply path does so. Use `--template` to render a learning
+  artifact for review or release notes.
 - `batch` commands model shared implementation and validation units. A batch
   can contain multiple granular tasks that share one branch/worktree,
   validation command set, review domains, CI/deploy-run, and evidence set.

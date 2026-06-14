@@ -871,11 +871,19 @@ evidence that still needs a status decision, done tasks without required
 evidence, and missing review-domain approvals. Run it before review handoff,
 deploy/UAT attempts, and release readiness checks.
 
-`audit ci-learning` is advisory. It turns failed CI, deploy, smoke, and UAT
-evidence into a learning record: failure class, root cause, missed gate,
-expected local reproduction command, owner, and follow-up task. It also checks
-that actionable failures have a `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`,
-`HARNESS-FIX-*`, `UAT-BUG-*`, or `DOC-FIX-*` task.
+`audit ci-learning` is advisory. `audit failure-routing` is the same read model
+with known-failure routing help text and a `failure_routing_ok` human status
+label. It turns failed CI, deploy, smoke, UAT, and
+coordination evidence into a learning record: failure class, root cause, missed
+gate, expected local reproduction command, owner, owning domain/layer, evidence
+artifact path, suggested follow-up prefix/kind, and forbidden actions until
+review. It recognizes artifact contracts, provider API/4xx behavior, browser
+surface failures, setup gates, callback gaps, redaction findings, uncommitted
+reviewed files, and undelivered review handoffs. It also checks that actionable
+failures have a `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`, `HARNESS-FIX-*`,
+`UAT-BUG-*`, or `DOC-FIX-*` task. The report recommends follow-ups only; task
+creation still requires an explicit operator command, dry-run/apply workflow,
+or configured policy.
 
 For Fairway release attempts, create one release-run task/checkpoint and render
 a release-run packet before tagging:

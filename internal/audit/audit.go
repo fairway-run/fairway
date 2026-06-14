@@ -211,36 +211,51 @@ type CILearningSummary struct {
 	CIEnvironmentOnly    int `json:"ci_environment_only"`
 	FlakyRunnerOrCache   int `json:"flaky_runner_or_cache"`
 	ApprovalGatedBlocker int `json:"approval_gated_blocker"`
+	ArtifactContract     int `json:"artifact_contract"`
+	ProviderAPI          int `json:"provider_api"`
+	BrowserSurface       int `json:"browser_surface"`
+	SetupGate            int `json:"setup_gate"`
+	CallbackMissing      int `json:"callback_missing"`
+	RedactionFinding     int `json:"redaction_finding"`
+	CommitBoundary       int `json:"commit_boundary"`
+	UndeliveredHandoff   int `json:"undelivered_handoff"`
 }
 
 type CILearningFinding struct {
-	TaskID                      string `json:"task_id"`
-	TaskTitle                   string `json:"task_title"`
-	EvidenceType                string `json:"evidence_type"`
-	Result                      string `json:"result"`
-	CommandText                 string `json:"command_text"`
-	ArtifactPath                string `json:"artifact_path,omitempty"`
-	FailureClass                string `json:"failure_class"`
-	RootCause                   string `json:"root_cause"`
-	MissedGate                  string `json:"missed_gate,omitempty"`
-	ExpectedLocalReproduction   string `json:"expected_local_reproduction,omitempty"`
-	Owner                       string `json:"owner,omitempty"`
-	FollowUpTask                string `json:"follow_up_task,omitempty"`
-	FollowUpMissing             bool   `json:"follow_up_missing"`
-	RecommendedFollowUpPrefix   string `json:"recommended_follow_up_prefix,omitempty"`
-	RecommendedFollowUpTaskID   string `json:"recommended_follow_up_task_id,omitempty"`
-	RecommendedFollowUpTaskKind string `json:"recommended_follow_up_task_kind,omitempty"`
+	TaskID                      string   `json:"task_id"`
+	TaskTitle                   string   `json:"task_title"`
+	EvidenceType                string   `json:"evidence_type"`
+	Result                      string   `json:"result"`
+	CommandText                 string   `json:"command_text"`
+	ArtifactPath                string   `json:"artifact_path,omitempty"`
+	FailureClass                string   `json:"failure_class"`
+	RootCause                   string   `json:"root_cause"`
+	MissedGate                  string   `json:"missed_gate,omitempty"`
+	ExpectedLocalReproduction   string   `json:"expected_local_reproduction,omitempty"`
+	Owner                       string   `json:"owner,omitempty"`
+	OwningDomain                string   `json:"owning_domain,omitempty"`
+	OwningLayer                 string   `json:"owning_layer,omitempty"`
+	FollowUpTask                string   `json:"follow_up_task,omitempty"`
+	FollowUpMissing             bool     `json:"follow_up_missing"`
+	RecommendedFollowUpPrefix   string   `json:"recommended_follow_up_prefix,omitempty"`
+	RecommendedFollowUpTaskID   string   `json:"recommended_follow_up_task_id,omitempty"`
+	RecommendedFollowUpTaskKind string   `json:"recommended_follow_up_task_kind,omitempty"`
+	ForbiddenActions            []string `json:"forbidden_actions,omitempty"`
 }
 
 type LearningArtifact struct {
-	TaskID                    string `json:"task_id"`
-	FailureClass              string `json:"failure_class"`
-	RootCause                 string `json:"root_cause"`
-	MissedGate                string `json:"missed_gate,omitempty"`
-	ExpectedLocalReproduction string `json:"expected_local_reproduction,omitempty"`
-	Owner                     string `json:"owner,omitempty"`
-	FollowUpTask              string `json:"follow_up_task,omitempty"`
-	Markdown                  string `json:"markdown"`
+	TaskID                    string   `json:"task_id"`
+	FailureClass              string   `json:"failure_class"`
+	RootCause                 string   `json:"root_cause"`
+	MissedGate                string   `json:"missed_gate,omitempty"`
+	ExpectedLocalReproduction string   `json:"expected_local_reproduction,omitempty"`
+	Owner                     string   `json:"owner,omitempty"`
+	OwningDomain              string   `json:"owning_domain,omitempty"`
+	OwningLayer               string   `json:"owning_layer,omitempty"`
+	FollowUpTask              string   `json:"follow_up_task,omitempty"`
+	FollowUpTaskKind          string   `json:"follow_up_task_kind,omitempty"`
+	ForbiddenActions          []string `json:"forbidden_actions,omitempty"`
+	Markdown                  string   `json:"markdown"`
 }
 
 func BuildCILearningReport(ctx context.Context, cfg config.Config, s *store.Store, opts CILearningOptions) (CILearningReport, error) {
@@ -287,6 +302,22 @@ func BuildCILearningReport(ctx context.Context, cfg config.Config, s *store.Stor
 				report.Summary.FlakyRunnerOrCache++
 			case "approval_gated_blocker":
 				report.Summary.ApprovalGatedBlocker++
+			case "artifact_contract":
+				report.Summary.ArtifactContract++
+			case "provider_api":
+				report.Summary.ProviderAPI++
+			case "browser_surface":
+				report.Summary.BrowserSurface++
+			case "setup_gate":
+				report.Summary.SetupGate++
+			case "callback_missing":
+				report.Summary.CallbackMissing++
+			case "redaction_finding":
+				report.Summary.RedactionFinding++
+			case "commit_boundary":
+				report.Summary.CommitBoundary++
+			case "undelivered_handoff":
+				report.Summary.UndeliveredHandoff++
 			}
 			if opts.RenderTemplates {
 				report.Templates = append(report.Templates, learningArtifactForFinding(finding))
@@ -527,7 +558,11 @@ func isFailedPipelineEvidence(ev store.Evidence) bool {
 		return false
 	}
 	text := strings.ToLower(strings.Join([]string{ev.ArtifactType, ev.CommandText, ev.ArtifactPath, ev.Notes}, " "))
-	keywords := []string{"ci", "pipeline", "deploy", "deployment", "smoke", "uat", "release", "workflow", "github actions", "gitlab"}
+	keywords := []string{
+		"ci", "pipeline", "deploy", "deployment", "smoke", "uat", "release", "workflow", "github actions", "gitlab",
+		"artifact", "schema", "contract", "provider", "4xx", "401", "403", "404", "409", "429", "browser", "chrome",
+		"playwright", "callback", "redirect", "redaction", "secret", "token", "uncommitted", "reviewed files", "handoff",
+	}
 	for _, keyword := range keywords {
 		if strings.Contains(text, keyword) {
 			return true
@@ -546,30 +581,86 @@ func classifyLearningFailure(cfg config.Config, task store.Task, ev store.Eviden
 		CommandText:               ev.CommandText,
 		ArtifactPath:              ev.ArtifactPath,
 		Owner:                     firstNonEmpty(task.Owner, task.Definition.Role),
+		OwningDomain:              firstNonEmpty(task.Definition.OwningDomain, task.Definition.Role),
+		OwningLayer:               task.Definition.OwningLayer,
 		RecommendedFollowUpPrefix: learningFollowUpPrefix(text, ev.ArtifactType),
+		ForbiddenActions:          knownFailureForbiddenActions(),
 	}
 	missingReviews := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 	switch {
+	case containsAny(text, "artifact missing", "missing artifact", "artifact mismatch", "schema mismatch", "invalid artifact", "contract mismatch", "artifact contract"):
+		finding.FailureClass = "artifact_contract"
+		finding.RootCause = "evidence artifact was missing, mismatched, or failed its schema/contract"
+		finding.MissedGate = "artifact contract preflight"
+		finding.RecommendedFollowUpPrefix = "HARNESS-FIX"
+		finding.RecommendedFollowUpTaskKind = "bugfix"
+	case containsAny(text, "provider 4xx", " 4xx", "401", "403", "404", "409", "429", "provider api", "unknown provider behavior"):
+		finding.FailureClass = "provider_api"
+		finding.RootCause = "provider API behavior or authorization response needs isolated proof"
+		finding.MissedGate = "provider API proof"
+		finding.RecommendedFollowUpPrefix = "OPS-FIX"
+		finding.RecommendedFollowUpTaskKind = "proof"
+	case containsAny(text, "browser launch", "chrome launch", "playwright", "browser permission", "browser surface", "headed", "headless"):
+		finding.FailureClass = "browser_surface"
+		finding.RootCause = "browser execution surface failed before product behavior could be trusted"
+		finding.MissedGate = "browser/provider surface capability probe"
+		finding.RecommendedFollowUpPrefix = "HARNESS-FIX"
+		finding.RecommendedFollowUpTaskKind = "readiness"
+	case containsAny(text, "setup gate", "setup failed", "readback failed", "preflight failed", "preflight gate", "missing prerequisite"):
+		finding.FailureClass = "setup_gate"
+		finding.RootCause = "setup or readback gate failed before the target flow was exercised"
+		finding.MissedGate = "setup/readback preflight"
+		finding.RecommendedFollowUpPrefix = "OPS-FIX"
+		finding.RecommendedFollowUpTaskKind = "task"
+	case containsAny(text, "callback missing", "missing callback", "redirect missing", "oidc callback", "webhook missing"):
+		finding.FailureClass = "callback_missing"
+		finding.RootCause = "expected callback, redirect, or webhook did not arrive"
+		finding.MissedGate = "browser-flow callback contract"
+		finding.RecommendedFollowUpPrefix = "UAT-BUG"
+		finding.RecommendedFollowUpTaskKind = "bug"
+	case containsAny(text, "redaction", "leaked secret", "secret leak", "token leak", "credential leak", "unredacted"):
+		finding.FailureClass = "redaction_finding"
+		finding.RootCause = "evidence or output contained a redaction/privacy finding"
+		finding.MissedGate = "redaction guard"
+		finding.RecommendedFollowUpPrefix = "OPS-FIX"
+		finding.RecommendedFollowUpTaskKind = "guard"
+	case containsAny(text, "uncommitted reviewed files", "reviewed files uncommitted", "commit boundary", "merge-ready dirty", "dirty reviewed"):
+		finding.FailureClass = "commit_boundary"
+		finding.RootCause = "reviewed files were not committed or staged in the expected boundary"
+		finding.MissedGate = "commit-boundary closeout"
+		finding.RecommendedFollowUpPrefix = "OPS-FIX"
+		finding.RecommendedFollowUpTaskKind = "task"
+	case containsAny(text, "review handoff not delivered", "undelivered review handoff", "handoff not delivered", "missing thread_steered", "missing notification delivery"):
+		finding.FailureClass = "undelivered_handoff"
+		finding.RootCause = "Fairway handoff existed without delivered provider/thread notification proof"
+		finding.MissedGate = "wait/wake notification delivery"
+		finding.RecommendedFollowUpPrefix = "OPS-FIX"
+		finding.RecommendedFollowUpTaskKind = "task"
 	case ev.Result == "blocked" || containsAny(text, "approval", "manual gate", "permission", "forbidden", "unauthorized", "secret", "credential"):
 		finding.FailureClass = "approval_gated_blocker"
 		finding.RootCause = "execution was blocked by approval, permission, secret, or credential state"
 		finding.MissedGate = "approval or secret readiness gate"
+		finding.RecommendedFollowUpTaskKind = "task"
 	case containsAny(text, "flaky", "flake", "runner", "cache", "timeout", "rate limit", "network", "connection reset"):
 		finding.FailureClass = "flaky_runner_cache"
 		finding.RootCause = "failure appears tied to runner, cache, network, or intermittent infrastructure behavior"
 		finding.MissedGate = "runner/cache reliability check"
+		finding.RecommendedFollowUpTaskKind = "bug"
 	case containsAny(text, "ci only", "ci-only", "github actions", "gitlab", "container", "linux", "environment", "env var"):
 		finding.FailureClass = "ci_environment_only"
 		finding.RootCause = "failure appears specific to CI/deploy environment differences"
 		finding.MissedGate = "environment parity check"
+		finding.RecommendedFollowUpTaskKind = "bug"
 	case len(missingReviews) > 0 || (cfg.Gates.RequireReviewBeforeDone && task.ReviewStatus != "approved"):
 		finding.FailureClass = "missed_review_gate"
 		finding.RootCause = "failure happened while required review coverage was missing"
 		finding.MissedGate = "review domains: " + strings.Join(missingReviews, ", ")
+		finding.RecommendedFollowUpTaskKind = "task"
 	default:
 		finding.FailureClass = "missed_local_gate"
 		finding.RootCause = "failure should have been caught by a local verification command before CI/deploy"
 		finding.MissedGate = "local verification gate"
+		finding.RecommendedFollowUpTaskKind = "bug"
 	}
 	finding.ExpectedLocalReproduction = expectedLocalReproduction(ev)
 	if followUp, ok := followUps[finding.TaskID]; ok {
@@ -577,7 +668,6 @@ func classifyLearningFailure(cfg config.Config, task store.Task, ev store.Eviden
 	} else {
 		finding.FollowUpMissing = true
 		finding.RecommendedFollowUpTaskID = finding.RecommendedFollowUpPrefix + "-" + sanitizeFollowUpSuffix(finding.TaskID)
-		finding.RecommendedFollowUpTaskKind = "bug"
 	}
 	return finding
 }
@@ -643,7 +733,11 @@ func learningArtifactForFinding(finding CILearningFinding) LearningArtifact {
 		MissedGate:                finding.MissedGate,
 		ExpectedLocalReproduction: finding.ExpectedLocalReproduction,
 		Owner:                     finding.Owner,
+		OwningDomain:              finding.OwningDomain,
+		OwningLayer:               finding.OwningLayer,
 		FollowUpTask:              followUp,
+		FollowUpTaskKind:          finding.RecommendedFollowUpTaskKind,
+		ForbiddenActions:          append([]string{}, finding.ForbiddenActions...),
 	}
 	artifact.Markdown = fmt.Sprintf(`# CI/Deploy Learning: %s
 
@@ -652,9 +746,23 @@ func learningArtifactForFinding(finding CILearningFinding) LearningArtifact {
 - Missed gate: %s
 - Expected local reproduction: %s
 - Owner: %s
+- Owning domain: %s
+- Owning layer: %s
 - Follow-up task: %s
-`, artifact.TaskID, artifact.FailureClass, artifact.RootCause, artifact.MissedGate, artifact.ExpectedLocalReproduction, artifact.Owner, artifact.FollowUpTask)
+- Follow-up task kind: %s
+- Forbidden until reviewed: %s
+`, artifact.TaskID, artifact.FailureClass, artifact.RootCause, artifact.MissedGate, artifact.ExpectedLocalReproduction, artifact.Owner, artifact.OwningDomain, artifact.OwningLayer, artifact.FollowUpTask, artifact.FollowUpTaskKind, strings.Join(artifact.ForbiddenActions, ", "))
 	return artifact
+}
+
+func knownFailureForbiddenActions() []string {
+	return []string{
+		"live execution",
+		"production mutation",
+		"credential action",
+		"approval acceptance",
+		"merge/deploy",
+	}
 }
 
 func missingApprovedReviewDomains(domains []string, reviews []store.Review) []string {

@@ -149,9 +149,12 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"wait", "list", "--help"}, "fairway wait list [--task <task-id>]"},
 		{[]string{"wait", "tick", "--help"}, "fairway wait tick [--task <task-id>]"},
 		{[]string{"wait", "wake", "--help"}, "fairway wait wake [--task <task-id>]"},
+		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
+		{[]string{"audit", "ci-learning", "--help"}, "fairway audit ci-learning [--task-id <task-id>] [--template]"},
+		{[]string{"audit", "failure-routing", "--help"}, "fairway audit failure-routing [--task-id <task-id>] [--template]"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check|closeout"},
@@ -162,7 +165,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"batch", "link", "--help"}, "fairway batch link <batch-id>"},
 		{[]string{"batch", "show", "--help"}, "fairway batch show <batch-id>"},
 		{[]string{"batch", "list", "--help"}, "fairway batch list"},
-		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning"},
+		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing"},
 		{[]string{"release", "--help"}, "fairway release verify"},
 		{[]string{"rules", "--help"}, "fairway rules validate <dir>|evidence-types|match <task-id>"},
 	} {
@@ -3258,6 +3261,87 @@ func TestCLI_AuditCILearning(t *testing.T) {
 	cleanReport := runCapture(t, "audit", "ci-learning", "--task-id", "T-003")
 	assertContains(t, cleanReport, "ci_learning_ok: true")
 	assertContains(t, cleanReport, "no CI/deploy learning findings")
+}
+
+func TestCLI_KnownFailureRoutingRecommendations(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `task_id_pattern = "^[A-Z]+-[0-9]+$"`, `task_id_pattern = "^[A-Z][A-Z0-9-]*$"`)
+	cases := []struct {
+		id       string
+		title    string
+		role     string
+		layer    string
+		command  string
+		artifact string
+		notes    string
+		class    string
+		prefix   string
+		kind     string
+	}{
+		{"ART-001", "Artifact mismatch", "backend", "artifact-contract", "validate artifact schema", "artifacts/result.json", "artifact mismatch schema mismatch", "artifact_contract", "HARNESS-FIX", "bugfix"},
+		{"PROV-001", "Provider 4xx", "ops", "provider-api", "provider API proof", "artifacts/provider.md", "provider 4xx 403 unknown provider behavior", "provider_api", "OPS-FIX", "proof"},
+		{"BROW-001", "Browser surface", "backend", "browser", "browser smoke", "artifacts/browser.md", "browser launch permission failure playwright", "browser_surface", "HARNESS-FIX", "readiness"},
+		{"SETUP-001", "Setup gate", "ops", "setup", "setup gate", "artifacts/setup.md", "setup gate failed readback failed", "setup_gate", "OPS-FIX", "task"},
+		{"CALL-001", "Callback missing", "backend", "callback", "browser flow smoke", "artifacts/callback.md", "callback missing redirect missing", "callback_missing", "UAT-BUG", "bug"},
+		{"RED-001", "Redaction finding", "ops", "redaction", "redaction self-test", "artifacts/redaction.md", "redaction finding unredacted token leak", "redaction_finding", "OPS-FIX", "guard"},
+		{"COMMIT-001", "Commit boundary", "backend", "commit-boundary", "merge-ready", "artifacts/merge-ready.md", "uncommitted reviewed files merge-ready dirty", "commit_boundary", "OPS-FIX", "task"},
+		{"HAND-001", "Undelivered handoff", "ops", "wait-wake", "handoff check", "artifacts/handoff.md", "review handoff not delivered missing notification delivery", "undelivered_handoff", "OPS-FIX", "task"},
+	}
+	for _, tc := range cases {
+		runOK(t, "add", tc.id, "--title", tc.title, "--role", tc.role, "--owning-layer", tc.layer)
+		runOK(t, "record", "evidence", tc.id, "--command-text", tc.command, "--result", "fail", "--artifact", tc.artifact, "--artifact-type", "smoke", "--notes", tc.notes)
+	}
+
+	report := runCapture(t, "audit", "failure-routing", "--template")
+	for _, want := range []string{
+		"failure_routing_ok: false",
+		"artifact_contract=1",
+		"provider_api=1",
+		"browser_surface=1",
+		"setup_gate=1",
+		"callback_missing=1",
+		"redaction_finding=1",
+		"commit_boundary=1",
+		"undelivered_handoff=1",
+		"artifact: artifacts/provider.md",
+		"forbidden_until_reviewed: live execution, production mutation, credential action, approval acceptance, merge/deploy",
+		"# CI/Deploy Learning: ART-001",
+		"Follow-up task kind: bugfix",
+		"Forbidden until reviewed: live execution, production mutation, credential action, approval acceptance, merge/deploy",
+	} {
+		assertContains(t, report, want)
+	}
+	for _, tc := range cases {
+		assertContains(t, report, tc.class)
+		assertContains(t, report, fmt.Sprintf("suggested %s-%s kind=%s", tc.prefix, tc.id, tc.kind))
+	}
+	help := runCapture(t, "audit", "failure-routing", "--help")
+	assertContains(t, help, "fairway audit failure-routing [--task-id <task-id>] [--template]")
+	assertContains(t, help, "advisory known-failure routing recommendations")
+	assertNotContains(t, help, "Usage of audit ci-learning")
+	assertNotContains(t, help, "error:")
+
+	jsonReport := runCapture(t, "--json", "audit", "failure-routing")
+	for _, want := range []string{
+		`"failure_class": "provider_api"`,
+		`"recommended_follow_up_prefix": "OPS-FIX"`,
+		`"recommended_follow_up_task_kind": "proof"`,
+		`"owning_layer": "provider-api"`,
+		`"forbidden_actions": [`,
+		`"live execution"`,
+	} {
+		assertContains(t, jsonReport, want)
+	}
 }
 
 func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
