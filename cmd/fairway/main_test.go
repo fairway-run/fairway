@@ -145,9 +145,10 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"memory", "--help"}, "fairway memory show|update|append|packet|stale"},
 		{[]string{"memory", "show", "--help"}, "fairway memory show [--track <track-id>]"},
 		{[]string{"memory", "packet", "--help"}, "fairway memory packet --track <track-id>"},
-		{[]string{"wait", "--help"}, "fairway wait list|tick"},
+		{[]string{"wait", "--help"}, "fairway wait list|tick|wake"},
 		{[]string{"wait", "list", "--help"}, "fairway wait list [--task <task-id>]"},
 		{[]string{"wait", "tick", "--help"}, "fairway wait tick [--task <task-id>]"},
+		{[]string{"wait", "wake", "--help"}, "fairway wait wake [--task <task-id>]"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -2597,6 +2598,85 @@ func TestCLI_GenericWaitListAndTick(t *testing.T) {
 	jsonWaits := runCapture(t, "--json", "wait", "list", "--task", "T-001")
 	assertContains(t, jsonWaits, `"kind": "approval"`)
 	assertContains(t, jsonWaits, `"source": "coordinator_plan"`)
+}
+
+func TestCLI_GenericWaitWakeDelivery(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `notification_ack_timeout = "24h"`, `notification_ack_timeout = "1ns"`)
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+
+[[roles]]
+name = "arch"
+provider = "codex"
+
+[[roles]]
+name = "ops"
+provider = "codex"
+
+[[provider_targets]]
+domain = "arch"
+provider = "codex"
+target = "thread-arch"
+type = "thread"
+
+[[provider_targets]]
+domain = "ops"
+provider = "codex"
+target = "thread-ops"
+type = "thread"
+`)
+	runOK(t, "add", "T-001", "--title", "Stale review wait", "--role", "backend", "--review-domains", "arch")
+	runOK(t, "add", "T-002", "--title", "Unroutable review wait", "--role", "backend", "--review-domains", "product")
+	runOK(t, "add", "T-003", "--title", "Resolved review wait", "--role", "backend", "--review-domains", "ops")
+	for _, taskID := range []string{"T-001", "T-002", "T-003"} {
+		runOK(t, "set-status", taskID, "in_progress", "--reason", "entered wait")
+	}
+	runOK(t, "record", "notification", "T-001", "--domain", "arch", "--provider", "codex", "--target", "thread-arch", "--state", "notification_delivered", "--reason", "sent")
+	runOK(t, "record", "notification", "T-002", "--domain", "product", "--provider", "codex", "--target", "missing", "--state", "notification_failed", "--reason", "no mapping")
+	runOK(t, "record", "review", "T-003", "--reviewer", "ops-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "ok")
+	time.Sleep(time.Millisecond)
+
+	dryRun := runCapture(t, "wait", "wake", "--task", "T-001", "--kind", "review")
+	assertContains(t, dryRun, "generic_wait_wakes:")
+	assertContains(t, dryRun, "kind=review")
+	assertContains(t, dryRun, "target=thread-arch")
+	assertContains(t, dryRun, "Generic wait wake for T-001:")
+	assertContains(t, dryRun, "1. Re-run fairway wait list --task T-001 --kind review.")
+	assertContains(t, dryRun, "2. Re-run the source-specific command named above before acting.")
+	assertContains(t, dryRun, "Do not treat this wake as approval, merge, deploy, live execution, or dashboard send authority.")
+
+	sent := runCapture(t, "wait", "wake", "--task", "T-001", "--kind", "review", "--send", "--state", "thread_steered")
+	assertContains(t, sent, "status=ready")
+	assertContains(t, sent, "signature=T-001|review|task_status=in_progress|")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "thread_steered domain=coordinator provider=codex target=thread-arch")
+	assertContains(t, detail, "generic_wait_wake signature=T-001|review|task_status=in_progress|")
+
+	suppressed := runCapture(t, "wait", "wake", "--task", "T-001", "--kind", "review", "--send", "--state", "thread_steered")
+	assertContains(t, suppressed, "status=suppressed")
+
+	failed := runCapture(t, "wait", "wake", "--task", "T-002", "--kind", "review", "--send")
+	assertContains(t, failed, "status=failed")
+	assertContains(t, failed, "target=none")
+	failedDetail := runCapture(t, "task-detail", "T-002")
+	assertContains(t, failedDetail, "notification_failed domain=coordinator")
+	assertContains(t, failedDetail, "generic_wait_wake signature=T-002|review|task_status=in_progress|")
+	assertContains(t, failedDetail, "failed=no_wake_target")
+
+	resolved := runCapture(t, "wait", "wake", "--task", "T-003", "--kind", "review")
+	assertContains(t, resolved, "generic_wait_wakes: none")
 }
 
 func TestCLI_TmuxSessionTranscriptAndReconcile(t *testing.T) {

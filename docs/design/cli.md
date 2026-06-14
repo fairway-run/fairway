@@ -84,6 +84,7 @@ fairway memory packet --track <track-id> [--for <provider-or-surface>]
 fairway memory stale [--older-than <duration>]
 fairway wait list [--task <task-id>] [--stale] [--kind <kind>]
 fairway wait tick [--task <task-id>] [--stale] [--kind <kind>]
+fairway wait wake [--task <task-id>] [--kind <kind>] [--send]
 fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--authorization-state <state>] [--prompt <text>] [--command <cmd>] [--missed-deadline-action <action>] [--target-close-by <date>] [--artifact <path>]
 fairway live-window status [--task <task-id>]
 fairway live-window control-room [--task <task-id>] [--stale]
@@ -223,12 +224,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   database state. `memory packet` renders a compact packet from the memory row
   plus current Fairway tasks, sessions, and checkpoints so new provider
   attachments can resume without polling chat.
-- `wait list|tick` projects generic parked-work waits from existing Fairway
+- `wait list|tick|wake` projects generic parked-work waits from existing Fairway
   facts, including review waits, completion handbacks, provider/session and
   checkpoint plan actions, live-window handoffs, monitor actions, approvals,
-  and stale track memory. `wait tick` is a dry-run/operator visibility surface;
-  it does not run a durable timer, execute DAG steps, approve reviews, claim
-  tasks, send provider prompts, mutate environments, or perform live actions.
+  and stale track memory. `wait tick` is a dry-run/operator visibility surface.
+  `wait wake` renders fixed-template wake prompts for stale or failed
+  task-backed waits and, with `--send`, records bounded delivery or
+  `notification_failed` evidence through existing task notification rows with a
+  stable dedupe signature. These commands do not run a durable timer, execute
+  DAG steps, approve reviews, claim tasks, mutate environments, or perform live
+  actions. Dashboard projections remain display-only; wake delivery stays in
+  CLI/coordinator/provider-adapter surfaces.
 - `record completion-handback` is a typed closeout helper for delegated work.
   It writes a normal handoff plus a linked notification row. The handoff payload
   records the next actor, next safe action, optional completion outcome,

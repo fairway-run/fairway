@@ -2808,6 +2808,7 @@ tasks:
       - examples/session-adapters
       - docs/design/coordination-intelligence.md
       - docs/design/provider-notifications.md
+      - docs/design/cli.md
       - docs/agent-guide.md
     review_domains:
       - arch

@@ -5631,10 +5631,10 @@ func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 
 func cmdWait(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("wait requires subcommand: list, tick")
+		return errors.New("wait requires subcommand: list, tick, wake")
 	}
 	if args[0] == "--help" || args[0] == "-h" {
-		subcommandUsage("wait", "list|tick [--task <task-id>] [--stale] [--kind <kind>]")
+		subcommandUsage("wait", "list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]")
 		return nil
 	}
 	switch args[0] {
@@ -5644,6 +5644,8 @@ func cmdWait(ctx context.Context, opts globalOptions, args []string) error {
 			return nil
 		}
 		return cmdWaitList(ctx, opts, args[1:], args[0] == "tick")
+	case "wake":
+		return cmdWaitWake(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown wait subcommand %q", args[0])
 	}
@@ -5675,27 +5677,10 @@ func cmdWaitList(ctx context.Context, opts globalOptions, args []string, tick bo
 		return fmt.Errorf("unexpected wait arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
-		worktrees, err := collectWorktreeStatus(cfg, root)
-		if err != nil {
-			worktrees = nil
-		}
-		plan, err := coord.BuildPlan(ctx, cfg, s, coord.PlanOptions{
-			Worktrees:             coordinatorWorktreeFacts(worktrees),
-			StaleCheckpointAfter:  2 * time.Hour,
-			MonitorHandbackAfter:  2 * time.Hour,
-			ReadyLimit:            10,
-			RecommendationLimit:   50,
-			UtilityMonitorAllowed: true,
-		})
+		rows, err := projectedWaitRows(ctx, cfg, root, s, *staleMemoryAfter)
 		if err != nil {
 			return err
 		}
-		rows := waitRowsFromPlan(plan)
-		memories, err := s.TrackMemories(ctx)
-		if err != nil {
-			return err
-		}
-		rows = append(rows, waitRowsFromTrackMemory(memories, *staleMemoryAfter)...)
 		rows = filterWaitRows(rows, *taskID, *kind, *staleOnly)
 		sort.SliceStable(rows, func(i, j int) bool {
 			if rows[i].Stale != rows[j].Stale {
@@ -5731,6 +5716,285 @@ func cmdWaitList(ctx context.Context, opts globalOptions, args []string, tick bo
 		}
 		return nil
 	})
+}
+
+type genericWaitWake struct {
+	TaskID     string  `json:"task_id"`
+	TaskStatus string  `json:"task_status,omitempty"`
+	WaitID     string  `json:"wait_id"`
+	Kind       string  `json:"kind"`
+	Owner      string  `json:"owner,omitempty"`
+	Provider   string  `json:"provider,omitempty"`
+	Target     string  `json:"target,omitempty"`
+	State      string  `json:"state,omitempty"`
+	Prompt     string  `json:"prompt"`
+	Signature  string  `json:"signature"`
+	Wait       waitRow `json:"wait"`
+	Suppressed bool    `json:"suppressed,omitempty"`
+	Error      string  `json:"error,omitempty"`
+}
+
+func cmdWaitWake(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("wait", "wake [--task <task-id>] [--kind <kind>] [--send] [--state <sent|notification_delivered|thread_steered>] [--provider <name>] [--target <thread-id>]")
+		return nil
+	}
+	fs := flag.NewFlagSet("wait wake", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	kind := fs.String("kind", "", "wait kind")
+	send := fs.Bool("send", false, "record bounded wake delivery/failure notification rows")
+	state := fs.String("state", "sent", "notification state to record with --send")
+	provider := fs.String("provider", "", "override provider label")
+	target := fs.String("target", "", "override provider thread/adapter target")
+	staleMemoryAfter := fs.Duration("memory-stale-after", 24*time.Hour, "track memory stale threshold")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected wait wake arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if !*send && (*provider != "" || *target != "" || *state != "sent") {
+		return errors.New("--provider, --target, and --state require --send")
+	}
+	switch *state {
+	case "sent", "notification_delivered", "thread_steered":
+	default:
+		return fmt.Errorf("invalid wait wake --state %q", *state)
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		rows, err := projectedWaitRows(ctx, cfg, root, s, *staleMemoryAfter)
+		if err != nil {
+			return err
+		}
+		rows = filterWaitRows(rows, *taskID, *kind, false)
+		statuses, err := taskStatuses(ctx, s)
+		if err != nil {
+			return err
+		}
+		wakes := selectGenericWaitWakes(rows, cfg.ProviderTargets, statuses, terminalStatusSet(cfg.States.Terminal))
+		for i := range wakes {
+			if *provider != "" {
+				wakes[i].Provider = *provider
+			}
+			if *target != "" {
+				wakes[i].Target = *target
+			}
+			wakes[i].State = *state
+			notifications, err := s.Notifications(ctx, wakes[i].TaskID)
+			if err != nil {
+				return err
+			}
+			if genericWaitWakeSuppressed(wakes[i], notifications) {
+				wakes[i].Suppressed = true
+				continue
+			}
+			if !*send {
+				continue
+			}
+			recordState := *state
+			reason := "generic_wait_wake signature=" + wakes[i].Signature + " kind=" + wakes[i].Kind + " wait_id=" + wakes[i].WaitID
+			if strings.TrimSpace(wakes[i].Target) == "" {
+				recordState = "notification_failed"
+				reason += " failed=no_wake_target"
+				wakes[i].Error = "no wake target configured"
+			}
+			if _, err := s.RecordNotification(ctx, store.Notification{
+				TaskID:   wakes[i].TaskID,
+				Domain:   "coordinator",
+				Provider: wakes[i].Provider,
+				Target:   wakes[i].Target,
+				State:    recordState,
+				Reason:   reason,
+			}); err != nil {
+				return err
+			}
+			wakes[i].State = recordState
+		}
+		if opts.JSON {
+			return printJSON(wakes)
+		}
+		printGenericWaitWakes(wakes)
+		return nil
+	})
+}
+
+func projectedWaitRows(ctx context.Context, cfg config.Config, root string, s *store.Store, staleMemoryAfter time.Duration) ([]waitRow, error) {
+	worktrees, err := collectWorktreeStatus(cfg, root)
+	if err != nil {
+		worktrees = nil
+	}
+	ackTimeout, err := reviewWaitAckTimeout(cfg)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := coord.BuildPlan(ctx, cfg, s, coord.PlanOptions{
+		Worktrees:              coordinatorWorktreeFacts(worktrees),
+		StaleCheckpointAfter:   2 * time.Hour,
+		MonitorHandbackAfter:   2 * time.Hour,
+		NotificationAckTimeout: ackTimeout,
+		ReadyLimit:             10,
+		RecommendationLimit:    50,
+		UtilityMonitorAllowed:  true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	rows := waitRowsFromPlan(plan)
+	reviewWaits, _, err := reviewWaitRowsWithTaskStatus(ctx, cfg, s, "")
+	if err != nil {
+		return nil, err
+	}
+	rows = append(rows, waitRowsFromReviewWaits(reviewWaits)...)
+	memories, err := s.TrackMemories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows = append(rows, waitRowsFromTrackMemory(memories, staleMemoryAfter)...)
+	return dedupeWaitRows(rows), nil
+}
+
+func waitRowsFromReviewWaits(waits []reviewstate.ReviewWait) []waitRow {
+	rows := make([]waitRow, 0, len(waits))
+	for _, rw := range waits {
+		state := strings.TrimSpace(rw.State)
+		if state == "" {
+			state = "open"
+		}
+		rows = append(rows, waitRow{
+			WaitID:           firstNonEmpty(rw.WaitID, "review:"+rw.TaskID+":"+rw.Domain),
+			Kind:             "review",
+			TaskID:           rw.TaskID,
+			Owner:            rw.Domain,
+			State:            state,
+			Action:           rw.Action,
+			Reason:           rw.Reason,
+			Stale:            state == "stale" || state == "notification_failed",
+			Source:           "review_waits",
+			SuggestedCommand: suggestedReviewWaitCommand(rw),
+		})
+	}
+	return rows
+}
+
+func dedupeWaitRows(rows []waitRow) []waitRow {
+	seen := map[string]bool{}
+	var out []waitRow
+	for _, row := range rows {
+		key := strings.Join([]string{row.Source, row.WaitID, row.TaskID, row.Kind}, "|")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, row)
+	}
+	return out
+}
+
+func selectGenericWaitWakes(rows []waitRow, targets []config.ProviderTarget, statuses map[string]string, terminal map[string]bool) []genericWaitWake {
+	var wakes []genericWaitWake
+	for _, row := range rows {
+		if strings.TrimSpace(row.TaskID) == "" {
+			continue
+		}
+		taskStatus := strings.TrimSpace(statuses[row.TaskID])
+		if terminal[taskStatus] {
+			continue
+		}
+		if !row.Stale && row.State != "failed" && row.State != "notification_failed" {
+			continue
+		}
+		provider, target := completionWakeTarget(targets, row.Owner)
+		wake := genericWaitWake{
+			TaskID:     row.TaskID,
+			TaskStatus: taskStatus,
+			WaitID:     row.WaitID,
+			Kind:       row.Kind,
+			Owner:      row.Owner,
+			Provider:   provider,
+			Target:     target,
+			State:      "sent",
+			Wait:       row,
+		}
+		wake.Signature = genericWaitWakeSignature(wake)
+		wake.Prompt = renderGenericWaitWakePrompt(wake)
+		wakes = append(wakes, wake)
+	}
+	sort.SliceStable(wakes, func(i, j int) bool {
+		if wakes[i].TaskID != wakes[j].TaskID {
+			return wakes[i].TaskID < wakes[j].TaskID
+		}
+		return wakes[i].Signature < wakes[j].Signature
+	})
+	return wakes
+}
+
+func genericWaitWakeSignature(wake genericWaitWake) string {
+	parts := []string{
+		wake.TaskID,
+		wake.Kind,
+		"task_status=" + strings.TrimSpace(wake.TaskStatus),
+		"wait_id=" + strings.TrimSpace(wake.WaitID),
+		"state=" + strings.TrimSpace(wake.Wait.State),
+		"action=" + strings.TrimSpace(wake.Wait.Action),
+		"source=" + strings.TrimSpace(wake.Wait.Source),
+	}
+	return strings.Join(parts, "|")
+}
+
+func renderGenericWaitWakePrompt(wake genericWaitWake) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Generic wait wake for %s:\n", wake.TaskID)
+	if wake.TaskStatus != "" {
+		fmt.Fprintf(&b, "Task status: %s\n", wake.TaskStatus)
+	}
+	fmt.Fprintf(&b, "Wait: %s kind=%s state=%s owner=%s\n", wake.WaitID, wake.Kind, wake.Wait.State, firstNonEmpty(wake.Owner, "unknown"))
+	fmt.Fprintf(&b, "Action: %s\n", firstNonEmpty(wake.Wait.Action, "inspect_wait"))
+	if wake.Wait.Reason != "" {
+		fmt.Fprintf(&b, "Reason: %s\n", wake.Wait.Reason)
+	}
+	if wake.Wait.SuggestedCommand != "" {
+		fmt.Fprintf(&b, "Suggested command: %s\n", wake.Wait.SuggestedCommand)
+	}
+	b.WriteString("\nNext action:\n")
+	fmt.Fprintf(&b, "1. Re-run fairway wait list --task %s --kind %s.\n", wake.TaskID, wake.Kind)
+	b.WriteString("2. Re-run the source-specific command named above before acting.\n")
+	b.WriteString("3. Do not treat this wake as approval, merge, deploy, live execution, or dashboard send authority.\n")
+	return b.String()
+}
+
+func genericWaitWakeSuppressed(wake genericWaitWake, notifications []store.Notification) bool {
+	needle := "generic_wait_wake signature=" + wake.Signature
+	for _, notification := range notifications {
+		if notification.Domain == "coordinator" && strings.Contains(notification.Reason, needle) {
+			switch notification.State {
+			case "sent", "notification_delivered", "thread_steered", "acknowledged", "review_acknowledged":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func printGenericWaitWakes(wakes []genericWaitWake) {
+	if len(wakes) == 0 {
+		fmt.Println("generic_wait_wakes: none")
+		return
+	}
+	fmt.Println("generic_wait_wakes:")
+	for _, wake := range wakes {
+		status := "ready"
+		if wake.Suppressed {
+			status = "suppressed"
+		}
+		if wake.Error != "" {
+			status = "failed"
+		}
+		fmt.Printf("- %s kind=%s wait=%s status=%s task_status=%s provider=%s target=%s signature=%s\n", wake.TaskID, wake.Kind, wake.WaitID, status, firstNonEmpty(wake.TaskStatus, "unknown"), firstNonEmpty(wake.Provider, "none"), firstNonEmpty(wake.Target, "none"), wake.Signature)
+		fmt.Print(wake.Prompt)
+		if !strings.HasSuffix(wake.Prompt, "\n") {
+			fmt.Println()
+		}
+	}
 }
 
 func waitRowsFromPlan(plan coord.Plan) []waitRow {
@@ -10960,7 +11224,7 @@ func printCommandHelp(command string) bool {
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
-		"wait":                       "fairway wait list|tick [--task <task-id>] [--stale] [--kind <kind>]\n  Project generic parked-work waits from existing Fairway facts.",
+		"wait":                       "fairway wait list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Project generic parked-work waits from existing Fairway facts and emit bounded wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",
