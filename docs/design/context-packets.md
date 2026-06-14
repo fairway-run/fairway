@@ -91,6 +91,23 @@ that context plus current operating constraints. If a packet reveals durable
 requirements, update the task notes or design docs rather than letting the
 packet become the only source.
 
+## Track Memory Packets
+
+`fairway memory show|update|append|packet|stale` is the durable resume surface
+for long-running tracks. It stores curated operating summaries and references to
+Fairway source facts, not copied provider transcripts or raw prompt bodies.
+
+Track memory records can include:
+
+- current objective and active scope;
+- decisions, blockers, open questions, and next actions;
+- source checkpoint, evidence, and review ids.
+
+`fairway memory packet --track <track-id>` renders that curated memory together
+with current task, session, and checkpoint facts. The packet is a compact
+provider-independent resume view. It does not approve work, expand scope, send
+provider prompts, or mutate task state.
+
 ## Related Packets
 
 Bug fixes use a narrower review packet because reviewers need root cause,

@@ -193,6 +193,23 @@ type Watcher struct {
 	FinishedAt      string `json:"finished_at"`
 }
 
+type TrackMemory struct {
+	TrackID             string   `json:"track_id"`
+	Title               string   `json:"title,omitempty"`
+	Purpose             string   `json:"purpose,omitempty"`
+	OperatingMode       string   `json:"operating_mode,omitempty"`
+	ActiveScope         string   `json:"active_scope,omitempty"`
+	CurrentObjective    string   `json:"current_objective,omitempty"`
+	Decisions           []string `json:"decisions,omitempty"`
+	Blockers            []string `json:"blockers,omitempty"`
+	OpenQuestions       []string `json:"open_questions,omitempty"`
+	NextActions         []string `json:"next_actions,omitempty"`
+	SourceCheckpointIDs []int64  `json:"source_checkpoint_ids,omitempty"`
+	SourceEvidenceIDs   []int64  `json:"source_evidence_ids,omitempty"`
+	SourceReviewIDs     []int64  `json:"source_review_ids,omitempty"`
+	UpdatedAt           string   `json:"updated_at,omitempty"`
+}
+
 type TrackerLink struct {
 	TaskID     string `json:"task_id"`
 	Provider   string `json:"provider"`
@@ -1304,6 +1321,240 @@ WHERE project_id=?`
 		out = append(out, cp)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) TrackMemory(ctx context.Context, trackID string) (TrackMemory, error) {
+	var mem TrackMemory
+	row := s.db.QueryRowContext(ctx, `
+SELECT track_id, COALESCE(title, ''), COALESCE(purpose, ''), COALESCE(operating_mode, ''),
+       COALESCE(active_scope, ''), COALESCE(current_objective, ''), COALESCE(decisions, '[]'),
+       COALESCE(blockers, '[]'), COALESCE(open_questions, '[]'), COALESCE(next_actions, '[]'),
+       COALESCE(source_checkpoint_ids, '[]'), COALESCE(source_evidence_ids, '[]'),
+       COALESCE(source_review_ids, '[]'), updated_at
+FROM track_memory
+WHERE project_id=? AND track_id=?`, s.projectID, trackID)
+	if err := scanTrackMemory(row, &mem); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return TrackMemory{}, ErrNotFound
+		}
+		return TrackMemory{}, err
+	}
+	return mem, nil
+}
+
+func (s *Store) TrackMemories(ctx context.Context) ([]TrackMemory, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT track_id, COALESCE(title, ''), COALESCE(purpose, ''), COALESCE(operating_mode, ''),
+       COALESCE(active_scope, ''), COALESCE(current_objective, ''), COALESCE(decisions, '[]'),
+       COALESCE(blockers, '[]'), COALESCE(open_questions, '[]'), COALESCE(next_actions, '[]'),
+       COALESCE(source_checkpoint_ids, '[]'), COALESCE(source_evidence_ids, '[]'),
+       COALESCE(source_review_ids, '[]'), updated_at
+FROM track_memory
+WHERE project_id=?
+ORDER BY updated_at DESC`, s.projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrackMemory
+	for rows.Next() {
+		var mem TrackMemory
+		if err := scanTrackMemory(rows, &mem); err != nil {
+			return nil, err
+		}
+		out = append(out, mem)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) UpsertTrackMemory(ctx context.Context, mem TrackMemory, appendFields bool) (TrackMemory, error) {
+	mem.TrackID = strings.TrimSpace(mem.TrackID)
+	if mem.TrackID == "" {
+		return TrackMemory{}, errors.New("track id is required")
+	}
+	if err := s.validateTrackMemorySources(ctx, mem); err != nil {
+		return TrackMemory{}, err
+	}
+	if appendFields {
+		existing, err := s.TrackMemory(ctx, mem.TrackID)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return TrackMemory{}, err
+		}
+		if err == nil {
+			mem = mergeTrackMemory(existing, mem)
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO track_memory
+  (project_id, track_id, title, purpose, operating_mode, active_scope, current_objective,
+   decisions, blockers, open_questions, next_actions, source_checkpoint_ids, source_evidence_ids,
+   source_review_ids, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(project_id, track_id) DO UPDATE SET
+  title=excluded.title,
+  purpose=excluded.purpose,
+  operating_mode=excluded.operating_mode,
+  active_scope=excluded.active_scope,
+  current_objective=excluded.current_objective,
+  decisions=excluded.decisions,
+  blockers=excluded.blockers,
+  open_questions=excluded.open_questions,
+  next_actions=excluded.next_actions,
+  source_checkpoint_ids=excluded.source_checkpoint_ids,
+  source_evidence_ids=excluded.source_evidence_ids,
+  source_review_ids=excluded.source_review_ids,
+  updated_at=excluded.updated_at`,
+		s.projectID, mem.TrackID, mem.Title, mem.Purpose, mem.OperatingMode, mem.ActiveScope, mem.CurrentObjective,
+		mustJSONStrings(mem.Decisions), mustJSONStrings(mem.Blockers), mustJSONStrings(mem.OpenQuestions),
+		mustJSONStrings(mem.NextActions), mustJSONInt64s(mem.SourceCheckpointIDs), mustJSONInt64s(mem.SourceEvidenceIDs),
+		mustJSONInt64s(mem.SourceReviewIDs), now)
+	if err != nil {
+		return TrackMemory{}, err
+	}
+	return s.TrackMemory(ctx, mem.TrackID)
+}
+
+func (s *Store) validateTrackMemorySources(ctx context.Context, mem TrackMemory) error {
+	for _, id := range mem.SourceCheckpointIDs {
+		if id <= 0 {
+			return fmt.Errorf("invalid source checkpoint id %d", id)
+		}
+		var count int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_checkpoints WHERE project_id=? AND id=?`, s.projectID, id).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("source checkpoint id %d not found", id)
+		}
+	}
+	for _, id := range mem.SourceEvidenceIDs {
+		if id <= 0 {
+			return fmt.Errorf("invalid source evidence id %d", id)
+		}
+		var count int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_evidence WHERE project_id=? AND id=?`, s.projectID, id).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("source evidence id %d not found", id)
+		}
+	}
+	for _, id := range mem.SourceReviewIDs {
+		if id <= 0 {
+			return fmt.Errorf("invalid source review id %d", id)
+		}
+		var count int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_reviews WHERE project_id=? AND id=?`, s.projectID, id).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("source review id %d not found", id)
+		}
+	}
+	return nil
+}
+
+func scanTrackMemory(row rowScanner, mem *TrackMemory) error {
+	var decisions, blockers, openQuestions, nextActions string
+	var checkpointIDs, evidenceIDs, reviewIDs string
+	if err := row.Scan(&mem.TrackID, &mem.Title, &mem.Purpose, &mem.OperatingMode, &mem.ActiveScope, &mem.CurrentObjective,
+		&decisions, &blockers, &openQuestions, &nextActions, &checkpointIDs, &evidenceIDs, &reviewIDs, &mem.UpdatedAt); err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(decisions), &mem.Decisions); err != nil {
+		return fmt.Errorf("decode track memory decisions: %w", err)
+	}
+	if err := json.Unmarshal([]byte(blockers), &mem.Blockers); err != nil {
+		return fmt.Errorf("decode track memory blockers: %w", err)
+	}
+	if err := json.Unmarshal([]byte(openQuestions), &mem.OpenQuestions); err != nil {
+		return fmt.Errorf("decode track memory open questions: %w", err)
+	}
+	if err := json.Unmarshal([]byte(nextActions), &mem.NextActions); err != nil {
+		return fmt.Errorf("decode track memory next actions: %w", err)
+	}
+	if err := json.Unmarshal([]byte(checkpointIDs), &mem.SourceCheckpointIDs); err != nil {
+		return fmt.Errorf("decode track memory source checkpoint ids: %w", err)
+	}
+	if err := json.Unmarshal([]byte(evidenceIDs), &mem.SourceEvidenceIDs); err != nil {
+		return fmt.Errorf("decode track memory source evidence ids: %w", err)
+	}
+	if err := json.Unmarshal([]byte(reviewIDs), &mem.SourceReviewIDs); err != nil {
+		return fmt.Errorf("decode track memory source review ids: %w", err)
+	}
+	return nil
+}
+
+func mergeTrackMemory(existing, update TrackMemory) TrackMemory {
+	if update.Title != "" {
+		existing.Title = update.Title
+	}
+	if update.Purpose != "" {
+		existing.Purpose = update.Purpose
+	}
+	if update.OperatingMode != "" {
+		existing.OperatingMode = update.OperatingMode
+	}
+	if update.ActiveScope != "" {
+		existing.ActiveScope = update.ActiveScope
+	}
+	if update.CurrentObjective != "" {
+		existing.CurrentObjective = update.CurrentObjective
+	}
+	existing.Decisions = appendUniqueStrings(existing.Decisions, update.Decisions...)
+	existing.Blockers = appendUniqueStrings(existing.Blockers, update.Blockers...)
+	existing.OpenQuestions = appendUniqueStrings(existing.OpenQuestions, update.OpenQuestions...)
+	existing.NextActions = appendUniqueStrings(existing.NextActions, update.NextActions...)
+	existing.SourceCheckpointIDs = appendUniqueInt64s(existing.SourceCheckpointIDs, update.SourceCheckpointIDs...)
+	existing.SourceEvidenceIDs = appendUniqueInt64s(existing.SourceEvidenceIDs, update.SourceEvidenceIDs...)
+	existing.SourceReviewIDs = appendUniqueInt64s(existing.SourceReviewIDs, update.SourceReviewIDs...)
+	return existing
+}
+
+func appendUniqueStrings(existing []string, values ...string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range append(existing, values...) {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func appendUniqueInt64s(existing []int64, values ...int64) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	for _, value := range append(existing, values...) {
+		if value <= 0 || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func mustJSONStrings(values []string) string {
+	values = appendUniqueStrings(nil, values...)
+	b, err := json.Marshal(values)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+func mustJSONInt64s(values []int64) string {
+	values = appendUniqueInt64s(nil, values...)
+	b, err := json.Marshal(values)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
 
 func (s *Store) StartWatcher(ctx context.Context, watcher Watcher) error {

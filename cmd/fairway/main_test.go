@@ -142,6 +142,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"live-window", "record", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "status", "--help"}, "fairway live-window status [--task <task-id>]"},
 		{[]string{"live-window", "control-room", "--help"}, "fairway live-window control-room [--task <task-id>] [--stale]"},
+		{[]string{"memory", "--help"}, "fairway memory show|update|append|packet|stale"},
+		{[]string{"memory", "show", "--help"}, "fairway memory show [--track <track-id>]"},
+		{[]string{"memory", "packet", "--help"}, "fairway memory packet --track <track-id>"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -2495,6 +2498,60 @@ func TestCLI_CheckpointAndPacket(t *testing.T) {
 	runOK(t, "watcher", "status")
 	runOK(t, "watcher", "finish", "W-001", "--result", "pass", "--artifact", "ci.txt", "--duration-seconds", "5")
 	runOK(t, "--json", "watcher", "status", "--include-done")
+}
+
+func TestCLI_TrackMemoryPackets(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Memory task", "--role", "backend")
+	runOK(t, "claim", "T-001")
+	runOK(t, "session", "upsert", "--id", "s-1", "--role", "backend", "--provider", "codex", "--task-id", "T-001", "--status", "running")
+	runOK(t, "checkpoint", "record", "T-001", "--state", "active", "--owner", "backend", "--summary", "implement memory packet")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./cmd/fairway", "--result", "pass")
+
+	runOK(t, "memory", "update",
+		"--track", "architecture-control",
+		"--title", "Architecture Control",
+		"--purpose", "coordinate tracks",
+		"--operating-mode", "control",
+		"--active-scope", "fairway",
+		"--current-objective", "finish memory packet",
+		"--decision", "store curated summaries only",
+		"--next-action", "route review")
+	runOK(t, "memory", "append", "--track", "architecture-control", "--blocker", "none", "--open-question", "review route")
+
+	show := runCapture(t, "memory", "show", "--track", "architecture-control")
+	assertContains(t, show, "architecture-control")
+	assertContains(t, show, "finish memory packet")
+	assertContains(t, show, "route review")
+
+	packet := runCapture(t, "memory", "packet", "--track", "architecture-control", "--for", "codex")
+	assertContains(t, packet, "# Track Memory Packet: architecture-control")
+	assertContains(t, packet, "for: codex")
+	assertContains(t, packet, "T-001 in_progress Memory task")
+	assertContains(t, packet, "s-1 running task=T-001")
+	assertNotContains(t, packet, "raw transcript")
+	assertNotContains(t, packet, "prompt body")
+
+	jsonPacket := runCapture(t, "--json", "memory", "packet", "--track", "architecture-control")
+	assertContains(t, jsonPacket, `"track_id": "architecture-control"`)
+	assertContains(t, jsonPacket, `"active_tasks"`)
+
+	stale := runCapture(t, "memory", "stale", "--older-than", "0s")
+	assertContains(t, stale, "architecture-control")
+
+	if out, err := captureRun("memory", "update", "--track", "bad-source", "--source-checkpoint-id", "999999"); err == nil {
+		t.Fatalf("memory update with missing source succeeded:\n%s", out)
+	}
 }
 
 func TestCLI_TmuxSessionTranscriptAndReconcile(t *testing.T) {

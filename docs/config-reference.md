@@ -2,6 +2,11 @@
 
 Fairway reads `.fairway/config.toml` from the repo root by default. Override with `--config <path>` or `FAIRWAY_CONFIG=<path>`.
 
+Track memory does not add provider configuration. `fairway memory` stores
+curated resume summaries and source fact references in the Fairway DB. It does
+not store provider credentials, raw prompts, transcripts, cookies, tokens, or
+private provider state.
+
 ## Full schema
 
 ```toml

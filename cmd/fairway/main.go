@@ -163,6 +163,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdReadiness(ctx, opts, args[1:])
 	case "checkpoint":
 		return cmdCheckpoint(ctx, opts, args[1:])
+	case "memory":
+		return cmdMemory(ctx, opts, args[1:])
 	case "packet":
 		return cmdPacket(ctx, opts, args[1:])
 	case "watcher":
@@ -4087,8 +4089,8 @@ func tmuxPaneAlive(pane string) bool {
 	if strings.TrimSpace(pane) == "" {
 		return false
 	}
-	cmd := exec.Command("tmux", "display-message", "-p", "-t", pane, "#{pane_id}")
-	return cmd.Run() == nil
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", pane, "#{pane_id}").Output()
+	return err == nil && strings.TrimSpace(string(out)) != ""
 }
 
 func findRole(cfg config.Config, name string) (config.Role, bool) {
@@ -5579,6 +5581,323 @@ func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string,
 		}
 		return nil
 	})
+}
+
+func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("memory requires subcommand: show, update, append, packet, stale")
+	}
+	if args[0] == "--help" || args[0] == "-h" {
+		subcommandUsage("memory", "show|update|append|packet|stale")
+		return nil
+	}
+	switch args[0] {
+	case "show":
+		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
+			subcommandUsage("memory", "show [--track <track-id>]")
+			return nil
+		}
+		return cmdMemoryShow(ctx, opts, args[1:])
+	case "update":
+		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
+			subcommandUsage("memory", "update --track <track-id> [fields]")
+			return nil
+		}
+		return cmdMemoryUpsert(ctx, opts, args[1:], false)
+	case "append":
+		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
+			subcommandUsage("memory", "append --track <track-id> [fields]")
+			return nil
+		}
+		return cmdMemoryUpsert(ctx, opts, args[1:], true)
+	case "packet":
+		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
+			subcommandUsage("memory", "packet --track <track-id> [--for <provider>]")
+			return nil
+		}
+		return cmdMemoryPacket(ctx, opts, args[1:])
+	case "stale":
+		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
+			subcommandUsage("memory", "stale [--older-than <duration>]")
+			return nil
+		}
+		return cmdMemoryStale(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown memory subcommand %q", args[0])
+	}
+}
+
+func cmdMemoryShow(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("memory show", flag.ContinueOnError)
+	track := fs.String("track", "", "track id")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected memory show arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if *track != "" {
+			mem, err := s.TrackMemory(ctx, *track)
+			if err != nil {
+				return err
+			}
+			return printTrackMemories(opts, []store.TrackMemory{mem})
+		}
+		memories, err := s.TrackMemories(ctx)
+		if err != nil {
+			return err
+		}
+		return printTrackMemories(opts, memories)
+	})
+}
+
+func cmdMemoryUpsert(ctx context.Context, opts globalOptions, args []string, appendFields bool) error {
+	fs := flag.NewFlagSet("memory", flag.ContinueOnError)
+	track := fs.String("track", "", "track id")
+	title := fs.String("title", "", "title")
+	purpose := fs.String("purpose", "", "purpose")
+	mode := fs.String("operating-mode", "", "operating mode")
+	scope := fs.String("active-scope", "", "active scope")
+	objective := fs.String("current-objective", "", "current objective")
+	decision := multiStringFlag{}
+	blocker := multiStringFlag{}
+	question := multiStringFlag{}
+	nextAction := multiStringFlag{}
+	checkpointID := multiInt64Flag{}
+	evidenceID := multiInt64Flag{}
+	reviewID := multiInt64Flag{}
+	fs.Var(&decision, "decision", "curated decision summary")
+	fs.Var(&blocker, "blocker", "curated blocker summary")
+	fs.Var(&question, "open-question", "curated open question")
+	fs.Var(&nextAction, "next-action", "curated next action")
+	fs.Var(&checkpointID, "source-checkpoint-id", "source checkpoint id")
+	fs.Var(&evidenceID, "source-evidence-id", "source evidence id")
+	fs.Var(&reviewID, "source-review-id", "source review id")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected memory arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *track == "" {
+		return errors.New("--track is required")
+	}
+	mem := store.TrackMemory{
+		TrackID:             *track,
+		Title:               *title,
+		Purpose:             *purpose,
+		OperatingMode:       *mode,
+		ActiveScope:         *scope,
+		CurrentObjective:    *objective,
+		Decisions:           []string(decision),
+		Blockers:            []string(blocker),
+		OpenQuestions:       []string(question),
+		NextActions:         []string(nextAction),
+		SourceCheckpointIDs: []int64(checkpointID),
+		SourceEvidenceIDs:   []int64(evidenceID),
+		SourceReviewIDs:     []int64(reviewID),
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		updated, err := s.UpsertTrackMemory(ctx, mem, appendFields)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(updated)
+		}
+		fmt.Printf("memory updated %s\n", updated.TrackID)
+		return nil
+	})
+}
+
+func cmdMemoryPacket(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("memory packet", flag.ContinueOnError)
+	track := fs.String("track", "", "track id")
+	forProvider := fs.String("for", "", "target provider or surface")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected memory packet arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *track == "" {
+		return errors.New("--track is required")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		mem, err := s.TrackMemory(ctx, *track)
+		if err != nil {
+			return err
+		}
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		sessions, err := s.Sessions(ctx, false)
+		if err != nil {
+			return err
+		}
+		checkpoints, err := s.Checkpoints(ctx, "", true)
+		if err != nil {
+			return err
+		}
+		packet := buildMemoryPacket(mem, *forProvider, tasks, sessions, checkpoints, cfg.States.Terminal)
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		printMemoryPacket(packet)
+		return nil
+	})
+}
+
+func cmdMemoryStale(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("memory stale", flag.ContinueOnError)
+	olderThan := fs.Duration("older-than", 24*time.Hour, "stale threshold")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected memory stale arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	cutoff := time.Now().UTC().Add(-*olderThan)
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		memories, err := s.TrackMemories(ctx)
+		if err != nil {
+			return err
+		}
+		var stale []store.TrackMemory
+		for _, mem := range memories {
+			updated, err := time.Parse(time.RFC3339Nano, mem.UpdatedAt)
+			if err != nil || updated.Before(cutoff) {
+				stale = append(stale, mem)
+			}
+		}
+		return printTrackMemories(opts, stale)
+	})
+}
+
+type memoryPacket struct {
+	Track          store.TrackMemory `json:"track"`
+	ForProvider    string            `json:"for_provider,omitempty"`
+	ActiveTasks    []string          `json:"active_tasks,omitempty"`
+	ActiveSessions []string          `json:"active_sessions,omitempty"`
+	Blockers       []string          `json:"blockers,omitempty"`
+	NextActions    []string          `json:"next_actions,omitempty"`
+	Checkpoints    []string          `json:"checkpoints,omitempty"`
+}
+
+func buildMemoryPacket(mem store.TrackMemory, forProvider string, tasks []store.Task, sessions []store.Session, checkpoints []store.Checkpoint, terminal []string) memoryPacket {
+	packet := memoryPacket{Track: mem, ForProvider: strings.TrimSpace(forProvider), Blockers: append([]string{}, mem.Blockers...), NextActions: append([]string{}, mem.NextActions...)}
+	terminalSet := map[string]bool{}
+	for _, state := range terminal {
+		terminalSet[state] = true
+	}
+	for _, task := range tasks {
+		if task.Status == "in_progress" || task.Status == "blocked" || task.Status == "todo" {
+			packet.ActiveTasks = append(packet.ActiveTasks, task.Definition.ID+" "+task.Status+" "+task.Definition.Title)
+		}
+		if task.Status == "blocked" {
+			packet.Blockers = append(packet.Blockers, task.Definition.ID+" blocked")
+		}
+		if !terminalSet[task.Status] && task.Status != "" {
+			packet.NextActions = append(packet.NextActions, "inspect "+task.Definition.ID+" status="+task.Status)
+		}
+	}
+	for _, session := range sessions {
+		packet.ActiveSessions = append(packet.ActiveSessions, session.ID+" "+session.Status+" task="+firstNonEmpty(session.TaskID, "none"))
+	}
+	for _, checkpoint := range checkpoints {
+		packet.Checkpoints = append(packet.Checkpoints, fmt.Sprintf("%s %s %s", checkpoint.TaskID, checkpoint.State, checkpoint.Summary))
+		if len(packet.Checkpoints) >= 8 {
+			break
+		}
+	}
+	return packet
+}
+
+func printTrackMemories(opts globalOptions, memories []store.TrackMemory) error {
+	if opts.JSON {
+		return printJSON(memories)
+	}
+	if len(memories) == 0 {
+		fmt.Println("track_memory: none")
+		return nil
+	}
+	for _, mem := range memories {
+		fmt.Printf("%s updated=%s title=%s objective=%s\n", mem.TrackID, mem.UpdatedAt, firstNonEmpty(mem.Title, "none"), firstNonEmpty(mem.CurrentObjective, "none"))
+		if len(mem.Blockers) > 0 {
+			fmt.Printf("  blockers: %s\n", strings.Join(mem.Blockers, "; "))
+		}
+		if len(mem.NextActions) > 0 {
+			fmt.Printf("  next_actions: %s\n", strings.Join(mem.NextActions, "; "))
+		}
+	}
+	return nil
+}
+
+func printMemoryPacket(packet memoryPacket) {
+	mem := packet.Track
+	fmt.Printf("# Track Memory Packet: %s\n\n", mem.TrackID)
+	if packet.ForProvider != "" {
+		fmt.Printf("for: %s\n", packet.ForProvider)
+	}
+	fmt.Printf("title: %s\npurpose: %s\noperating_mode: %s\nactive_scope: %s\ncurrent_objective: %s\nupdated_at: %s\n",
+		mem.Title, mem.Purpose, mem.OperatingMode, mem.ActiveScope, mem.CurrentObjective, mem.UpdatedAt)
+	printStringSection("Decisions", mem.Decisions)
+	printStringSection("Blockers", packet.Blockers)
+	printStringSection("Open Questions", mem.OpenQuestions)
+	printStringSection("Next Actions", packet.NextActions)
+	printStringSection("Active Tasks", packet.ActiveTasks)
+	printStringSection("Active Sessions", packet.ActiveSessions)
+	printStringSection("Recent Checkpoints", packet.Checkpoints)
+	if len(mem.SourceCheckpointIDs)+len(mem.SourceEvidenceIDs)+len(mem.SourceReviewIDs) > 0 {
+		fmt.Println("\n## Source Fact References")
+		fmt.Printf("- checkpoints: %s\n", formatInt64s(mem.SourceCheckpointIDs))
+		fmt.Printf("- evidence: %s\n", formatInt64s(mem.SourceEvidenceIDs))
+		fmt.Printf("- reviews: %s\n", formatInt64s(mem.SourceReviewIDs))
+	}
+}
+
+func printStringSection(title string, values []string) {
+	fmt.Printf("\n## %s\n", title)
+	if len(values) == 0 {
+		fmt.Println("- none")
+		return
+	}
+	for _, value := range values {
+		fmt.Printf("- %s\n", value)
+	}
+}
+
+func formatInt64s(values []int64) string {
+	if len(values) == 0 {
+		return "none"
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, strconv.FormatInt(value, 10))
+	}
+	return strings.Join(parts, ",")
+}
+
+type multiStringFlag []string
+
+func (m *multiStringFlag) String() string { return strings.Join(*m, ",") }
+func (m *multiStringFlag) Set(value string) error {
+	*m = append(*m, value)
+	return nil
+}
+
+type multiInt64Flag []int64
+
+func (m *multiInt64Flag) String() string { return formatInt64s([]int64(*m)) }
+func (m *multiInt64Flag) Set(value string) error {
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || parsed <= 0 {
+		return fmt.Errorf("invalid id %q", value)
+	}
+	*m = append(*m, parsed)
+	return nil
 }
 
 func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
@@ -10338,7 +10657,7 @@ func usage() {
 	fmt.Println("Evidence and review:")
 	fmt.Println("  record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
-	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, batch")
+	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, memory, batch")
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
@@ -10373,6 +10692,7 @@ func printCommandHelp(command string) bool {
 		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
+		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

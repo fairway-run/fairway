@@ -77,6 +77,11 @@ fairway rules match <task-id>                          # show selected, disabled
 fairway checkpoint record <task-id> --summary <text> [--state <state>] [--owner <role-or-lane>] [--target-close-by <date>] [--artifact <path>]
 fairway checkpoint status [--all]
 fairway checkpoint stale [--before <date>] [--all]
+fairway memory show [--track <track-id>]
+fairway memory update --track <track-id> [--title <text>] [--purpose <text>] [--operating-mode <text>] [--active-scope <text>] [--current-objective <text>] [--decision <text>]... [--blocker <text>]... [--open-question <text>]... [--next-action <text>]... [--source-checkpoint-id <id>]... [--source-evidence-id <id>]... [--source-review-id <id>]...
+fairway memory append --track <track-id> [fields]
+fairway memory packet --track <track-id> [--for <provider-or-surface>]
+fairway memory stale [--older-than <duration>]
 fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--authorization-state <state>] [--prompt <text>] [--command <cmd>] [--missed-deadline-action <action>] [--target-close-by <date>] [--artifact <path>]
 fairway live-window status [--task <task-id>]
 fairway live-window control-room [--task <task-id>] [--stale]
@@ -208,6 +213,14 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   scheduling and handoff state so LLM/provider turns can focus on judgment,
   implementation, review, and exception handling. The canonical design model is
   `docs/design/live-operation-control-room.md`.
+- `memory show|update|append|packet|stale` provides first-class track memory
+  for coordinator and provider resume packets. Track memory stores curated
+  operating summaries, blockers, decisions, next actions, and numeric Fairway
+  source fact references. It does not store raw chat transcripts, prompt bodies,
+  generated content, provider credentials, cookies, tokens, or private provider
+  database state. `memory packet` renders a compact packet from the memory row
+  plus current Fairway tasks, sessions, and checkpoints so new provider
+  attachments can resume without polling chat.
 - `record completion-handback` is a typed closeout helper for delegated work.
   It writes a normal handoff plus a linked notification row. The handoff payload
   records the next actor, next safe action, optional completion outcome,
