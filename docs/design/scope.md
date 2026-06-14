@@ -25,14 +25,21 @@ A standalone Go binary plus an embedded SQLite store that coordinates multiple c
 - **Not a workflow engine.** No DAG executor, no compensating transactions, no durable timers. If you need Temporal or Cadence semantics, use Temporal or Cadence.
 - **Not an IAM tool.** No identity provider, no permissions model beyond OS user attribution.
 - **Not a CI runner.** Fairway records that work was done; it does not run pipelines.
-- **Not an LLM provider abstraction.** Fairway does not spawn agents, does not proxy API calls, does not manage credentials. It coordinates whatever agent process you run inside a worktree.
+- **Not an LLM provider abstraction.** Fairway does not spawn agents, proxy
+  provider API calls, manage provider credentials, or make provider output
+  authoritative. It coordinates whatever agent process you run inside a
+  worktree. Future advisory-provider adapters may suggest bounded actions from
+  Fairway facts, but Fairway must validate those suggestions against task
+  state, review gates, risk, and configured policy.
 - **Not a multi-repo federation layer (v1).** Single repo, single SQLite DB per repo. Future work may add federation.
 
 ## Out of scope for v1
 
 - Postgres backend (schema is designed to be portable; adapter is v2+; compatibility harness is planned).
 - Multi-repo federation.
-- LLM provider integration.
+- LLM provider integration as a required core dependency. Optional advisory
+  adapters are future work and must remain replaceable, bounded, and validated;
+  see [Coordination intelligence](coordination-intelligence.md).
 - Webhook / event emission for external systems.
 - Authn / authz beyond OS user attribution.
 - Broad write actions from the dashboard. The dashboard has only narrow,

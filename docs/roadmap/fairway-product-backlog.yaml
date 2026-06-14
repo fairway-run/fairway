@@ -2686,3 +2686,270 @@ tasks:
       - "No Slack/email/external notifier dependency or user subscription application is introduced in this slice."
       - "Watcher degrades to polling/tick behavior and never becomes the only source of review-wait truth."
       - "Tests cover stale wait wake selection, notification failure handling, resolved waits, duplicate suppression, and fixed-template rendering."
+
+  - id: FW-195
+    title: Promote coordination-intelligence product model
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordination-intelligence
+    source_paths:
+      - tmp-ux/fairway-coordination-intelligence-2026-06-13.md
+      - docs/design/coordination-intelligence.md
+      - docs/product.md
+      - docs/design/scope.md
+      - docs/design/implementation-roadmap.md
+      - docs/agent-guide.md
+    target_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/product.md
+      - docs/design/scope.md
+      - docs/design/implementation-roadmap.md
+      - docs/roadmap/fairway-product-backlog.yaml
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - security
+    risk_level: medium
+    migration_type: coordination-intelligence-model
+    acceptance_checks:
+      - "Coordination-intelligence design is promoted from tmp-ux into durable docs without making Fairway an autonomous workflow engine or LLM provider runtime."
+      - "Docs state that Fairway remains the coordination source of truth, LLMs are bounded advisory/execution attachments, and humans retain approval authority."
+      - "Product/scope/roadmap docs link to the model and preserve no dashboard send authority, no provider credential storage, no auto-approval, no auto-merge, and no production mutation boundaries."
+      - "Follow-up tasks split implementation into memory, waits/wakes, failure routing, retry packets, advisory guards, and dashboard projections."
+
+  - id: FW-196
+    title: Add first-class track memory packets
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: track-memory
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/context-packets.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/coordination-intelligence.md
+      - docs/design/context-packets.md
+      - docs/design/cli.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: track-memory
+    acceptance_checks:
+      - "`fairway memory show|update|append|packet|stale` or an equivalent first slice exposes structured track memory from Fairway facts."
+      - "Track memory stores curated operating summaries and source fact references, not raw transcripts or raw provider prompt bodies."
+      - "Generated packets include active scope, current objective, active tasks/sessions, blockers, decisions, review waits, next actions, and source evidence/checkpoint/review ids."
+      - "Focused tests cover packet rendering, stale detection, no raw prompt storage, and missing-source behavior."
+
+  - id: FW-197
+    title: Add generic wait/watch records for parked tracks
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: wait-watch
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/design/live-operation-control-room.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/coordination-intelligence.md
+      - docs/design/provider-notifications.md
+      - docs/design/cli.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: generic-wait-watch
+    acceptance_checks:
+      - "A generic wait/watch model can represent reviews_complete, handback_ready, session_completed, task_unblocked, ci_finished, deploy_finished, uat_finished, approval_required, live_window_deadline_missed, and track_memory_stale conditions."
+      - "Wait records are projected from or linked to existing Fairway facts and do not become a second task state source."
+      - "`fairway wait list|tick|ack` or equivalent read-model commands expose open, stale, resolved, failed, and acknowledged waits."
+      - "Docs and tests make clear that wait ticking is not a durable timer, DAG executor, auto-approval, task claim, live execution, or environment mutation."
+
+  - id: FW-198
+    title: Add bounded wake delivery for parked work
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: wait-watch
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - examples/session-adapters
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - examples/session-adapters
+      - docs/design/coordination-intelligence.md
+      - docs/design/provider-notifications.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+      - security
+    risk_level: medium
+    migration_type: bounded-wake-delivery
+    acceptance_checks:
+      - "`fairway wait wake --send` or equivalent coordinator wake path renders fixed-template prompts from current Fairway state."
+      - "Wake delivery records provider notification rows with stable dedupe signatures, delivery/failure state, and target provider metadata."
+      - "If no provider target exists, Fairway records notification_failed instead of claiming delivery."
+      - "Read-only dashboard remains display-only and never gains send, credential, approval, merge, deploy, or live execution authority."
+      - "Tests cover duplicate suppression, fixed-template rendering, failed delivery, acknowledged waits, and resolved waits."
+
+  - id: FW-199
+    title: Add known-failure routing recommendations
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: failure-routing
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/watchers.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/coordination-intelligence.md
+      - docs/design/cli.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: known-failure-routing
+    acceptance_checks:
+      - "Fairway can classify known evidence failure classes such as artifact mismatch, provider 4xx, browser surface failure, setup gate failure, callback missing, redaction finding, uncommitted reviewed files, and undelivered review handoff."
+      - "Failure routing recommends scoped follow-up task templates by default and does not silently create work unless an explicit operator command, dry-run/apply workflow, or configured policy allows it."
+      - "Generated recommendations attach evidence paths, owning domain/layer, suggested prefix/kind, and forbidden actions until review."
+      - "Tests cover recommendation-only behavior, explicit apply behavior if implemented, and no live/production action authorization."
+
+  - id: FW-200
+    title: Add retry packet generator for bounded reruns
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: packets
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/live-operation-control-room.md
+      - docs/design/context-packets.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/coordination-intelligence.md
+      - docs/design/cli.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+      - security
+    risk_level: medium
+    migration_type: retry-packet-generator
+    acceptance_checks:
+      - "A retry packet command can generate bounded packet text from task id, source SHA, operator surface, artifact directory, evidence contract, allowed actions, forbidden actions, expiry, and prior failure closure."
+      - "Generated packets clearly state that packet rendering is not execution authorization."
+      - "The generator supports live-operation and non-live preflight packet shapes without encoding GPUaaS-specific task prefixes in core."
+      - "Tests cover required field validation, forbidden-action rendering, prior-failure closure text, and no hidden approval semantics."
+
+  - id: FW-201
+    title: Define advisory recommendation contract and guards
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: advisory
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/product-boundaries.md
+      - docs/design/scope.md
+      - docs/config-reference.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/coordination-intelligence.md
+      - docs/design/product-boundaries.md
+      - docs/config-reference.md
+      - docs/agent-guide.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - security
+    risk_level: medium
+    migration_type: advisory-recommendation-guards
+    acceptance_checks:
+      - "Define a structured advisory recommendation schema with action, task id, target role, confidence, requires_human, rationale, risk flags, and cited Fairway facts."
+      - "Fairway validates advisory output against task state, review gates, risk, configured provider trust, and allowed action enums."
+      - "Advisory output is recorded as advisory evidence/checkpoint only and never approves reviews, accepts risk, merges, deploys, claims tasks, or mutates environments."
+      - "Optional provider config remains replaceable and non-authoritative; no provider credentials, prompts, transcripts, cookies, tokens, or raw private provider state are stored by default."
+
+  - id: FW-202
+    title: Show coordination intelligence in dashboard projections
+    kind: task
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/dashboard.md
+      - internal/dashboard
+      - internal
+    target_paths:
+      - internal/dashboard
+      - internal
+      - docs/design/coordination-intelligence.md
+      - docs/design/dashboard.md
+    review_domains:
+      - arch
+      - governance
+      - frontend
+      - ops
+      - security
+    risk_level: medium
+    migration_type: coordination-dashboard-projections
+    acceptance_checks:
+      - "Dashboard shows read-only coordination-intelligence projections for track memory freshness, open/stale waits, wake target, last wake attempt, suggested command, and next deterministic action where available."
+      - "Dashboard may show advisory recommendations as non-authoritative findings with cited Fairway facts and confidence, not as approvals or commands."
+      - "Dashboard does not send provider prompts, hold provider credentials, approve reviews, authorize execution, mutate environments, or change terminal task status."
+      - "Focused dashboard tests cover display-only waits, stale state, advisory labels, and no send/approval controls."

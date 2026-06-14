@@ -49,6 +49,11 @@ evidence exists, or who is blocking whom.
     default. Remote push is a recorded promotion action with intent, normally
     performed by the orchestrator or reviewer/merge lane after local
     verification.
+12. **Deterministic coordination before advisory intelligence.** Fairway should
+    compute routine next actions, waits, handbacks, live-window phase, failure
+    routing, and session state from durable facts before asking an LLM or human
+    to interpret them. See
+    [Coordination intelligence](design/coordination-intelligence.md).
 
 ## What "done" looks like for v1.0
 
@@ -134,7 +139,9 @@ These will never be in fairway:
   operator command.
 - A workflow / DAG engine.
 - An IAM / permissions system.
-- An LLM provider abstraction.
+- An LLM provider runtime or credential/proxy abstraction. Optional advisory
+  adapters may exist only as bounded, replaceable, non-authoritative inputs
+  validated against Fairway state and policy.
 - A CI runner.
 - A SaaS hosted offering.
 - An autonomous approval, merge, deploy, or cleanup engine.
@@ -148,7 +155,9 @@ If a feature pushes toward any of those, it goes in a different tool.
 
 The durable boundary rules are defined in
 [Product boundaries](design/product-boundaries.md). The active backlog source
-rules are defined in [Backlog sources](design/backlog-sources.md).
+rules are defined in [Backlog sources](design/backlog-sources.md). The
+coordination-intelligence direction is defined in
+[Coordination intelligence](design/coordination-intelligence.md).
 
 ## Competing approaches considered
 

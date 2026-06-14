@@ -37,6 +37,45 @@ SQLite rows, or generated dashboard artifacts directly. Use `fairway` commands
 so claims, evidence, handoffs, reviews, sessions, checkpoints, and audit history
 stay consistent.
 
+## Execution Surface Limits
+
+Provider surfaces are replaceable execution attachments, and some surfaces have
+local sandbox limits. A Desktop-hosted provider may read the repo and edit
+workspace files but still fail at git or cache boundaries. Treat these as
+execution-surface findings, not as task logic failures.
+
+Known symptoms:
+
+```text
+fatal: Unable to create '.git/index.lock': Operation not permitted
+open ~/Library/Caches/go-build/...: operation not permitted
+browser launch or local capability probe fails only on one provider surface
+```
+
+Use the right surface instead of burning provider turns on a known boundary:
+
+- for Go commands from sandboxed Desktop surfaces, set
+  `GOCACHE=/tmp/fairway-go-cache`;
+- for reviewed git stage/commit/push boundaries, use a tmux or SSH lane started
+  outside the Desktop sandbox and capture the output back into Fairway
+  evidence;
+- for browser, SSH, Kubernetes, or filesystem-sensitive work, run a non-live
+  capability probe on the exact execution surface and retire failed surfaces
+  for that task/scope until replacement proof exists.
+
+The intended split is:
+
+```text
+Fairway decides and records.
+Desktop threads coordinate and review.
+tmux/SSH/provider lanes execute only the approved command boundary.
+```
+
+Do not repeatedly debug `.git/index.lock` in a Desktop provider after verifying
+there is no stale lock and a normal terminal can write the index. Route the
+approved command boundary to the configured git lane, record the commit SHA,
+rerun `merge-ready`, and continue.
+
 ## Start Of Session
 
 ```bash

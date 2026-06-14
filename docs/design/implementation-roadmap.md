@@ -122,6 +122,12 @@ to a useful v1.
    shortcuts matter.
 6. Expand tracker integration from local links/dry-run reporting to provider
    adapters when credentials and API mapping are explicit.
+7. Promote [coordination intelligence](coordination-intelligence.md) from
+   design direction into backlog tasks: first-class track memory, generic
+   wait/watch records, bounded wake delivery, advisory recommendation guards,
+   known-failure routing, retry packet generation, and dashboard projections for
+   parked tracks. Keep the implementation deterministic first; advisory LLMs
+   remain optional and validated.
 
 ## Discovered During GPUaaS Adoption
 
