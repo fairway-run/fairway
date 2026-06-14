@@ -145,6 +145,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"memory", "--help"}, "fairway memory show|update|append|packet|stale"},
 		{[]string{"memory", "show", "--help"}, "fairway memory show [--track <track-id>]"},
 		{[]string{"memory", "packet", "--help"}, "fairway memory packet --track <track-id>"},
+		{[]string{"wait", "--help"}, "fairway wait list|tick"},
+		{[]string{"wait", "list", "--help"}, "fairway wait list [--task <task-id>]"},
+		{[]string{"wait", "tick", "--help"}, "fairway wait tick [--task <task-id>]"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -2552,6 +2555,48 @@ func TestCLI_TrackMemoryPackets(t *testing.T) {
 	if out, err := captureRun("memory", "update", "--track", "bad-source", "--source-checkpoint-id", "999999"); err == nil {
 		t.Fatalf("memory update with missing source succeeded:\n%s", out)
 	}
+}
+
+func TestCLI_GenericWaitListAndTick(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Needs approval", "--role", "backend")
+	runOK(t, "claim", "T-001")
+	runOK(t, "checkpoint", "record", "T-001", "--state", "awaiting_input", "--owner", "arch", "--summary", "approval required before retry")
+	runOK(t, "memory", "update", "--track", "architecture-control", "--current-objective", "watch parked work")
+
+	waits := runCapture(t, "wait", "list", "--task", "T-001")
+	assertContains(t, waits, "kind=approval")
+	assertContains(t, waits, "approval required before retry")
+	assertNotContains(t, waits, "send provider")
+
+	tick := runCapture(t, "wait", "tick", "--task", "T-001")
+	assertContains(t, tick, "wait_tick: dry-run")
+	assertContains(t, tick, "kind=approval")
+	assertContains(t, tick, "approval required before retry")
+
+	staleOnly := runCapture(t, "wait", "tick", "--task", "T-001", "--stale")
+	assertContains(t, staleOnly, "wait_tick: dry-run")
+	assertContains(t, staleOnly, "- none")
+	assertNotContains(t, staleOnly, "kind=approval")
+
+	staleMemory := runCapture(t, "wait", "tick", "--kind", "track_memory", "--memory-stale-after", "0s")
+	assertContains(t, staleMemory, "wait_tick: dry-run")
+	assertContains(t, staleMemory, "kind=track_memory")
+	assertContains(t, staleMemory, "refresh_track_memory")
+
+	jsonWaits := runCapture(t, "--json", "wait", "list", "--task", "T-001")
+	assertContains(t, jsonWaits, `"kind": "approval"`)
+	assertContains(t, jsonWaits, `"source": "coordinator_plan"`)
 }
 
 func TestCLI_TmuxSessionTranscriptAndReconcile(t *testing.T) {

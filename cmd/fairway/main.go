@@ -137,6 +137,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdReviewWaits(ctx, opts, args[1:])
 	case "live-window":
 		return cmdLiveWindow(ctx, opts, args[1:])
+	case "wait":
+		return cmdWait(ctx, opts, args[1:])
 	case "route":
 		if len(args) >= 2 && args[1] == "review" {
 			return cmdRouteReview(ctx, opts, args[2:])
@@ -5627,6 +5629,271 @@ func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 	}
 }
 
+func cmdWait(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("wait requires subcommand: list, tick")
+	}
+	if args[0] == "--help" || args[0] == "-h" {
+		subcommandUsage("wait", "list|tick [--task <task-id>] [--stale] [--kind <kind>]")
+		return nil
+	}
+	switch args[0] {
+	case "list", "tick":
+		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
+			subcommandUsage("wait", args[0]+" [--task <task-id>] [--stale] [--kind <kind>]")
+			return nil
+		}
+		return cmdWaitList(ctx, opts, args[1:], args[0] == "tick")
+	default:
+		return fmt.Errorf("unknown wait subcommand %q", args[0])
+	}
+}
+
+type waitRow struct {
+	WaitID           string `json:"wait_id"`
+	Kind             string `json:"kind"`
+	TaskID           string `json:"task_id,omitempty"`
+	Owner            string `json:"owner,omitempty"`
+	State            string `json:"state"`
+	Action           string `json:"action"`
+	Reason           string `json:"reason"`
+	Stale            bool   `json:"stale,omitempty"`
+	Source           string `json:"source"`
+	SuggestedCommand string `json:"suggested_command,omitempty"`
+}
+
+func cmdWaitList(ctx context.Context, opts globalOptions, args []string, tick bool) error {
+	fs := flag.NewFlagSet("wait list", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	kind := fs.String("kind", "", "wait kind")
+	staleOnly := fs.Bool("stale", false, "show only stale waits")
+	staleMemoryAfter := fs.Duration("memory-stale-after", 24*time.Hour, "track memory stale threshold")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected wait arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		worktrees, err := collectWorktreeStatus(cfg, root)
+		if err != nil {
+			worktrees = nil
+		}
+		plan, err := coord.BuildPlan(ctx, cfg, s, coord.PlanOptions{
+			Worktrees:             coordinatorWorktreeFacts(worktrees),
+			StaleCheckpointAfter:  2 * time.Hour,
+			MonitorHandbackAfter:  2 * time.Hour,
+			ReadyLimit:            10,
+			RecommendationLimit:   50,
+			UtilityMonitorAllowed: true,
+		})
+		if err != nil {
+			return err
+		}
+		rows := waitRowsFromPlan(plan)
+		memories, err := s.TrackMemories(ctx)
+		if err != nil {
+			return err
+		}
+		rows = append(rows, waitRowsFromTrackMemory(memories, *staleMemoryAfter)...)
+		rows = filterWaitRows(rows, *taskID, *kind, *staleOnly)
+		sort.SliceStable(rows, func(i, j int) bool {
+			if rows[i].Stale != rows[j].Stale {
+				return rows[i].Stale
+			}
+			if rows[i].TaskID != rows[j].TaskID {
+				return rows[i].TaskID < rows[j].TaskID
+			}
+			return rows[i].WaitID < rows[j].WaitID
+		})
+		if opts.JSON {
+			return printJSON(rows)
+		}
+		if tick {
+			fmt.Println("wait_tick: dry-run")
+		} else {
+			fmt.Println("waits:")
+		}
+		if len(rows) == 0 {
+			fmt.Println("- none")
+			return nil
+		}
+		for _, row := range rows {
+			stale := ""
+			if row.Stale {
+				stale = " stale=true"
+			}
+			fmt.Printf("- %s kind=%s task=%s state=%s owner=%s action=%s%s reason=%s\n",
+				row.WaitID, row.Kind, firstNonEmpty(row.TaskID, "none"), row.State, firstNonEmpty(row.Owner, "none"), row.Action, stale, row.Reason)
+			if row.SuggestedCommand != "" {
+				fmt.Printf("  suggested_command: %s\n", row.SuggestedCommand)
+			}
+		}
+		return nil
+	})
+}
+
+func waitRowsFromPlan(plan coord.Plan) []waitRow {
+	var rows []waitRow
+	for _, rw := range plan.ReviewWaits {
+		state := strings.TrimSpace(rw.State)
+		if state == "" {
+			state = "open"
+		}
+		rows = append(rows, waitRow{
+			WaitID:           firstNonEmpty(rw.WaitID, "review:"+rw.TaskID+":"+rw.Domain),
+			Kind:             "review",
+			TaskID:           rw.TaskID,
+			Owner:            rw.Domain,
+			State:            state,
+			Action:           rw.Action,
+			Reason:           rw.Reason,
+			Stale:            state == "stale" || state == "notification_failed",
+			Source:           "review_waits",
+			SuggestedCommand: suggestedReviewWaitCommand(rw),
+		})
+	}
+	for _, handback := range plan.CompletionHandbacks {
+		state := "open"
+		if handback.Stale {
+			state = "stale"
+		}
+		if strings.Contains(handback.DeliveryStatus, "failed") || strings.Contains(handback.DeliveryState, "failed") {
+			state = "failed"
+		}
+		rows = append(rows, waitRow{
+			WaitID:           fmt.Sprintf("completion:%d", handback.HandoffID),
+			Kind:             "completion_handback",
+			TaskID:           handback.TaskID,
+			Owner:            handback.ToRole,
+			State:            state,
+			Action:           firstNonEmpty(handback.SuggestedAction, "record_delivery_or_next_decision"),
+			Reason:           firstNonEmpty(handback.NextAction, handback.DeliveryStatus),
+			Stale:            handback.Stale || state == "failed",
+			Source:           "completion_handbacks",
+			SuggestedCommand: handback.SuggestedCommand,
+		})
+	}
+	for _, action := range plan.Actions {
+		if action.ReviewWait != nil || action.CompletionHandback != nil {
+			continue
+		}
+		kind := waitKindFromAction(action)
+		if kind == "" {
+			continue
+		}
+		state := "open"
+		stale := strings.Contains(action.Action, "stale") || strings.Contains(action.Reason, "stale") || strings.Contains(action.Reason, "missed")
+		if stale {
+			state = "stale"
+		}
+		if strings.Contains(action.Action, "failed") || strings.Contains(action.Reason, "failed") {
+			state = "failed"
+			stale = true
+		}
+		rows = append(rows, waitRow{
+			WaitID: waitIDForAction(action, kind),
+			Kind:   kind,
+			TaskID: action.TaskID,
+			Owner:  action.Role,
+			State:  state,
+			Action: action.Action,
+			Reason: action.Reason,
+			Stale:  stale,
+			Source: "coordinator_plan",
+		})
+	}
+	return rows
+}
+
+func waitRowsFromTrackMemory(memories []store.TrackMemory, staleAfter time.Duration) []waitRow {
+	var rows []waitRow
+	cutoff := time.Now().UTC().Add(-staleAfter)
+	for _, mem := range memories {
+		updated, err := time.Parse(time.RFC3339Nano, mem.UpdatedAt)
+		stale := err != nil || updated.Before(cutoff)
+		if !stale {
+			continue
+		}
+		rows = append(rows, waitRow{
+			WaitID:           "memory:" + mem.TrackID,
+			Kind:             "track_memory",
+			Owner:            mem.TrackID,
+			State:            "stale",
+			Action:           "refresh_track_memory",
+			Reason:           "track memory is older than configured stale threshold",
+			Stale:            true,
+			Source:           "track_memory",
+			SuggestedCommand: "fairway memory update --track " + mem.TrackID + " --from-checkpoints",
+		})
+	}
+	return rows
+}
+
+func waitKindFromAction(action coord.PlanAction) string {
+	switch action.Classification {
+	case "review-gated", "review-notification":
+		return "review"
+	case "completion-handback":
+		return "completion_handback"
+	case "live-window":
+		return "live_window"
+	case "approval-gated":
+		return "approval"
+	case "waiting":
+		if strings.Contains(strings.ToLower(action.Reason), "approval") {
+			return "approval"
+		}
+		return "checkpoint"
+	case "active-reconcile", "session":
+		return "provider_session"
+	case "utility-monitor":
+		return "monitor"
+	}
+	if action.WatcherID != "" {
+		return "monitor"
+	}
+	if action.LiveWindow != nil {
+		return "live_window"
+	}
+	return ""
+}
+
+func waitIDForAction(action coord.PlanAction, kind string) string {
+	parts := []string{kind, firstNonEmpty(action.TaskID, action.SessionID, action.WatcherID, "none"), action.Action}
+	return strings.Join(parts, ":")
+}
+
+func suggestedReviewWaitCommand(rw reviewstate.ReviewWait) string {
+	switch rw.Action {
+	case "deliver_notification", "nudge_reviewer":
+		return fmt.Sprintf("fairway record notification %s --domain %s --state thread_steered --provider <provider> --target <target>", rw.TaskID, rw.Domain)
+	case "mapping_required":
+		return "update review/provider routing for domain " + rw.Domain
+	case "resolve":
+		return fmt.Sprintf("fairway record review %s --domain %s --verdict approve|changes --reviewer <reviewer>", rw.TaskID, rw.Domain)
+	default:
+		return ""
+	}
+}
+
+func filterWaitRows(rows []waitRow, taskID, kind string, staleOnly bool) []waitRow {
+	var out []waitRow
+	for _, row := range rows {
+		if taskID != "" && row.TaskID != taskID {
+			continue
+		}
+		if kind != "" && row.Kind != kind {
+			continue
+		}
+		if staleOnly && !row.Stale {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
 func cmdMemoryShow(ctx context.Context, opts globalOptions, args []string) error {
 	fs := flag.NewFlagSet("memory show", flag.ContinueOnError)
 	track := fs.String("track", "", "track id")
@@ -10657,7 +10924,7 @@ func usage() {
 	fmt.Println("Evidence and review:")
 	fmt.Println("  record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
-	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, memory, batch")
+	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
@@ -10693,6 +10960,7 @@ func printCommandHelp(command string) bool {
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
+		"wait":                       "fairway wait list|tick [--task <task-id>] [--stale] [--kind <kind>]\n  Project generic parked-work waits from existing Fairway facts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",
