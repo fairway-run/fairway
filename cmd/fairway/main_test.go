@@ -159,6 +159,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
 		{[]string{"advisory", "--help"}, "fairway advisory validate <task-id>"},
 		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
+		{[]string{"automation", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
+		{[]string{"automation", "candidates", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"delivery", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
 		{[]string{"delivery", "report", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
@@ -3541,6 +3543,43 @@ func TestCLI_DeliveryReport(t *testing.T) {
 	assertContains(t, jsonReport, `"signal": "repeated_failures_after_review"`)
 }
 
+func TestCLI_AutomationCandidates(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	for _, id := range []string{"T-001", "T-002", "T-003"} {
+		runOK(t, "add", id, "--title", "Repeated work "+id, "--role", "backend")
+		runOK(t, "record", "evidence", id, "--command-text", "fairway merge-ready "+id, "--result", "blocked", "--artifact-type", "merge-ready")
+		runOK(t, "record", "notification", id, "--domain", "backend", "--provider", "codex", "--target", "thread-"+id, "--state", "thread_steered")
+	}
+
+	report := runCapture(t, "automation", "candidates", "--since", "720h", "--threshold", "3")
+	for _, want := range []string{
+		"automation_candidates_ok: true",
+		"threshold: 3",
+		"kind=command",
+		"pattern=fairway merge-ready <task>",
+		"surface=fairway cli",
+		"recent_tasks: T-003, T-002, T-001",
+		"kind=notification",
+		"pattern=backend:thread_steered",
+	} {
+		assertContains(t, report, want)
+	}
+
+	jsonReport := runCapture(t, "automation", "candidates", "--since", "720h", "--threshold", "3", "--format", "json")
+	assertContains(t, jsonReport, `"pattern": "fairway merge-ready \u003ctask\u003e"`)
+	assertContains(t, jsonReport, `"suggested_surface": "fairway cli"`)
+}
+
 func TestCLI_AuditCILearning(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -4797,9 +4836,16 @@ func captureRun(args ...string) (string, error) {
 		return "", err
 	}
 	os.Stdout = w
+	readDone := make(chan error, 1)
+	go func() {
+		_, readErr := out.ReadFrom(r)
+		readDone <- readErr
+	}()
 	runErr := run(context.Background(), args)
 	_ = w.Close()
-	_, _ = out.ReadFrom(r)
+	if readErr := <-readDone; readErr != nil {
+		return "", readErr
+	}
 	return out.String(), runErr
 }
 

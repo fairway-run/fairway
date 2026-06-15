@@ -22,6 +22,7 @@ import (
 
 	fairwaydocs "github.com/subashram/fairway/docs"
 	"github.com/subashram/fairway/internal/audit"
+	"github.com/subashram/fairway/internal/automationreport"
 	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
 	coord "github.com/subashram/fairway/internal/coordinator"
@@ -137,6 +138,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdAudit(ctx, opts, args[1:])
 	case "advisory":
 		return cmdAdvisory(ctx, opts, args[1:])
+	case "automation":
+		return cmdAutomation(ctx, opts, args[1:])
 	case "merge-ready":
 		return cmdMergeReady(ctx, opts, args[1:])
 	case "review-waits":
@@ -2796,6 +2799,84 @@ func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) e
 				row.Handoffs,
 				firstNonEmpty(row.OutcomeSource, "none"),
 				firstNonEmpty(row.LoopSignal, "none"))
+		}
+		return nil
+	})
+}
+
+func cmdAutomation(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		fmt.Println("fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]")
+		fmt.Println("  Read-only repeated-work automation candidate report; does not create tasks or mutate workflow.")
+		return nil
+	}
+	switch args[0] {
+	case "candidates":
+		return cmdAutomationCandidates(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown automation subcommand %q", args[0])
+	}
+}
+
+func cmdAutomationCandidates(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]")
+		fmt.Println("  Report repeated deterministic work candidates without auto-creating tasks.")
+		return nil
+	}
+	fs := flag.NewFlagSet("automation candidates", flag.ContinueOnError)
+	since := fs.Duration("since", 7*24*time.Hour, "time window")
+	threshold := fs.Int("threshold", 3, "minimum repeated occurrences")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected automation candidates arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *since <= 0 {
+		return errors.New("--since must be positive")
+	}
+	if *threshold < 2 {
+		return errors.New("--threshold must be at least 2")
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		report, err := automationreport.Build(ctx, s, automationreport.Options{Since: *since, Threshold: *threshold})
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(report)
+		}
+		fmt.Printf("automation_candidates_ok: %t\n", report.OK)
+		fmt.Printf("since: %s\n", report.Since)
+		fmt.Printf("threshold: %d\n", report.Threshold)
+		if len(report.Candidates) == 0 {
+			fmt.Println("candidates: none")
+			return nil
+		}
+		fmt.Println("candidates:")
+		for _, candidate := range report.Candidates {
+			fmt.Printf("- kind=%s pattern=%s frequency=%d owner=%s surface=%s cost=%s next=%s\n",
+				candidate.Kind,
+				candidate.Pattern,
+				candidate.Frequency,
+				firstNonEmpty(candidate.LikelyOwner, "unknown"),
+				candidate.SuggestedSurface,
+				candidate.EstimatedCoordinationCost,
+				candidate.RecommendedAction)
+			if len(candidate.RecentTaskIDs) > 0 {
+				fmt.Printf("  recent_tasks: %s\n", strings.Join(candidate.RecentTaskIDs, ", "))
+			}
+			if len(candidate.RepresentativeCommands) > 0 {
+				fmt.Printf("  representative_commands: %s\n", strings.Join(candidate.RepresentativeCommands, " | "))
+			}
+			if len(candidate.RepresentativeArtifacts) > 0 {
+				fmt.Printf("  representative_artifacts: %s\n", strings.Join(candidate.RepresentativeArtifacts, ", "))
+			}
 		}
 		return nil
 	})
@@ -12964,7 +13045,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, advisory validate, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, advisory validate, automation candidates, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -13005,6 +13086,7 @@ func printCommandHelp(command string) bool {
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"advisory":                   "fairway advisory validate <task-id> ...\n  Validate structured advisory recommendations and optionally record advisory evidence only.",
+		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",

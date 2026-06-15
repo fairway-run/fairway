@@ -40,6 +40,7 @@ fairway coordinator tick [--completion-handback-wake] [--task <task-id>] [--send
 fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>] [--task-id <id>] [--since-duration <duration>]
 fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>] [--task-id <id>] [--since-duration <duration>] [--forecast-days <n>] [--format human|markdown]
 fairway delivery report --since <duration> [--profile <name>] [--format text|json] # read-only delivery velocity and process overhead report
+fairway automation candidates --since <duration> [--threshold <n>] [--format text|json] # read-only repeated-work automation candidate report
 fairway batch create <batch-id> --title <t> [--task <id>]... [--branch <b>] [--worktree <path>] [--validation-command <cmd>]... [--review-domain <domain>]... [--rollback-criteria <text>] [--split-criteria <text>] [--expected-ci <text>] [--deploy-run-id <id>] [--pipeline-id <id>]
 fairway batch add <batch-id> <task-id>...
 fairway batch remove <batch-id> <task-id>...
@@ -370,6 +371,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   notification/wake and handoff counts, outcome-source buckets, and loop
   signals. It is advisory by default and does not approve reviews, mutate task
   status, merge, deploy, or gate release.
+- `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
+  is a read-only repeated-work report. It detects repeated deterministic
+  command, evidence, and notification patterns, then reports frequency, recent
+  task ids, representative commands/artifacts, likely owner, estimated
+  coordination cost, suggested surface, and recommended action. It does not
+  auto-create tasks or mutate workflow.
 - `advisory validate` checks a structured recommendation before it is trusted
   or recorded. The contract contains `action`, `task_id`, `target_role`,
   `confidence`, `requires_human`, `rationale`, `risk_flags`, and cited Fairway

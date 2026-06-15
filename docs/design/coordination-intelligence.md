@@ -410,6 +410,13 @@ overhead report. It uses existing task transitions, evidence, reviews,
 handoffs, notifications, and review-wait projections to show blocked time,
 review-wait time, review usefulness, outcome sources, and loop signals without
 mutating workflow state.
+
+FW-AUTOMATION-CANDIDATES-001
+Expose `fairway automation candidates` as a read-only repeated-work report. It
+detects deterministic command, evidence, and notification patterns that have
+crossed the manual/checklist/automate threshold and recommends a bounded
+surface such as script, Fairway CLI, dashboard panel, watcher, or packet
+template. It does not auto-create tasks or mutate workflow by default.
 ```
 
 ## Product Principle

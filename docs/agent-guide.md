@@ -859,6 +859,10 @@ fairway audit docs-backlog
 # Process-intelligence boundary: measure whether review/gate overhead is
 # improving speed, quality, or safety.
 fairway delivery report --since 168h
+
+# Automation boundary: find repeated deterministic work before it becomes
+# recurring LLM scheduling or bookkeeping.
+fairway automation candidates --since 168h
 ```
 
 The command reports:
@@ -893,6 +897,12 @@ notifications, and wait projections. Use it when tuning review profiles or
 process pilots to compare overhead with outcomes such as defects caught,
 rework, blocked time, cycle time, and avoided unsafe actions. It does not make
 metrics into review, merge, deploy, or release gates.
+
+`automation candidates` is advisory. It groups repeated command, evidence, and
+notification patterns and recommends a likely implementation surface such as a
+script, Fairway CLI command, dashboard panel, watcher, or packet template. Use
+it to apply the manual-once, checklist-second, automate-third rule. It does not
+auto-create tasks or mutate workflow.
 
 `audit ci-learning` is advisory. `audit failure-routing` is the same read model
 with known-failure routing help text and a `failure_routing_ok` human status
