@@ -46,6 +46,30 @@
 </section>
 
 <section class="report-section">
+<header class="section-head"><h2>Delivery Velocity And Process Overhead</h2><span>advisory metrics; not a gate</span></header>
+<section class="mini-stats">
+<div><b>{{.Delivery.Summary.CompletedTasks}}</b><span>completed tasks</span></div>
+<div><b>{{.Delivery.Summary.TotalBlockedSeconds}}s</b><span>blocked time</span></div>
+<div><b>{{.Delivery.Summary.TotalReviewWaitSeconds}}s</b><span>review-wait time</span></div>
+<div><b>{{.Delivery.Overhead.ReviewRecords}}</b><span>review records</span></div>
+<div><b>{{.Delivery.Overhead.ReviewChangesRequested}}</b><span>changes requested</span></div>
+<div><b>{{printf "%.2f" .Delivery.Overhead.ReviewUsefulnessRatio}}</b><span>review usefulness ratio</span></div>
+<div><b>{{.Delivery.Overhead.Notifications}}</b><span>wakes/notifications</span></div>
+<div><b>{{len .Delivery.Loops}}</b><span>loop signals</span></div>
+</section>
+{{if .Delivery.OutcomeSources}}
+<div class="taxonomy-grid">
+{{range .Delivery.OutcomeSources}}<section><b>{{.Count}}</b><span>{{.Source}}</span></section>{{end}}
+</div>
+{{end}}
+{{if .Delivery.Loops}}
+<ul class="review-gap-list">
+{{range .Delivery.Loops}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Signal}} <span>{{.Recommended}}</span></li>{{end}}
+</ul>
+{{end}}
+</section>
+
+<section class="report-section">
 <header class="section-head"><h2>Lane Outcomes</h2><span>delivery grouped by role, domain, and kind</span></header>
 <div class="lane-report-grid">
 {{range .Lanes}}

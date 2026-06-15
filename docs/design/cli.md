@@ -39,6 +39,7 @@ fairway coordinator plan [--ready-limit <n>] [--recommendation-limit <n>] [--all
 fairway coordinator tick [--completion-handback-wake] [--task <task-id>] [--send] # daily plan plus optional stale completion-handback wake prompts
 fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>] [--task-id <id>] [--since-duration <duration>]
 fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>] [--task-id <id>] [--since-duration <duration>] [--forecast-days <n>] [--format human|markdown]
+fairway delivery report --since <duration> [--profile <name>] [--format text|json] # read-only delivery velocity and process overhead report
 fairway batch create <batch-id> --title <t> [--task <id>]... [--branch <b>] [--worktree <path>] [--validation-command <cmd>]... [--review-domain <domain>]... [--rollback-criteria <text>] [--split-criteria <text>] [--expected-ci <text>] [--deploy-run-id <id>] [--pipeline-id <id>]
 fairway batch add <batch-id> <task-id>...
 fairway batch remove <batch-id> <task-id>...
@@ -361,6 +362,14 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   completion handbacks, live-operation control, track memory, safe iteration,
   process overhead, and repeated-work automation. Findings are advisory and do
   not change task, review, merge-ready, or release state.
+- `delivery report --since <duration> [--profile <name>] [--format text|json]`
+  is a read-only delivery velocity and process overhead report. It uses existing
+  task transitions, evidence, reviews, handoffs, notifications, and review-wait
+  projections to report completed tasks, blocked time, review-wait time,
+  first-evidence-to-done time, review approvals versus changes requested,
+  notification/wake and handoff counts, outcome-source buckets, and loop
+  signals. It is advisory by default and does not approve reviews, mutate task
+  status, merge, deploy, or gate release.
 - `advisory validate` checks a structured recommendation before it is trusted
   or recorded. The contract contains `action`, `task_id`, `target_role`,
   `confidence`, `requires_human`, `rationale`, `risk_flags`, and cited Fairway

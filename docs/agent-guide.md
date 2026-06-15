@@ -855,6 +855,10 @@ fairway audit ci-learning --template
 # Coordination-design boundary: check whether docs, command examples, and
 # incident lessons map to Fairway backlog tasks.
 fairway audit docs-backlog
+
+# Process-intelligence boundary: measure whether review/gate overhead is
+# improving speed, quality, or safety.
+fairway delivery report --since 168h
 ```
 
 The command reports:
@@ -882,6 +886,13 @@ large coordination-model updates so doc-only capabilities, stale completed
 tasks, and consumer-specific lessons that should become Fairway product tasks
 do not remain hidden in chat or local notes. The audit does not change task,
 review, merge-ready, or release state.
+
+`delivery report` is advisory. It measures delivery velocity and process
+overhead from existing Fairway task transitions, evidence, reviews, handoffs,
+notifications, and wait projections. Use it when tuning review profiles or
+process pilots to compare overhead with outcomes such as defects caught,
+rework, blocked time, cycle time, and avoided unsafe actions. It does not make
+metrics into review, merge, deploy, or release gates.
 
 `audit ci-learning` is advisory. `audit failure-routing` is the same read model
 with known-failure routing help text and a `failure_routing_ok` human status

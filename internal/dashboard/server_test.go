@@ -193,6 +193,8 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 		"watch-ci",
 		"CI-FIX",
 		"Missing Required Review Domains",
+		"Delivery Velocity And Process Overhead",
+		"review usefulness ratio",
 		"Provider Usage Attribution",
 		"Work batches / batched tasks",
 		"codex",

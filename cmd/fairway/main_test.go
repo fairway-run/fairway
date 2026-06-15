@@ -159,6 +159,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
 		{[]string{"advisory", "--help"}, "fairway advisory validate <task-id>"},
 		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
+		{[]string{"delivery", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
+		{[]string{"delivery", "report", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -3491,6 +3493,52 @@ func TestCLI_AuditDocsBacklog(t *testing.T) {
 	assertContains(t, jsonReport, `"docs_with_backlog_coverage": 1`)
 	assertContains(t, jsonReport, `"covering_tasks": [`)
 	assertContains(t, jsonReport, `"FW-196"`)
+}
+
+func TestCLI_DeliveryReport(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Reviewed feature", "--role", "backend", "--profile", "fairway-adoption", "--review-domains", "arch")
+	runOK(t, "claim", "T-001")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass", "--artifact-type", "ci")
+	runOK(t, "record", "review", "T-001", "--reviewer", "arch", "--domain", "arch", "--verdict", "changes", "--reason", "caught regression")
+	runOK(t, "set-status", "T-001", "done", "--reason", "closed after review")
+
+	runOK(t, "add", "T-002", "--title", "Looping task", "--role", "backend", "--profile", "fairway-adoption")
+	runOK(t, "claim", "T-002")
+	runOK(t, "record", "evidence", "T-002", "--command-text", "preflight failed", "--result", "fail", "--artifact-type", "preflight")
+	runOK(t, "record", "evidence", "T-002", "--command-text", "preflight failed again", "--result", "blocked", "--artifact-type", "preflight")
+	runOK(t, "record", "review", "T-002", "--reviewer", "arch", "--domain", "arch", "--verdict", "changes", "--reason", "same layer failure")
+
+	report := runCapture(t, "delivery", "report", "--since", "720h", "--profile", "fairway-adoption")
+	for _, want := range []string{
+		"delivery_report_ok: true",
+		"profile: fairway-adoption",
+		"completed=1",
+		"reviews=2",
+		"changes_requested=2",
+		"outcome_sources:",
+		"- review=2",
+		"loop_signals:",
+		"task=T-002",
+		"repeated_failures_after_review",
+	} {
+		assertContains(t, report, want)
+	}
+
+	jsonReport := runCapture(t, "delivery", "report", "--since", "720h", "--format", "json")
+	assertContains(t, jsonReport, `"completed_tasks": 1`)
+	assertContains(t, jsonReport, `"review_changes_requested": 2`)
+	assertContains(t, jsonReport, `"signal": "repeated_failures_after_review"`)
 }
 
 func TestCLI_AuditCILearning(t *testing.T) {

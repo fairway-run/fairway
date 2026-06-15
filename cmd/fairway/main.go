@@ -26,6 +26,7 @@ import (
 	"github.com/subashram/fairway/internal/config"
 	coord "github.com/subashram/fairway/internal/coordinator"
 	"github.com/subashram/fairway/internal/dashboard"
+	"github.com/subashram/fairway/internal/deliveryreport"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
 	"github.com/subashram/fairway/internal/livewindow"
@@ -120,6 +121,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdTimingReport(ctx, opts, args[1:])
 	case "completion-handback-report":
 		return cmdCompletionHandbackReport(ctx, opts, args[1:])
+	case "delivery":
+		return cmdDelivery(ctx, opts, args[1:])
 	case "dispatch-plan":
 		return cmdDispatchPlan(ctx, opts, args[1:])
 	case "git-check":
@@ -2688,6 +2691,111 @@ func cmdAuditCILearning(ctx context.Context, opts globalOptions, command string,
 		for _, artifact := range report.Templates {
 			fmt.Println()
 			fmt.Println(artifact.Markdown)
+		}
+		return nil
+	})
+}
+
+func cmdDelivery(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		fmt.Println("fairway delivery report --since <duration> [--profile <name>] [--format text|json]")
+		fmt.Println("  Read-only delivery velocity and process overhead report from existing Fairway state.")
+		return nil
+	}
+	switch args[0] {
+	case "report":
+		return cmdDeliveryReport(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown delivery subcommand %q", args[0])
+	}
+}
+
+func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway delivery report --since <duration> [--profile <name>] [--format text|json]")
+		fmt.Println("  Report completed tasks, blocked/review-wait time, process overhead, outcome sources, and loop signals without mutating workflow.")
+		return nil
+	}
+	fs := flag.NewFlagSet("delivery report", flag.ContinueOnError)
+	since := fs.Duration("since", 7*24*time.Hour, "time window")
+	profile := fs.String("profile", "", "limit to task profile")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected delivery report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *since <= 0 {
+		return errors.New("--since must be positive")
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		report, err := deliveryreport.Build(ctx, cfg, s, deliveryreport.Options{Since: *since, Profile: *profile})
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(report)
+		}
+		fmt.Printf("delivery_report_ok: %t\n", report.OK)
+		fmt.Printf("since: %s\n", report.Since)
+		if report.Profile != "" {
+			fmt.Printf("profile: %s\n", report.Profile)
+		}
+		fmt.Printf("summary: completed=%d blocked_opened=%d blocked_resolved=%d blocked_seconds=%d review_wait_seconds=%d first_evidence_to_done_seconds=%d done_to_merge_ready_seconds_observed=%d\n",
+			report.Summary.CompletedTasks,
+			report.Summary.BlockedOpened,
+			report.Summary.BlockedResolved,
+			report.Summary.TotalBlockedSeconds,
+			report.Summary.TotalReviewWaitSeconds,
+			report.Summary.FirstEvidenceToDoneSeconds,
+			report.Summary.DoneToMergeReadySecondsObserved)
+		fmt.Printf("overhead: reviews=%d approvals=%d changes_requested=%d same_lane_mappings=%d notifications=%d notification_failures=%d wakes=%d handoffs=%d review_waits_no_changes=%d review_usefulness_ratio=%.2f tasks_with_process_overhead=%d tasks_with_engineering_output=%d\n",
+			report.Overhead.ReviewRecords,
+			report.Overhead.ReviewApprovals,
+			report.Overhead.ReviewChangesRequested,
+			report.Overhead.SameLaneReviewMappings,
+			report.Overhead.Notifications,
+			report.Overhead.NotificationFailures,
+			report.Overhead.Wakes,
+			report.Overhead.Handoffs,
+			report.Overhead.ReviewWaitsNoChanges,
+			report.Overhead.ReviewUsefulnessRatio,
+			report.Overhead.TasksWithProcessOverhead,
+			report.Overhead.TasksWithEngineeringOutput)
+		if len(report.OutcomeSources) > 0 {
+			fmt.Println("outcome_sources:")
+			for _, source := range report.OutcomeSources {
+				fmt.Printf("- %s=%d\n", source.Source, source.Count)
+			}
+		}
+		if len(report.Loops) > 0 {
+			fmt.Println("loop_signals:")
+			for _, loop := range report.Loops {
+				fmt.Printf("- task=%s signal=%s count=%d next=%s\n", loop.TaskID, loop.Signal, loop.Count, loop.Recommended)
+			}
+		}
+		if len(report.Rows) == 0 {
+			fmt.Println("rows: none")
+			return nil
+		}
+		fmt.Println("rows:")
+		for _, row := range report.Rows {
+			fmt.Printf("- task=%s status=%s completed_at=%s blocked_seconds=%d review_wait_seconds=%d reviews=%d changes_requested=%d notifications=%d handoffs=%d outcome=%s loop=%s\n",
+				row.TaskID,
+				row.Status,
+				firstNonEmpty(row.CompletedAt, "none"),
+				row.BlockedSeconds,
+				row.ReviewWaitSeconds,
+				row.ReviewRecords,
+				row.ReviewChangesRequested,
+				row.Notifications,
+				row.Handoffs,
+				firstNonEmpty(row.OutcomeSource, "none"),
+				firstNonEmpty(row.LoopSignal, "none"))
 		}
 		return nil
 	})
@@ -12856,7 +12964,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, advisory validate, usage report|cost-report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, advisory validate, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -12897,6 +13005,7 @@ func printCommandHelp(command string) bool {
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"advisory":                   "fairway advisory validate <task-id> ...\n  Validate structured advisory recommendations and optionally record advisory evidence only.",
+		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",

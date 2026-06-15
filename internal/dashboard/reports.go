@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/deliveryreport"
 	"github.com/subashram/fairway/internal/rules"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -22,23 +23,24 @@ const (
 )
 
 type ReportViewData struct {
-	View          string            `json:"-"`
-	Window        ReportWindow      `json:"window"`
-	Filters       ReportFilters     `json:"filters"`
-	FilterOptions FilterOptions     `json:"filter_options"`
-	Summary       ReportSummary     `json:"summary"`
-	Lanes         []ReportLane      `json:"lanes"`
-	Timeline      []ReportRun       `json:"timeline"`
-	FollowUps     []ReportBucket    `json:"follow_ups"`
-	ReviewSummary ReportReview      `json:"review_summary"`
-	RuleSummary   ReportRuleSummary `json:"rule_summary"`
-	Usage         ReportUsage       `json:"usage"`
-	Rows          []ReportTaskRow   `json:"rows"`
-	TableRows     []ReportTaskRow   `json:"-"`
-	Pagination    TablePagination   `json:"pagination"`
-	Sessions      []store.Session   `json:"-"`
-	Activity      []store.Activity  `json:"-"`
-	Groups        []RoleGroup       `json:"-"`
+	View          string                `json:"-"`
+	Window        ReportWindow          `json:"window"`
+	Filters       ReportFilters         `json:"filters"`
+	FilterOptions FilterOptions         `json:"filter_options"`
+	Summary       ReportSummary         `json:"summary"`
+	Lanes         []ReportLane          `json:"lanes"`
+	Timeline      []ReportRun           `json:"timeline"`
+	FollowUps     []ReportBucket        `json:"follow_ups"`
+	ReviewSummary ReportReview          `json:"review_summary"`
+	RuleSummary   ReportRuleSummary     `json:"rule_summary"`
+	Usage         ReportUsage           `json:"usage"`
+	Delivery      deliveryreport.Report `json:"delivery"`
+	Rows          []ReportTaskRow       `json:"rows"`
+	TableRows     []ReportTaskRow       `json:"-"`
+	Pagination    TablePagination       `json:"pagination"`
+	Sessions      []store.Session       `json:"-"`
+	Activity      []store.Activity      `json:"-"`
+	Groups        []RoleGroup           `json:"-"`
 	TaskRoles     map[string]string
 	ExportBase    string `json:"-"`
 }
@@ -210,6 +212,10 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
+	delivery, err := deliveryreport.Build(r.Context(), s.cfg, s.store, deliveryreport.Options{Since: end.Sub(start), Profile: filters.Profile, Now: end.UTC()})
+	if err != nil {
+		return ReportViewData{}, err
+	}
 	reviewActivityByTask := reportReviewActivityByTask(activity, start, end)
 	facts := make([]reportTaskFacts, 0, len(tasks))
 	for _, task := range tasks {
@@ -255,6 +261,7 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		ReviewSummary: reportReviewSummary(facts, rows),
 		RuleSummary:   reportRuleSummary(s.cfg, packs, facts),
 		Usage:         usage,
+		Delivery:      delivery,
 		Rows:          rows,
 		TableRows:     tableRows,
 		Pagination:    pagination,

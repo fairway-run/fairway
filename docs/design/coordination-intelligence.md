@@ -403,6 +403,13 @@ coordination-only failures remain visible but do not consume that budget. When
 the budget is exhausted, `packet retry` requires an existing causal reset task
 and reset reason before rendering another bounded preflight or live-operation
 packet.
+
+FW-DELIVERY-OVERHEAD-001
+Expose `fairway delivery report` as a read-only delivery velocity and process
+overhead report. It uses existing task transitions, evidence, reviews,
+handoffs, notifications, and review-wait projections to show blocked time,
+review-wait time, review usefulness, outcome sources, and loop signals without
+mutating workflow state.
 ```
 
 ## Product Principle
