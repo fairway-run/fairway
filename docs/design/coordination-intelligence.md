@@ -369,6 +369,11 @@ Validate advisory recommendations against task state, review gates, and risk.
 
 FW-DASHBOARD-MEMORY-001
 Show track memory, stale context, blockers, and next action on the dashboard.
+Initial implementation projects this into the read-only board rail and
+diagnostics tab from existing track memory, coordinator plan, review wait,
+completion handback, and notification rows. It shows wake targets, last wake
+attempts, suggested CLI commands, stale memory, and deterministic next actions
+without adding dashboard send or mutation authority.
 
 FW-COORDINATION-REPORT-001
 Add next-action, stale-session, review-wait, and memory-staleness reports.

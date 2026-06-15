@@ -289,6 +289,7 @@ type DashboardViewData struct {
 	TaskRoles            map[string]string
 	ActiveReport         reconcile.ActiveReport
 	CoordinatorPlan      coord.Plan
+	Coordination         CoordinationIntelligence
 	CloseoutReports      []reconcile.CloseoutReport
 	Audit                AuditDiagnostics
 	ReadOnly             bool
@@ -523,6 +524,10 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	if err != nil {
 		return DashboardViewData{}, err
 	}
+	memories, err := s.store.TrackMemories(r.Context())
+	if err != nil {
+		return DashboardViewData{}, err
+	}
 	closeoutReports, err := s.dashboardCloseoutReports(r.Context(), tasks, 8)
 	if err != nil {
 		return DashboardViewData{}, err
@@ -569,6 +574,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 		TaskRoles:            taskRoleMap(tasks),
 		ActiveReport:         activeReport,
 		CoordinatorPlan:      coordinatorPlan,
+		Coordination:         dashboardCoordinationIntelligence(coordinatorPlan, memories, time.Now().UTC(), 24*time.Hour),
 		CloseoutReports:      closeoutReports,
 		Audit:                auditDiagnostics,
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
@@ -720,6 +726,7 @@ func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, err
 				TopReason:         "open an individual project for mutable orchestration recommendations",
 			},
 		},
+		Coordination:  CoordinationIntelligence{},
 		ReadOnly:      true,
 		CSRFToken:     s.csrfToken,
 		MutableStates: []string{"todo", "claimed", "in_progress", "blocked", "review"},

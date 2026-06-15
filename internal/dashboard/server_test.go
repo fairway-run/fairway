@@ -2041,6 +2041,22 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		StaleCheckpoints: []store.Checkpoint{{TaskID: "T-001", State: "active"}},
 		Watchers:         []store.Watcher{{ID: "W-001", TaskID: "T-001", Status: "active"}},
 		Rollups:          map[string]Rollup{"T-001": {Done: 1, Total: 2}},
+		Coordination: CoordinationIntelligence{
+			OpenWaits:   1,
+			StaleWaits:  1,
+			MemoryTotal: 1,
+			MemoryStale: 1,
+			Waits: []CoordinationWait{{
+				Source:           "review_wait",
+				TaskID:           "T-002",
+				Owner:            "security",
+				State:            "stale",
+				TargetProvider:   "codex-thread",
+				Target:           "thread-1",
+				SuggestedCommand: "fairway review-waits wake --task T-002",
+			}},
+			Memories: []CoordinationMemory{{TrackID: "architecture-control", Stale: true, NextAction: "refresh packet"}},
+		},
 	}
 	var out strings.Builder
 	if err := boardTemplate.ExecuteTemplate(&out, "layout", data); err != nil {
@@ -2082,6 +2098,10 @@ func TestBoardTemplateRendersToolbarTableAndRail(t *testing.T) {
 		"page 1 of 1",
 		"dashboard-v2 / foundation",
 		"evidence test pass",
+		"Coordination Intelligence",
+		"fairway review-waits wake --task T-002",
+		"architecture-control",
+		"refresh packet",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("board template missing %q:\n%s", want, body)
@@ -2119,6 +2139,24 @@ func TestBoardTemplateRendersDiagnosticsTab(t *testing.T) {
 		FilterOptions: FilterOptions{ActivityKinds: []string{"checkpoint", "evidence"}},
 		Activity:      []store.Activity{{Kind: "checkpoint", TaskID: "T-001", Summary: "working", CreatedAt: "2026-06-04T00:00:00Z"}},
 		ActivityTotal: 1,
+		Coordination: CoordinationIntelligence{
+			OpenWaits:            2,
+			StaleWaits:           1,
+			NotificationFailures: 1,
+			MemoryTotal:          1,
+			MemoryStale:          1,
+			Waits: []CoordinationWait{{
+				Source:           "completion_handback",
+				TaskID:           "T-001",
+				Owner:            "ops",
+				State:            "notification_failed",
+				TargetProvider:   "codex-thread",
+				Target:           "thread-ops",
+				LastWakeAttempt:  "2026-06-04T00:00:00Z",
+				SuggestedCommand: "fairway record notification T-001 --domain ops --state notification_delivered",
+			}},
+			Memories: []CoordinationMemory{{TrackID: "ops-control", UpdatedAt: "2026-06-04T00:00:00Z", Stale: true, OpenBlocker: "waiting on wake"}},
+		},
 	}
 	var out strings.Builder
 	if err := boardTemplate.ExecuteTemplate(&out, "layout", data); err != nil {
@@ -2147,6 +2185,13 @@ func TestBoardTemplateRendersDiagnosticsTab(t *testing.T) {
 		"stale checkpoints: 1",
 		"blocked &gt;24h: 1",
 		"checkpoint working",
+		"Coordination Intelligence",
+		"Open waits",
+		"Mapping gaps",
+		"completion_handback",
+		"fairway record notification T-001 --domain ops --state notification_delivered",
+		"ops-control",
+		"waiting on wake",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("board diagnostics missing %q:\n%s", want, body)

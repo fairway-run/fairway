@@ -126,6 +126,10 @@ It includes:
 - a control-room header with total filtered scope,
 - current orchestration recommendation and reason from the same dry-run plan
   evaluator used by `fairway coordinator plan`,
+- a read-only coordination intelligence rail with open/stale wait counts,
+  wake targets, last wake attempt, suggested CLI command, track-memory
+  freshness, and next deterministic actions from existing coordinator and
+  memory read models,
 - gate readiness above the table, grouped by profile/gate group with
   blocking, advisory, and report-only misses called out,
 - expandable missing-task detail for each gate so exceptions are visible before
@@ -197,6 +201,8 @@ must not authorize execution, mutate production, or send provider messages.
 
 `/board?tab=diagnostics` shows operational tables for:
 
+- coordination intelligence waits, wake targets, track memory freshness, and
+  deterministic next actions,
 - active reconciliation findings,
 - work coverage and CI/deploy learning findings,
 - sessions,
@@ -216,6 +222,13 @@ The active reconciliation section includes monitor lifecycle findings such as
 `monitor_session_without_backing_proof`, which means a CI/deploy/UAT/watch
 session is recorded as active but has no backing automation id, PID/tmux pane,
 external run plus poll command, or fresh bounded manual checkpoint.
+
+The coordination intelligence section is derived from existing Fairway facts:
+track memory rows, coordinator plan actions, review waits, completion handbacks,
+and notification metadata. It may show stale memory, open waits, notification
+mapping gaps, wake target provider/thread, last wake attempt, and fixed CLI
+recovery suggestions. It does not add dashboard wake authority or write
+notification, review, task, merge, deploy, or execution state.
 
 Diagnostics tables are sortable. The task-table export action is hidden on the
 diagnostics tab because there is no task table there.

@@ -57,9 +57,29 @@
 <span>provider lifecycle: {{.ActiveReport.Summary.ProviderLifecycleMissing}}</span>
 <span>closeout debt: {{len .CloseoutReports}}</span>
 <span>orchestration: {{.CoordinatorPlan.Summary.TopClassification}}</span>
+<span>coord waits: {{.Coordination.OpenWaits}}</span>
+<span>stale memory: {{.Coordination.MemoryStale}}</span>
 </section>
 {{if eq .Filters.Tab "diagnostics"}}
 <section class="diagnostics-grid">
+<article class="diagnostic-panel wide">
+<h2>Coordination Intelligence</h2>
+<section class="summary-strip" aria-label="Coordination intelligence summary">
+<div><b>{{.Coordination.OpenWaits}}</b><span>Open waits</span></div>
+<div><b>{{.Coordination.StaleWaits}}</b><span>Stale waits</span></div>
+<div><b>{{.Coordination.NotificationFailures}}</b><span>Mapping gaps</span></div>
+<div><b>{{.Coordination.MemoryTotal}}</b><span>Memory tracks</span></div>
+<div><b>{{.Coordination.MemoryStale}}</b><span>Stale memory</span></div>
+</section>
+<h3>Waits and wake targets</h3>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Source</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Owner</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Wake target</button></th><th><button type="button" data-sort="text">Last wake</button></th><th><button type="button" data-sort="text">Next</button></th></tr></thead><tbody>
+{{range .Coordination.Waits}}<tr><td>{{.Source}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.Owner}}</td><td>{{.State}}</td><td>{{if .TargetProvider}}{{.TargetProvider}} {{end}}{{if .Target}}{{.Target}}{{else}}none{{end}}</td><td>{{if .LastWakeAttempt}}{{.LastWakeAttempt}}{{else}}none{{end}}</td><td>{{if .SuggestedCommand}}<code>{{.SuggestedCommand}}</code>{{else}}{{.Action}}{{end}}</td></tr>{{else}}<tr><td colspan="7">no open coordination waits</td></tr>{{end}}
+</tbody></table>
+<h3>Track memory</h3>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Track</button></th><th><button type="button" data-sort="text">Updated</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Next action</button></th><th><button type="button" data-sort="text">Blocker</button></th></tr></thead><tbody>
+{{range .Coordination.Memories}}<tr><td>{{.TrackID}} {{if .Title}}<span class="muted">{{.Title}}</span>{{end}}</td><td>{{.UpdatedAt}}</td><td>{{if .Stale}}stale{{else}}fresh{{end}}</td><td>{{.NextAction}}</td><td>{{.OpenBlocker}}</td></tr>{{else}}<tr><td colspan="5">no track memory rows</td></tr>{{end}}
+</tbody></table>
+</article>
 <article class="diagnostic-panel">
 <h2>Active Reconciliation</h2>
 <table data-sortable><thead><tr><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Session</button></th><th><button type="button" data-sort="text">Action</button></th><th><button type="button" data-sort="text">Reason</button></th></tr></thead><tbody>
@@ -353,6 +373,18 @@
 <div class="ticker-list">
 {{range .CoordinatorPlan.Actions}}<article class="ticker-entry"><b class="who">{{.Classification}}</b><span class="what">{{.Action}} {{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</span><time>{{.Reason}}</time></article>{{else}}<p class="muted">no next actions</p>{{end}}
 </div>
+</section>
+<section class="card">
+<h2>Coordination Intelligence</h2>
+<section class="summary-strip compact" aria-label="Coordination intelligence summary">
+<div><b>{{.Coordination.OpenWaits}}</b><span>waits</span></div>
+<div><b>{{.Coordination.StaleWaits}}</b><span>stale</span></div>
+<div><b>{{.Coordination.MemoryStale}}</b><span>memory</span></div>
+</section>
+<div class="ticker-list">
+{{range .Coordination.Waits}}<article class="ticker-entry"><b class="who">{{.Source}}</b><span class="what">{{.State}} {{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}} {{.Owner}}</span><time>{{if .SuggestedCommand}}{{.SuggestedCommand}}{{else}}{{.Action}}{{end}}</time></article>{{else}}<p class="muted">no open coordination waits</p>{{end}}
+</div>
+{{if .Coordination.Memories}}<h3>Memory</h3><div class="ticker-list">{{range .Coordination.Memories}}<article class="ticker-entry"><b class="who">{{.TrackID}}</b><span class="what">{{if .Stale}}stale{{else}}fresh{{end}}</span><time>{{if .NextAction}}{{.NextAction}}{{else}}{{.UpdatedAt}}{{end}}</time></article>{{end}}</div>{{end}}
 </section>
 <section class="card">
 <h2>Activity</h2>
