@@ -2356,11 +2356,16 @@ func (s *Server) completionHandbackProjection(ctx context.Context, task store.Ta
 			break
 		}
 	}
+	_, _, evidence, _, _, err := s.store.TaskDetail(ctx, task.Definition.ID)
+	if err != nil {
+		return nil, nil, err
+	}
 	handbacks := completionhandback.RowsWithOptions(task.Definition.ID, handoffs, notifications, completionhandback.RowOptions{
 		Now:             time.Now().UTC(),
 		AckTimeout:      ackTimeout,
 		TaskStatus:      task.Status,
 		LiveWindowPhase: liveWindowPhase,
+		Superseded:      completionhandback.SupersedesFromEvidence(evidence),
 	})
 	plan, err := coord.BuildPlan(ctx, s.cfg, s.store, coord.PlanOptions{
 		StaleCheckpointAfter:   2 * time.Hour,

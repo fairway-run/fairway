@@ -16,6 +16,7 @@ fairway record evidence <task-id> --command-text <text> --result <pass|fail|part
 fairway record guard-report <task-id> --guard <name> [--mode <report_only|warning|blocking>] [--finding <text>]... [--false-positive <text>]... [--allowed-debt <text>]... [--graduation-criteria <text>] [--artifact <path>] [--result <result>]
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
 fairway record completion-handback <task-id> --to <role> --next-action <text> [--completion-state <state>] [--evidence <path>]... [--approval-boundary <text>] [--provider <name>] [--target <thread-or-adapter>] [--state <handoff_recorded|notification_delivered|thread_steered|notification_failed>] [--reason <text>]
+fairway record completion-handback-supersede <task-id> --handoff-id <id> --reason <text> [--replacement-handoff-id <id>] [--evidence <path>]
 fairway record review <task-id> --reviewer <role-or-user> [--domain <review-domain>] --verdict <approve|changes|reject> [--reason <text>] [--commit <sha>]
 fairway record usage <task-id> --provider <name> [--session-id <id>] [--external-session-id <id>] [--role <role>] [--phase <phase>] [--source <provider_reported|derived_snapshot|manual|unknown>] [--confidence <exact|estimated|unknown>] [--input-tokens <n>] [--cached-input-tokens <n>] [--output-tokens <n>] [--total-tokens <n>]
 fairway route review <task-id> [--reviewer <role>] [--path <path>]... [--reason <text>] # mark pending review
@@ -252,6 +253,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   projected as a closeout-to-next-owner wait so repeated live windows do not
   depend on polling chat. This does not authorize approval, merge, push, deploy,
   wake delivery, or any dashboard mutation.
+- `record completion-handback-supersede` records immutable evidence that an
+  older completion handback is obsolete. It keeps the original handoff,
+  notification rows, reason, replacement handoff id, evidence path, and
+  timestamp visible in history while excluding the old handback from active
+  coordinator and notification-audit waits. For non-terminal tasks, the command
+  refuses to hide an unresolved handback unless a replacement handback is named
+  or the task already has an explicit `blocked` status decision.
 - `coordinator tick --completion-handback-wake` renders fixed stale
   completion-handback wake prompts from the same coordinator plan projection.
   With `--send`, it records a bounded `task_notifications` row on the

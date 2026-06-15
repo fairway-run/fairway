@@ -63,6 +63,25 @@ clean Fairway task status alone is not proof that the next actor was informed.
 The handback record does not grant approval, merge, deploy, provider wake, or
 dashboard send authority.
 
+If a completion handback becomes obsolete, record an explicit supersede marker
+instead of deleting or ignoring it:
+
+```bash
+fairway record completion-handback-supersede FW-123 \
+  --handoff-id 42 \
+  --replacement-handoff-id 43 \
+  --reason "new closeout handback carries the current next action" \
+  --evidence .fairway/artifacts/FW-123/supersede.md
+```
+
+The command writes immutable `completion-handback-superseded` evidence. Task
+detail and audit history still show the old handback, the reason, replacement
+handoff id, evidence path, and timestamp. Coordinator plan and notification
+audit no longer treat the superseded handback as an active wait. For
+non-terminal tasks, Fairway refuses supersede cleanup unless a replacement
+handoff is named or the task already has an explicit `blocked` status decision.
+This prevents hiding an unresolved handoff on still-active work.
+
 Dashboard task detail projects the same completion-handback rows and
 coordinator closeout waits as read-only state. It shows next owner/action,
 completion state, task/live-window context, delivery state, stale age, provider

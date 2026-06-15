@@ -325,3 +325,10 @@ architecture, orchestrator, coordinator, or target-owner checkpoint, plus stale
 and open counts by task and workstream. It deliberately avoids per-person
 scoring and excludes terminal tasks by default; pass `--include-closed` only
 when a closeout retrospective needs closed-task history.
+
+When an older completion handback is obsolete, `fairway record
+completion-handback-supersede` records the cleanup decision as immutable
+evidence. Coordinator plan keeps the superseded handback in historical
+projections but does not emit it as an active notification-gated stop
+condition. Non-terminal tasks need a replacement handback or explicit blocked
+status before the old handback can be superseded.

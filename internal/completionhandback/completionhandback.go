@@ -40,8 +40,21 @@ type Handback struct {
 	StaleAge             string   `json:"stale_age,omitempty"`
 	SuggestedAction      string   `json:"suggested_action,omitempty"`
 	SuggestedCommand     string   `json:"suggested_command,omitempty"`
+	Superseded           bool     `json:"superseded,omitempty"`
+	SupersededReason     string   `json:"superseded_reason,omitempty"`
+	ReplacementHandoffID int64    `json:"replacement_handoff_id,omitempty"`
+	SupersededEvidence   string   `json:"superseded_evidence,omitempty"`
+	SupersededAt         string   `json:"superseded_at,omitempty"`
 	CreatedAt            string   `json:"created_at,omitempty"`
 	DeliveredAt          string   `json:"delivered_at,omitempty"`
+}
+
+type Supersede struct {
+	HandoffID            int64
+	Reason               string
+	ReplacementHandoffID int64
+	EvidencePath         string
+	CreatedAt            string
 }
 
 type RowOptions struct {
@@ -49,6 +62,7 @@ type RowOptions struct {
 	AckTimeout      time.Duration
 	TaskStatus      string
 	LiveWindowPhase string
+	Superseded      map[int64]Supersede
 }
 
 func RenderPayload(nextAction string, evidencePaths []string, approvalBoundary string) (string, error) {
@@ -117,6 +131,15 @@ func RowsWithOptions(taskID string, handoffs []store.Handoff, notifications []st
 			row.Reason = latest.Reason
 			row.DeliveredAt = latest.CreatedAt
 			row.ActualThreadDelivery = ActualThreadDelivery(latest.State)
+		}
+		if supersede, ok := opts.Superseded[handoff.ID]; ok {
+			row.Superseded = true
+			row.SupersededReason = supersede.Reason
+			row.ReplacementHandoffID = supersede.ReplacementHandoffID
+			row.SupersededEvidence = supersede.EvidencePath
+			row.SupersededAt = supersede.CreatedAt
+			row.DeliveryStatus = "superseded"
+			row.SuggestedAction = "inspect_superseded_completion_handback"
 		}
 		applyStaleness(&row, opts)
 		applySuggestions(&row)
@@ -229,12 +252,60 @@ func ActualThreadDelivery(state string) bool {
 }
 
 func IsResolved(row Handback) bool {
+	if row.Superseded {
+		return true
+	}
 	switch row.DeliveryStatus {
-	case "delivered", "failed":
+	case "delivered", "failed", "superseded":
 		return true
 	default:
 		return false
 	}
+}
+
+func SupersedesFromEvidence(evidence []store.Evidence) map[int64]Supersede {
+	out := map[int64]Supersede{}
+	for _, ev := range evidence {
+		if strings.TrimSpace(ev.ArtifactType) != "completion-handback-superseded" {
+			continue
+		}
+		values := keyValues(strings.Fields(ev.CommandText))
+		handoffID := parsePositiveInt64(values["handoff_id"])
+		if handoffID <= 0 {
+			continue
+		}
+		out[handoffID] = Supersede{
+			HandoffID:            handoffID,
+			Reason:               strings.TrimSpace(ev.Notes),
+			ReplacementHandoffID: parsePositiveInt64(values["replacement_handoff_id"]),
+			EvidencePath:         strings.TrimSpace(ev.ArtifactPath),
+			CreatedAt:            ev.CreatedAt,
+		}
+	}
+	return out
+}
+
+func keyValues(fields []string) map[string]string {
+	out := map[string]string{}
+	for _, field := range fields {
+		key, value, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		out[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return out
+}
+
+func parsePositiveInt64(raw string) int64 {
+	var value int64
+	for _, r := range strings.TrimSpace(raw) {
+		if r < '0' || r > '9' {
+			return 0
+		}
+		value = value*10 + int64(r-'0')
+	}
+	return value
 }
 
 func cleanList(values []string) []string {

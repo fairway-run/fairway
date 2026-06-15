@@ -259,7 +259,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	}
 	completionHandbacksByTask := map[string][]completionhandback.Handback{}
 	for _, task := range tasks {
-		_, _, _, handoffs, _, err := s.TaskDetail(ctx, task.Definition.ID)
+		_, _, evidence, handoffs, _, err := s.TaskDetail(ctx, task.Definition.ID)
 		if err != nil {
 			return Plan{}, err
 		}
@@ -272,6 +272,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			AckTimeout:      ackTimeout,
 			TaskStatus:      task.Status,
 			LiveWindowPhase: liveWindowStatus.Phase,
+			Superseded:      completionhandback.SupersedesFromEvidence(evidence),
 		}) {
 			completionHandbacksByTask[task.Definition.ID] = append(completionHandbacksByTask[task.Definition.ID], handback)
 			plan.CompletionHandbacks = append(plan.CompletionHandbacks, handback)

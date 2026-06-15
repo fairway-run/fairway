@@ -741,7 +741,7 @@ func buildCompletionHandbackIdleReport(ctx context.Context, cfg config.Config, s
 		if !includeClosed && terminal[task.Status] {
 			continue
 		}
-		_, _, _, handoffs, _, err := s.TaskDetail(ctx, task.Definition.ID)
+		_, _, evidence, handoffs, _, err := s.TaskDetail(ctx, task.Definition.ID)
 		if err != nil {
 			return completionHandbackIdleReport{}, err
 		}
@@ -755,6 +755,7 @@ func buildCompletionHandbackIdleReport(ctx context.Context, cfg config.Config, s
 			AckTimeout:      ackTimeout,
 			TaskStatus:      task.Status,
 			LiveWindowPhase: liveWindowPhase,
+			Superseded:      completionhandback.SupersedesFromEvidence(evidence),
 		}) {
 			row := completionHandbackIdleRow{
 				TaskID:            task.Definition.ID,
@@ -1941,7 +1942,7 @@ func buildNotificationAuditRows(ctx context.Context, cfg config.Config, root str
 	for _, task := range tasks {
 		taskID := task.Definition.ID
 		statusesByTask[taskID] = task.Status
-		_, _, _, handoffs, reviews, err := s.TaskDetail(ctx, taskID)
+		_, _, evidence, handoffs, reviews, err := s.TaskDetail(ctx, taskID)
 		if err != nil {
 			return nil, err
 		}
@@ -1986,6 +1987,7 @@ func buildNotificationAuditRows(ctx context.Context, cfg config.Config, root str
 			AckTimeout:      ackTimeout,
 			TaskStatus:      task.Status,
 			LiveWindowPhase: livePhase,
+			Superseded:      completionhandback.SupersedesFromEvidence(evidence),
 		}) {
 			latest, _ := latestNotificationForAudit(notifications, handback.ToRole, handback.HandoffID)
 			state := notificationAuditState(handback.DeliveryState, handback.DeliveryStatus)
@@ -2151,6 +2153,9 @@ func notificationAuditStaleAge(state, origin string, now time.Time) string {
 }
 
 func completionHandbackAuditSuperseded(handback completionhandback.Handback) bool {
+	if handback.Superseded {
+		return true
+	}
 	switch strings.TrimSpace(handback.DeliveryStatus) {
 	case "delivered":
 		return true
@@ -9649,13 +9654,13 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, root string, s 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		if isHelpOnly(args) {
-			subcommandUsage("record", "evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent")
+			subcommandUsage("record", "evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
 			return nil
 		}
 		return errors.New("record requires type and task id")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("record", "evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent")
+		subcommandUsage("record", "evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
 		return nil
 	}
 	switch args[0] {
@@ -9667,6 +9672,8 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 		return recordHandoff(ctx, opts, args[1:])
 	case "completion-handback":
 		return recordCompletionHandback(ctx, opts, args[1:])
+	case "completion-handback-supersede":
+		return recordCompletionHandbackSupersede(ctx, opts, args[1:])
 	case "notification":
 		return recordNotification(ctx, opts, args[1:])
 	case "review":
@@ -10776,6 +10783,102 @@ func recordCompletionHandback(ctx context.Context, opts globalOptions, args []st
 	})
 }
 
+func recordCompletionHandbackSupersede(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("record", "completion-handback-supersede <task-id> --handoff-id <id> --reason <text> [--replacement-handoff-id <id>] [--evidence <path>]")
+		return nil
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("completion-handback-supersede", flag.ContinueOnError)
+	handoffID := fs.Int64("handoff-id", 0, "completion handback handoff id to mark superseded")
+	replacementID := fs.Int64("replacement-handoff-id", 0, "replacement completion handback id, when one exists")
+	reason := fs.String("reason", "", "why the older handback is obsolete")
+	evidencePath := fs.String("evidence", "", "optional artifact proving the supersede decision")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected completion-handback-supersede arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *handoffID <= 0 {
+		return errors.New("--handoff-id is required")
+	}
+	if strings.TrimSpace(*reason) == "" {
+		return errors.New("--reason is required")
+	}
+	if *replacementID == *handoffID {
+		return errors.New("--replacement-handoff-id must differ from --handoff-id")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		task, _, evidence, handoffs, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		notifications, err := s.Notifications(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		handback, ok := completionHandbackByID(taskID, handoffs, notifications, evidence, *handoffID, cfg)
+		if !ok {
+			return fmt.Errorf("completion handback handoff %d not found for %s", *handoffID, taskID)
+		}
+		if completionhandback.IsResolved(handback) && !handback.Stale && !handback.Superseded {
+			return fmt.Errorf("completion handback %d is already resolved with delivery_status=%s", *handoffID, handback.DeliveryStatus)
+		}
+		if *replacementID > 0 {
+			if _, ok := completionHandbackByID(taskID, handoffs, notifications, evidence, *replacementID, cfg); !ok {
+				return fmt.Errorf("replacement completion handback %d not found for %s", *replacementID, taskID)
+			}
+		}
+		terminal := terminalStatusSet(cfg.States.Terminal)
+		if !terminal[task.Status] && task.Status != "blocked" && *replacementID <= 0 {
+			return errors.New("non-terminal completion handback supersede requires --replacement-handoff-id or task status blocked")
+		}
+		commandText := fmt.Sprintf("completion-handback-supersede handoff_id=%d", *handoffID)
+		if *replacementID > 0 {
+			commandText += fmt.Sprintf(" replacement_handoff_id=%d", *replacementID)
+		}
+		if err := s.RecordEvidence(ctx, taskID, store.Evidence{
+			CommandText:  commandText,
+			Result:       "pass",
+			ArtifactPath: *evidencePath,
+			ArtifactType: "completion-handback-superseded",
+			Notes:        *reason,
+		}); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(map[string]any{
+				"task_id":                 taskID,
+				"handoff_id":              *handoffID,
+				"replacement_handoff_id":  *replacementID,
+				"artifact_type":           "completion-handback-superseded",
+				"reason":                  strings.TrimSpace(*reason),
+				"evidence_path":           strings.TrimSpace(*evidencePath),
+				"completion_handback_old": handback,
+			})
+		}
+		fmt.Printf("completion_handback_superseded %s handoff_id=%d replacement_handoff_id=%d reason=%s\n", taskID, *handoffID, *replacementID, strings.TrimSpace(*reason))
+		return nil
+	})
+}
+
+func completionHandbackByID(taskID string, handoffs []store.Handoff, notifications []store.Notification, evidence []store.Evidence, handoffID int64, cfg config.Config) (completionhandback.Handback, bool) {
+	ackTimeout, err := reviewWaitAckTimeout(cfg)
+	if err != nil {
+		ackTimeout = 0
+	}
+	for _, handback := range completionhandback.RowsWithOptions(taskID, handoffs, notifications, completionhandback.RowOptions{
+		AckTimeout: ackTimeout,
+		Superseded: completionhandback.SupersedesFromEvidence(evidence),
+	}) {
+		if handback.HandoffID == handoffID {
+			return handback, true
+		}
+	}
+	return completionhandback.Handback{}, false
+}
+
 func validNotificationState(state string) bool {
 	switch strings.TrimSpace(state) {
 	case "intent", "handoff_recorded", "sent", "notification_delivered", "thread_steered", "acknowledged", "review_acknowledged", "review_recorded", "failed", "notification_failed":
@@ -11714,6 +11817,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 		AckTimeout:      ackTimeout,
 		TaskStatus:      task.Status,
 		LiveWindowPhase: liveWindowPhase,
+		Superseded:      completionhandback.SupersedesFromEvidence(evidence),
 	})
 	if asJSON {
 		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
@@ -11793,6 +11897,14 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 				firstNonEmpty(strings.Join(handback.EvidencePaths, ","), "none"),
 				firstNonEmpty(handback.ApprovalBoundary, "none"),
 			)
+			if handback.Superseded {
+				fmt.Printf("  superseded=true reason=%s replacement_handoff_id=%d evidence=%s at=%s\n",
+					firstNonEmpty(handback.SupersededReason, "none"),
+					handback.ReplacementHandoffID,
+					firstNonEmpty(handback.SupersededEvidence, "none"),
+					firstNonEmpty(handback.SupersededAt, "none"),
+				)
+			}
 		}
 	}
 	fmt.Println("\nnotifications:")
@@ -11993,7 +12105,7 @@ func usage() {
 	fmt.Println("Queue and task state:")
 	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail")
 	fmt.Println("Evidence and review:")
-	fmt.Println("  record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, live-window")
+	fmt.Println("  record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
@@ -12027,7 +12139,7 @@ func printCommandHelp(command string) bool {
 		"dispatch-plan":              "fairway dispatch-plan [--role <role>] [--limit <n>]\n  Print a ready-work dispatch plan for a role.",
 		"git-check":                  "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
-		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",

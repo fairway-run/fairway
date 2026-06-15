@@ -29,6 +29,9 @@ func TestCLI_Smoke(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(oldwd) })
 
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
 	runOK(t, "init")
 	writeFile(t, "tasks.yaml", `- id: T-001
   title: Smoke
@@ -132,8 +135,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"session", "help"}, "fairway session upsert|status|end|reconcile|launch"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
-		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|completion-handback|notification|review|usage|push-intent"},
+		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},
 		{[]string{"record", "completion-handback", "--help"}, "fairway record completion-handback <task-id> --to <role> --next-action <text>"},
+		{[]string{"record", "completion-handback-supersede", "--help"}, "fairway record completion-handback-supersede <task-id> --handoff-id <id> --reason <text>"},
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
 		{[]string{"review-waits", "list", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
 		{[]string{"review-waits", "wake", "--help"}, "fairway review-waits wake [--task <task-id>]"},
@@ -223,6 +227,9 @@ func TestCLI_InitPreservesEditedAgentBreadcrumb(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(oldwd) })
 
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
 	runOK(t, "init")
 	custom := "# Custom Agent Notes\n\nDo not overwrite this file.\n"
 	writeFile(t, ".fairway/AGENTS.md", custom)
@@ -3030,6 +3037,73 @@ func TestCLI_TerminalStatusRequiresCompletionHandbackDeliveryDecision(t *testing
 		"--reason", "thread steering unavailable; coordinator notified out of band",
 	)
 	runOK(t, "set-status", "T-001", "done")
+}
+
+func TestCLI_CompletionHandbackSupersede(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `notification_ack_timeout = "24h"`, `notification_ack_timeout = "1ns"`)
+	runOK(t, "add", "T-001", "--title", "Superseded completion handback", "--role", "backend")
+	runOK(t, "set-status", "T-001", "in_progress", "--reason", "active closeout")
+	oldJSON := runCapture(t, "--json", "record", "completion-handback", "T-001", "--to", "coordinator", "--next-action", "old next action", "--completion-state", "blocked-with-follow-up")
+	oldID := jsonIntField(t, oldJSON, "handoff_id")
+	replacementJSON := runCapture(t, "--json", "record", "completion-handback", "T-001", "--to", "coordinator", "--next-action", "replacement next action", "--completion-state", "blocked-with-follow-up")
+	replacementID := jsonIntField(t, replacementJSON, "handoff_id")
+	runOK(t, "record", "completion-handback-supersede", "T-001", "--handoff-id", fmt.Sprintf("%d", oldID), "--replacement-handoff-id", fmt.Sprintf("%d", replacementID), "--reason", "replacement handback carries current next action", "--evidence", "artifacts/supersede.md")
+
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "superseded=true")
+	assertContains(t, detail, fmt.Sprintf("replacement_handoff_id=%d", replacementID))
+	assertContains(t, detail, "completion-handback-supersede")
+
+	plan := runCapture(t, "coordinator", "plan")
+	assertNotContains(t, plan, fmt.Sprintf("completion handback %d", oldID))
+	assertContains(t, plan, fmt.Sprintf("completion handback %d", replacementID))
+
+	audit := runCapture(t, "audit", "notifications")
+	assertNotContains(t, audit, fmt.Sprintf("handoff_id=%d", oldID))
+	assertContains(t, audit, fmt.Sprintf("handoff_id=%d", replacementID))
+	allAudit := runCapture(t, "audit", "notifications", "--all")
+	assertContains(t, allAudit, fmt.Sprintf("handoff_id=%d", oldID))
+	assertContains(t, allAudit, "superseded=true")
+
+	runOK(t, "add", "T-002", "--title", "Unsafe suppression", "--role", "backend")
+	runOK(t, "set-status", "T-002", "in_progress", "--reason", "active closeout")
+	unsafeJSON := runCapture(t, "--json", "record", "completion-handback", "T-002", "--to", "coordinator", "--next-action", "needs owner")
+	unsafeID := jsonIntField(t, unsafeJSON, "handoff_id")
+	if _, err := captureRun("record", "completion-handback-supersede", "T-002", "--handoff-id", fmt.Sprintf("%d", unsafeID), "--reason", "hide it"); err == nil || !strings.Contains(err.Error(), "non-terminal completion handback supersede requires --replacement-handoff-id or task status blocked") {
+		t.Fatalf("unsafe supersede error = %v", err)
+	}
+
+	runOK(t, "set-status", "T-002", "blocked", "--reason", "explicit blocked decision replaces handback")
+	runOK(t, "record", "completion-handback-supersede", "T-002", "--handoff-id", fmt.Sprintf("%d", unsafeID), "--reason", "blocked decision recorded")
+	blockedDetail := runCapture(t, "task-detail", "T-002")
+	assertContains(t, blockedDetail, "superseded=true")
+
+	writeFile(t, "terminal.yaml", `- id: T-003
+  title: Terminal cleanup
+  role: backend
+  status: done
+`)
+	runOK(t, "import", "terminal.yaml", "--state-once")
+	terminalJSON := runCapture(t, "--json", "record", "completion-handback", "T-003", "--to", "coordinator", "--next-action", "historical handback cleanup")
+	terminalID := jsonIntField(t, terminalJSON, "handoff_id")
+	runOK(t, "record", "completion-handback-supersede", "T-003", "--handoff-id", fmt.Sprintf("%d", terminalID), "--reason", "terminal historical cleanup")
+	terminalDetail := runCapture(t, "task-detail", "T-003")
+	assertContains(t, terminalDetail, "status: done")
+	assertContains(t, terminalDetail, "superseded=true")
 }
 
 func TestCLI_CoordinatorTickCompletionHandbackWake(t *testing.T) {
