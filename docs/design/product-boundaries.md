@@ -68,6 +68,14 @@ It must not silently claim, approve, merge, delete, push, deploy, or mutate
 production-impacting state. Any future apply path must name the exact mutation,
 show the dry-run plan, and keep stop conditions visible.
 
+Structured advisory recommendations must pass `fairway advisory validate`
+before they are recorded or used for handoff context. Validation checks the
+action enum, target role, confidence, risk flags, cited Fairway facts, and
+provider wake routability warnings. Accepted recommendations may be recorded as
+`advisory-recommendation` evidence only; they do not approve reviews, accept
+risk, claim tasks, merge, push, deploy, run live actions, or mutate
+environments.
+
 ## Usage Accounting Rule
 
 Provider usage records are for planning and retrospection:

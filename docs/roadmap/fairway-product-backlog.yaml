@@ -2908,6 +2908,7 @@ tasks:
       - cmd/fairway
       - internal
       - docs/design/coordination-intelligence.md
+      - docs/design/cli.md
       - docs/design/product-boundaries.md
       - docs/config-reference.md
       - docs/agent-guide.md

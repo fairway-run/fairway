@@ -885,6 +885,28 @@ failures have a `CI-FIX-*`, `CD-FIX-*`, `OPS-FIX-*`, `HARNESS-FIX-*`,
 creation still requires an explicit operator command, dry-run/apply workflow,
 or configured policy.
 
+`advisory validate` checks optional advisory-provider output before anyone
+treats it as useful coordination input:
+
+```bash
+fairway advisory validate T-001 \
+  --action render_packet \
+  --target-role backend \
+  --confidence 0.74 \
+  --rationale "retry packet should be refreshed from recorded task facts" \
+  --cited-fact "task:T-001 status=blocked" \
+  --record-evidence
+```
+
+Accepted actions are advisory only: `inspect_task`, `route_review`,
+`record_evidence`, `refresh_memory`, `render_packet`, `create_follow_up`,
+`wake_provider`, `run_preflight`, and `record_checkpoint`. Risk flags require
+`--requires-human`; cited facts must point at Fairway task/evidence/review/
+checkpoint/session/handoff/notification facts. `--record-evidence` writes
+`advisory-recommendation` evidence only. It does not approve reviews, accept
+risk, claim work, merge, push, deploy, run live actions, or mutate an
+environment.
+
 For Fairway release attempts, create one release-run task/checkpoint and render
 a release-run packet before tagging:
 

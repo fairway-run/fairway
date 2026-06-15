@@ -131,6 +131,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdBatch(ctx, opts, args[1:])
 	case "audit":
 		return cmdAudit(ctx, opts, args[1:])
+	case "advisory":
+		return cmdAdvisory(ctx, opts, args[1:])
 	case "merge-ready":
 		return cmdMergeReady(ctx, opts, args[1:])
 	case "review-waits":
@@ -1827,6 +1829,237 @@ func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 	default:
 		return fmt.Errorf("unknown audit subcommand %q", args[0])
 	}
+}
+
+type advisoryRecommendation struct {
+	Action        string   `json:"action"`
+	TaskID        string   `json:"task_id"`
+	TargetRole    string   `json:"target_role"`
+	Confidence    float64  `json:"confidence"`
+	RequiresHuman bool     `json:"requires_human"`
+	Rationale     string   `json:"rationale"`
+	RiskFlags     []string `json:"risk_flags,omitempty"`
+	CitedFacts    []string `json:"cited_fairway_facts"`
+}
+
+type advisoryValidationReport struct {
+	OK             bool                   `json:"ok"`
+	Recommendation advisoryRecommendation `json:"recommendation"`
+	Issues         []string               `json:"issues,omitempty"`
+	Warnings       []string               `json:"warnings,omitempty"`
+	Recorded       bool                   `json:"recorded"`
+}
+
+func cmdAdvisory(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("advisory", "validate <task-id>")
+		return nil
+	}
+	switch args[0] {
+	case "validate":
+		return cmdAdvisoryValidate(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown advisory subcommand %q", args[0])
+	}
+}
+
+func cmdAdvisoryValidate(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--requires-human] [--risk-flag <flag>]... [--record-evidence]")
+		fmt.Println("  Validate an advisory recommendation; optional recording writes advisory evidence only.")
+		return nil
+	}
+	if len(args) < 1 {
+		return errors.New("advisory validate requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("advisory validate", flag.ContinueOnError)
+	action := fs.String("action", "", "recommended advisory action")
+	targetRole := fs.String("target-role", "", "target role for the action")
+	confidence := fs.Float64("confidence", -1, "confidence from 0.0 to 1.0")
+	requiresHuman := fs.Bool("requires-human", false, "recommendation requires human decision")
+	rationale := fs.String("rationale", "", "recommendation rationale")
+	recordEvidence := fs.Bool("record-evidence", false, "record accepted recommendation as advisory evidence")
+	var riskFlags multiFlag
+	var citedFacts multiFlag
+	fs.Var(&riskFlags, "risk-flag", "risk flag; may repeat")
+	fs.Var(&citedFacts, "cited-fact", "cited Fairway fact; may repeat")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected advisory validate arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	rec := advisoryRecommendation{
+		Action:        strings.TrimSpace(*action),
+		TaskID:        taskID,
+		TargetRole:    strings.TrimSpace(*targetRole),
+		Confidence:    *confidence,
+		RequiresHuman: *requiresHuman,
+		Rationale:     strings.TrimSpace(*rationale),
+		RiskFlags:     trimStrings(riskFlags),
+		CitedFacts:    trimStrings(citedFacts),
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		task, _, _, _, reviews, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		report := validateAdvisoryRecommendation(cfg, task, reviews, rec)
+		if report.OK && *recordEvidence {
+			notes, err := json.Marshal(report.Recommendation)
+			if err != nil {
+				return err
+			}
+			ev := store.Evidence{
+				CommandText:  "fairway advisory validate " + taskID + " --action " + shellToken(rec.Action),
+				Result:       "pass",
+				ArtifactType: "advisory-recommendation",
+				Notes:        string(notes),
+			}
+			if err := s.RecordEvidence(ctx, taskID, ev); err != nil {
+				return err
+			}
+			report.Recorded = true
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("advisory_valid: %t\n", report.OK)
+		fmt.Printf("task: %s\naction: %s\ntarget_role: %s\nconfidence: %.2f\nrequires_human: %t\n", rec.TaskID, rec.Action, rec.TargetRole, rec.Confidence, rec.RequiresHuman)
+		printPacketList("Risk Flags", rec.RiskFlags)
+		printPacketList("Cited Fairway Facts", rec.CitedFacts)
+		if rec.Rationale != "" {
+			fmt.Printf("\n## Rationale\n%s\n", rec.Rationale)
+		}
+		printPacketList("Issues", report.Issues)
+		printPacketList("Warnings", report.Warnings)
+		if report.Recorded {
+			fmt.Println("recorded: advisory-recommendation evidence")
+		}
+		if !report.OK {
+			return errors.New("advisory recommendation validation failed")
+		}
+		return nil
+	})
+}
+
+func validateAdvisoryRecommendation(cfg config.Config, task store.Task, reviews []store.Review, rec advisoryRecommendation) advisoryValidationReport {
+	report := advisoryValidationReport{OK: true, Recommendation: rec}
+	addIssue := func(issue string) {
+		report.OK = false
+		report.Issues = append(report.Issues, issue)
+	}
+	if rec.Action == "" {
+		addIssue("--action is required")
+	} else if !allowedAdvisoryAction(rec.Action) {
+		addIssue("action is not in the advisory allowed-action enum")
+	}
+	if rec.TargetRole == "" {
+		addIssue("--target-role is required")
+	} else if !configuredRole(cfg, rec.TargetRole) {
+		addIssue("target role is not configured")
+	}
+	if rec.Confidence < 0 || rec.Confidence > 1 {
+		addIssue("--confidence must be between 0 and 1")
+	}
+	if rec.Rationale == "" {
+		addIssue("--rationale is required")
+	}
+	if len(rec.CitedFacts) == 0 {
+		addIssue("--cited-fact is required")
+	}
+	for _, fact := range rec.CitedFacts {
+		if !validAdvisoryFact(fact, task.Definition.ID) {
+			addIssue("cited fact must name an existing Fairway fact prefix and matching task id: " + fact)
+		}
+	}
+	if len(rec.RiskFlags) > 0 && !rec.RequiresHuman {
+		addIssue("risk flags require --requires-human")
+	}
+	if providerTargetAction(rec.Action) && !providerTargetConfigured(cfg.ProviderTargets, rec.TargetRole) {
+		report.Warnings = append(report.Warnings, "target role has no configured provider target; recommendation is not routable as a wake")
+	}
+	if actionBlockedByTaskState(cfg, task, rec.Action) {
+		addIssue("action is not applicable to task status " + task.Status)
+	}
+	if rec.Action == "route_review" && len(task.Definition.ReviewDomains) > 0 && len(missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)) == 0 {
+		addIssue("route_review is not applicable because required review domains are already approved")
+	}
+	return report
+}
+
+func allowedAdvisoryAction(action string) bool {
+	switch action {
+	case "inspect_task", "route_review", "record_evidence", "refresh_memory", "render_packet", "create_follow_up", "wake_provider", "run_preflight", "record_checkpoint":
+		return true
+	default:
+		return false
+	}
+}
+
+func providerTargetAction(action string) bool {
+	return action == "wake_provider"
+}
+
+func actionBlockedByTaskState(cfg config.Config, task store.Task, action string) bool {
+	if !isTerminal(task.Status, cfg.States.Terminal) {
+		return false
+	}
+	switch action {
+	case "inspect_task", "render_packet", "create_follow_up":
+		return false
+	default:
+		return true
+	}
+}
+
+func configuredRole(cfg config.Config, role string) bool {
+	if len(cfg.Roles) == 0 {
+		return true
+	}
+	for _, configured := range cfg.Roles {
+		if configured.Name == role {
+			return true
+		}
+	}
+	return false
+}
+
+func providerTargetConfigured(targets []config.ProviderTarget, role string) bool {
+	for _, target := range targets {
+		if target.Domain == role && strings.TrimSpace(target.Provider) != "" && strings.TrimSpace(target.Target) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func validAdvisoryFact(fact, taskID string) bool {
+	fact = strings.TrimSpace(fact)
+	if fact == "" {
+		return false
+	}
+	prefixes := []string{"task:", "evidence:", "review:", "checkpoint:", "session:", "handoff:", "notification:"}
+	hasPrefix := false
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(fact, prefix) {
+			hasPrefix = true
+			break
+		}
+	}
+	return hasPrefix && strings.Contains(fact, taskID)
+}
+
+func trimStrings(values []string) []string {
+	var out []string
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func cmdAuditWorkCoverage(ctx context.Context, opts globalOptions, args []string) error {
@@ -11369,7 +11602,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, usage report|cost-report, audit work-coverage|ci-learning|failure-routing, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, advisory validate, usage report|cost-report, audit work-coverage|ci-learning|failure-routing, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -11408,6 +11641,7 @@ func printCommandHelp(command string) bool {
 		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
+		"advisory":                   "fairway advisory validate <task-id> ...\n  Validate structured advisory recommendations and optionally record advisory evidence only.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",

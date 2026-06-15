@@ -241,15 +241,24 @@ Suggested output shape:
 
 ```json
 {
-  "action": "resume",
+  "action": "render_packet",
   "task_id": "FW-192",
   "target_role": "governance",
-  "confidence": "medium",
+  "confidence": 0.76,
   "requires_human": false,
   "rationale": "Task has approved reviews and needs merge-ready verification.",
-  "risk_flags": []
+  "risk_flags": [],
+  "cited_fairway_facts": ["task:FW-192 review=approved"]
 }
 ```
+
+`fairway advisory validate` is the first deterministic guard for this contract.
+It accepts only the bounded advisory action enum: `inspect_task`,
+`route_review`, `record_evidence`, `refresh_memory`, `render_packet`,
+`create_follow_up`, `wake_provider`, `run_preflight`, and
+`record_checkpoint`. Recommendations must cite Fairway facts and use
+`requires_human` when risk flags are present. A valid recommendation may be
+recorded as `advisory-recommendation` evidence, but it is not applied.
 
 Fairway validation must reject:
 

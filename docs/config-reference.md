@@ -208,6 +208,11 @@ does not expose a thread messaging tool. See
 | `type` | string | `generic` | Destination type: `generic`, `thread`, `tmux`, `cli`, or `webhook`. |
 | `target` | string | — | Provider-local target id. Do not put secrets or bearer URLs here. |
 
+`fairway advisory validate` uses provider targets only to warn when a
+`wake_provider` recommendation is not routable. The warning does not grant send
+authority, dashboard mutation authority, review approval, merge, deploy, or
+live-operation permission.
+
 ### `[[provider_model_prices]]`
 
 Provider model prices are advisory calculator inputs for

@@ -152,6 +152,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"packet", "--help"}, "fairway packet context|bugfix|retry|watcher"},
 		{[]string{"packet", "retry", "--help"}, "fairway packet retry <task-id> --kind <preflight|live-operation>"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing"},
+		{[]string{"advisory", "--help"}, "fairway advisory validate <task-id>"},
+		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -3344,6 +3346,110 @@ func TestCLI_KnownFailureRoutingRecommendations(t *testing.T) {
 	} {
 		assertContains(t, jsonReport, want)
 	}
+}
+
+func TestCLI_AdvisoryRecommendationValidate(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+
+[[provider_targets]]
+domain = "backend"
+provider = "codex-thread"
+target = "thread-backend"
+type = "thread"
+`)
+	runOK(t, "config", "validate")
+	runOK(t, "add", "T-001", "--title", "Advisory target", "--role", "backend")
+
+	help := runCapture(t, "advisory", "validate", "--help")
+	assertContains(t, help, "fairway advisory validate <task-id> --action <action>")
+	assertContains(t, help, "advisory evidence only")
+	assertNotContains(t, help, "error:")
+
+	report := runCapture(t, "advisory", "validate", "T-001",
+		"--action", "wake_provider",
+		"--target-role", "backend",
+		"--confidence", "0.82",
+		"--requires-human",
+		"--risk-flag", "approval",
+		"--rationale", "Reviewer should inspect task facts before action.",
+		"--cited-fact", "task:T-001 status=todo",
+		"--record-evidence")
+	for _, want := range []string{
+		"advisory_valid: true",
+		"action: wake_provider",
+		"target_role: backend",
+		"requires_human: true",
+		"Risk Flags",
+		"Cited Fairway Facts",
+		"recorded: advisory-recommendation evidence",
+	} {
+		assertContains(t, report, want)
+	}
+	detail := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, detail, "advisory-recommendation")
+	assertContains(t, detail, "wake_provider")
+
+	jsonReport := runCapture(t, "--json", "advisory", "validate", "T-001",
+		"--action", "render_packet",
+		"--target-role", "backend",
+		"--confidence", "0.5",
+		"--rationale", "Render bounded context only.",
+		"--cited-fact", "task:T-001 status=todo")
+	assertContains(t, jsonReport, `"ok": true`)
+	assertContains(t, jsonReport, `"action": "render_packet"`)
+
+	invalid := runCaptureAllowError(t, "advisory", "validate", "T-001",
+		"--action", "approve_review",
+		"--target-role", "backend",
+		"--confidence", "1.2",
+		"--risk-flag", "deploy",
+		"--rationale", "Unsafe action",
+		"--cited-fact", "chat:T-001 said ok")
+	assertContains(t, invalid, "advisory_valid: false")
+	assertContains(t, invalid, "action is not in the advisory allowed-action enum")
+	assertContains(t, invalid, "--confidence must be between 0 and 1")
+	assertContains(t, invalid, "risk flags require --requires-human")
+	assertContains(t, invalid, "cited fact must name an existing Fairway fact prefix")
+
+	runOK(t, "add", "T-002", "--title", "Done advisory target", "--role", "backend")
+	runOK(t, "set-status", "T-002", "done")
+	doneRoute := runCaptureAllowError(t, "advisory", "validate", "T-002",
+		"--action", "route_review",
+		"--target-role", "backend",
+		"--confidence", "0.8",
+		"--rationale", "Route a review",
+		"--cited-fact", "task:T-002 status=done")
+	assertContains(t, doneRoute, "action is not applicable to task status done")
+
+	runOK(t, "add", "T-003", "--title", "Reviewed advisory target", "--role", "backend", "--review-domains", "backend")
+	runOK(t, "record", "review", "T-003", "--reviewer", "fairway-reviewer", "--domain", "backend", "--verdict", "approve", "--reason", "already reviewed")
+	reviewedRoute := runCaptureAllowError(t, "advisory", "validate", "T-003",
+		"--action", "route_review",
+		"--target-role", "backend",
+		"--confidence", "0.8",
+		"--rationale", "Route a review",
+		"--cited-fact", "task:T-003 review=approved")
+	assertContains(t, reviewedRoute, "route_review is not applicable because required review domains are already approved")
+
+	warning := runCapture(t, "advisory", "validate", "T-001",
+		"--action", "wake_provider",
+		"--target-role", "ops",
+		"--confidence", "0.7",
+		"--rationale", "Ops should be woken if a target exists.",
+		"--cited-fact", "task:T-001 status=todo")
+	assertContains(t, warning, "advisory_valid: true")
+	assertContains(t, warning, "target role has no configured provider target")
 }
 
 func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
