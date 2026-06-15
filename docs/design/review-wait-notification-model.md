@@ -66,6 +66,12 @@ The review-wait model is therefore a projection and a small set of additions,
 not a new subsystem. Anything in this document that duplicates the surfaces
 above should be implemented by extending them.
 
+If `[[review_profiles]]` are configured, review waits use the effective review
+policy from [Review Policy Profiles](review-policy-profiles.md). Rows explain
+whether a domain is `required`, `inherited`, `waived`, or `deferred`; only
+required missing domains block merge readiness, but inherited and deferred
+decisions remain visible for audit.
+
 ## Durable State
 
 Derive a review-wait read model from existing review, notification, handoff,

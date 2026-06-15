@@ -188,6 +188,15 @@ like an operations controller:
 - surface live-operation control-room waits so provider/LLM turns are spent on
   judgment, implementation, review, and exception handling rather than
   scheduler bookkeeping;
+- use configured review profiles to recommend grouped review and continued
+  safe-boundary iteration for small non-live/docs/harness slices, while
+  reserving full matrices for epic, launch, live-window, deploy,
+  production-readiness, compliance, and enforcement boundaries;
+- recommend removing or narrowing advisory review/gate pilots when recorded
+  Fairway outcomes do not show speed, quality, or safety value;
+- detect looping review/retry patterns from Fairway evidence and review facts,
+  then recommend a causal reset with failure chain, real unknowns, required
+  proof before retry, and a lighter safe-boundary review plan;
 - recommend or continue configured utility monitors for deterministic/pollable
   work when `--allow-utility-monitor` is set;
 - recommend batching when related tasks share validation surfaces;

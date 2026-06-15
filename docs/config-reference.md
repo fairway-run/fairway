@@ -69,6 +69,22 @@ dashboard_groups = ["architecture maps", "boundary guards", "facades"]
 review_domains = ["architecture", "security"]
 route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
 
+[[review_profiles]]
+name = "micro-slice"
+mode = "advisory"                    # advisory | blocking; default blocking
+match_kinds = ["task"]
+match_risk_levels = ["low"]
+match_tags = ["review:micro"]
+required_review_domains = ["governance"]
+waive_review_domains = ["backend"]
+defer_review_domains = ["ops"]
+safe_iteration_zone = true
+safe_iteration_defect_class = "harness"
+safe_iteration_control = "non-live disposable boundary"
+extra_reviewer_rationale = "governance catches evidence contract drift"
+process_hypothesis = "one governance review catches evidence drift without full matrix overhead"
+outcome_metrics = ["defects_caught", "cycle_time", "avoided_unsafe_actions"]
+
 [[workstream_profiles.gates]]
 name = "security-review"
 group = "security gates"
@@ -166,6 +182,36 @@ core. Keep provider credentials, polling, and API-specific state outside the
 Fairway config; adapters should write generic `session upsert`, `checkpoint
 record`, `record evidence`, and `record handoff` events using provider labels
 such as `codex`, `claude`, `gemini`, or `shell`.
+
+### `[[review_profiles]]`
+
+Review profiles define risk-scaled review policy. They are deterministic config
+rules used by `merge-ready`, `task-detail`, `review-waits`, and coordinator
+plan output. They do not approve reviews, waive safety gates, or authorize live
+execution by themselves.
+
+Profiles are evaluated in file order. The first matching profile can add
+required review domains, waive or defer domains for the current slice, inherit
+domains from an approved parent/group packet, and explain why extra reviewers
+improve risk control.
+
+Key fields:
+
+| Key | Type | Description |
+|---|---|---|
+| `name` | string | Profile name, such as `micro-slice`, `grouped-slice`, `epic`, `launch`, `live-window`, `deploy`, or `production-readiness`. |
+| `mode` | string | `advisory` or `blocking`. New process rules should usually start advisory with a stated hypothesis before becoming blocking defaults. |
+| `match_kinds`, `match_risk_levels`, `match_tags`, `match_authoring_domains`, `match_owning_domains`, `match_paths` | []string | Match task metadata and source/target paths. Empty lists do not restrict matching. |
+| `required_review_domains` | []string | Review domains added by the profile. Task-level `review_domains` still apply unless waived or deferred. |
+| `inherit_from_parent`, `inherit_review_domains` | bool, []string | Allow child domains to be covered by matching approved parent reviews. |
+| `waive_review_domains`, `defer_review_domains` | []string | Mark domains as waived for this slice or deferred to parent/epic/release review. |
+| `safe_iteration_zone` | bool | Marks approved non-live/disposable boundaries where setup, readback, harness, classifier, or provider-shape fixes can iterate with lightweight review. |
+| `safe_iteration_defect_class`, `safe_iteration_control` | string | Explain the expected defect class and risk-control value for this profile. |
+| `extra_reviewer_rationale` | string | Explains why any extra reviewers reduce risk or cycle time. |
+| `process_hypothesis` | string | States the speed, quality, or safety hypothesis for a new review/gate process pilot. |
+| `outcome_metrics` | []string | Names outcomes to review in `fairway review-policy report`, such as `defects_caught`, `rework_reduced`, `blocked_time`, `cycle_time`, and `avoided_unsafe_actions`. |
+| `no_inheritance_kinds`, `no_inheritance_risk_levels`, `no_inheritance_tags`, `no_inheritance_paths` | []string | Triggers that force direct review instead of inherited/grouped review. Use these for authority expansion, environment mutation, credentials, safety-gate weakening, live/deploy/public exposure, compliance, or enforcement boundaries. |
+| `group_review` | bool | Lets coordinator plan recommend grouped review for related ready tasks that match this profile. |
 
 ### `[[provider_targets]]`
 

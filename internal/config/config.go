@@ -27,6 +27,7 @@ type Config struct {
 	Roles               []Role               `toml:"roles"`
 	ReviewRoutes        []ReviewRoute        `toml:"review_routes"`
 	WorkstreamProfiles  []WorkstreamProfile  `toml:"workstream_profiles"`
+	ReviewProfiles      []ReviewProfile      `toml:"review_profiles"`
 	PacketTemplates     []PacketTemplate     `toml:"packet_templates"`
 	RuleSources         []RuleSource         `toml:"rule_sources"`
 	ProviderTargets     []ProviderTarget     `toml:"provider_targets"`
@@ -134,6 +135,33 @@ type WorkstreamProfileGate struct {
 	OwnerSignoffRequired  bool     `toml:"owner_signoff_required"`
 	ExpiresAfter          string   `toml:"expires_after"`
 	Description           string   `toml:"description"`
+}
+
+type ReviewProfile struct {
+	Name                     string   `toml:"name"`
+	Mode                     string   `toml:"mode"`
+	MatchKinds               []string `toml:"match_kinds"`
+	MatchRiskLevels          []string `toml:"match_risk_levels"`
+	MatchTags                []string `toml:"match_tags"`
+	MatchAuthoringDomains    []string `toml:"match_authoring_domains"`
+	MatchOwningDomains       []string `toml:"match_owning_domains"`
+	MatchPaths               []string `toml:"match_paths"`
+	RequiredReviewDomains    []string `toml:"required_review_domains"`
+	ExtraReviewerRationale   string   `toml:"extra_reviewer_rationale"`
+	InheritFromParent        bool     `toml:"inherit_from_parent"`
+	InheritReviewDomains     []string `toml:"inherit_review_domains"`
+	WaiveReviewDomains       []string `toml:"waive_review_domains"`
+	DeferReviewDomains       []string `toml:"defer_review_domains"`
+	SafeIterationZone        bool     `toml:"safe_iteration_zone"`
+	SafeIterationDefectClass string   `toml:"safe_iteration_defect_class"`
+	SafeIterationControl     string   `toml:"safe_iteration_control"`
+	NoInheritanceKinds       []string `toml:"no_inheritance_kinds"`
+	NoInheritanceRiskLevels  []string `toml:"no_inheritance_risk_levels"`
+	NoInheritanceTags        []string `toml:"no_inheritance_tags"`
+	NoInheritancePaths       []string `toml:"no_inheritance_paths"`
+	GroupReview              bool     `toml:"group_review"`
+	ProcessHypothesis        string   `toml:"process_hypothesis"`
+	OutcomeMetrics           []string `toml:"outcome_metrics"`
 }
 
 type PacketTemplate struct {
@@ -378,6 +406,9 @@ func Validate(cfg Config) error {
 	if err := validateWorkstreamProfiles(cfg.WorkstreamProfiles, kindSet); err != nil {
 		return err
 	}
+	if err := validateReviewProfiles(cfg.ReviewProfiles, kindSet); err != nil {
+		return err
+	}
 	if err := validatePacketTemplates(cfg.PacketTemplates, workstreamProfileSet(cfg.WorkstreamProfiles)); err != nil {
 		return err
 	}
@@ -607,6 +638,61 @@ func validateWorkstreamProfiles(profiles []WorkstreamProfile, kindSet map[string
 				if _, err := time.ParseDuration(gate.ExpiresAfter); err != nil {
 					return fmt.Errorf("[[workstream_profiles.gates]] expires_after for gate %q is invalid: %w", gate.Name, err)
 				}
+			}
+		}
+	}
+	return nil
+}
+
+func validateReviewProfiles(profiles []ReviewProfile, kindSet map[string]bool) error {
+	seen := map[string]bool{}
+	for _, profile := range profiles {
+		if profile.Name == "" {
+			return errors.New("[[review_profiles]] name is required")
+		}
+		if seen[profile.Name] {
+			return fmt.Errorf("duplicate review profile %q", profile.Name)
+		}
+		seen[profile.Name] = true
+		switch strings.TrimSpace(profile.Mode) {
+		case "", "advisory", "blocking":
+		default:
+			return fmt.Errorf("[[review_profiles]] mode %q for profile %q must be advisory or blocking", profile.Mode, profile.Name)
+		}
+		kindLists := map[string][]string{
+			"match_kinds":          profile.MatchKinds,
+			"no_inheritance_kinds": profile.NoInheritanceKinds,
+		}
+		for label, values := range kindLists {
+			if err := validateStringList("[[review_profiles]] "+label, values); err != nil {
+				return err
+			}
+			if len(kindSet) > 0 {
+				for _, kind := range values {
+					if !kindSet[kind] {
+						return fmt.Errorf("[[review_profiles]] task kind %q for profile %q is not in [task_kinds].allowed", kind, profile.Name)
+					}
+				}
+			}
+		}
+		lists := map[string][]string{
+			"match_risk_levels":          profile.MatchRiskLevels,
+			"match_tags":                 profile.MatchTags,
+			"match_authoring_domains":    profile.MatchAuthoringDomains,
+			"match_owning_domains":       profile.MatchOwningDomains,
+			"match_paths":                profile.MatchPaths,
+			"required_review_domains":    profile.RequiredReviewDomains,
+			"inherit_review_domains":     profile.InheritReviewDomains,
+			"waive_review_domains":       profile.WaiveReviewDomains,
+			"defer_review_domains":       profile.DeferReviewDomains,
+			"no_inheritance_risk_levels": profile.NoInheritanceRiskLevels,
+			"no_inheritance_tags":        profile.NoInheritanceTags,
+			"no_inheritance_paths":       profile.NoInheritancePaths,
+			"outcome_metrics":            profile.OutcomeMetrics,
+		}
+		for label, values := range lists {
+			if err := validateStringList("[[review_profiles]] "+label, values); err != nil {
+				return err
 			}
 		}
 	}

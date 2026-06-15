@@ -31,6 +31,7 @@ import (
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/registry"
+	"github.com/subashram/fairway/internal/reviewpolicy"
 	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/rules"
 	"github.com/subashram/fairway/internal/state"
@@ -137,6 +138,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdMergeReady(ctx, opts, args[1:])
 	case "review-waits":
 		return cmdReviewWaits(ctx, opts, args[1:])
+	case "review-policy":
+		return cmdReviewPolicy(ctx, opts, args[1:])
 	case "live-window":
 		return cmdLiveWindow(ctx, opts, args[1:])
 	case "wait":
@@ -2629,6 +2632,7 @@ type mergeReadyReport struct {
 	Issues               []string                 `json:"issues"`
 	Warnings             []string                 `json:"warnings,omitempty"`
 	MissingReviewDomains []string                 `json:"missing_review_domains,omitempty"`
+	ReviewPolicy         reviewpolicy.Evaluation  `json:"review_policy,omitempty"`
 	GateEvaluations      []adoptionGateEvaluation `json:"gate_evaluations,omitempty"`
 	RuleEvaluations      []ruleEvidenceEvaluation `json:"rule_evaluations,omitempty"`
 }
@@ -2686,9 +2690,18 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 				report.Issues = append(report.Issues, "missing approved review")
 			}
 		}
-		report.MissingReviewDomains = missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+		report.ReviewPolicy, err = reviewPolicyEvaluation(ctx, cfg, s, task, reviews, cleanliness.DirtyPaths)
+		if err != nil {
+			return err
+		}
+		report.MissingReviewDomains = report.ReviewPolicy.MissingReviewDomains
 		for _, domain := range report.MissingReviewDomains {
-			report.Issues = append(report.Issues, "missing approved review for domain "+domain)
+			message := "missing approved review for domain " + domain + " (" + reviewPolicyDomainReason(report.ReviewPolicy, domain) + ")"
+			if report.ReviewPolicy.Mode == "advisory" {
+				report.Warnings = append(report.Warnings, "advisory review profile: "+message)
+			} else {
+				report.Issues = append(report.Issues, message)
+			}
 		}
 		if cfg.Gates.RequireHandoffBeforeMergeReady {
 			ok, err := s.HasHandoff(ctx, taskID)
@@ -2758,6 +2771,9 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 				for _, evaluation := range report.RuleEvaluations {
 					fmt.Printf("- %s: %s mode=%s evidence=%s\n", evaluation.RuleID, evaluation.Status, evaluation.Mode, strings.Join(evaluation.RequiredEvidence, ","))
 				}
+			}
+			if len(report.ReviewPolicy.Requirements) > 0 {
+				printReviewPolicyEvaluation(report.ReviewPolicy)
 			}
 		}
 		if !report.OK {
@@ -2848,6 +2864,218 @@ func cmdReviewWaits(ctx context.Context, opts globalOptions, args []string) erro
 	}
 }
 
+type reviewPolicyReportRow struct {
+	Profile               string   `json:"profile"`
+	Mode                  string   `json:"mode"`
+	ProcessHypothesis     string   `json:"process_hypothesis,omitempty"`
+	OutcomeMetrics        []string `json:"outcome_metrics,omitempty"`
+	TaskCount             int      `json:"task_count"`
+	RequiredReviewDomains int      `json:"required_review_domains"`
+	ApprovedReviews       int      `json:"approved_reviews"`
+	MissingReviews        int      `json:"missing_reviews"`
+	InheritedReviews      int      `json:"inherited_reviews"`
+	WaivedReviews         int      `json:"waived_reviews"`
+	DeferredReviews       int      `json:"deferred_reviews"`
+	DefectsCaught         int      `json:"defects_caught"`
+	ReworkReducedSignals  int      `json:"rework_reduced_signals"`
+	AvoidedUnsafeActions  int      `json:"avoided_unsafe_actions"`
+	BlockedTasks          int      `json:"blocked_tasks"`
+	CompletedTasks        int      `json:"completed_tasks"`
+	LoopDetected          int      `json:"loop_detected"`
+	CausalResetAdvice     []string `json:"causal_reset_advice,omitempty"`
+	Recommendation        string   `json:"recommendation"`
+}
+
+func cmdReviewPolicy(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("review-policy", "report [--profile <name>]")
+		return nil
+	}
+	switch args[0] {
+	case "report":
+		return cmdReviewPolicyReport(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown review-policy subcommand %q", args[0])
+	}
+}
+
+func cmdReviewPolicyReport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("review-policy", "report [--profile <name>]")
+		return nil
+	}
+	fs := flag.NewFlagSet("review-policy report", flag.ContinueOnError)
+	profileName := fs.String("profile", "", "review profile name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected review-policy report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		rows, err := reviewPolicyReportRows(ctx, cfg, s, *profileName)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(rows)
+		}
+		fmt.Println("review_policy_report:")
+		if len(rows) == 0 {
+			fmt.Println("- none")
+			return nil
+		}
+		for _, row := range rows {
+			fmt.Printf("- profile=%s mode=%s tasks=%d required_domains=%d approved=%d missing=%d inherited=%d waived=%d deferred=%d defects_caught=%d rework_signals=%d avoided_unsafe=%d blocked_tasks=%d completed_tasks=%d loop_detected=%d recommendation=%s\n",
+				row.Profile,
+				row.Mode,
+				row.TaskCount,
+				row.RequiredReviewDomains,
+				row.ApprovedReviews,
+				row.MissingReviews,
+				row.InheritedReviews,
+				row.WaivedReviews,
+				row.DeferredReviews,
+				row.DefectsCaught,
+				row.ReworkReducedSignals,
+				row.AvoidedUnsafeActions,
+				row.BlockedTasks,
+				row.CompletedTasks,
+				row.LoopDetected,
+				row.Recommendation,
+			)
+			if row.ProcessHypothesis != "" {
+				fmt.Printf("  hypothesis=%s\n", row.ProcessHypothesis)
+			}
+			if len(row.OutcomeMetrics) > 0 {
+				fmt.Printf("  outcome_metrics=%s\n", strings.Join(row.OutcomeMetrics, ", "))
+			}
+			for _, advice := range row.CausalResetAdvice {
+				fmt.Printf("  causal_reset=%s\n", advice)
+			}
+		}
+		return nil
+	})
+}
+
+func reviewPolicyReportRows(ctx context.Context, cfg config.Config, s *store.Store, profileName string) ([]reviewPolicyReportRow, error) {
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows := map[string]*reviewPolicyReportRow{}
+	for _, task := range tasks {
+		detailTask, _, evidence, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, err
+		}
+		eval, err := reviewPolicyEvaluation(ctx, cfg, s, detailTask, reviews, nil)
+		if err != nil {
+			return nil, err
+		}
+		if eval.Profile == "" {
+			continue
+		}
+		if strings.TrimSpace(profileName) != "" && eval.Profile != profileName {
+			continue
+		}
+		row := rows[eval.Profile]
+		if row == nil {
+			row = &reviewPolicyReportRow{
+				Profile:           eval.Profile,
+				Mode:              firstNonEmpty(eval.Mode, "blocking"),
+				ProcessHypothesis: eval.ProcessHypothesis,
+				OutcomeMetrics:    append([]string{}, eval.OutcomeMetrics...),
+			}
+			rows[eval.Profile] = row
+		}
+		row.TaskCount++
+		row.MissingReviews += len(eval.MissingReviewDomains)
+		for _, req := range eval.Requirements {
+			switch req.Status {
+			case "required":
+				row.RequiredReviewDomains++
+				if !containsString(eval.MissingReviewDomains, req.Domain) {
+					row.ApprovedReviews++
+				}
+			case "inherited":
+				row.InheritedReviews++
+			case "waived":
+				row.WaivedReviews++
+			case "deferred":
+				row.DeferredReviews++
+			}
+		}
+		if detailTask.Status == "blocked" {
+			row.BlockedTasks++
+		}
+		if detailTask.Status == "done" {
+			row.CompletedTasks++
+		}
+		for _, ev := range evidence {
+			switch strings.TrimSpace(ev.Result) {
+			case "fail":
+				row.DefectsCaught++
+			case "partial":
+				row.ReworkReducedSignals++
+			case "blocked":
+				row.AvoidedUnsafeActions++
+			}
+		}
+		loop := reviewpolicy.DetectLoop(detailTask, eval, evidence, reviews)
+		if loop.Detected {
+			row.LoopDetected++
+			row.CausalResetAdvice = append(row.CausalResetAdvice, reviewPolicyLoopAdvice(detailTask.Definition.ID, loop))
+		}
+	}
+	var out []reviewPolicyReportRow
+	for _, row := range rows {
+		row.Recommendation = reviewPolicyReportRecommendation(*row)
+		out = append(out, *row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Profile < out[j].Profile })
+	return out, nil
+}
+
+func reviewPolicyReportRecommendation(row reviewPolicyReportRow) string {
+	if row.LoopDetected > 0 {
+		return "recommend causal reset with lighter safe-boundary review before another retry"
+	}
+	if row.Mode == "advisory" && row.DefectsCaught+row.ReworkReducedSignals+row.AvoidedUnsafeActions == 0 && row.MissingReviews > 0 {
+		return "consider removing or narrowing this process before making it blocking"
+	}
+	if row.Mode == "advisory" {
+		return "continue pilot until speed, quality, or safety hypothesis has enough evidence"
+	}
+	return "keep blocking only while outcomes justify overhead"
+}
+
+func reviewPolicyLoopAdvice(taskID string, loop reviewpolicy.LoopRecommendation) string {
+	parts := []string{taskID, loop.Reason}
+	if len(loop.FailureChain) > 0 {
+		parts = append(parts, "failure_chain="+strings.Join(loop.FailureChain, " | "))
+	}
+	if len(loop.RealUnknowns) > 0 {
+		parts = append(parts, "real_unknowns="+strings.Join(loop.RealUnknowns, "; "))
+	}
+	if len(loop.RequiredProofBeforeRetry) > 0 {
+		parts = append(parts, "required_proof_before_retry="+strings.Join(loop.RequiredProofBeforeRetry, "; "))
+	}
+	if loop.LighterReviewPlan != "" {
+		parts = append(parts, "lighter_review_plan="+loop.LighterReviewPlan)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func cmdReviewWaitsList(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
 		subcommandUsage("review-waits", "list [--blocking] [--task <task-id>] [--stale]")
@@ -2887,12 +3115,14 @@ func cmdReviewWaitsList(ctx context.Context, opts globalOptions, args []string) 
 		}
 		fmt.Println("review_waits:")
 		for _, wait := range filtered {
-			fmt.Printf("- %s domain=%s state=%s blocking=%t action=%s target=%s:%s expected_response_at=%s reason=%s\n",
+			fmt.Printf("- %s domain=%s state=%s blocking=%t action=%s policy=%s profile=%s target=%s:%s expected_response_at=%s reason=%s\n",
 				wait.TaskID,
 				wait.Domain,
 				wait.State,
 				wait.Blocking,
 				wait.Action,
+				firstNonEmpty(wait.PolicyStatus, "required"),
+				firstNonEmpty(wait.ReviewProfile, "task-review-domains"),
 				firstNonEmpty(wait.TargetProvider, "none"),
 				firstNonEmpty(wait.TargetID, "none"),
 				firstNonEmpty(wait.ExpectedResponseAt, "none"),
@@ -3063,13 +3293,60 @@ func reviewWaitRowsWithTaskStatus(ctx context.Context, cfg config.Config, s *sto
 		if err != nil {
 			return nil, nil, err
 		}
+		policy, err := reviewPolicyEvaluation(ctx, cfg, s, detailTask, reviews, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		detailTask.Definition.ReviewDomains = policy.EffectiveDomains
 		notifications, err := s.Notifications(ctx, task.Definition.ID)
 		if err != nil {
 			return nil, nil, err
 		}
-		waits = append(waits, reviewstate.WaitsForTask(detailTask, handoffs, reviews, notifications, waitOpts)...)
+		taskWaits := reviewstate.WaitsForTask(detailTask, handoffs, reviews, notifications, waitOpts)
+		for i := range taskWaits {
+			taskWaits[i].ReviewProfile = policy.Profile
+			taskWaits[i].PolicyStatus = "required"
+			taskWaits[i].PolicyReason = reviewPolicyDomainReason(policy, taskWaits[i].Domain)
+			if policy.Mode == "advisory" {
+				taskWaits[i].Blocking = false
+				taskWaits[i].Reason = "advisory review profile: " + taskWaits[i].Reason
+			}
+		}
+		waits = append(waits, taskWaits...)
+		waits = append(waits, reviewPolicyWaitRows(detailTask, policy)...)
 	}
 	return waits, statusByTask, nil
+}
+
+func reviewPolicyWaitRows(task store.Task, policy reviewpolicy.Evaluation) []reviewstate.ReviewWait {
+	var rows []reviewstate.ReviewWait
+	for _, req := range policy.Requirements {
+		switch req.Status {
+		case "inherited", "waived", "deferred":
+		default:
+			continue
+		}
+		state := "resolved"
+		action := "none"
+		blocking := false
+		if req.Status == "deferred" {
+			state = "cancelled"
+			action = "deferred_review"
+		}
+		rows = append(rows, reviewstate.ReviewWait{
+			WaitID:        task.Definition.ID + "/" + req.Domain,
+			TaskID:        task.Definition.ID,
+			Domain:        req.Domain,
+			State:         state,
+			Blocking:      blocking,
+			Reason:        req.Reason,
+			Action:        action,
+			ReviewProfile: policy.Profile,
+			PolicyStatus:  req.Status,
+			PolicyReason:  req.Reason,
+		})
+	}
+	return rows
 }
 
 func selectReviewWaitWakes(waits []reviewstate.ReviewWait, statusByTask map[string]string, terminal map[string]bool) []reviewWaitWake {
@@ -6128,6 +6405,57 @@ func missingApprovedReviewDomains(domains []string, reviews []store.Review) []st
 		}
 	}
 	return missing
+}
+
+func reviewPolicyEvaluation(ctx context.Context, cfg config.Config, s *store.Store, task store.Task, reviews []store.Review, changedPaths []string) (reviewpolicy.Evaluation, error) {
+	var parent *store.Task
+	var parentReviews []store.Review
+	if strings.TrimSpace(task.Definition.ParentID) != "" {
+		parentTask, _, _, _, parentTaskReviews, err := s.TaskDetail(ctx, task.Definition.ParentID)
+		if err == nil {
+			parent = &parentTask
+			parentReviews = parentTaskReviews
+		}
+	}
+	return reviewpolicy.Evaluate(cfg, reviewpolicy.Options{
+		Task:          task,
+		Parent:        parent,
+		Reviews:       reviews,
+		ParentReviews: parentReviews,
+		ChangedPaths:  changedPaths,
+	}), nil
+}
+
+func reviewPolicyDomainReason(eval reviewpolicy.Evaluation, domain string) string {
+	for _, req := range eval.Requirements {
+		if req.Domain == domain {
+			return req.Reason
+		}
+	}
+	return "required review domain"
+}
+
+func printReviewPolicyEvaluation(eval reviewpolicy.Evaluation) {
+	fmt.Println("review_policy:")
+	fmt.Printf("- profile: %s mode=%s group_review=%t inheritance_blocked=%t\n", firstNonEmpty(eval.Profile, "task-review-domains"), firstNonEmpty(eval.Mode, "blocking"), eval.GroupReview, eval.InheritanceBlocked)
+	if eval.SafeIterationZone {
+		fmt.Printf("- safe_iteration_zone: true defect_class=%s control=%s\n", firstNonEmpty(eval.SafeIterationDefectClass, "unspecified"), firstNonEmpty(eval.SafeIterationControl, "unspecified"))
+	}
+	if eval.ExtraReviewerRationale != "" {
+		fmt.Printf("- extra_reviewer_rationale: %s\n", eval.ExtraReviewerRationale)
+	}
+	if eval.ProcessHypothesis != "" {
+		fmt.Printf("- process_hypothesis: %s\n", eval.ProcessHypothesis)
+	}
+	if len(eval.OutcomeMetrics) > 0 {
+		fmt.Printf("- outcome_metrics: %s\n", strings.Join(eval.OutcomeMetrics, ", "))
+	}
+	if len(eval.InheritanceBlockers) > 0 {
+		fmt.Printf("- inheritance_blockers: %s\n", strings.Join(eval.InheritanceBlockers, "; "))
+	}
+	for _, req := range eval.Requirements {
+		fmt.Printf("- %s: %s (%s)\n", req.Domain, req.Status, req.Reason)
+	}
 }
 
 func tasksForProfile(profile config.WorkstreamProfile, tasks []store.Task) []store.Task {
@@ -12157,8 +12485,12 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 		LiveWindowPhase: liveWindowPhase,
 		Superseded:      completionhandback.SupersedesFromEvidence(evidence),
 	})
+	reviewPolicy, err := reviewPolicyEvaluation(ctx, cfg, s, task, reviews, nil)
+	if err != nil {
+		return err
+	}
 	if asJSON {
-		missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+		missingReviewDomains := reviewPolicy.MissingReviewDomains
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 		reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 		reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
@@ -12170,6 +12502,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			Handoffs             []store.Handoff                        `json:"handoffs"`
 			CompletionHandbacks  []completionhandback.Handback          `json:"completion_handbacks,omitempty"`
 			Reviews              []store.Review                         `json:"reviews"`
+			ReviewPolicy         reviewpolicy.Evaluation                `json:"review_policy,omitempty"`
 			MissingReviewDomains []string                               `json:"missing_review_domains,omitempty"`
 			ReviewHandback       *coord.ReviewCompletionHandback        `json:"review_handback,omitempty"`
 			ReviewNotifications  []reviewstate.ReviewNotificationStatus `json:"review_notifications,omitempty"`
@@ -12178,14 +12511,18 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			UsageRollups         []store.UsageRollup                    `json:"usage_rollups"`
 			Batches              []store.WorkBatch                      `json:"batches"`
 			Notifications        []store.Notification                   `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, handoffs, completionHandbacks, reviews, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
+		}{task, reviewStatus, transitions, evidence, handoffs, completionHandbacks, reviews, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
 	}
-	missingReviewDomains := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+	missingReviewDomains := reviewPolicy.MissingReviewDomains
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
 	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 	reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
 	fmt.Printf("%s %s\nstatus: %s\nrole: %s\nowner: %s\nreview: %s\n\n%s\n", task.Definition.ID, task.Definition.Title, task.Status, task.Definition.Role, task.Owner, reviewStatus, task.Definition.Notes)
 	printTaskMetadata(task.Definition)
+	if len(reviewPolicy.Requirements) > 0 {
+		fmt.Println()
+		printReviewPolicyEvaluation(reviewPolicy)
+	}
 	fmt.Println("\ndependencies:")
 	for _, dep := range task.Definition.Dependencies {
 		fmt.Printf("- %s\n", dep)
@@ -12443,7 +12780,7 @@ func usage() {
 	fmt.Println("Queue and task state:")
 	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail")
 	fmt.Println("Evidence and review:")
-	fmt.Println("  record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, live-window")
+	fmt.Println("  record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
@@ -12479,6 +12816,7 @@ func printCommandHelp(command string) bool {
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
+		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale] | fairway live-window retry-budget record|status ...\n  Record and inspect repeated live-operation handshake phases and retry budgets via task checkpoints.",
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
 		"wait":                       "fairway wait list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Project generic parked-work waits from existing Fairway facts and emit bounded wake prompts.",

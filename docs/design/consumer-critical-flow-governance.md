@@ -186,3 +186,12 @@ spending most of a provider turn remembering scheduler state.
 6. Record Fairway evidence before handing off to the next owner.
 7. Use the retry budget before requesting another live or broad UAT window.
 
+Consumer repos can encode the review part of this checklist with Fairway
+`[[review_profiles]]`. Use a safe-iteration profile for approved non-live or
+disposable setup/readback/harness/classifier/provider-shape fixes, and a
+stricter boundary-exit profile for live, deploy, production-readiness,
+compliance, enforcement, credential, safety-gate, or public exposure changes.
+Start new review/gate process as an advisory pilot with a speed, quality, or
+safety hypothesis; promote it to blocking only if Fairway evidence shows useful
+outcomes such as defects caught, rework reduced, blocked time reduced, cycle
+time improved, or unsafe actions avoided.

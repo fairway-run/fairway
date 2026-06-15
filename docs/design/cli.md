@@ -24,6 +24,7 @@ fairway merge-ready <task-id> [--base <ref>]          # verify evidence/review/h
 fairway review checkout <task-id> [--source-role <role>] # create/reset named review branch
 fairway review-waits list [--blocking] [--task <task-id>] [--stale] # read-only review wait projection
 fairway review-waits wake [--task <task-id>] [--send]              # fixed-template wake prompts for parked provider threads
+fairway review-policy report [--profile <name>]                   # review profile overhead/outcome report
 fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <name>] [--provider <name>] [--task-id <id>] [--pid <pid>] [--monitor-kind <kind>] [--automation-id <id>] [--external-run-id <id>] [--poll-command <cmd>] [--manual-until <date-or-rfc3339>]
 fairway session status [--all]
 fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]
@@ -229,6 +230,15 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   retry` fails closed until an existing Fairway causal reset task and reset
   reason are recorded. This does not authorize another live window; it only
   makes the retry/reset decision explicit.
+- `review-policy report` summarizes configured review-profile pilots and
+  blocking policies. It compares review overhead with Fairway outcome signals
+  such as defects caught, rework-reduction signals, blocked tasks, completed
+  tasks, and avoided unsafe actions. Advisory profiles with overhead but no
+  useful outcomes should be narrowed or removed rather than promoted to
+  blocking defaults. It also reports loop-detected causal-reset recommendations
+  when repeated meaningful failures, same-layer fixes, or approvals without
+  end-to-end flow progress show that another retry needs a failure chain, real
+  unknowns, proof-before-retry, and a lighter safe-boundary review plan.
 - `memory show|update|append|packet|stale` provides first-class track memory
   for coordinator and provider resume packets. Track memory stores curated
   operating summaries, blockers, decisions, next actions, and numeric Fairway

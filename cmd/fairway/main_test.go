@@ -141,6 +141,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
 		{[]string{"review-waits", "list", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
 		{[]string{"review-waits", "wake", "--help"}, "fairway review-waits wake [--task <task-id>]"},
+		{[]string{"review-policy", "report", "--help"}, "fairway review-policy report [--profile <name>]"},
 		{[]string{"coordinator", "tick", "--help"}, "fairway coordinator tick [--completion-handback-wake]"},
 		{[]string{"live-window", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "record", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
@@ -2341,6 +2342,98 @@ provider = "codex"
 
 	todoOut := runCapture(t, "review-waits", "list", "--task", "T-002", "--blocking")
 	assertContains(t, todoOut, "review_waits: none")
+}
+
+func TestCLI_ReviewPolicyProfilesExplainReviewRequirements(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[review_profiles]]
+name = "micro-slice"
+mode = "advisory"
+match_tags = ["review:micro"]
+required_review_domains = ["governance"]
+waive_review_domains = ["backend"]
+defer_review_domains = ["ops"]
+safe_iteration_zone = true
+safe_iteration_defect_class = "harness"
+safe_iteration_control = "non-live disposable boundary"
+extra_reviewer_rationale = "governance catches evidence contract drift"
+process_hypothesis = "one governance review should catch evidence drift without full matrix overhead"
+outcome_metrics = ["defects_caught", "cycle_time", "avoided_unsafe_actions"]
+
+[[review_profiles]]
+name = "grouped-slice"
+match_tags = ["review:grouped"]
+required_review_domains = ["backend", "governance"]
+inherit_from_parent = true
+inherit_review_domains = ["backend", "governance"]
+group_review = true
+`)
+
+	runOK(t, "add", "MICRO-001", "--title", "Tiny docs slice", "--role", "backend", "--tag", "review:micro", "--review-domains", "backend,ops")
+	runOK(t, "set-status", "MICRO-001", "in_progress", "--reason", "review policy check")
+	detail := runCapture(t, "task-detail", "MICRO-001")
+	for _, want := range []string{
+		"review_policy:",
+		"profile: micro-slice mode=advisory",
+		"backend: waived",
+		"ops: deferred",
+		"governance: required",
+		"safe_iteration_zone: true defect_class=harness control=non-live disposable boundary",
+		"extra_reviewer_rationale: governance catches evidence contract drift",
+		"process_hypothesis: one governance review should catch evidence drift without full matrix overhead",
+		"outcome_metrics: avoided_unsafe_actions, cycle_time, defects_caught",
+		"missing review domains:",
+		"- governance",
+	} {
+		assertContains(t, detail, want)
+	}
+
+	waits := runCapture(t, "review-waits", "list", "--task", "MICRO-001")
+	for _, want := range []string{
+		"domain=backend state=resolved blocking=false action=none policy=waived profile=micro-slice",
+		"domain=ops state=cancelled blocking=false action=deferred_review policy=deferred profile=micro-slice",
+		"domain=governance state=notification_failed blocking=false action=mapping_required policy=required profile=micro-slice",
+	} {
+		assertContains(t, waits, want)
+	}
+	runOK(t, "record", "evidence", "MICRO-001", "--command-text", "near-ready harness readback", "--result", "pass", "--notes", "ready to retry after review")
+	runOK(t, "record", "evidence", "MICRO-001", "--command-text", "offline harness check", "--result", "fail", "--artifact-type", "harness", "--notes", "defect caught during advisory pilot")
+	runOK(t, "record", "evidence", "MICRO-001", "--command-text", "offline harness retry", "--result", "blocked", "--artifact-type", "harness", "--notes", "same harness failure after near-ready claim")
+	report := runCapture(t, "review-policy", "report", "--profile", "micro-slice")
+	for _, want := range []string{
+		"review_policy_report:",
+		"profile=micro-slice mode=advisory",
+		"defects_caught=1",
+		"avoided_unsafe=1",
+		"loop_detected=1",
+		"recommendation=recommend causal reset with lighter safe-boundary review before another retry",
+		"hypothesis=one governance review should catch evidence drift without full matrix overhead",
+		"outcome_metrics=avoided_unsafe_actions, cycle_time, defects_caught",
+		"causal_reset=MICRO-001; loop detected: repeated meaningful failures, same-layer=harness, near-ready-claim",
+		"required_proof_before_retry=record a causal-reset task or evidence packet that explains the failure chain; record passing proof for harness before another live or broad retry packet",
+		"lighter_review_plan=stay inside non-live disposable boundary for harness fixes with one accountable review until a boundary exit is requested",
+	} {
+		assertContains(t, report, want)
+	}
+
+	runOK(t, "add", "EPIC-001", "--title", "Grouped packet", "--role", "backend")
+	runOK(t, "record", "review", "EPIC-001", "--reviewer", "fairway-reviewer", "--domain", "backend", "--verdict", "approve", "--reason", "group packet")
+	runOK(t, "record", "review", "EPIC-001", "--reviewer", "fairway-reviewer", "--domain", "governance", "--verdict", "approve", "--reason", "group packet")
+	runOK(t, "add", "CHILD-001", "--title", "Grouped child", "--role", "backend", "--parent", "EPIC-001", "--tag", "review:grouped")
+	childWaits := runCapture(t, "review-waits", "list", "--task", "CHILD-001")
+	assertContains(t, childWaits, "domain=backend state=resolved blocking=false action=none policy=inherited profile=grouped-slice")
+	assertContains(t, childWaits, "domain=governance state=resolved blocking=false action=none policy=inherited profile=grouped-slice")
 }
 
 func TestCLI_ReviewWaitsWakeSelectionAndSuppression(t *testing.T) {

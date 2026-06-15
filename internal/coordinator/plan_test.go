@@ -58,6 +58,94 @@ func TestBuildPlanClassifiesReadyCompleteReviewAndApproval(t *testing.T) {
 	}
 }
 
+func TestBuildPlanRecommendsSafeIterationGroupedReview(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	cfg.ReviewProfiles = []config.ReviewProfile{{
+		Name:                  "micro-slice",
+		MatchTags:             []string{"review:micro"},
+		RequiredReviewDomains: []string{"governance"},
+		SafeIterationZone:     true,
+		GroupReview:           true,
+	}}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "SAFE-001", Title: "Harness setup", Kind: "task", Role: "backend", OwningDomain: "harness", Tags: []string{"review:micro"}},
+		{ID: "SAFE-002", Title: "Harness readback", Kind: "task", Role: "backend", OwningDomain: "harness", Tags: []string{"review:micro"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasPlanAction(plan, "ready", "consider_work_batch", "") {
+		t.Fatalf("expected grouped review recommendation in %+v", plan.Actions)
+	}
+	found := false
+	for _, action := range plan.Actions {
+		if action.Action == "consider_work_batch" && strings.Contains(action.Reason, "continuing safe-boundary iteration") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected safe iteration reason in %+v", plan.Actions)
+	}
+}
+
+func TestBuildPlanRecommendsCausalResetForLoopDetected(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	cfg.States.Terminal = []string{"done"}
+	cfg.ReviewProfiles = []config.ReviewProfile{{
+		Name:                     "micro-slice",
+		MatchTags:                []string{"review:micro"},
+		RequiredReviewDomains:    []string{"governance"},
+		SafeIterationZone:        true,
+		SafeIterationDefectClass: "harness",
+		SafeIterationControl:     "non-live disposable boundary",
+	}}
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "LOOP-001", Title: "Repeated harness fix", Kind: "task", Role: "backend", OwningDomain: "harness", Tags: []string{"review:micro"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "LOOP-001", store.Evidence{CommandText: "near-ready harness readback", Result: "pass", ArtifactType: "harness"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "LOOP-001", store.Evidence{CommandText: "browser smoke", Result: "fail", ArtifactType: "harness", Notes: "first harness launch failure"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "LOOP-001", store.Evidence{CommandText: "browser smoke retry", Result: "blocked", ArtifactType: "harness", Notes: "same harness launch failure"}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.LoopDetected != 1 {
+		t.Fatalf("loop summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+	if !hasPlanAction(plan, "loop-detected", "recommend_causal_reset", "LOOP-001") {
+		t.Fatalf("expected causal reset action in %+v", plan.Actions)
+	}
+	if !hasPlanActionReason(plan, "loop-detected", "LOOP-001", "required_proof_before_retry") {
+		t.Fatalf("expected proof-before-retry reason in %+v", plan.Actions)
+	}
+	if err := s.SetStatus(ctx, "LOOP-001", "done", "historical loop closed", false); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = BuildPlan(ctx, cfg, s, PlanOptions{StaleCheckpointAfter: time.Hour, ReadyLimit: 10, RecommendationLimit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Summary.LoopDetected != 0 || hasPlanAction(plan, "loop-detected", "recommend_causal_reset", "LOOP-001") {
+		t.Fatalf("terminal historical loop should not become coordinator next action: summary=%+v actions=%+v", plan.Summary, plan.Actions)
+	}
+}
+
 func TestBuildPlanExplainsEmptyReadyQueue(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)

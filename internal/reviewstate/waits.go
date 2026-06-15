@@ -34,6 +34,9 @@ type ReviewWait struct {
 	ResolvedAt         string `json:"resolved_at,omitempty"`
 	ResolvedBy         string `json:"resolved_by,omitempty"`
 	WakeThreadID       string `json:"wake_thread_id,omitempty"`
+	ReviewProfile      string `json:"review_profile,omitempty"`
+	PolicyStatus       string `json:"policy_status,omitempty"`
+	PolicyReason       string `json:"policy_reason,omitempty"`
 }
 
 type RoutabilityIssue struct {

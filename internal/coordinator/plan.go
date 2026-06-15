@@ -11,6 +11,7 @@ import (
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
+	"github.com/subashram/fairway/internal/reviewpolicy"
 	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -80,6 +81,7 @@ type PlanSummary struct {
 	UtilityGated      int    `json:"utility_gated"`
 	ReviewComplete    int    `json:"review_complete"`
 	BatchRecommended  int    `json:"batch_recommended"`
+	LoopDetected      int    `json:"loop_detected"`
 }
 
 type PlanAction struct {
@@ -431,11 +433,32 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		case terminal[task.Status]:
 			plan.Summary.Complete++
 		}
-		if len(task.Definition.ReviewDomains) > 0 && (terminal[task.Status] || task.Status == "review") {
-			detailTask, _, evidence, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
-			if err != nil {
-				return Plan{}, err
+		detailTask, _, evidence, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return Plan{}, err
+		}
+		reviewPolicy, err := reviewPolicyEvaluation(ctx, cfg, s, detailTask, reviews)
+		if err != nil {
+			return Plan{}, err
+		}
+		if loop := reviewpolicy.DetectLoop(detailTask, reviewPolicy, evidence, reviews); loop.Detected && !terminal[task.Status] {
+			plan.Summary.LoopDetected++
+			reason := loop.Reason
+			if len(loop.FailureChain) > 0 {
+				reason += "; failure_chain=" + strings.Join(loop.FailureChain, " | ")
 			}
+			if len(loop.RealUnknowns) > 0 {
+				reason += "; real_unknowns=" + strings.Join(loop.RealUnknowns, "; ")
+			}
+			if len(loop.RequiredProofBeforeRetry) > 0 {
+				reason += "; required_proof_before_retry=" + strings.Join(loop.RequiredProofBeforeRetry, "; ")
+			}
+			if loop.LighterReviewPlan != "" {
+				reason += "; lighter_review_plan=" + loop.LighterReviewPlan
+			}
+			addAction(&plan, 16, "loop-detected", "recommend_causal_reset", reason, task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
+		}
+		if len(task.Definition.ReviewDomains) > 0 && (terminal[task.Status] || task.Status == "review") {
 			missing := missingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
 			if len(missing) > 0 {
 				reason := "missing required review domains: " + strings.Join(missing, ", ")
@@ -513,9 +536,9 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			}
 		}
 	}
-	for _, group := range relatedReadyGroups(ready) {
+	for _, group := range relatedReadyGroups(cfg, ready) {
 		plan.Summary.BatchRecommended++
-		addAction(&plan, 35, "ready", "consider_work_batch", "related ready tasks share role/domain/kind/review surface", "", "", "", "", group.TaskIDs, nil, false)
+		addAction(&plan, 35, "ready", "consider_work_batch", group.Reason, "", "", "", "", group.TaskIDs, nil, false)
 	}
 	for _, task := range ready {
 		addAction(&plan, 60, "ready", "claim_ready_task", "task is ready and no higher-priority stop condition applies", task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
@@ -556,17 +579,30 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 type relatedReadyGroup struct {
 	Key     string
 	TaskIDs []string
+	Reason  string
 }
 
-func relatedReadyGroups(tasks []store.Task) []relatedReadyGroup {
+func relatedReadyGroups(cfg config.Config, tasks []store.Task) []relatedReadyGroup {
 	groups := map[string][]string{}
+	reasons := map[string]string{}
 	for _, task := range tasks {
-		keyParts := []string{task.Definition.Role, task.Definition.OwningDomain, task.Definition.Kind, strings.Join(task.Definition.ReviewDomains, ",")}
+		eval := reviewpolicy.Evaluate(cfg, reviewpolicy.Options{Task: task})
+		reviewDomains := task.Definition.ReviewDomains
+		reason := "related ready tasks share role/domain/kind/review surface"
+		if eval.Profile != "" {
+			reviewDomains = eval.EffectiveDomains
+			reason = "review profile " + eval.Profile + " recommends grouped review for related ready tasks"
+			if eval.SafeIterationZone {
+				reason = "review profile " + eval.Profile + " recommends continuing safe-boundary iteration; reserve full review matrix for boundary exit"
+			}
+		}
+		keyParts := []string{task.Definition.Role, task.Definition.OwningDomain, task.Definition.Kind, strings.Join(reviewDomains, ",")}
 		key := strings.Join(keyParts, "\x00")
 		if strings.Trim(key, "\x00") == "" {
 			continue
 		}
 		groups[key] = append(groups[key], task.Definition.ID)
+		reasons[key] = reason
 	}
 	var out []relatedReadyGroup
 	for key, ids := range groups {
@@ -574,7 +610,7 @@ func relatedReadyGroups(tasks []store.Task) []relatedReadyGroup {
 			continue
 		}
 		sort.Strings(ids)
-		out = append(out, relatedReadyGroup{Key: key, TaskIDs: ids})
+		out = append(out, relatedReadyGroup{Key: key, TaskIDs: ids, Reason: reasons[key]})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if len(out[i].TaskIDs) != len(out[j].TaskIDs) {
@@ -583,6 +619,24 @@ func relatedReadyGroups(tasks []store.Task) []relatedReadyGroup {
 		return out[i].Key < out[j].Key
 	})
 	return out
+}
+
+func reviewPolicyEvaluation(ctx context.Context, cfg config.Config, s *store.Store, task store.Task, reviews []store.Review) (reviewpolicy.Evaluation, error) {
+	var parent *store.Task
+	var parentReviews []store.Review
+	if strings.TrimSpace(task.Definition.ParentID) != "" {
+		parentTask, _, _, _, parentTaskReviews, err := s.TaskDetail(ctx, task.Definition.ParentID)
+		if err == nil {
+			parent = &parentTask
+			parentReviews = parentTaskReviews
+		}
+	}
+	return reviewpolicy.Evaluate(cfg, reviewpolicy.Options{
+		Task:          task,
+		Parent:        parent,
+		Reviews:       reviews,
+		ParentReviews: parentReviews,
+	}), nil
 }
 
 func notificationAckTimeout(cfg config.Config, opts PlanOptions) (time.Duration, error) {
