@@ -1816,7 +1816,7 @@ func splitRepeatedCSV(values []string) []string {
 
 func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("audit", "work-coverage|ci-learning|failure-routing")
+		subcommandUsage("audit", "work-coverage|ci-learning|failure-routing|notifications")
 		return nil
 	}
 	switch args[0] {
@@ -1826,9 +1826,406 @@ func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdAuditCILearning(ctx, opts, "ci-learning", args[1:])
 	case "failure-routing":
 		return cmdAuditCILearning(ctx, opts, "failure-routing", args[1:])
+	case "notifications":
+		return cmdAuditNotifications(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown audit subcommand %q", args[0])
 	}
+}
+
+type notificationAuditRow struct {
+	Source             string `json:"source"`
+	TaskID             string `json:"task_id"`
+	TaskStatus         string `json:"task_status,omitempty"`
+	Domain             string `json:"domain,omitempty"`
+	Provider           string `json:"provider,omitempty"`
+	Target             string `json:"target,omitempty"`
+	State              string `json:"state"`
+	HandoffID          int64  `json:"handoff_id,omitempty"`
+	LastNotificationID int64  `json:"last_notification_id,omitempty"`
+	LastNotifiedAt     string `json:"last_notified_at,omitempty"`
+	StaleAge           string `json:"stale_age,omitempty"`
+	Action             string `json:"action"`
+	SuggestedCommand   string `json:"suggested_command,omitempty"`
+	Reason             string `json:"reason,omitempty"`
+	Terminal           bool   `json:"terminal,omitempty"`
+	Superseded         bool   `json:"superseded,omitempty"`
+}
+
+func cmdAuditNotifications(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway audit notifications [--task <task-id>] [--all]")
+		fmt.Println("  Report provider notification lifecycle rows from existing handoffs, notifications, waits, and coordinator projections.")
+		return nil
+	}
+	fs := flag.NewFlagSet("audit notifications", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	all := fs.Bool("all", false, "include resolved, terminal, superseded, and non-actionable acknowledged rows")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected audit notifications arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		rows, err := buildNotificationAuditRows(ctx, cfg, root, s, *taskID, *all)
+		if err != nil {
+			return err
+		}
+		sort.SliceStable(rows, func(i, j int) bool {
+			if rows[i].TaskID != rows[j].TaskID {
+				return rows[i].TaskID < rows[j].TaskID
+			}
+			if rows[i].Source != rows[j].Source {
+				return rows[i].Source < rows[j].Source
+			}
+			return rows[i].Domain < rows[j].Domain
+		})
+		if opts.JSON {
+			return printJSON(rows)
+		}
+		if len(rows) == 0 {
+			fmt.Println("notification_audit: none")
+			return nil
+		}
+		fmt.Println("notification_audit:")
+		for _, row := range rows {
+			fmt.Printf("- task=%s source=%s domain=%s state=%s action=%s provider=%s target=%s handoff_id=%d notification_id=%d stale_age=%s terminal=%t superseded=%t reason=%s\n",
+				row.TaskID,
+				row.Source,
+				firstNonEmpty(row.Domain, "none"),
+				row.State,
+				row.Action,
+				firstNonEmpty(row.Provider, "none"),
+				firstNonEmpty(row.Target, "none"),
+				row.HandoffID,
+				row.LastNotificationID,
+				firstNonEmpty(row.StaleAge, "none"),
+				row.Terminal,
+				row.Superseded,
+				row.Reason)
+			if row.SuggestedCommand != "" {
+				fmt.Printf("  suggested_command: %s\n", row.SuggestedCommand)
+			}
+		}
+		return nil
+	})
+}
+
+func buildNotificationAuditRows(ctx context.Context, cfg config.Config, root string, s *store.Store, taskFilter string, includeAll bool) ([]notificationAuditRow, error) {
+	now := time.Now().UTC()
+	ackTimeout, err := reviewWaitAckTimeout(cfg)
+	if err != nil {
+		return nil, err
+	}
+	terminal := terminalStatusSet(cfg.States.Terminal)
+	tasks, err := tasksForAudit(ctx, s, taskFilter)
+	if err != nil {
+		return nil, err
+	}
+	checkpoints, err := s.Checkpoints(ctx, "", true)
+	if err != nil {
+		return nil, err
+	}
+	liveWindowByTask := map[string]livewindow.Status{}
+	for _, status := range livewindow.StatusesFromCheckpoints(checkpoints) {
+		liveWindowByTask[status.TaskID] = status
+	}
+
+	var rows []notificationAuditRow
+	waitOpts := reviewWaitOptions(cfg)
+	waitOpts.AckTimeout = ackTimeout
+	waitOpts.Now = now
+	waitOpts.Terminal = cfg.States.Terminal
+	statusesByTask := map[string]string{}
+	for _, task := range tasks {
+		taskID := task.Definition.ID
+		statusesByTask[taskID] = task.Status
+		_, _, _, handoffs, reviews, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		notifications, err := s.Notifications(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		reviewStatuses := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
+		reviewStatusByDomain := map[string]reviewstate.ReviewNotificationStatus{}
+		for _, status := range reviewStatuses {
+			reviewStatusByDomain[status.Domain] = status
+		}
+		for _, wait := range reviewstate.WaitsForTask(task, handoffs, reviews, notifications, waitOpts) {
+			status := reviewStatusByDomain[wait.Domain]
+			latest, _ := latestNotificationForAudit(notifications, wait.Domain, 0)
+			state := notificationAuditState(firstNonEmpty(status.LastState, status.Status), wait.State)
+			row := notificationAuditRow{
+				Source:             "review_wait",
+				TaskID:             taskID,
+				TaskStatus:         task.Status,
+				Domain:             wait.Domain,
+				Provider:           firstNonEmpty(status.Provider, wait.TargetProvider),
+				Target:             firstNonEmpty(status.Target, wait.WakeThreadID, wait.TargetID),
+				State:              state,
+				HandoffID:          status.HandoffID,
+				LastNotificationID: latest.ID,
+				LastNotifiedAt:     firstNonEmpty(status.LastNotificationAt, wait.LastNotifiedAt),
+				StaleAge:           notificationAuditStaleAge(state, firstNonEmpty(status.LastNotificationAt, status.LastHandoffAt, task.UpdatedAt), now),
+				Action:             notificationAuditAction("review_wait", state, wait.Action),
+				SuggestedCommand:   notificationAuditSuggestion("review_wait", taskID, wait.Domain, status.HandoffID, wait.Action),
+				Reason:             firstNonEmpty(wait.Reason, status.Reason),
+				Terminal:           terminal[task.Status],
+				Superseded:         !wait.Blocking || state == "review_recorded",
+			}
+			if includeNotificationAuditRow(row, includeAll) {
+				rows = append(rows, row)
+			}
+		}
+		livePhase := liveWindowByTask[taskID].Phase
+		for _, handback := range completionhandback.RowsWithOptions(taskID, handoffs, notifications, completionhandback.RowOptions{
+			Now:             now,
+			AckTimeout:      ackTimeout,
+			TaskStatus:      task.Status,
+			LiveWindowPhase: livePhase,
+		}) {
+			latest, _ := latestNotificationForAudit(notifications, handback.ToRole, handback.HandoffID)
+			state := notificationAuditState(handback.DeliveryState, handback.DeliveryStatus)
+			row := notificationAuditRow{
+				Source:             "completion_handback",
+				TaskID:             taskID,
+				TaskStatus:         task.Status,
+				Domain:             handback.ToRole,
+				Provider:           handback.Provider,
+				Target:             handback.Target,
+				State:              state,
+				HandoffID:          handback.HandoffID,
+				LastNotificationID: latest.ID,
+				LastNotifiedAt:     firstNonEmpty(handback.DeliveredAt, handback.CreatedAt),
+				StaleAge:           firstNonEmpty(handback.StaleAge, notificationAuditStaleAge(state, firstNonEmpty(handback.DeliveredAt, handback.CreatedAt), now)),
+				Action:             notificationAuditAction("completion_handback", state, handback.SuggestedAction),
+				SuggestedCommand:   firstNonEmpty(handback.SuggestedCommand, notificationAuditSuggestion("completion_handback", taskID, handback.ToRole, handback.HandoffID, handback.SuggestedAction)),
+				Reason:             firstNonEmpty(handback.Reason, handback.NextAction, handback.DeliveryStatus),
+				Terminal:           terminal[task.Status],
+				Superseded:         completionHandbackAuditSuperseded(handback),
+			}
+			if includeNotificationAuditRow(row, includeAll) {
+				rows = append(rows, row)
+			}
+		}
+	}
+
+	genericRows, err := projectedWaitRows(ctx, cfg, root, s, 24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	allNotifications, err := s.Notifications(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	for _, wait := range genericRows {
+		if wait.Source == "review_waits" || wait.Source == "completion_handbacks" {
+			continue
+		}
+		if strings.TrimSpace(taskFilter) != "" && wait.TaskID != taskFilter {
+			continue
+		}
+		provider, target := completionWakeTarget(cfg.ProviderTargets, wait.Owner)
+		latest, _ := latestNotificationForAudit(filterNotificationsByTask(allNotifications, wait.TaskID), wait.Owner, 0)
+		taskStatus := statusesByTask[wait.TaskID]
+		state := notificationAuditState("", wait.State)
+		row := notificationAuditRow{
+			Source:             wait.Source,
+			TaskID:             wait.TaskID,
+			TaskStatus:         taskStatus,
+			Domain:             wait.Owner,
+			Provider:           provider,
+			Target:             target,
+			State:              state,
+			LastNotificationID: latest.ID,
+			LastNotifiedAt:     latest.CreatedAt,
+			StaleAge:           notificationAuditStaleAge(state, latest.CreatedAt, now),
+			Action:             notificationAuditAction(wait.Source, state, wait.Action),
+			SuggestedCommand:   firstNonEmpty(wait.SuggestedCommand, notificationAuditSuggestion(wait.Source, wait.TaskID, wait.Owner, 0, wait.Action)),
+			Reason:             wait.Reason,
+			Terminal:           terminal[taskStatus],
+			Superseded:         false,
+		}
+		if includeNotificationAuditRow(row, includeAll) {
+			rows = append(rows, row)
+		}
+	}
+	return dedupeNotificationAuditRows(rows), nil
+}
+
+func tasksForAudit(ctx context.Context, s *store.Store, taskFilter string) ([]store.Task, error) {
+	if strings.TrimSpace(taskFilter) != "" {
+		task, _, _, _, _, err := s.TaskDetail(ctx, strings.TrimSpace(taskFilter))
+		if err != nil {
+			return nil, err
+		}
+		return []store.Task{task}, nil
+	}
+	return s.AllTasks(ctx)
+}
+
+func notificationAuditState(primary, fallback string) string {
+	switch strings.TrimSpace(fallback) {
+	case "stale":
+		return "stale"
+	case "failed", "notification_failed":
+		if strings.TrimSpace(primary) == "" {
+			return strings.TrimSpace(fallback)
+		}
+	}
+	state := strings.TrimSpace(primary)
+	if state == "" {
+		state = strings.TrimSpace(fallback)
+	}
+	switch state {
+	case "sent_awaiting_ack":
+		return "sent"
+	case "delivered":
+		return "notification_delivered"
+	case "pending", "open", "":
+		return "handoff_recorded"
+	default:
+		return state
+	}
+}
+
+func notificationAuditAction(source, state, fallback string) string {
+	switch state {
+	case "missing_notification", "handoff_recorded", "intent":
+		return firstNonEmpty(fallback, "deliver_notification")
+	case "sent":
+		return "record_delivery_proof_or_failure"
+	case "stale":
+		return "escalate_or_record_notification_outcome"
+	case "failed", "notification_failed":
+		return "repair_mapping_or_record_alternate_delivery"
+	case "acknowledged", "review_acknowledged", "review_recorded", "notification_delivered", "thread_steered":
+		return firstNonEmpty(fallback, "wait_for_next_owner_or_terminal_closeout")
+	default:
+		return firstNonEmpty(fallback, "inspect_notification_lifecycle")
+	}
+}
+
+func notificationAuditSuggestion(source, taskID, domain string, handoffID int64, action string) string {
+	switch strings.TrimSpace(source) {
+	case "review_wait":
+		switch strings.TrimSpace(action) {
+		case "mapping_required":
+			return "update review/provider routing for domain " + domain
+		case "resolve", "inspect_review_verdict":
+			return fmt.Sprintf("fairway record review %s --domain %s --verdict approve|changes --reviewer <reviewer>", taskID, domain)
+		default:
+			return fmt.Sprintf("fairway record notification %s --domain %s --state thread_steered --provider <provider> --target <target>", taskID, domain)
+		}
+	case "completion_handback":
+		if handoffID > 0 {
+			return fmt.Sprintf("fairway record notification %s --handoff-id %d --domain %s --state thread_steered|notification_failed --provider <provider> --target <target> --reason <reason>", taskID, handoffID, domain)
+		}
+		return fmt.Sprintf("fairway record completion-handback %s --to %s --next-action <next-action> --state thread_steered --provider <provider> --target <target>", taskID, domain)
+	default:
+		if strings.TrimSpace(taskID) == "" || strings.TrimSpace(domain) == "" {
+			return ""
+		}
+		return fmt.Sprintf("fairway record notification %s --domain %s --state thread_steered|notification_failed --provider <provider> --target <target> --reason <reason>", taskID, domain)
+	}
+}
+
+func notificationAuditStaleAge(state, origin string, now time.Time) string {
+	if strings.TrimSpace(state) != "stale" || strings.TrimSpace(origin) == "" {
+		return ""
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(origin))
+	if err != nil {
+		return ""
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if now.Before(parsed) {
+		return ""
+	}
+	return now.Sub(parsed).Truncate(time.Second).String()
+}
+
+func completionHandbackAuditSuperseded(handback completionhandback.Handback) bool {
+	switch strings.TrimSpace(handback.DeliveryStatus) {
+	case "delivered":
+		return true
+	default:
+		return false
+	}
+}
+
+func includeNotificationAuditRow(row notificationAuditRow, includeAll bool) bool {
+	if includeAll {
+		return true
+	}
+	if row.Terminal || row.Superseded {
+		return false
+	}
+	if row.Source == "completion_handback" {
+		return true
+	}
+	switch row.State {
+	case "notification_delivered", "thread_steered", "acknowledged", "review_acknowledged", "review_recorded", "resolved", "cancelled":
+		return false
+	default:
+		return true
+	}
+}
+
+func latestNotificationForAudit(notifications []store.Notification, domain string, handoffID int64) (store.Notification, bool) {
+	var latest store.Notification
+	for _, notification := range notifications {
+		if handoffID > 0 {
+			if notification.HandoffID == nil || *notification.HandoffID != handoffID {
+				continue
+			}
+		} else if strings.TrimSpace(domain) != "" && strings.TrimSpace(notification.Domain) != strings.TrimSpace(domain) {
+			continue
+		}
+		if latest.ID == 0 || notification.CreatedAt >= latest.CreatedAt {
+			latest = notification
+		}
+	}
+	return latest, latest.ID != 0
+}
+
+func filterNotificationsByTask(notifications []store.Notification, taskID string) []store.Notification {
+	if strings.TrimSpace(taskID) == "" {
+		return nil
+	}
+	var out []store.Notification
+	for _, notification := range notifications {
+		if notification.TaskID == taskID {
+			out = append(out, notification)
+		}
+	}
+	return out
+}
+
+func dedupeNotificationAuditRows(rows []notificationAuditRow) []notificationAuditRow {
+	seen := map[string]bool{}
+	var out []notificationAuditRow
+	for _, row := range rows {
+		key := strings.Join([]string{
+			row.Source,
+			row.TaskID,
+			row.Domain,
+			strconv.FormatInt(row.HandoffID, 10),
+			strconv.FormatInt(row.LastNotificationID, 10),
+			row.State,
+		}, "|")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, row)
+	}
+	return out
 }
 
 type advisoryRecommendation struct {
@@ -11602,7 +11999,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, advisory validate, usage report|cost-report, audit work-coverage|ci-learning|failure-routing, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, advisory validate, usage report|cost-report, audit work-coverage|ci-learning|failure-routing|notifications, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -11646,7 +12043,7 @@ func printCommandHelp(command string) bool {
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
-		"audit":                      "fairway audit work-coverage|ci-learning|failure-routing ...\n  Run advisory coverage, CI/deploy learning, and known-failure routing reports.",
+		"audit":                      "fairway audit work-coverage|ci-learning|failure-routing|notifications ...\n  Run advisory coverage, CI/deploy learning, known-failure routing, and provider notification lifecycle reports.",
 		"usage":                      "fairway usage report|cost-report [--by <provider|task|epic|role|day|kind|phase|model>]\n  Report provider-neutral usage attribution and advisory cost forecasts.",
 		"register":                   "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",
 		"unregister":                 "fairway unregister [<name>]\n  Remove a project from the local Fairway registry.",

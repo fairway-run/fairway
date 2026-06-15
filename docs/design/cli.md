@@ -51,6 +51,7 @@ fairway workflow check [--mode <task|close|deploy>] [--task-id <id>] [--require-
 fairway workflow closeout <task-id> [--dry-run] [--apply] [--preserve-branch-reason <reason>] # report lane branch/worktree/session closeout debt
 fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
 fairway audit ci-learning [--task-id <id>] [--template] # classify failed CI/deploy/smoke/UAT evidence and follow-up coverage
+fairway audit notifications [--task <task-id>] [--all] # read-only provider notification lifecycle audit across waits and handbacks
 fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--requires-human] [--risk-flag <flag>]... [--record-evidence]
 fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
 fairway coordinator preflight | status | tick
@@ -307,6 +308,18 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   actions until review; it does not create tasks unless an explicit
   operator/configured apply path does so. Use `--template` to render a learning
   artifact for review or release notes.
+- `audit notifications [--task <id>] [--all]` is a read-only lifecycle report
+  over existing review waits, completion handbacks, generic waits, coordinator
+  plan rows, handoffs, and `task_notifications`. It reports task, source,
+  target domain or role, provider target, handoff id, latest notification id,
+  stale age, expected next action, and a fixed-template recovery command. By
+  default it suppresses terminal, resolved, delivered, superseded, and other
+  non-actionable acknowledgement rows, but it still shows unresolved completion
+  handbacks when their latest linked notification is `acknowledged`,
+  `review_acknowledged`, or `review_recorded` without delivery proof. `--all`
+  includes the suppressed historical rows for audit. The command does not send
+  provider messages, approve reviews, close tasks, or create a second wait
+  store.
 - `advisory validate` checks a structured recommendation before it is trusted
   or recorded. The contract contains `action`, `task_id`, `target_role`,
   `confidence`, `requires_human`, `rationale`, `risk_flags`, and cited Fairway

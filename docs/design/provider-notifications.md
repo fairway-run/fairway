@@ -144,3 +144,30 @@ the review-wait blocker before closeout.
 
 The dashboard does not call this path. Dashboard review-wait state and SSE
 events remain read-only visibility surfaces.
+
+## Lifecycle Audit
+
+`fairway audit notifications [--task <task-id>] [--all]` is the read-only
+operator report for provider notification lifecycle state. It projects rows from
+existing Fairway facts: review waits, completion handbacks, generic wait rows,
+coordinator plan rows, handoffs, reviews, task status, provider targets, and
+`task_notifications`. It does not add a notification table, wait table, wake
+queue, or scheduler store.
+
+The report distinguishes `handoff_recorded`, `sent`,
+`notification_delivered`, `thread_steered`, `review_recorded`, `failed`,
+`notification_failed`, `stale`, acknowledged, terminal, and superseded cases.
+Rows include task id, target domain or role, provider and target, latest handoff
+id, latest notification id, stale age, expected next action, and a
+fixed-template recovery command such as recording delivery proof, recording a
+failure reason, or repairing provider routing.
+
+By default the audit shows actionable unresolved rows and suppresses terminal,
+resolved, delivered, superseded, and other non-actionable acknowledgement
+history. Unresolved completion handbacks remain visible even when their latest
+linked notification state is `acknowledged`, `review_acknowledged`, or
+`review_recorded`; those states are not completion-handback delivery proof.
+`--all` includes the suppressed rows for forensic review. The command is
+visibility only: it does not send provider messages, approve reviews, close
+tasks, mutate dashboard state, or authorize merge, push, deploy, release, live
+execution, or provider wake delivery.

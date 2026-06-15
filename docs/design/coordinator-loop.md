@@ -162,6 +162,15 @@ tasks are not woken; they remain visible through plan/task detail or historical
 task evidence. This path is a coordinator/provider-adapter action, not dashboard
 send authority.
 
+`fairway audit notifications [--task <task-id>] [--all]` is the matching
+read-only lifecycle report for notification delivery facts. It lets the
+coordinator inspect unresolved or historical provider notification rows across
+review waits, completion handbacks, generic waits, live-operation handoffs, and
+coordinator plan waits without polling provider chats. The audit reports the
+task, source, target role/domain, provider target, handoff id, latest
+notification id, stale age, expected next action, and recovery command. It does
+not send wakes, approve work, mutate task state, or create a second wait store.
+
 ## Orchestration Controller Direction
 
 The coordinator loop is becoming an orchestration surface. Fairway core remains

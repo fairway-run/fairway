@@ -151,7 +151,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"wait", "wake", "--help"}, "fairway wait wake [--task <task-id>]"},
 		{[]string{"packet", "--help"}, "fairway packet context|bugfix|retry|watcher"},
 		{[]string{"packet", "retry", "--help"}, "fairway packet retry <task-id> --kind <preflight|live-operation>"},
-		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing"},
+		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications"},
 		{[]string{"advisory", "--help"}, "fairway advisory validate <task-id>"},
 		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
@@ -159,6 +159,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"audit", "ci-learning", "--help"}, "fairway audit ci-learning [--task-id <task-id>] [--template]"},
 		{[]string{"audit", "failure-routing", "--help"}, "fairway audit failure-routing [--task-id <task-id>] [--template]"},
+		{[]string{"audit", "notifications", "--help"}, "fairway audit notifications [--task <task-id>] [--all]"},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check|closeout"},
@@ -169,7 +170,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"batch", "link", "--help"}, "fairway batch link <batch-id>"},
 		{[]string{"batch", "show", "--help"}, "fairway batch show <batch-id>"},
 		{[]string{"batch", "list", "--help"}, "fairway batch list"},
-		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing"},
+		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications"},
 		{[]string{"release", "--help"}, "fairway release verify"},
 		{[]string{"rules", "--help"}, "fairway rules validate <dir>|evidence-types|match <task-id>"},
 	} {
@@ -3346,6 +3347,121 @@ func TestCLI_KnownFailureRoutingRecommendations(t *testing.T) {
 	} {
 		assertContains(t, jsonReport, want)
 	}
+}
+
+func TestCLI_NotificationLifecycleAudit(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `notification_ack_timeout = "24h"`, `notification_ack_timeout = "1ns"`)
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+
+[[roles]]
+name = "security"
+provider = "codex"
+
+[[roles]]
+name = "coordinator"
+provider = "codex"
+
+[[provider_targets]]
+domain = "security"
+provider = "codex"
+target = "thread-security"
+type = "thread"
+
+[[provider_targets]]
+domain = "coordinator"
+provider = "codex"
+target = "thread-control"
+type = "thread"
+`)
+	for _, taskID := range []string{"STALE-001", "FAIL-001", "RESOLVED-001", "DONE-001", "HAND-001"} {
+		runOK(t, "add", taskID, "--title", "Notification audit fixture", "--role", "backend", "--review-domains", "security")
+		runOK(t, "set-status", taskID, "in_progress", "--reason", "audit fixture active")
+	}
+	runOK(t, "record", "notification", "STALE-001", "--domain", "security", "--provider", "codex", "--target", "thread-security", "--state", "sent", "--reason", "sent but no ack")
+	runOK(t, "record", "notification", "FAIL-001", "--domain", "security", "--state", "notification_failed", "--reason", "thread target missing")
+	runOK(t, "record", "notification", "RESOLVED-001", "--domain", "security", "--provider", "codex", "--target", "thread-security", "--state", "thread_steered", "--reason", "delivered")
+	runOK(t, "record", "review", "RESOLVED-001", "--reviewer", "security-reviewer", "--domain", "security", "--verdict", "approve", "--reason", "clean notification")
+	runOK(t, "record", "notification", "DONE-001", "--domain", "security", "--provider", "codex", "--target", "thread-security", "--state", "sent", "--reason", "closed task notification")
+	runOK(t, "set-status", "DONE-001", "done", "--reason", "terminal tasks are suppressed by default")
+	runOK(t, "record", "completion-handback", "HAND-001", "--to", "coordinator", "--next-action", "decide retry packet", "--completion-state", "blocked-with-follow-up")
+
+	time.Sleep(time.Millisecond)
+	out := runCapture(t, "audit", "notifications")
+	for _, want := range []string{
+		"notification_audit:",
+		"task=STALE-001 source=review_wait domain=security state=stale",
+		"action=escalate_or_record_notification_outcome",
+		"provider=codex target=thread-security",
+		"task=FAIL-001 source=review_wait domain=security state=notification_failed",
+		"reason=thread target missing",
+		"task=HAND-001 source=completion_handback domain=coordinator state=stale",
+		"suggested_command: fairway record notification",
+	} {
+		assertContains(t, out, want)
+	}
+	assertNotContains(t, out, "RESOLVED-001")
+	assertNotContains(t, out, "DONE-001")
+
+	allOut := runCapture(t, "audit", "notifications", "--all")
+	assertContains(t, allOut, "task=RESOLVED-001")
+	assertContains(t, allOut, "state=review_recorded")
+	assertContains(t, allOut, "task=DONE-001")
+	assertContains(t, allOut, "terminal=true")
+	assertContains(t, allOut, "superseded=true")
+
+	filtered := runCapture(t, "audit", "notifications", "--task", "FAIL-001")
+	assertContains(t, filtered, "task=FAIL-001")
+	assertNotContains(t, filtered, "STALE-001")
+
+	jsonOut := runCapture(t, "--json", "audit", "notifications")
+	for _, want := range []string{
+		`"source": "review_wait"`,
+		`"state": "notification_failed"`,
+		`"source": "completion_handback"`,
+		`"last_notification_id":`,
+		`"suggested_command": "fairway record notification`,
+	} {
+		assertContains(t, jsonOut, want)
+	}
+}
+
+func TestCLI_NotificationLifecycleAuditKeepsUnresolvedCompletionAcknowledgement(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "ACKH-001", "--title", "Acknowledged but unresolved completion handback", "--role", "backend")
+	runOK(t, "set-status", "ACKH-001", "in_progress", "--reason", "audit fixture active")
+	runOK(t, "record", "completion-handback", "ACKH-001", "--to", "coordinator", "--next-action", "decide next owner", "--completion-state", "blocked-with-follow-up")
+	detail := runCapture(t, "--json", "task-detail", "ACKH-001")
+	handoffID := jsonIntField(t, detail, "handoff_id")
+	runOK(t, "record", "notification", "ACKH-001", "--handoff-id", fmt.Sprintf("%d", handoffID), "--domain", "coordinator", "--state", "acknowledged", "--reason", "control saw the handback but no delivery proof recorded")
+
+	out := runCapture(t, "audit", "notifications")
+	assertContains(t, out, "task=ACKH-001 source=completion_handback domain=coordinator state=acknowledged")
+	assertContains(t, out, "action=deliver_or_record_completion_handback")
+	assertContains(t, out, "superseded=false")
+	assertContains(t, out, "reason=control saw the handback but no delivery proof recorded")
 }
 
 func TestCLI_AdvisoryRecommendationValidate(t *testing.T) {
