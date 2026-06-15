@@ -390,6 +390,14 @@ Generate `fairway packet retry` packets from task, SHA, operator surface,
 artifact directory, evidence contract, allowed actions, forbidden actions,
 expiry, and prior-failure closure. Rendering a retry packet is not execution
 authorization.
+
+FW-LIVE-RETRY-BUDGET-001
+Record live-operation retry budgets from Fairway checkpoints. Meaningful
+product-behavior failures count toward the bounded rerun budget;
+coordination-only failures remain visible but do not consume that budget. When
+the budget is exhausted, `packet retry` requires an existing causal reset task
+and reset reason before rendering another bounded preflight or live-operation
+packet.
 ```
 
 ## Product Principle

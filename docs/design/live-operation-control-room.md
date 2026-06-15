@@ -110,6 +110,28 @@ The coordinator should prefer polling/tick degradation over silence. If a
 provider target is unavailable, the state should become visible as a failed or
 undelivered notification, not as an invisible chat gap.
 
+## Retry Budget and Causal Reset
+
+Approval-gated live-operation reruns must be bounded. Fairway records the
+current budget through `live-window retry-budget` checkpoints rather than a
+separate retry store. The checkpoint distinguishes:
+
+- meaningful failures, where the approved path reached the behavior being
+  tested and failed;
+- coordination-only failures, such as missing notification delivery, stale
+  provider handoff, or packet metadata gaps, which are visible but do not count
+  against the product behavior retry budget;
+- the current budget;
+- existing Fairway reset task and reset reason when the causal model has been
+  refreshed.
+
+When meaningful failures reach the budget and no existing reset task plus reset
+reason is recorded, `packet retry` should fail closed and require a causal-reset
+task before another narrow preflight or live-operation packet is rendered. After
+reset evidence is recorded, the retry packet includes the iteration count, prior
+failure closure, reset task, reset reason, and the authorization boundary.
+Rendering that packet does not approve or execute the live operation.
+
 ## Optional tmux/zellij Layout
 
 A live control room can be a tmux or zellij workspace with panes such as:
@@ -154,6 +176,9 @@ authorization is recorded.
   action is visible as a completion handback or closeout wait.
 - Missing provider delivery becomes a visible notification failure or stale
   wait.
+- Retry budget state distinguishes meaningful rerun failures from
+  coordination-only failures and requires a causal reset before more narrow
+  retry packets when the meaningful-failure budget is exhausted.
 - Dashboard sharing remains read-only and has no wake/send authority.
 - Tests or examples cover a missed approved exact-window handoff where all
   provider chats were idle but Fairway should still expose the next actor and

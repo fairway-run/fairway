@@ -92,6 +92,8 @@ fairway wait wake [--task <task-id>] [--kind <kind>] [--send]
 fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--authorization-state <state>] [--prompt <text>] [--command <cmd>] [--missed-deadline-action <action>] [--target-close-by <date>] [--artifact <path>]
 fairway live-window status [--task <task-id>]
 fairway live-window control-room [--task <task-id>] [--stale]
+fairway live-window retry-budget record <task-id> --meaningful-failures <n> --coordination-failures <n> --budget <n> [--reset-task <task-id>] [--reset-reason <text>]
+fairway live-window retry-budget status [--task <task-id>]
 fairway prune-stale                                     # remove state rows for deleted task definitions
 fairway db backup | export
 fairway db migrate [--dry-run]
@@ -220,6 +222,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   scheduling and handoff state so LLM/provider turns can focus on judgment,
   implementation, review, and exception handling. The canonical design model is
   `docs/design/live-operation-control-room.md`.
+- `live-window retry-budget record|status` records the current bounded rerun
+  state as a normal checkpoint. Meaningful live-operation failures count
+  against the budget; coordination-only failures are visible but do not exhaust
+  the product retry budget. Once meaningful failures reach the budget, `packet
+  retry` fails closed until an existing Fairway causal reset task and reset
+  reason are recorded. This does not authorize another live window; it only
+  makes the retry/reset decision explicit.
 - `memory show|update|append|packet|stale` provides first-class track memory
   for coordinator and provider resume packets. Track memory stores curated
   operating summaries, blockers, decisions, next actions, and numeric Fairway
@@ -398,11 +407,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   product test suites or authorize live execution. `packet retry` renders
   bounded preflight or live-operation retry packets from a task id, source SHA,
   operator surface, artifact directory, evidence contract, allowed actions,
-  forbidden actions, expiry/window, and prior-failure closure. `packet rules
-  <task-id>` renders selected and non-applicable rule-pack context, required
-  evidence, recommended commands, review domains, rationale, and
-  residual-risk/stop-condition fields; record that packet as evidence
-  explicitly when it is used for review or handoff.
+  forbidden actions, expiry/window, and prior-failure closure. When a
+  `live-window retry-budget` checkpoint exists, retry packets include the
+  iteration count, meaningful failure count, coordination-only failure count,
+  budget, and reset task/reference. If the budget is exhausted without an
+  existing reset task and reset reason, packet rendering stops with a
+  causal-reset requirement. Packet rendering explicitly grants no hidden
+  approval. `packet rules <task-id>` renders
+  selected and non-applicable rule-pack context, required evidence, recommended
+  commands, review domains, rationale, and residual-risk/stop-condition fields;
+  record that packet as evidence explicitly when it is used for review or
+  handoff.
 - `db compat --backend postgres` is a planned adapter harness, not the default
   v1 runtime.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that

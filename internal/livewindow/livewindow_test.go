@@ -34,3 +34,46 @@ func TestSummaryRejectsUnknownPhase(t *testing.T) {
 		t.Fatal("expected invalid phase error")
 	}
 }
+
+func TestRetryBudgetSummaryAndCheckpoint(t *testing.T) {
+	summary, err := RetryBudgetSummary(3, 2, 3, "RESET-001", "causal model refreshed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp := store.Checkpoint{
+		TaskID:    "LIVE-001",
+		Summary:   summary,
+		CreatedAt: "2026-06-14T20:00:00Z",
+	}
+	budget, ok := RetryBudgetFromCheckpoint(cp)
+	if !ok {
+		t.Fatalf("retry budget did not parse: %q", summary)
+	}
+	if budget.MeaningfulFailures != 3 || budget.CoordinationFailures != 2 || budget.Budget != 3 {
+		t.Fatalf("budget=%+v", budget)
+	}
+	if budget.NextIteration != 4 || budget.Exhausted != true || budget.RequiresReset != false {
+		t.Fatalf("budget status=%+v", budget)
+	}
+	if budget.ResetTask != "RESET-001" || budget.ResetReason != "causal model refreshed" {
+		t.Fatalf("reset fields=%+v", budget)
+	}
+
+	summary, err = RetryBudgetSummary(3, 2, 3, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget, ok = RetryBudgetFromCheckpoint(store.Checkpoint{TaskID: "LIVE-001", Summary: summary})
+	if !ok || !budget.RequiresReset {
+		t.Fatalf("budget=%+v, want reset required", budget)
+	}
+
+	summary, err = RetryBudgetSummary(3, 2, 3, "RESET-001", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget, ok = RetryBudgetFromCheckpoint(store.Checkpoint{TaskID: "LIVE-001", Summary: summary})
+	if !ok || !budget.RequiresReset {
+		t.Fatalf("budget=%+v, want reset reason required", budget)
+	}
+}

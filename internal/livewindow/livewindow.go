@@ -41,6 +41,21 @@ type Status struct {
 	Summary              string `json:"summary,omitempty"`
 }
 
+type RetryBudget struct {
+	TaskID               string `json:"task_id"`
+	MeaningfulFailures   int    `json:"meaningful_failures"`
+	CoordinationFailures int    `json:"coordination_failures"`
+	Budget               int    `json:"budget"`
+	ResetTask            string `json:"reset_task,omitempty"`
+	ResetReason          string `json:"reset_reason,omitempty"`
+	CurrentIteration     int    `json:"current_iteration"`
+	NextIteration        int    `json:"next_iteration"`
+	Exhausted            bool   `json:"exhausted"`
+	RequiresReset        bool   `json:"requires_reset"`
+	CheckpointAt         string `json:"checkpoint_at,omitempty"`
+	Summary              string `json:"summary,omitempty"`
+}
+
 type SummaryOptions struct {
 	Phase                string
 	NextOwner            string
@@ -88,6 +103,32 @@ func SummaryWithOptions(opts SummaryOptions) (string, error) {
 	return strings.Join(parts, " "), nil
 }
 
+func RetryBudgetSummary(meaningfulFailures, coordinationFailures, budget int, resetTask, resetReason string) (string, error) {
+	if meaningfulFailures < 0 {
+		return "", fmt.Errorf("meaningful failures must be >= 0")
+	}
+	if coordinationFailures < 0 {
+		return "", fmt.Errorf("coordination failures must be >= 0")
+	}
+	if budget <= 0 {
+		return "", fmt.Errorf("retry budget must be > 0")
+	}
+	parts := []string{
+		"live-window-retry-budget",
+		fmt.Sprintf("meaningful_failures=%d", meaningfulFailures),
+		fmt.Sprintf("coordination_failures=%d", coordinationFailures),
+		fmt.Sprintf("budget=%d", budget),
+	}
+	appendField := func(key, value string) {
+		if strings.TrimSpace(value) != "" {
+			parts = append(parts, key+"="+encodeToken(value))
+		}
+	}
+	appendField("reset_task", resetTask)
+	appendField("reset_reason", resetReason)
+	return strings.Join(parts, " "), nil
+}
+
 func StatusesFromCheckpoints(checkpoints []store.Checkpoint) []Status {
 	seen := map[string]bool{}
 	var out []Status
@@ -104,6 +145,36 @@ func StatusesFromCheckpoints(checkpoints []store.Checkpoint) []Status {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].TaskID < out[j].TaskID })
 	return out
+}
+
+func RetryBudgetsFromCheckpoints(checkpoints []store.Checkpoint) []RetryBudget {
+	seen := map[string]bool{}
+	var out []RetryBudget
+	for _, checkpoint := range checkpoints {
+		if seen[checkpoint.TaskID] {
+			continue
+		}
+		budget, ok := RetryBudgetFromCheckpoint(checkpoint)
+		if !ok {
+			continue
+		}
+		seen[checkpoint.TaskID] = true
+		out = append(out, budget)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].TaskID < out[j].TaskID })
+	return out
+}
+
+func RetryBudgetForTask(checkpoints []store.Checkpoint, taskID string) (RetryBudget, bool) {
+	for _, checkpoint := range checkpoints {
+		if checkpoint.TaskID != taskID {
+			continue
+		}
+		if budget, ok := RetryBudgetFromCheckpoint(checkpoint); ok {
+			return budget, true
+		}
+	}
+	return RetryBudget{}, false
 }
 
 func StatusFromCheckpoint(checkpoint store.Checkpoint) (Status, bool) {
@@ -144,6 +215,55 @@ func StatusFromCheckpoint(checkpoint store.Checkpoint) (Status, bool) {
 		return Status{}, false
 	}
 	return status, true
+}
+
+func RetryBudgetFromCheckpoint(checkpoint store.Checkpoint) (RetryBudget, bool) {
+	fields := strings.Fields(checkpoint.Summary)
+	if len(fields) == 0 || fields[0] != "live-window-retry-budget" {
+		return RetryBudget{}, false
+	}
+	budget := RetryBudget{
+		TaskID:       checkpoint.TaskID,
+		CheckpointAt: checkpoint.CreatedAt,
+		Summary:      checkpoint.Summary,
+	}
+	for _, field := range fields[1:] {
+		key, value, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "meaningful_failures":
+			budget.MeaningfulFailures = parseNonNegativeInt(value)
+		case "coordination_failures":
+			budget.CoordinationFailures = parseNonNegativeInt(value)
+		case "budget":
+			budget.Budget = parseNonNegativeInt(value)
+		case "reset_task":
+			budget.ResetTask = decodeToken(value)
+		case "reset_reason":
+			budget.ResetReason = decodeToken(value)
+		}
+	}
+	if budget.Budget <= 0 {
+		return RetryBudget{}, false
+	}
+	budget.CurrentIteration = budget.MeaningfulFailures
+	budget.NextIteration = budget.MeaningfulFailures + 1
+	budget.Exhausted = budget.MeaningfulFailures >= budget.Budget
+	budget.RequiresReset = budget.Exhausted && (strings.TrimSpace(budget.ResetTask) == "" || strings.TrimSpace(budget.ResetReason) == "")
+	return budget, true
+}
+
+func parseNonNegativeInt(value string) int {
+	var out int
+	for _, r := range strings.TrimSpace(value) {
+		if r < '0' || r > '9' {
+			return 0
+		}
+		out = out*10 + int(r-'0')
+	}
+	return out
 }
 
 func encodeToken(value string) string {

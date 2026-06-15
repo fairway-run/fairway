@@ -3847,7 +3847,7 @@ func TestCLI_PacketRetry(t *testing.T) {
 		`"kind": "preflight"`,
 		`"source_sha": "def5678"`,
 		`"operator_surface": "local-shell"`,
-		`"authorization": "packet rendering only; this is not execution authorization"`,
+		`"authorization": "packet rendering only; this is not execution authorization; no hidden approval is granted by this packet"`,
 		`"evidence_contract": [`,
 	} {
 		assertContains(t, jsonPacket, want)
@@ -3882,6 +3882,162 @@ func TestCLI_PacketRetry(t *testing.T) {
 	if !strings.Contains(err.Error(), "packet retry --kind must be preflight or live-operation") {
 		t.Fatalf("bad kind error = %q", err.Error())
 	}
+}
+
+func TestCLI_LiveWindowRetryBudgetGuardsRetryPacket(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "LIVE-001", "--title", "Retry budget drill", "--role", "backend")
+
+	help := runCapture(t, "live-window", "retry-budget", "--help")
+	assertContains(t, help, "retry-budget record <task-id>")
+	assertContains(t, help, "meaningful-failures")
+	statusHelp := runCapture(t, "live-window", "retry-budget", "status", "--help")
+	assertContains(t, statusHelp, "retry-budget status [--task <task-id>]")
+	assertNotContains(t, statusHelp, "Usage of")
+
+	recorded := runCapture(t, "live-window", "retry-budget", "record", "LIVE-001",
+		"--meaningful-failures", "2",
+		"--coordination-failures", "4",
+		"--budget", "3")
+	assertContains(t, recorded, "meaningful_failures=2")
+	assertContains(t, recorded, "coordination_failures=4")
+	assertContains(t, recorded, "requires_reset=false")
+
+	status := runCapture(t, "live-window", "retry-budget", "status", "--task", "LIVE-001")
+	assertContains(t, status, "next_iteration=3")
+	assertContains(t, status, "exhausted=false")
+
+	packet := runCapture(t, "packet", "retry", "LIVE-001",
+		"--kind", "live-operation",
+		"--source-sha", "abc1234",
+		"--operator-surface", "drill-operator-v2",
+		"--artifact-dir", ".fairway/artifacts/LIVE-001/retry-003",
+		"--evidence-contract", "bounded retry proof",
+		"--allowed-action", "run exact approved command",
+		"--forbidden-action", "live mutation outside packet",
+		"--expires-at", "2026-06-14T21:00:00-05:00",
+		"--prior-failure-closure", "prior causal fix verified")
+	for _, want := range []string{
+		"iteration_count: 3",
+		"meaningful_failures: 2",
+		"coordination_failures: 4",
+		"retry_budget: 3",
+		"no hidden approval is granted by this packet",
+	} {
+		assertContains(t, packet, want)
+	}
+
+	runOK(t, "live-window", "retry-budget", "record", "LIVE-001",
+		"--meaningful-failures", "3",
+		"--coordination-failures", "4",
+		"--budget", "3")
+	err = run(context.Background(), []string{"packet", "retry", "LIVE-001",
+		"--kind", "live-operation",
+		"--source-sha", "abc1234",
+		"--operator-surface", "drill-operator-v2",
+		"--artifact-dir", ".fairway/artifacts/LIVE-001/retry-004",
+		"--evidence-contract", "bounded retry proof",
+		"--allowed-action", "run exact approved command",
+		"--forbidden-action", "live mutation outside packet",
+		"--expires-at", "2026-06-14T22:00:00-05:00",
+		"--prior-failure-closure", "prior causal fix verified"})
+	if err == nil {
+		t.Fatal("expected exhausted retry budget to block packet rendering")
+	}
+	assertContains(t, err.Error(), "packet retry requires causal reset")
+
+	err = run(context.Background(), []string{"live-window", "retry-budget", "record", "LIVE-001",
+		"--meaningful-failures", "3",
+		"--coordination-failures", "4",
+		"--budget", "3",
+		"--reset-task", "MISSING-RESET",
+		"--reset-reason", "claimed reset"})
+	if err == nil {
+		t.Fatal("expected missing reset task to fail")
+	}
+	assertContains(t, err.Error(), "reset task")
+	assertContains(t, err.Error(), "not found")
+
+	err = run(context.Background(), []string{"live-window", "retry-budget", "record", "LIVE-001",
+		"--meaningful-failures", "3",
+		"--coordination-failures", "4",
+		"--budget", "3",
+		"--reset-task", "RESET-001"})
+	if err == nil {
+		t.Fatal("expected missing reset reason to fail")
+	}
+	assertContains(t, err.Error(), "requires --reset-reason")
+
+	runOK(t, "add", "RESET-001", "--title", "Causal reset", "--role", "backend")
+	resetPacket := runCapture(t, "live-window", "retry-budget", "record", "LIVE-001",
+		"--meaningful-failures", "3",
+		"--coordination-failures", "4",
+		"--budget", "3",
+		"--reset-task", "RESET-001",
+		"--reset-reason", "causal model refreshed with replacement surface proof")
+	assertContains(t, resetPacket, "requires_reset=false")
+
+	packet = runCapture(t, "packet", "retry", "LIVE-001",
+		"--kind", "live-operation",
+		"--source-sha", "def5678",
+		"--operator-surface", "drill-operator-v3",
+		"--artifact-dir", ".fairway/artifacts/LIVE-001/retry-after-reset",
+		"--evidence-contract", "post-reset proof",
+		"--allowed-action", "run exact approved command",
+		"--forbidden-action", "implicit approval",
+		"--expires-at", "2026-06-14T23:00:00-05:00",
+		"--prior-failure-closure", "RESET-001 completed")
+	assertContains(t, packet, "iteration_count: 4")
+	assertContains(t, packet, "reset_task: RESET-001")
+	assertContains(t, packet, "reset_reason: causal model refreshed with replacement surface proof")
+
+	jsonStatus := runCapture(t, "--json", "live-window", "retry-budget", "status", "--task", "LIVE-001")
+	assertContains(t, jsonStatus, `"meaningful_failures": 3`)
+	assertContains(t, jsonStatus, `"reset_task": "RESET-001"`)
+}
+
+func TestCLI_LiveWindowRetryBudgetCoordinationFailuresDoNotExhaust(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "LIVE-002", "--title", "Coordination-only retry gap", "--role", "backend")
+	runOK(t, "live-window", "retry-budget", "record", "LIVE-002",
+		"--meaningful-failures", "0",
+		"--coordination-failures", "9",
+		"--budget", "1")
+
+	packet := runCapture(t, "packet", "retry", "LIVE-002",
+		"--kind", "preflight",
+		"--source-sha", "abc1234",
+		"--operator-surface", "local-shell",
+		"--artifact-dir", ".fairway/artifacts/LIVE-002/preflight",
+		"--evidence-contract", "non-live preflight proof",
+		"--allowed-action", "run bounded preflight",
+		"--forbidden-action", "live execution",
+		"--expires-at", "2026-06-14T21:00:00-05:00",
+		"--prior-failure-closure", "coordination handoff repaired")
+	assertContains(t, packet, "iteration_count: 1")
+	assertContains(t, packet, "meaningful_failures: 0")
+	assertContains(t, packet, "coordination_failures: 9")
+	assertContains(t, packet, "retry_budget: 1")
 }
 
 func TestCLI_PacketTemplate(t *testing.T) {

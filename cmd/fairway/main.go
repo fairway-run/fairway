@@ -3496,7 +3496,7 @@ func reviewWaitAckTimeout(cfg config.Config) (time.Duration, error) {
 
 func cmdLiveWindow(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("live-window", "record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <time>] [--artifact <path>] | status [--task <task-id>] | control-room [--task <task-id>] [--stale]")
+		subcommandUsage("live-window", "record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--target-close-by <time>] [--artifact <path>] | status [--task <task-id>] | control-room [--task <task-id>] [--stale] | retry-budget record|status ...")
 		return nil
 	}
 	switch args[0] {
@@ -3506,6 +3506,8 @@ func cmdLiveWindow(ctx context.Context, opts globalOptions, args []string) error
 		return cmdLiveWindowStatus(ctx, opts, args[1:])
 	case "control-room":
 		return cmdLiveWindowControlRoom(ctx, opts, args[1:])
+	case "retry-budget":
+		return cmdLiveWindowRetryBudget(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown live-window subcommand %q", args[0])
 	}
@@ -3564,6 +3566,124 @@ func cmdLiveWindowRecord(ctx context.Context, opts globalOptions, args []string)
 			}{taskID, *phase, state})
 		}
 		fmt.Printf("live_window recorded %s phase=%s state=%s\n", taskID, *phase, state)
+		return nil
+	})
+}
+
+func cmdLiveWindowRetryBudget(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("live-window", "retry-budget record <task-id> --meaningful-failures <n> --coordination-failures <n> --budget <n> [--reset-task <task-id>] [--reset-reason <text>] | status [--task <task-id>]")
+		return nil
+	}
+	switch args[0] {
+	case "record":
+		return cmdLiveWindowRetryBudgetRecord(ctx, opts, args[1:])
+	case "status":
+		return cmdLiveWindowRetryBudgetStatus(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown live-window retry-budget subcommand %q", args[0])
+	}
+}
+
+func cmdLiveWindowRetryBudgetRecord(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("live-window", "retry-budget record <task-id> --meaningful-failures <n> --coordination-failures <n> --budget <n> [--reset-task <task-id>] [--reset-reason <text>]")
+		return nil
+	}
+	if len(args) < 1 {
+		return errors.New("live-window retry-budget record requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("live-window retry-budget record", flag.ContinueOnError)
+	meaningfulFailures := fs.Int("meaningful-failures", 0, "meaningful live-operation failures that count against the retry budget")
+	coordinationFailures := fs.Int("coordination-failures", 0, "coordination-only failures that do not count against the retry budget")
+	budget := fs.Int("budget", 3, "meaningful failure budget before causal reset is required")
+	resetTask := fs.String("reset-task", "", "causal reset task that clears an exhausted retry budget")
+	resetReason := fs.String("reset-reason", "", "reason or proof for the causal reset")
+	artifact := fs.String("artifact", "", "retry budget artifact path")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected live-window retry-budget record arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	summary, err := livewindow.RetryBudgetSummary(*meaningfulFailures, *coordinationFailures, *budget, *resetTask, *resetReason)
+	if err != nil {
+		return err
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if strings.TrimSpace(*resetTask) != "" {
+			if strings.TrimSpace(*resetReason) == "" {
+				return errors.New("live-window retry-budget reset clearance requires --reset-reason")
+			}
+			if _, _, _, _, _, err := s.TaskDetail(ctx, strings.TrimSpace(*resetTask)); err != nil {
+				return fmt.Errorf("live-window retry-budget reset task %q not found: %w", *resetTask, err)
+			}
+		}
+		if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: taskID, State: "awaiting_input", Owner: "backend", Summary: summary, ArtifactPath: *artifact}); err != nil {
+			return err
+		}
+		checkpoints, err := s.Checkpoints(ctx, "", true)
+		if err != nil {
+			return err
+		}
+		budgetRow, _ := livewindow.RetryBudgetForTask(checkpoints, taskID)
+		if opts.JSON {
+			return printJSON(budgetRow)
+		}
+		fmt.Printf("live_window_retry_budget recorded %s meaningful_failures=%d coordination_failures=%d budget=%d requires_reset=%t\n",
+			taskID, budgetRow.MeaningfulFailures, budgetRow.CoordinationFailures, budgetRow.Budget, budgetRow.RequiresReset)
+		return nil
+	})
+}
+
+func cmdLiveWindowRetryBudgetStatus(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("live-window", "retry-budget status [--task <task-id>]")
+		return nil
+	}
+	fs := flag.NewFlagSet("live-window retry-budget status", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected live-window retry-budget status arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		checkpoints, err := s.Checkpoints(ctx, "", true)
+		if err != nil {
+			return err
+		}
+		rows := livewindow.RetryBudgetsFromCheckpoints(checkpoints)
+		if strings.TrimSpace(*taskID) != "" {
+			filtered := rows[:0]
+			for _, row := range rows {
+				if row.TaskID == *taskID {
+					filtered = append(filtered, row)
+				}
+			}
+			rows = filtered
+		}
+		if opts.JSON {
+			return printJSON(rows)
+		}
+		fmt.Println("live_operation_retry_budgets:")
+		if len(rows) == 0 {
+			fmt.Println("- none")
+			return nil
+		}
+		for _, row := range rows {
+			fmt.Printf("- %s meaningful_failures=%d coordination_failures=%d budget=%d next_iteration=%d exhausted=%t requires_reset=%t",
+				row.TaskID, row.MeaningfulFailures, row.CoordinationFailures, row.Budget, row.NextIteration, row.Exhausted, row.RequiresReset)
+			if row.ResetTask != "" {
+				fmt.Printf(" reset_task=%s", row.ResetTask)
+			}
+			if row.ResetReason != "" {
+				fmt.Printf(" reset_reason=%s", row.ResetReason)
+			}
+			fmt.Println()
+		}
 		return nil
 	})
 }
@@ -7373,20 +7493,26 @@ func cmdPacketTemplate(ctx context.Context, opts globalOptions, args []string) e
 }
 
 type retryPacket struct {
-	Task                store.Task       `json:"task"`
-	Kind                string           `json:"kind"`
-	SourceSHA           string           `json:"source_sha"`
-	OperatorSurface     string           `json:"operator_surface"`
-	ArtifactDir         string           `json:"artifact_dir"`
-	EvidenceContract    []string         `json:"evidence_contract"`
-	AllowedActions      []string         `json:"allowed_actions"`
-	ForbiddenActions    []string         `json:"forbidden_actions"`
-	ExpiresAt           string           `json:"expires_at"`
-	PriorFailureClosure string           `json:"prior_failure_closure"`
-	NextAction          string           `json:"next_action,omitempty"`
-	Authorization       string           `json:"authorization"`
-	Evidence            []store.Evidence `json:"evidence"`
-	Reviews             []store.Review   `json:"reviews"`
+	Task                 store.Task       `json:"task"`
+	Kind                 string           `json:"kind"`
+	SourceSHA            string           `json:"source_sha"`
+	OperatorSurface      string           `json:"operator_surface"`
+	ArtifactDir          string           `json:"artifact_dir"`
+	EvidenceContract     []string         `json:"evidence_contract"`
+	AllowedActions       []string         `json:"allowed_actions"`
+	ForbiddenActions     []string         `json:"forbidden_actions"`
+	ExpiresAt            string           `json:"expires_at"`
+	PriorFailureClosure  string           `json:"prior_failure_closure"`
+	IterationCount       int              `json:"iteration_count,omitempty"`
+	MeaningfulFailures   int              `json:"meaningful_failures,omitempty"`
+	CoordinationFailures int              `json:"coordination_failures,omitempty"`
+	RetryBudget          int              `json:"retry_budget,omitempty"`
+	ResetTask            string           `json:"reset_task,omitempty"`
+	ResetReason          string           `json:"reset_reason,omitempty"`
+	NextAction           string           `json:"next_action,omitempty"`
+	Authorization        string           `json:"authorization"`
+	Evidence             []store.Evidence `json:"evidence"`
+	Reviews              []store.Review   `json:"reviews"`
 }
 
 func cmdPacketRetry(ctx context.Context, opts globalOptions, args []string) error {
@@ -7427,6 +7553,19 @@ func cmdPacketRetry(ctx context.Context, opts globalOptions, args []string) erro
 		if err != nil {
 			return err
 		}
+		checkpoints, err := s.Checkpoints(ctx, "", true)
+		if err != nil {
+			return err
+		}
+		retryBudget, hasRetryBudget := livewindow.RetryBudgetForTask(checkpoints, taskID)
+		if hasRetryBudget && retryBudget.RequiresReset {
+			return fmt.Errorf("packet retry requires causal reset before another %s packet: task=%s meaningful_failures=%d budget=%d action=record live-window retry-budget with --reset-task after reset proof", *kind, taskID, retryBudget.MeaningfulFailures, retryBudget.Budget)
+		}
+		if hasRetryBudget && retryBudget.Exhausted && strings.TrimSpace(retryBudget.ResetTask) != "" {
+			if _, _, _, _, _, err := s.TaskDetail(ctx, strings.TrimSpace(retryBudget.ResetTask)); err != nil {
+				return fmt.Errorf("packet retry reset task %q not found: %w", retryBudget.ResetTask, err)
+			}
+		}
 		packet := retryPacket{
 			Task:                task,
 			Kind:                *kind,
@@ -7439,9 +7578,17 @@ func cmdPacketRetry(ctx context.Context, opts globalOptions, args []string) erro
 			ExpiresAt:           *expiresAt,
 			PriorFailureClosure: *priorFailureClosure,
 			NextAction:          *nextAction,
-			Authorization:       "packet rendering only; this is not execution authorization",
+			Authorization:       "packet rendering only; this is not execution authorization; no hidden approval is granted by this packet",
 			Evidence:            evidence,
 			Reviews:             reviews,
+		}
+		if hasRetryBudget {
+			packet.IterationCount = retryBudget.NextIteration
+			packet.MeaningfulFailures = retryBudget.MeaningfulFailures
+			packet.CoordinationFailures = retryBudget.CoordinationFailures
+			packet.RetryBudget = retryBudget.Budget
+			packet.ResetTask = retryBudget.ResetTask
+			packet.ResetReason = retryBudget.ResetReason
 		}
 		if opts.JSON {
 			return printJSON(packet)
@@ -7497,6 +7644,19 @@ func printRetryPacket(packet retryPacket) {
 		packet.OperatorSurface,
 		packet.ArtifactDir,
 		packet.ExpiresAt)
+	if packet.RetryBudget > 0 {
+		fmt.Printf("iteration_count: %d\nmeaningful_failures: %d\ncoordination_failures: %d\nretry_budget: %d\n",
+			packet.IterationCount,
+			packet.MeaningfulFailures,
+			packet.CoordinationFailures,
+			packet.RetryBudget)
+		if packet.ResetTask != "" {
+			fmt.Printf("reset_task: %s\n", packet.ResetTask)
+		}
+		if packet.ResetReason != "" {
+			fmt.Printf("reset_reason: %s\n", packet.ResetReason)
+		}
+	}
 	fmt.Printf("\n## Authorization Boundary\n%s. Re-run Fairway status, review, and gate checks before acting.\n", packet.Authorization)
 	fmt.Printf("\n## Prior Failure Closure\n%s\n", packet.PriorFailureClosure)
 	printPacketList("Evidence Contract", packet.EvidenceContract)
@@ -12319,7 +12479,7 @@ func printCommandHelp(command string) bool {
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
-		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale]\n  Record and inspect repeated live-operation handshake phases via task checkpoints.",
+		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale] | fairway live-window retry-budget record|status ...\n  Record and inspect repeated live-operation handshake phases and retry budgets via task checkpoints.",
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
 		"wait":                       "fairway wait list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Project generic parked-work waits from existing Fairway facts and emit bounded wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
