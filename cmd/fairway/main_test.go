@@ -2685,13 +2685,65 @@ type = "thread"
 	failed := runCapture(t, "wait", "wake", "--task", "T-002", "--kind", "review", "--send")
 	assertContains(t, failed, "status=failed")
 	assertContains(t, failed, "target=none")
+	assertContains(t, failed, "target_action=mapping_required")
+	assertContains(t, failed, "Wake target: mapping_required")
 	failedDetail := runCapture(t, "task-detail", "T-002")
 	assertContains(t, failedDetail, "notification_failed domain=coordinator")
 	assertContains(t, failedDetail, "generic_wait_wake signature=T-002|review|task_status=in_progress|")
 	assertContains(t, failedDetail, "failed=no_wake_target")
+	assertContains(t, failedDetail, "action=mapping_required")
 
 	resolved := runCapture(t, "wait", "wake", "--task", "T-003", "--kind", "review")
 	assertContains(t, resolved, "generic_wait_wakes: none")
+}
+
+func TestCLI_GenericWaitWakeCoversTrackMemoryAndProviderSessionTargets(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "product"
+provider = "codex"
+`)
+	runOK(t, "memory", "update", "--track", "product", "--title", "Product memory", "--current-objective", "refresh packet")
+	time.Sleep(time.Millisecond)
+
+	memoryWake := runCapture(t, "wait", "wake", "--kind", "track_memory", "--memory-stale-after", "1ns")
+	assertContains(t, memoryWake, "kind=track_memory")
+	assertContains(t, memoryWake, "wait=memory:product")
+	assertContains(t, memoryWake, "status=ready")
+	assertContains(t, memoryWake, "target_action=mapping_required")
+	assertContains(t, memoryWake, "Wake target: mapping_required")
+	assertContains(t, memoryWake, "1. Re-run fairway wait list --kind track_memory.")
+	memorySend := runCapture(t, "wait", "wake", "--kind", "track_memory", "--memory-stale-after", "1ns", "--send")
+	assertContains(t, memorySend, "kind=track_memory")
+	assertContains(t, memorySend, "status=failed")
+	assertContains(t, memorySend, "target_action=mapping_required")
+
+	runOK(t, "add", "T-004", "--title", "Provider session lifecycle", "--role", "product")
+	runOK(t, "set-status", "T-004", "in_progress", "--reason", "session active")
+	runOK(t, "session", "upsert",
+		"--id", "product-session",
+		"--role", "product",
+		"--backend", "codex-thread",
+		"--provider", "codex",
+		"--task-id", "T-004",
+		"--status", "running",
+	)
+	sessionWake := runCapture(t, "wait", "wake", "--task", "T-004", "--kind", "provider_session")
+	assertContains(t, sessionWake, "kind=provider_session")
+	assertContains(t, sessionWake, "status=ready")
+	assertContains(t, sessionWake, "target_action=mapping_required")
+	assertContains(t, sessionWake, "Wake target: mapping_required")
 }
 
 func TestCLI_TmuxSessionTranscriptAndReconcile(t *testing.T) {
@@ -3130,7 +3182,7 @@ target = "thread-arch"
 type = "thread"`)
 	git(t, repo, "add", ".")
 	git(t, repo, "commit", "-m", "init")
-	for _, taskID := range []string{"T-001", "T-002", "T-003", "T-004", "T-005"} {
+	for _, taskID := range []string{"T-001", "T-002", "T-003", "T-004", "T-005", "T-006"} {
 		runOK(t, "add", taskID, "--title", "Completion handback wake", "--role", "backend")
 	}
 	runOK(t, "record", "completion-handback", "T-001", "--to", "arch", "--next-action", "decide retry", "--completion-state", "blocked-with-follow-up")
@@ -3143,6 +3195,8 @@ type = "thread"`)
 	runOK(t, "set-status", "T-004", "done", "--reason", "closed")
 	runOK(t, "live-window", "record", "T-005", "--phase", "closeout", "--next-owner", "arch", "--next-action", "decide next window")
 	runOK(t, "set-status", "T-005", "blocked", "--reason", "awaiting control")
+	runOK(t, "live-window", "record", "T-006", "--phase", "closeout", "--next-owner", "product", "--next-action", "decide next window")
+	runOK(t, "set-status", "T-006", "blocked", "--reason", "awaiting unmapped control")
 
 	replaceInFile(t, ".fairway/config.toml", `notification_ack_timeout = "24h"`, `notification_ack_timeout = "1ns"`)
 	time.Sleep(time.Millisecond)
@@ -3169,9 +3223,15 @@ type = "thread"`)
 	failed := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-003", "--send")
 	assertContains(t, failed, "kind=stale-handback")
 	assertContains(t, failed, "status=failed")
+	assertContains(t, failed, "target_action=mapping_required")
+	assertContains(t, failed, "Wake target: mapping_required")
 	failedDetail := runCapture(t, "task-detail", "T-003")
 	assertContains(t, failedDetail, "notification_failed domain=coordinator")
 	assertContains(t, failedDetail, "failed=no_wake_target")
+	assertContains(t, failedDetail, "action=mapping_required")
+	preflight := runCaptureAllowError(t, "coordinator", "preflight")
+	assertContains(t, preflight, "wait completion_handback:T-006:escalate_closeout_completion_handback kind completion_handback owner product is not wake-routable")
+	assertContains(t, preflight, "action=mapping_required")
 
 	closed := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-004")
 	assertContains(t, closed, "completion_handback_wakes: none")
@@ -3180,6 +3240,12 @@ type = "thread"`)
 	assertContains(t, closeout, "kind=stale-closeout")
 	assertContains(t, closeout, "Live-window phase: closeout")
 	assertContains(t, closeout, "target=thread-arch")
+
+	unmappedCloseout := runCapture(t, "coordinator", "tick", "--completion-handback-wake", "--task", "T-006", "--send")
+	assertContains(t, unmappedCloseout, "kind=stale-closeout")
+	assertContains(t, unmappedCloseout, "status=failed")
+	assertContains(t, unmappedCloseout, "target_action=mapping_required")
+	assertContains(t, unmappedCloseout, "Wake target: mapping_required")
 }
 
 func TestCLI_ReconcileActiveReportsMonitorSessionsWithoutBackingProof(t *testing.T) {

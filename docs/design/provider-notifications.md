@@ -154,8 +154,9 @@ Without `--send`, the command is dry-run output for a coordinator or provider
 adapter. With `--send`, it records a `task_notifications` row on the
 `coordinator` domain using the current review-wait signature. A matching
 previous successful notification suppresses duplicates. If no wake target is
-configured, Fairway records `notification_failed` with the signature instead of
-claiming delivery. Resolved review waits on a blocked, in-progress, todo, or
+configured, dry-run output names `mapping_required`; `--send` records
+`notification_failed` with the signature and `action=mapping_required` instead
+of claiming delivery. Resolved review waits on a blocked, in-progress, todo, or
 otherwise non-review task produce review-wait-only guidance naming the task
 status; they do not tell operators to run `merge-ready` or continue closeout.
 Blocking `stale` or `notification_failed` waits instruct operators to address
@@ -177,7 +178,8 @@ The report distinguishes `handoff_recorded`, `sent`,
 `notification_delivered`, `thread_steered`, `review_recorded`, `failed`,
 `notification_failed`, `stale`, acknowledged, terminal, and superseded cases.
 Rows include task id, target domain or role, provider and target, latest handoff
-id, latest notification id, stale age, expected next action, and a
+id, latest notification id, stale age, expected next action, and whether a wake
+target is missing and needs `mapping_required` remediation. A
 fixed-template recovery command such as recording delivery proof, recording a
 failure reason, or repairing provider routing.
 

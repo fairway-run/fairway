@@ -156,8 +156,9 @@ second wait store. Without `--send`, it prints a fixed prompt naming the task,
 task status, stale handback or live-window closeout, next owner/action, and the
 suggested Fairway command. With `--send`, it records a coordinator-domain
 notification using a stable wake signature and suppresses duplicate successful
-signatures. If no provider target exists for the next owner, Fairway records
-`notification_failed` instead of claiming delivery. Fresh waits and terminal
+signatures. If no provider target exists for the next owner, dry-run output
+marks the wake `mapping_required`; `--send` records `notification_failed` with
+`action=mapping_required` instead of claiming delivery. Fresh waits and terminal
 tasks are not woken; they remain visible through plan/task detail or historical
 task evidence. This path is a coordinator/provider-adapter action, not dashboard
 send authority.
@@ -168,7 +169,8 @@ coordinator inspect unresolved or historical provider notification rows across
 review waits, completion handbacks, generic waits, live-operation handoffs, and
 coordinator plan waits without polling provider chats. The audit reports the
 task, source, target role/domain, provider target, handoff id, latest
-notification id, stale age, expected next action, and recovery command. It does
+notification id, stale age, expected next action, mapping-required target gaps,
+and recovery command. It does
 not send wakes, approve work, mutate task state, or create a second wait store.
 
 ## Orchestration Controller Direction

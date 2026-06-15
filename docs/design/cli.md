@@ -235,9 +235,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `wait wake` renders fixed-template wake prompts for stale or failed
   task-backed waits and, with `--send`, records bounded delivery or
   `notification_failed` evidence through existing task notification rows with a
-  stable dedupe signature. These commands do not run a durable timer, execute
-  DAG steps, approve reviews, claim tasks, mutate environments, or perform live
-  actions. Dashboard projections remain display-only; wake delivery stays in
+  stable dedupe signature. Missing provider-target mappings are visible in
+  dry-run output as `target_action=mapping_required`; `--send` records
+  `notification_failed` with `action=mapping_required` instead of claiming
+  delivery. These commands do not run a durable timer, execute DAG steps,
+  approve reviews, claim tasks, mutate environments, or perform live actions.
+  Dashboard projections remain display-only; wake delivery stays in
   CLI/coordinator/provider-adapter surfaces.
 - `record completion-handback` is a typed closeout helper for delegated work.
   It writes a normal handoff plus a linked notification row. The handoff payload
@@ -264,10 +267,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   completion-handback wake prompts from the same coordinator plan projection.
   With `--send`, it records a bounded `task_notifications` row on the
   `coordinator` domain using a stable wake signature, suppresses duplicate
-  successful wake signatures, and records `notification_failed` when no provider
-  target is configured. It selects only stale handbacks/closeouts and suppresses
-  terminal tasks; fresh waits remain visible in plan/task detail without wake
-  delivery. The dashboard remains read-only and never calls this send path.
+  successful wake signatures, and reports missing provider-target mappings as
+  `target_action=mapping_required`. When sent, missing mappings record
+  `notification_failed` with `action=mapping_required` rather than delivery.
+  It selects only stale handbacks/closeouts and suppresses terminal tasks; fresh
+  waits remain visible in plan/task detail without wake delivery. The dashboard
+  remains read-only and never calls this send path.
 - `workflow check` composes git and active-work checks into the operating-model
   guard. It warns on dirty docs/code, unpushed commits, missing upstreams, and
   active reconciliation findings. Use `--mode deploy` before deploy/UAT work;
@@ -320,8 +325,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   over existing review waits, completion handbacks, generic waits, coordinator
   plan rows, handoffs, and `task_notifications`. It reports task, source,
   target domain or role, provider target, handoff id, latest notification id,
-  stale age, expected next action, and a fixed-template recovery command. By
-  default it suppresses terminal, resolved, delivered, superseded, and other
+  stale age, expected next action, mapping-required target gaps, and a
+  fixed-template recovery command. By default it suppresses terminal, resolved,
+  delivered, superseded, and other
   non-actionable acknowledgement rows, but it still shows unresolved completion
   handbacks when their latest linked notification is `acknowledged`,
   `review_acknowledged`, or `review_recorded` without delivery proof. `--all`

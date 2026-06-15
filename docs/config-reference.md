@@ -213,6 +213,14 @@ does not expose a thread messaging tool. See
 authority, dashboard mutation authority, review approval, merge, deploy, or
 live-operation permission.
 
+Wake surfaces also use provider targets for static routability checks. Review
+wait wakes, generic wait wakes, completion-handback wakes, live-operation
+closeout wakes, and provider-session handoff wakes must have a configured target
+for the next owner/domain before Fairway can claim delivery. If the mapping is
+missing, dry-run output names `mapping_required`; `--send` records
+`notification_failed` evidence instead of silently parking the wait or claiming
+thread delivery.
+
 ### `[[provider_model_prices]]`
 
 Provider model prices are advisory calculator inputs for
