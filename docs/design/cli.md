@@ -58,6 +58,7 @@ fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [
 fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
 fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> [--owning-layer <text>] --proof-command <cmd> --regression-coverage <text> [--residual-risk <text>]
+fairway packet retry <task-id> --kind <preflight|live-operation> --source-sha <sha> --operator-surface <surface> --artifact-dir <path> --evidence-contract <text>... --allowed-action <text>... --forbidden-action <text>... --expires-at <time-or-window> --prior-failure-closure <text> [--next-action <text>]
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
 fairway packet release-run <task-id> --version <vX.Y.Z> --tag <vX.Y.Z> --source-sha <sha> --release-notes <path-or-status> --changelog-state <text> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-url <url> --homebrew-tap-commit <sha> [--verification-command <cmd>]...
 fairway packet template <name> <task-id> --field <key=value>...
@@ -352,11 +353,15 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `--open` is passed. They write `.fairway/dashboard.pid` and
   `.fairway/dashboard.log` by default; multi-project mode uses
   `.fairway/dashboard-multi.*`.
-- `packet bugfix`, platform-foundation packets, `packet template`,
-  `packet rules`, and `regression-pack` are quality surfaces. They render and
-  validate review context; they do not execute product test suites. `packet
-  rules <task-id>` renders selected and non-applicable rule-pack context,
-  required evidence, recommended commands, review domains, rationale, and
+- `packet bugfix`, `packet retry`, platform-foundation packets,
+  `packet template`, `packet rules`, and `regression-pack` are quality
+  surfaces. They render and validate review context; they do not execute
+  product test suites or authorize live execution. `packet retry` renders
+  bounded preflight or live-operation retry packets from a task id, source SHA,
+  operator surface, artifact directory, evidence contract, allowed actions,
+  forbidden actions, expiry/window, and prior-failure closure. `packet rules
+  <task-id>` renders selected and non-applicable rule-pack context, required
+  evidence, recommended commands, review domains, rationale, and
   residual-risk/stop-condition fields; record that packet as evidence
   explicitly when it is used for review or handoff.
 - `db compat --backend postgres` is a planned adapter harness, not the default

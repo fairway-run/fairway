@@ -377,8 +377,10 @@ FW-FAILURE-ROUTER-001
 Map known evidence failure classes to scoped task templates and next actions.
 
 FW-RETRY-PACKET-GENERATOR-001
-Generate bounded retry packets from task, SHA, operator, artifact directory,
-evidence contract, allowed actions, forbidden actions, and expiry.
+Generate `fairway packet retry` packets from task, SHA, operator surface,
+artifact directory, evidence contract, allowed actions, forbidden actions,
+expiry, and prior-failure closure. Rendering a retry packet is not execution
+authorization.
 ```
 
 ## Product Principle

@@ -6468,10 +6468,10 @@ func (m *multiInt64Flag) Set(value string) error {
 
 func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("packet requires subcommand: context, bugfix, watcher, release-run, template, rules, architecture-map, boundary-guard, vertical-slice")
+		return errors.New("packet requires subcommand: context, bugfix, retry, watcher, release-run, template, rules, architecture-map, boundary-guard, vertical-slice")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("packet", "context|bugfix|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice")
+		subcommandUsage("packet", "context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice")
 		return nil
 	}
 	switch args[0] {
@@ -6479,6 +6479,8 @@ func cmdPacket(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdPacketContext(ctx, opts, args[1:])
 	case "bugfix":
 		return cmdPacketBugfix(ctx, opts, args[1:])
+	case "retry":
+		return cmdPacketRetry(ctx, opts, args[1:])
 	case "watcher":
 		return cmdPacketWatcher(opts, args[1:])
 	case "release-run":
@@ -6555,6 +6557,146 @@ func cmdPacketTemplate(ctx context.Context, opts globalOptions, args []string) e
 		}
 		return nil
 	})
+}
+
+type retryPacket struct {
+	Task                store.Task       `json:"task"`
+	Kind                string           `json:"kind"`
+	SourceSHA           string           `json:"source_sha"`
+	OperatorSurface     string           `json:"operator_surface"`
+	ArtifactDir         string           `json:"artifact_dir"`
+	EvidenceContract    []string         `json:"evidence_contract"`
+	AllowedActions      []string         `json:"allowed_actions"`
+	ForbiddenActions    []string         `json:"forbidden_actions"`
+	ExpiresAt           string           `json:"expires_at"`
+	PriorFailureClosure string           `json:"prior_failure_closure"`
+	NextAction          string           `json:"next_action,omitempty"`
+	Authorization       string           `json:"authorization"`
+	Evidence            []store.Evidence `json:"evidence"`
+	Reviews             []store.Review   `json:"reviews"`
+}
+
+func cmdPacketRetry(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway packet retry <task-id> --kind <preflight|live-operation> --source-sha <sha> --operator-surface <surface> --artifact-dir <path> --evidence-contract <text>... --allowed-action <text>... --forbidden-action <text>... --expires-at <time-or-window> --prior-failure-closure <text> [--next-action <text>]")
+		fmt.Println("  Render a bounded retry packet; packet rendering is not execution authorization.")
+		return nil
+	}
+	if len(args) < 1 {
+		return errors.New("packet retry requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("packet retry", flag.ContinueOnError)
+	kind := fs.String("kind", "preflight", "retry packet kind: preflight or live-operation")
+	sourceSHA := fs.String("source-sha", "", "source commit sha for this retry")
+	operatorSurface := fs.String("operator-surface", "", "operator/provider surface expected to run the retry")
+	artifactDir := fs.String("artifact-dir", "", "artifact directory for retry evidence")
+	expiresAt := fs.String("expires-at", "", "packet expiry time or exact retry window")
+	priorFailureClosure := fs.String("prior-failure-closure", "", "evidence that the prior failure is closed or bounded")
+	nextAction := fs.String("next-action", "", "next safe action or command for the operator")
+	var evidenceContract multiFlag
+	var allowedActions multiFlag
+	var forbiddenActions multiFlag
+	fs.Var(&evidenceContract, "evidence-contract", "required evidence item; may repeat")
+	fs.Var(&allowedActions, "allowed-action", "allowed action for this retry; may repeat")
+	fs.Var(&forbiddenActions, "forbidden-action", "forbidden action until fresh approval; may repeat")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected packet retry arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if err := validateRetryPacketInputs(*kind, *sourceSHA, *operatorSurface, *artifactDir, *expiresAt, *priorFailureClosure, evidenceContract, allowedActions, forbiddenActions); err != nil {
+		return err
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		packet := retryPacket{
+			Task:                task,
+			Kind:                *kind,
+			SourceSHA:           *sourceSHA,
+			OperatorSurface:     *operatorSurface,
+			ArtifactDir:         *artifactDir,
+			EvidenceContract:    append([]string{}, evidenceContract...),
+			AllowedActions:      append([]string{}, allowedActions...),
+			ForbiddenActions:    append([]string{}, forbiddenActions...),
+			ExpiresAt:           *expiresAt,
+			PriorFailureClosure: *priorFailureClosure,
+			NextAction:          *nextAction,
+			Authorization:       "packet rendering only; this is not execution authorization",
+			Evidence:            evidence,
+			Reviews:             reviews,
+		}
+		if opts.JSON {
+			return printJSON(packet)
+		}
+		printRetryPacket(packet)
+		return nil
+	})
+}
+
+func validateRetryPacketInputs(kind, sourceSHA, operatorSurface, artifactDir, expiresAt, priorFailureClosure string, evidenceContract, allowedActions, forbiddenActions []string) error {
+	switch kind {
+	case "preflight", "live-operation":
+	default:
+		return fmt.Errorf("packet retry --kind must be preflight or live-operation, got %q", kind)
+	}
+	var missing []string
+	required := map[string]string{
+		"--source-sha":            sourceSHA,
+		"--operator-surface":      operatorSurface,
+		"--artifact-dir":          artifactDir,
+		"--expires-at":            expiresAt,
+		"--prior-failure-closure": priorFailureClosure,
+	}
+	for flag, value := range required {
+		if strings.TrimSpace(value) == "" {
+			missing = append(missing, flag)
+		}
+	}
+	if len(evidenceContract) == 0 {
+		missing = append(missing, "--evidence-contract")
+	}
+	if len(allowedActions) == 0 {
+		missing = append(missing, "--allowed-action")
+	}
+	if len(forbiddenActions) == 0 {
+		missing = append(missing, "--forbidden-action")
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		return fmt.Errorf("packet retry requires %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func printRetryPacket(packet retryPacket) {
+	fmt.Printf("# Retry Packet: %s\n\n", packet.Task.Definition.ID)
+	fmt.Printf("title: %s\nstatus: %s\nrole: %s\nkind: %s\nsource_sha: %s\noperator_surface: %s\nartifact_dir: %s\nexpires_at: %s\n",
+		packet.Task.Definition.Title,
+		packet.Task.Status,
+		packet.Task.Definition.Role,
+		packet.Kind,
+		packet.SourceSHA,
+		packet.OperatorSurface,
+		packet.ArtifactDir,
+		packet.ExpiresAt)
+	fmt.Printf("\n## Authorization Boundary\n%s. Re-run Fairway status, review, and gate checks before acting.\n", packet.Authorization)
+	fmt.Printf("\n## Prior Failure Closure\n%s\n", packet.PriorFailureClosure)
+	printPacketList("Evidence Contract", packet.EvidenceContract)
+	printPacketList("Allowed Actions", packet.AllowedActions)
+	printPacketList("Forbidden Actions", packet.ForbiddenActions)
+	if packet.NextAction != "" {
+		fmt.Printf("\n## Next Action\n%s\n", packet.NextAction)
+	}
+	printEvidenceSummary(packet.Evidence)
+	fmt.Println("\n## Reviews")
+	for _, review := range packet.Reviews {
+		fmt.Printf("- %s by %s: %s\n", review.Verdict, review.Reviewer, review.Reason)
+	}
 }
 
 type rulePacket struct {
@@ -11227,7 +11369,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, usage report|cost-report, audit work-coverage|ci-learning, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, usage report|cost-report, audit work-coverage|ci-learning|failure-routing, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -11265,6 +11407,7 @@ func printCommandHelp(command string) bool {
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",
 		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
+		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",

@@ -1302,6 +1302,18 @@ fairway packet boundary-guard T-011 \
   --graduation-criteria "zero critical findings for two releases" \
   --proof-command "go test ./..."
 
+fairway packet retry T-011 \
+  --kind preflight \
+  --source-sha abc1234 \
+  --operator-surface local-shell \
+  --artifact-dir .fairway/artifacts/T-011/retry-001 \
+  --evidence-contract "preflight output and rollback proof recorded" \
+  --allowed-action "run non-live smoke" \
+  --forbidden-action "live execution" \
+  --expires-at 2026-06-14T21:00:00-05:00 \
+  --prior-failure-closure "prior setup failure fixed and reviewed" \
+  --next-action "record packet as evidence before retry handoff"
+
 fairway packet vertical-slice T-012 \
   --target-seam "platform evidence facade" \
   --old-path cmd/api/evidence.go \
@@ -1310,6 +1322,9 @@ fairway packet vertical-slice T-012 \
   --proof-command "go test ./cmd/api ./packages/services/platform" \
   --rollback-plan "revert adapter wiring"
 ```
+
+`packet retry` renders a bounded retry packet only. It does not authorize live
+execution, approve risk, or replace Fairway status, review, and gate checks.
 
 ## Handoffs
 

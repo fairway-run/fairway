@@ -149,6 +149,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"wait", "list", "--help"}, "fairway wait list [--task <task-id>]"},
 		{[]string{"wait", "tick", "--help"}, "fairway wait tick [--task <task-id>]"},
 		{[]string{"wait", "wake", "--help"}, "fairway wait wake [--task <task-id>]"},
+		{[]string{"packet", "--help"}, "fairway packet context|bugfix|retry|watcher"},
+		{[]string{"packet", "retry", "--help"}, "fairway packet retry <task-id> --kind <preflight|live-operation>"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -3413,6 +3415,111 @@ func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
 	failedAsset := runCaptureAllowError(t, "release", "verify", "--version", "v0.1.2", "--tag", "v0.1.2", "--ci-status", "pass", "--docs-status", "pass", "--signing-status", "pass", "--notary-status", "pass", "--release-state", "public", "--asset", "https://github.com/fairway-run/fairway/releases/download/v0.1.2/fairway.tar.gz=404", "--homebrew-version", "v0.1.2", "--homebrew-tap-commit", "tap123", "--brew-fetch-status", "pass")
 	assertContains(t, failedAsset, "asset URL failed")
 	assertContains(t, failedAsset, "status=404")
+}
+
+func TestCLI_PacketRetry(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Retry drill", "--role", "backend")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "prior smoke failed", "--result", "fail", "--artifact", ".fairway/artifacts/T-001/prior.md")
+	runOK(t, "record", "review", "T-001", "--reviewer", "fairway-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "retry packet reviewed")
+
+	help := runCapture(t, "packet", "retry", "--help")
+	assertContains(t, help, "fairway packet retry <task-id> --kind <preflight|live-operation>")
+	assertContains(t, help, "packet rendering is not execution authorization")
+	assertNotContains(t, help, "error:")
+	assertNotContains(t, help, "Usage of")
+
+	packet := runCapture(t, "packet", "retry", "T-001",
+		"--kind", "live-operation",
+		"--source-sha", "abc1234",
+		"--operator-surface", "drill-operator-v2",
+		"--artifact-dir", ".fairway/artifacts/T-001/retry-002",
+		"--evidence-contract", "flow map before implementation",
+		"--evidence-contract", "rollback readback",
+		"--allowed-action", "run bounded non-prod preflight",
+		"--forbidden-action", "production mutation",
+		"--forbidden-action", "credential action",
+		"--expires-at", "2026-06-14T20:00:00-05:00",
+		"--prior-failure-closure", "HARNESS-FIX-T-001 merged and smoke passed",
+		"--next-action", "run fairway workflow check before retry")
+	for _, want := range []string{
+		"# Retry Packet: T-001",
+		"kind: live-operation",
+		"source_sha: abc1234",
+		"operator_surface: drill-operator-v2",
+		"packet rendering only; this is not execution authorization",
+		"flow map before implementation",
+		"rollback readback",
+		"run bounded non-prod preflight",
+		"production mutation",
+		"credential action",
+		"HARNESS-FIX-T-001 merged and smoke passed",
+		"run fairway workflow check before retry",
+		"prior smoke failed",
+		"approve by fairway-reviewer: retry packet reviewed",
+	} {
+		assertContains(t, packet, want)
+	}
+
+	jsonPacket := runCapture(t, "--json", "packet", "retry", "T-001",
+		"--kind", "preflight",
+		"--source-sha", "def5678",
+		"--operator-surface", "local-shell",
+		"--artifact-dir", ".fairway/artifacts/T-001/preflight",
+		"--evidence-contract", "preflight output",
+		"--allowed-action", "run non-live smoke",
+		"--forbidden-action", "live execution",
+		"--expires-at", "2026-06-14T21:00:00-05:00",
+		"--prior-failure-closure", "prior failure acknowledged")
+	for _, want := range []string{
+		`"kind": "preflight"`,
+		`"source_sha": "def5678"`,
+		`"operator_surface": "local-shell"`,
+		`"authorization": "packet rendering only; this is not execution authorization"`,
+		`"evidence_contract": [`,
+	} {
+		assertContains(t, jsonPacket, want)
+	}
+
+	err = run(context.Background(), []string{"packet", "retry", "T-001",
+		"--source-sha", "abc1234",
+		"--operator-surface", "local-shell"})
+	if err == nil {
+		t.Fatal("expected missing packet retry fields error")
+	}
+	missing := err.Error()
+	for _, want := range []string{"packet retry requires", "--artifact-dir", "--evidence-contract", "--allowed-action", "--forbidden-action"} {
+		if !strings.Contains(missing, want) {
+			t.Fatalf("missing fields error = %q, want %q", missing, want)
+		}
+	}
+
+	err = run(context.Background(), []string{"packet", "retry", "T-001",
+		"--kind", "drill",
+		"--source-sha", "abc1234",
+		"--operator-surface", "local-shell",
+		"--artifact-dir", ".fairway/artifacts/T-001",
+		"--evidence-contract", "preflight output",
+		"--allowed-action", "run smoke",
+		"--forbidden-action", "live execution",
+		"--expires-at", "2026-06-14T21:00:00-05:00",
+		"--prior-failure-closure", "prior failure acknowledged"})
+	if err == nil {
+		t.Fatal("expected invalid retry packet kind error")
+	}
+	if !strings.Contains(err.Error(), "packet retry --kind must be preflight or live-operation") {
+		t.Fatalf("bad kind error = %q", err.Error())
+	}
 }
 
 func TestCLI_PacketTemplate(t *testing.T) {
