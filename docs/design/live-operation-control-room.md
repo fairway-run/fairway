@@ -52,6 +52,7 @@ from typed checkpoints and related rows.
 | Deadline | live-window target close time, checkpoint `target_close_by`, review/notification ack timeout, or explicit packet window |
 | Authorization state | packet/review evidence, live-window phase, recorded approvals, and explicit execution authorization checkpoint |
 | Provider delivery proof | `task_notifications` rows and provider-event checkpoints |
+| Provider surface capability | capability/readiness evidence for the exact execution surface, including retired or no-go surfaces |
 | Missed handoff | coordinator plan/tick stale row derived from the same records |
 | Human visibility | dashboard read-only projection, CLI status, tmux/zellij panes |
 
@@ -82,6 +83,8 @@ Every live-operation handoff that can stop progress must name:
 - `next_actor`
 - `deadline` or the reason no deadline applies
 - `authorization_state`
+- provider surface capability state when the next action depends on browser,
+  CLI, Kubernetes, SSH, filesystem, or local permission behavior
 - exact next prompt, command, or manual action
 - expected evidence path or command output
 - missed-deadline action
@@ -153,7 +156,8 @@ state and operate only inside their authority boundary.
 ## Trust Boundary
 
 The read-only dashboard may show control-room state, stale handoffs, next
-actors, deadlines, and suggested commands. It must not:
+actors, deadlines, provider-surface readiness/no-go state, and suggested
+commands. It must not:
 
 - send provider prompts,
 - hold provider credentials,
@@ -176,6 +180,9 @@ authorization is recorded.
   action is visible as a completion handback or closeout wait.
 - Missing provider delivery becomes a visible notification failure or stale
   wait.
+- A live operation that requires a local execution capability shows the current
+  provider surface state, and failed or retired surfaces are blocking until a
+  replacement surface has passing proof.
 - Retry budget state distinguishes meaningful rerun failures from
   coordination-only failures and requires a causal reset before more narrow
   retry packets when the meaningful-failure budget is exhausted.

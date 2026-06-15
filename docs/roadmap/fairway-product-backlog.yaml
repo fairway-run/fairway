@@ -2956,6 +2956,173 @@ tasks:
       - "Dashboard does not send provider prompts, hold provider credentials, approve reviews, authorize execution, mutate environments, or change terminal task status."
       - "Focused dashboard tests cover display-only waits, stale state, advisory labels, and no send/approval controls."
 
+  - id: FW-203
+    title: Add provider notification lifecycle audit
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordinator-notifications
+    source_paths:
+      - docs/design/provider-notifications.md
+      - docs/design/review-wait-notification-model.md
+      - docs/design/coordinator-loop.md
+      - docs/design/live-operation-control-room.md
+      - docs/design/coordination-intelligence.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/cli.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: provider-notification-lifecycle-audit
+    acceptance_checks:
+      - "A notification audit/report command or coordinator projection lists unresolved provider notification rows across review waits, completion handbacks, generic waits, and live-operation handoffs."
+      - "The report distinguishes handoff_recorded, sent, notification_delivered, thread_steered, review_recorded, failed, notification_failed, stale, acknowledged, and terminal/superseded cases without introducing a second notification store."
+      - "Output includes task id, target domain/role, provider target, last handoff id, last notification id, stale age, expected next action, and fixed-template recovery suggestion."
+      - "Tests cover clean notifications, stale sent notification, failed delivery, missing target, already-acknowledged wake, terminal task suppression, and mixed wait types."
+
+  - id: FW-204
+    title: Add completion handback supersede cleanup path
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: completion-handbacks
+    source_paths:
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/coordination-intelligence.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/cli.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: completion-handback-supersede-cleanup
+    acceptance_checks:
+      - "Fairway can mark stale completion handbacks as superseded or obsolete with a reason, replacement handback/evidence reference when available, and immutable audit evidence."
+      - "Coordinator plan, review-waits, and notification audits stop treating resolved obsolete handbacks as active waits while retaining history for incident review."
+      - "The command or action refuses to hide unresolved handbacks for non-terminal tasks unless a replacement path or explicit blocked decision is recorded."
+      - "Tests cover superseding an old handback, refusing unsafe suppression, terminal-task cleanup, and preserving evidence/review history."
+
+  - id: FW-205
+    title: Generalize provider target routability validation for wakes
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-targets
+    source_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/design/live-operation-control-room.md
+      - docs/design/coordination-intelligence.md
+      - docs/config-reference.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/config-reference.md
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/cli.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: provider-target-routability-validation
+    acceptance_checks:
+      - "Static routability validation applies not only to review domains but also to generic waits, completion handbacks, live-operation next actors, track-memory wakes, and provider-session handoffs."
+      - "When no provider target exists, Fairway records or reports notification_failed/mapping_required instead of silently parking a thread or claiming delivery."
+      - "Preflight and tick paths report missing route/provider target before ambiguous waits become long idle periods."
+      - "Tests cover review, handback, generic wait, live operation, and unmapped target cases."
+
+  - id: FW-206
+    title: Add live-operation retry budget and causal reset policy
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: live-operation-control
+    source_paths:
+      - docs/design/live-operation-control-room.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/live-operation-control-room.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/cli.md
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+      - security
+    risk_level: medium
+    migration_type: live-operation-retry-budget-causal-reset
+    acceptance_checks:
+      - "Live-operation control can record meaningful failed rerun count, coordination-only failures, reset reason, and current retry budget for approval-gated operations."
+      - "After a configured failure budget is reached, Fairway recommends or requires a causal-reset task before another narrow rerun packet is generated."
+      - "Retry packet generation includes prior failure closure, iteration count, reset task reference, and explicit no-hidden-approval language."
+      - "Tests cover meaningful failure counting, coordination-only non-counting failures, budget exhaustion, reset task clearance, and packet rendering after reset."
+
+  - id: FW-207
+    title: Add coordination docs-to-backlog coverage audit
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: backlog-governance
+    source_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/live-operation-control-room.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/provider-surface-capability-readiness.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - docs/roadmap/fairway-product-backlog.yaml
+      - docs/design/implementation-roadmap.md
+      - docs/agent-guide.md
+      - cmd/fairway
+      - internal
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: low
+    migration_type: coordination-docs-backlog-audit
+    acceptance_checks:
+      - "A lightweight audit checklist or command maps coordination design claims, deferred slices, and command examples to backlog task ids or implemented command evidence."
+      - "The audit flags doc-only capabilities with no backlog task, completed backlog tasks with stale docs, and GPUaaS-specific incident lessons that should be generalized into Fairway product tasks."
+      - "Output is advisory and does not change task status, review status, merge readiness, or release readiness."
+      - "Docs explain when to run the audit after incident retrospectives, design reviews, and large coordination-model updates."
+
   - id: FW-208
     title: Add consumer critical-flow governance template
     kind: task
@@ -2987,3 +3154,134 @@ tasks:
       - "The template separates Fairway-owned coordination primitives from product-owned scripts, fixtures, flows, and evidence contracts."
       - "The template includes reviewer context packet fields for causal goal, last blocker, allowed proof, forbidden actions, reviewed commands, artifact paths, and next owner/action."
       - "The template makes clear that Fairway can recommend and render packets but does not approve reviews, accept risk, merge, deploy, mutate environments, or authorize live execution."
+
+  - id: FW-209
+    title: Add configurable risk-scaled review profiles
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: review-governance
+    source_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/consumer-critical-flow-governance.md
+      - docs/config-reference.md
+      - cmd/fairway
+      - internal
+      - /Users/subash/dev/GPUasService/doc/operations/Fairway_Review_Operating_Model.md
+      - /Users/subash/dev/GPUasService/doc/governance/Critical_Flow_Preflight_And_Drill_Gate_v1.md
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/config-reference.md
+      - docs/design/review-policy-profiles.md
+      - docs/design/review-wait-notification-model.md
+      - docs/design/coordinator-loop.md
+      - docs/design/consumer-critical-flow-governance.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+      - security
+    risk_level: medium
+    migration_type: configurable-risk-scaled-review-profiles
+    acceptance_checks:
+      - "Fairway config supports named review profiles such as micro-slice, grouped-slice, epic, launch, live-window, deploy, and production-readiness."
+      - "A review profile can derive required review domains from task risk, task kind, tags, parent/epic relationship, changed paths, authoring domain, and explicit no-inheritance triggers."
+      - "Review inheritance can mark a child task as covered by an approved parent/group packet only when the child does not expand authority, mutate environments, handle credentials, weaken safety gates, or authorize live/deploy/public exposure actions."
+      - "Fairway supports a safe-iteration-zone concept for approved non-live/disposable boundaries where internal setup, readback, harness, classifier, and provider-shape fixes can use lightweight review until a boundary exit is requested."
+      - "Review profile selection records the expected defect class or risk-control value for extra reviewers, so full review can be challenged when it does not improve quality or cycle time."
+      - "Config and coordinator guidance support process-change pilots: a new review/gate policy can run in advisory mode with a stated speed, quality, or safety hypothesis before becoming blocking."
+      - "Reports can compare review/gate overhead against outcomes such as defects caught, rework reduced, blocked time, cycle time, and avoided unsafe actions."
+      - "Coordinator detects looping review/retry patterns, such as repeated meaningful failures after near-ready claims, repeated same-layer fixes, or approvals that do not improve end-to-end flow progress."
+      - "When a loop is detected, coordinator recommends a causal reset with failure chain, real unknowns, required proof before retry, and a lighter safe-boundary review plan."
+      - "merge-ready and review-wait projections explain whether a missing review is required by the selected profile, inherited from a parent/group packet, waived, or intentionally deferred to epic/release review."
+      - "Coordinator plan recommends grouping small docs/harness/stale-cleanup review slices, continuing safe-boundary iteration, and reserving full review matrices for epic, launch, live-window, deploy, production-readiness, compliance, and enforcement boundaries."
+      - "Tests cover one-review micro slices, grouped child reviews, safe-iteration-zone inheritance, loop-detected causal reset, full epic review, same-lane authorship mapping, no-inheritance triggers, and review-wait output for inherited versus missing domains."
+
+  - id: FW-210
+    title: Add delivery velocity and process overhead dashboard
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: delivery-analytics
+    source_paths:
+      - docs/design/dashboard.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/review-policy-profiles.md
+      - docs/design/review-wait-notification-model.md
+      - docs/design/live-operation-control-room.md
+      - cmd/fairway
+      - internal
+      - web
+    target_paths:
+      - cmd/fairway
+      - internal
+      - web
+      - docs/design/dashboard.md
+      - docs/design/delivery-velocity-and-overhead.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+      - frontend
+    risk_level: medium
+    migration_type: delivery-velocity-process-overhead-dashboard
+    depends_on:
+      - FW-209
+    acceptance_checks:
+      - "Fairway exposes a time-windowed delivery report showing tasks completed, tasks blocked/unblocked, time in blocked state, time in review wait, time from first evidence to done, and time from done to merge-ready."
+      - "Report includes process-overhead indicators: review records per completed task, review approvals versus changes_requested, same-lane mapping count, notification/wake count, handoff count, and review waits that did not produce changes."
+      - "Report distinguishes outcome sources: defects or follow-ups found by review, preflight, tests, UAT, CI/CD, deploy, live-window execution, and manual inspection."
+      - "Report highlights loops: repeated meaningful failures, repeated same-layer follow-ups, retry packets after near-ready claims, and tasks where coordination time exceeded engineering progress."
+      - "Dashboard shows a compact velocity/overhead panel with trends for completed tasks, median blocked/review-wait time, review usefulness ratio, and top sources of follow-up tasks."
+      - "CLI supports a read-only command such as `fairway delivery report --since <duration> [--profile <name>] [--format text|json]` using existing task, review, evidence, notification, session, checkpoint, and merge-ready data."
+      - "Metrics are advisory by default and must not approve reviews, mutate task status, merge, deploy, or gate release without an explicit configured policy."
+      - "Tests cover report calculation, empty windows, review-heavy tasks, preflight-found defects, loop detection summaries, and dashboard/read-only JSON projection."
+
+  - id: FW-211
+    title: Add repeated-work automation candidate detection
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: automation-intelligence
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/delivery-velocity-and-overhead.md
+      - docs/design/coordinator-loop.md
+      - docs/design/context-packets.md
+      - cmd/fairway
+      - internal
+      - /Users/subash/dev/GPUasService/doc/governance/Critical_Flow_Preflight_And_Drill_Gate_v1.md
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/automation-candidate-detection.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/delivery-velocity-and-overhead.md
+      - docs/design/coordinator-loop.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+      - backend
+      - ops
+    risk_level: medium
+    migration_type: repeated-work-automation-candidates
+    depends_on:
+      - FW-210
+    acceptance_checks:
+      - "Fairway detects repeated deterministic work patterns across tasks, sessions, evidence, notifications, and command text, using a default rule of manual once, checklist/command capture on second occurrence, and automation recommendation on third occurrence."
+      - "Candidate report groups repeated work such as status summaries, review-wait checks, merge-ready checks, commit-boundary handling, preflight packet rendering, UAT coverage diffs, CI/deploy monitor handbacks, evidence redaction, and delivery-overhead reporting."
+      - "Each automation candidate includes frequency, recent task ids, representative commands/artifacts, estimated token/coordination cost, likely owner, and suggested implementation surface such as script, Fairway CLI, dashboard panel, watcher, or packet template."
+      - "Coordinator plan can recommend creating a scoped automation task when repeated work exceeds threshold, but it does not auto-create tasks or mutate workflow without explicit configured policy."
+      - "Dashboard or CLI exposes candidates read-only, for example `fairway automation candidates --since <duration> --format text|json`."
+      - "Tests cover repeated command detection, repeated review/notification loops, false positives for intentionally manual approvals, threshold configuration, and read-only dashboard/CLI projection."
