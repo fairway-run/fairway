@@ -54,6 +54,7 @@ fairway workflow closeout <task-id> [--dry-run] [--apply] [--preserve-branch-rea
 fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
 fairway audit ci-learning [--task-id <id>] [--template] # classify failed CI/deploy/smoke/UAT evidence and follow-up coverage
 fairway audit notifications [--task <task-id>] [--all] # read-only provider notification lifecycle audit across waits and handbacks
+fairway audit docs-backlog [--doc <path>]... # advisory coordination docs-to-backlog coverage audit
 fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--requires-human] [--risk-flag <flag>]... [--record-evidence]
 fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
 fairway coordinator preflight | status | tick
@@ -353,6 +354,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   includes the suppressed historical rows for audit. The command does not send
   provider messages, approve reviews, close tasks, or create a second wait
   store.
+- `audit docs-backlog [--doc <path>]...` is a read-only coordination
+  docs-to-backlog coverage report. It scans coordination design docs for
+  Fairway task ids, task `source_paths` / `target_paths` coverage, documented
+  command examples, and known coordination topics such as review waits,
+  completion handbacks, live-operation control, track memory, safe iteration,
+  process overhead, and repeated-work automation. Findings are advisory and do
+  not change task, review, merge-ready, or release state.
 - `advisory validate` checks a structured recommendation before it is trusted
   or recorded. The contract contains `action`, `task_id`, `target_role`,
   `confidence`, `requires_human`, `rationale`, `risk_flags`, and cited Fairway

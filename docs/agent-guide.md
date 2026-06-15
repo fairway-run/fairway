@@ -851,6 +851,10 @@ fairway audit work-coverage --since-ref main --dry-run
 # Learning boundary: classify failed CI/deploy/smoke/UAT evidence and confirm
 # actionable failures have follow-up tasks.
 fairway audit ci-learning --template
+
+# Coordination-design boundary: check whether docs, command examples, and
+# incident lessons map to Fairway backlog tasks.
+fairway audit docs-backlog
 ```
 
 The command reports:
@@ -870,6 +874,14 @@ map to a task, changed files outside task `source_paths` / `target_paths`,
 evidence that still needs a status decision, done tasks without required
 evidence, and missing review-domain approvals. Run it before review handoff,
 deploy/UAT attempts, and release readiness checks.
+
+`audit docs-backlog` is advisory. It scans coordination design docs for task
+ids, task path coverage, documented Fairway command examples, and known
+coordination topics. Run it after incident retrospectives, design reviews, and
+large coordination-model updates so doc-only capabilities, stale completed
+tasks, and consumer-specific lessons that should become Fairway product tasks
+do not remain hidden in chat or local notes. The audit does not change task,
+review, merge-ready, or release state.
 
 `audit ci-learning` is advisory. `audit failure-routing` is the same read model
 with known-failure routing help text and a `failure_routing_ok` human status

@@ -156,7 +156,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"wait", "wake", "--help"}, "fairway wait wake [--task <task-id>]"},
 		{[]string{"packet", "--help"}, "fairway packet context|bugfix|retry|watcher"},
 		{[]string{"packet", "retry", "--help"}, "fairway packet retry <task-id> --kind <preflight|live-operation>"},
-		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications"},
+		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
 		{[]string{"advisory", "--help"}, "fairway advisory validate <task-id>"},
 		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
@@ -165,6 +165,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"audit", "ci-learning", "--help"}, "fairway audit ci-learning [--task-id <task-id>] [--template]"},
 		{[]string{"audit", "failure-routing", "--help"}, "fairway audit failure-routing [--task-id <task-id>] [--template]"},
 		{[]string{"audit", "notifications", "--help"}, "fairway audit notifications [--task <task-id>] [--all]"},
+		{[]string{"audit", "docs-backlog", "--help"}, "fairway audit docs-backlog [--doc <path>]..."},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
 		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
 		{[]string{"workflow", "--help"}, "fairway workflow check|closeout"},
@@ -175,7 +176,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"batch", "link", "--help"}, "fairway batch link <batch-id>"},
 		{[]string{"batch", "show", "--help"}, "fairway batch show <batch-id>"},
 		{[]string{"batch", "list", "--help"}, "fairway batch list"},
-		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications"},
+		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
 		{[]string{"release", "--help"}, "fairway release verify"},
 		{[]string{"rules", "--help"}, "fairway rules validate <dir>|evidence-types|match <task-id>"},
 	} {
@@ -3453,6 +3454,43 @@ func TestCLI_AuditWorkCoverage(t *testing.T) {
 
 	durationReport := runCapture(t, "--json", "audit", "work-coverage", "--since-duration", "24h")
 	assertContains(t, durationReport, `"since_duration": "24h0m0s"`)
+}
+
+func TestCLI_AuditDocsBacklog(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `task_id_pattern = "^[A-Z]+-[0-9]+$"`, `task_id_pattern = "^[A-Z][A-Z0-9-]*$"`)
+	runOK(t, "add", "FW-196", "--title", "Add first-class track memory packets", "--role", "backend", "--source-paths", "docs/design/coordination-intelligence.md")
+	runOK(t, "set-status", "FW-196", "done")
+	writeFile(t, "docs/design/coordination-intelligence.md", "FW-196 implements track memory.\n`fairway memory packet --track architecture-control`\n")
+	writeFile(t, "docs/design/uncovered-coordination.md", "Review waits need an operator command.\n`fairway review-waits list --blocking`\n")
+
+	report := runCapture(t, "audit", "docs-backlog", "--doc", "docs/design/coordination-intelligence.md", "--doc", "docs/design/uncovered-coordination.md")
+	for _, want := range []string{
+		"docs_backlog_ok: false",
+		"docs_scanned=2",
+		"docs_with_backlog_coverage=1",
+		"doc_only_capability",
+		"command_example_uncovered",
+		"docs/design/uncovered-coordination.md",
+		"related_tasks: FW-179, FW-180, FW-181, FW-182, FW-183, FW-184",
+	} {
+		assertContains(t, report, want)
+	}
+
+	jsonReport := runCapture(t, "--json", "audit", "docs-backlog", "--doc", "docs/design/coordination-intelligence.md")
+	assertContains(t, jsonReport, `"docs_with_backlog_coverage": 1`)
+	assertContains(t, jsonReport, `"covering_tasks": [`)
+	assertContains(t, jsonReport, `"FW-196"`)
 }
 
 func TestCLI_AuditCILearning(t *testing.T) {

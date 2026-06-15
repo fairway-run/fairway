@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -193,6 +194,201 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 type CILearningOptions struct {
 	TaskID          string
 	RenderTemplates bool
+}
+
+type DocsBacklogOptions struct {
+	DocPaths []string
+}
+
+type DocsBacklogReport struct {
+	OK       bool                 `json:"ok"`
+	Docs     []DocsBacklogDoc     `json:"docs"`
+	Findings []DocsBacklogFinding `json:"findings"`
+	Summary  DocsBacklogSummary   `json:"summary"`
+}
+
+type DocsBacklogSummary struct {
+	DocsScanned              int `json:"docs_scanned"`
+	DocsWithBacklogCoverage  int `json:"docs_with_backlog_coverage"`
+	DocOnlyCapabilities      int `json:"doc_only_capabilities"`
+	CommandExamplesUncovered int `json:"command_examples_uncovered"`
+	StaleCompletedTasks      int `json:"stale_completed_tasks"`
+	GPUaaSLessons            int `json:"gpuaas_lessons"`
+}
+
+type DocsBacklogDoc struct {
+	Path            string   `json:"path"`
+	MentionedTasks  []string `json:"mentioned_tasks,omitempty"`
+	CoveringTasks   []string `json:"covering_tasks,omitempty"`
+	CommandExamples []string `json:"command_examples,omitempty"`
+	Topics          []string `json:"topics,omitempty"`
+}
+
+type DocsBacklogFinding struct {
+	Kind        string   `json:"kind"`
+	Severity    string   `json:"severity"`
+	DocPath     string   `json:"doc_path,omitempty"`
+	TaskID      string   `json:"task_id,omitempty"`
+	Topic       string   `json:"topic,omitempty"`
+	Command     string   `json:"command,omitempty"`
+	Reason      string   `json:"reason"`
+	Related     []string `json:"related_tasks,omitempty"`
+	Recommended string   `json:"recommended_action,omitempty"`
+}
+
+var defaultCoordinationDocPaths = []string{
+	"docs/design/review-wait-notification-model.md",
+	"docs/design/provider-notifications.md",
+	"docs/design/coordinator-loop.md",
+	"docs/design/live-operation-control-room.md",
+	"docs/design/coordination-intelligence.md",
+	"docs/design/provider-surface-capability-readiness.md",
+	"docs/design/consumer-critical-flow-governance.md",
+	"docs/design/review-policy-profiles.md",
+	"docs/agent-guide.md",
+}
+
+type docsBacklogTopic struct {
+	Name     string
+	Terms    []string
+	TaskIDs  []string
+	GPUaaS   bool
+	Optional bool
+}
+
+var coordinationBacklogTopics = []docsBacklogTopic{
+	{Name: "review-wait", Terms: []string{"review wait", "review-waits"}, TaskIDs: []string{"FW-179", "FW-180", "FW-181", "FW-182", "FW-183", "FW-184"}},
+	{Name: "completion-handback", Terms: []string{"completion handback", "completion-handback"}, TaskIDs: []string{"FW-187", "FW-188", "FW-189", "FW-190", "FW-191"}},
+	{Name: "live-operation-control-room", Terms: []string{"live-operation control", "control room", "live-window"}, TaskIDs: []string{"FW-194", "FW-206"}},
+	{Name: "track-memory", Terms: []string{"track memory", "memory packet"}, TaskIDs: []string{"FW-196", "FW-202"}},
+	{Name: "generic-waits", Terms: []string{"generic wait", "wait/watch", "parked work"}, TaskIDs: []string{"FW-197", "FW-198", "FW-202"}},
+	{Name: "known-failure-routing", Terms: []string{"known-failure", "failure routing"}, TaskIDs: []string{"FW-199"}},
+	{Name: "retry-packets", Terms: []string{"retry packet", "bounded rerun"}, TaskIDs: []string{"FW-200", "FW-206"}},
+	{Name: "advisory-recommendations", Terms: []string{"advisory recommendation", "recommendation contract"}, TaskIDs: []string{"FW-201"}},
+	{Name: "dashboard-projections", Terms: []string{"dashboard", "read-only dashboard", "diagnostics tab"}, TaskIDs: []string{"FW-181", "FW-190", "FW-202"}},
+	{Name: "notification-lifecycle", Terms: []string{"notification lifecycle", "notification audit"}, TaskIDs: []string{"FW-203"}},
+	{Name: "completion-supersede", Terms: []string{"supersede", "superseded"}, TaskIDs: []string{"FW-204"}},
+	{Name: "wake-routability", Terms: []string{"routability", "provider target"}, TaskIDs: []string{"FW-205"}},
+	{Name: "critical-flow-governance", Terms: []string{"critical-flow", "flow map before implementation", "non-live preflight"}, TaskIDs: []string{"FW-208"}, GPUaaS: true},
+	{Name: "review-profiles", Terms: []string{"review profile", "safe iteration", "safe-boundary", "causal reset"}, TaskIDs: []string{"FW-209"}},
+	{Name: "delivery-overhead", Terms: []string{"delivery velocity", "process overhead", "review usefulness"}, TaskIDs: []string{"FW-210"}},
+	{Name: "automation-candidates", Terms: []string{"automation candidate", "third time automate", "repeated deterministic work"}, TaskIDs: []string{"FW-211"}},
+}
+
+func BuildDocsBacklogReport(ctx context.Context, root string, s *store.Store, opts DocsBacklogOptions) (DocsBacklogReport, error) {
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		return DocsBacklogReport{}, err
+	}
+	taskByID := map[string]store.Task{}
+	taskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		taskByID[task.Definition.ID] = task
+		taskIDs = append(taskIDs, task.Definition.ID)
+	}
+	taskPattern := taskIDPattern(taskIDs)
+	pathCoverage := buildTaskPathCoverage(tasks)
+	docPaths := append([]string{}, opts.DocPaths...)
+	if len(docPaths) == 0 {
+		docPaths = append(docPaths, defaultCoordinationDocPaths...)
+	}
+	report := DocsBacklogReport{OK: true}
+	for _, docPath := range docPaths {
+		docPath = strings.TrimSpace(filepath.ToSlash(docPath))
+		if docPath == "" {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(docPath)))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return DocsBacklogReport{}, err
+		}
+		text := string(body)
+		mentioned := mentionedTaskIDs(text, taskPattern, tasks)
+		covering := tasksCoveringFile(docPath, pathCoverage)
+		commands := fairwayCommandExamples(text)
+		topics := docTopics(text)
+		doc := DocsBacklogDoc{
+			Path:            docPath,
+			MentionedTasks:  mentioned,
+			CoveringTasks:   covering,
+			CommandExamples: commands,
+			Topics:          topics,
+		}
+		report.Docs = append(report.Docs, doc)
+		report.Summary.DocsScanned++
+		if len(mentioned) > 0 || len(covering) > 0 {
+			report.Summary.DocsWithBacklogCoverage++
+		}
+		covered := unionStrings(mentioned, covering)
+		for _, topic := range coordinationBacklogTopics {
+			if !docHasTopic(text, topic) {
+				continue
+			}
+			if topic.GPUaaS {
+				report.Summary.GPUaaSLessons++
+			}
+			if !hasAnyTaskID(covered, topic.TaskIDs) && !anyTaskExists(taskByID, topic.TaskIDs) {
+				report.Findings = append(report.Findings, DocsBacklogFinding{
+					Kind:        "doc_only_capability",
+					Severity:    "warning",
+					DocPath:     docPath,
+					Topic:       topic.Name,
+					Reason:      "coordination design topic appears in docs but no matching Fairway backlog task id exists in runtime state",
+					Related:     append([]string{}, topic.TaskIDs...),
+					Recommended: "add or import the corresponding Fairway backlog task, or record why the topic is intentionally documentation-only",
+				})
+				report.Summary.DocOnlyCapabilities++
+			}
+		}
+		if len(commands) > 0 && len(covered) == 0 {
+			for _, command := range commands {
+				report.Findings = append(report.Findings, DocsBacklogFinding{
+					Kind:        "command_example_uncovered",
+					Severity:    "info",
+					DocPath:     docPath,
+					Command:     command,
+					Reason:      "Fairway command example is documented in a coordination doc that is not covered by task source_paths/target_paths or explicit task ids",
+					Recommended: "link the doc to a Fairway task source_paths/target_paths entry or cite the task id near the command example",
+				})
+				report.Summary.CommandExamplesUncovered++
+			}
+		}
+	}
+	for _, task := range tasks {
+		if task.Status != "done" || !isCoordinationBacklogTask(task.Definition.ID) {
+			continue
+		}
+		coveredDocs := append([]string{}, task.Definition.SourcePaths...)
+		coveredDocs = append(coveredDocs, task.Definition.TargetPaths...)
+		if !taskReferencedInDocs(task.Definition.ID, coveredDocs, report.Docs) {
+			report.Findings = append(report.Findings, DocsBacklogFinding{
+				Kind:        "completed_task_stale_docs",
+				Severity:    "info",
+				TaskID:      task.Definition.ID,
+				Reason:      "completed coordination task is not referenced by its configured docs or those docs were not scanned",
+				Recommended: "update the coordination design or roadmap docs with the implemented command/report name, or remove stale task path metadata",
+			})
+			report.Summary.StaleCompletedTasks++
+		}
+	}
+	sort.SliceStable(report.Docs, func(i, j int) bool { return report.Docs[i].Path < report.Docs[j].Path })
+	sort.SliceStable(report.Findings, func(i, j int) bool {
+		if report.Findings[i].Kind != report.Findings[j].Kind {
+			return report.Findings[i].Kind < report.Findings[j].Kind
+		}
+		if report.Findings[i].DocPath != report.Findings[j].DocPath {
+			return report.Findings[i].DocPath < report.Findings[j].DocPath
+		}
+		if report.Findings[i].Topic != report.Findings[j].Topic {
+			return report.Findings[i].Topic < report.Findings[j].Topic
+		}
+		return report.Findings[i].TaskID < report.Findings[j].TaskID
+	})
+	report.OK = len(report.Findings) == 0
+	return report, nil
 }
 
 type CILearningReport struct {
@@ -497,6 +693,118 @@ func taskIDPattern(taskIDs []string) *regexp.Regexp {
 		parts = append(parts, regexp.QuoteMeta(id))
 	}
 	return regexp.MustCompile(`\b(?:` + strings.Join(parts, "|") + `)\b`)
+}
+
+var fairwayCommandPattern = regexp.MustCompile("`(fairway [^`\\n]+)`")
+
+func fairwayCommandExamples(text string) []string {
+	seen := map[string]bool{}
+	for _, match := range fairwayCommandPattern.FindAllStringSubmatch(text, -1) {
+		command := strings.TrimSpace(match[1])
+		if command != "" {
+			seen[command] = true
+		}
+	}
+	var out []string
+	for command := range seen {
+		out = append(out, command)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func docTopics(text string) []string {
+	var topics []string
+	for _, topic := range coordinationBacklogTopics {
+		if docHasTopic(text, topic) {
+			topics = append(topics, topic.Name)
+		}
+	}
+	sort.Strings(topics)
+	return topics
+}
+
+func docHasTopic(text string, topic docsBacklogTopic) bool {
+	lower := strings.ToLower(text)
+	for _, term := range topic.Terms {
+		if strings.Contains(lower, strings.ToLower(term)) {
+			return true
+		}
+	}
+	return false
+}
+
+func unionStrings(groups ...[]string) []string {
+	seen := map[string]bool{}
+	for _, group := range groups {
+		for _, value := range group {
+			if value != "" {
+				seen[value] = true
+			}
+		}
+	}
+	var out []string
+	for value := range seen {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func hasAnyTaskID(values, candidates []string) bool {
+	seen := map[string]bool{}
+	for _, value := range values {
+		seen[value] = true
+	}
+	for _, candidate := range candidates {
+		if seen[candidate] {
+			return true
+		}
+	}
+	return false
+}
+
+func anyTaskExists(tasks map[string]store.Task, taskIDs []string) bool {
+	for _, taskID := range taskIDs {
+		if _, ok := tasks[taskID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func isCoordinationBacklogTask(taskID string) bool {
+	for _, topic := range coordinationBacklogTopics {
+		for _, candidate := range topic.TaskIDs {
+			if taskID == candidate {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func taskReferencedInDocs(taskID string, paths []string, docs []DocsBacklogDoc) bool {
+	pathSet := map[string]bool{}
+	for _, pathValue := range paths {
+		pathSet[strings.TrimSpace(filepath.ToSlash(pathValue))] = true
+	}
+	for _, doc := range docs {
+		if !pathSet[doc.Path] && !pathSet[strings.TrimSuffix(doc.Path, "/")] {
+			continue
+		}
+		for _, mentioned := range doc.MentionedTasks {
+			if mentioned == taskID {
+				return true
+			}
+		}
+		for _, covering := range doc.CoveringTasks {
+			if covering == taskID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func mentionedTaskIDs(text string, pattern *regexp.Regexp, tasks []store.Task) []string {

@@ -1820,7 +1820,7 @@ func splitRepeatedCSV(values []string) []string {
 
 func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("audit", "work-coverage|ci-learning|failure-routing|notifications")
+		subcommandUsage("audit", "work-coverage|ci-learning|failure-routing|notifications|docs-backlog")
 		return nil
 	}
 	switch args[0] {
@@ -1832,9 +1832,79 @@ func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdAuditCILearning(ctx, opts, "failure-routing", args[1:])
 	case "notifications":
 		return cmdAuditNotifications(ctx, opts, args[1:])
+	case "docs-backlog":
+		return cmdAuditDocsBacklog(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown audit subcommand %q", args[0])
 	}
+}
+
+func cmdAuditDocsBacklog(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway audit docs-backlog [--doc <path>]...")
+		fmt.Println("  Advisory coordination docs-to-backlog coverage audit; does not mutate task, review, merge, or release state.")
+		return nil
+	}
+	fs := flag.NewFlagSet("audit docs-backlog", flag.ContinueOnError)
+	var docs multiFlag
+	fs.Var(&docs, "doc", "coordination doc path to scan; repeatable")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected audit docs-backlog arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, root string, s *store.Store) error {
+		report, err := audit.BuildDocsBacklogReport(ctx, root, s, audit.DocsBacklogOptions{DocPaths: docs})
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("docs_backlog_ok: %t\n", report.OK)
+		fmt.Printf("summary: docs_scanned=%d docs_with_backlog_coverage=%d doc_only_capabilities=%d command_examples_uncovered=%d stale_completed_tasks=%d gpuaas_lessons=%d\n",
+			report.Summary.DocsScanned,
+			report.Summary.DocsWithBacklogCoverage,
+			report.Summary.DocOnlyCapabilities,
+			report.Summary.CommandExamplesUncovered,
+			report.Summary.StaleCompletedTasks,
+			report.Summary.GPUaaSLessons)
+		if len(report.Docs) > 0 {
+			fmt.Println("docs:")
+			for _, doc := range report.Docs {
+				fmt.Printf("- path=%s mentioned_tasks=%s covering_tasks=%s topics=%s commands=%d\n",
+					doc.Path,
+					firstNonEmpty(strings.Join(doc.MentionedTasks, ","), "none"),
+					firstNonEmpty(strings.Join(doc.CoveringTasks, ","), "none"),
+					firstNonEmpty(strings.Join(doc.Topics, ","), "none"),
+					len(doc.CommandExamples))
+			}
+		}
+		if len(report.Findings) == 0 {
+			fmt.Println("no docs-backlog coverage findings")
+			return nil
+		}
+		for _, finding := range report.Findings {
+			fmt.Printf("%s\t%s\tdoc=%s\ttask=%s\ttopic=%s\treason=%s\n",
+				finding.Severity,
+				finding.Kind,
+				finding.DocPath,
+				finding.TaskID,
+				finding.Topic,
+				finding.Reason)
+			if finding.Command != "" {
+				fmt.Printf("  command: %s\n", finding.Command)
+			}
+			if len(finding.Related) > 0 {
+				fmt.Printf("  related_tasks: %s\n", strings.Join(finding.Related, ", "))
+			}
+			if finding.Recommended != "" {
+				fmt.Printf("  next: %s\n", finding.Recommended)
+			}
+		}
+		return nil
+	})
 }
 
 type notificationAuditRow struct {
@@ -12786,7 +12856,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, advisory validate, usage report|cost-report, audit work-coverage|ci-learning|failure-routing|notifications, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, advisory validate, usage report|cost-report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -12831,7 +12901,7 @@ func printCommandHelp(command string) bool {
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
-		"audit":                      "fairway audit work-coverage|ci-learning|failure-routing|notifications ...\n  Run advisory coverage, CI/deploy learning, known-failure routing, and provider notification lifecycle reports.",
+		"audit":                      "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog ...\n  Run advisory coverage, CI/deploy learning, known-failure routing, provider notification lifecycle, and docs-to-backlog reports.",
 		"usage":                      "fairway usage report|cost-report [--by <provider|task|epic|role|day|kind|phase|model>]\n  Report provider-neutral usage attribution and advisory cost forecasts.",
 		"register":                   "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",
 		"unregister":                 "fairway unregister [<name>]\n  Remove a project from the local Fairway registry.",

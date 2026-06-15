@@ -126,7 +126,10 @@ to a useful v1.
    design direction into backlog tasks: first-class track memory, generic
    wait/watch records, bounded wake delivery, advisory recommendation guards,
    known-failure routing, retry packet generation, and dashboard projections for
-   parked tracks. Keep the implementation deterministic first; advisory LLMs
+   parked tracks. Use `fairway audit docs-backlog` after coordination design
+   reviews and incident retrospectives to catch design claims, command examples,
+   and consumer-specific lessons that have not been generalized into Fairway
+   backlog tasks. Keep the implementation deterministic first; advisory LLMs
    remain optional and validated.
 
 ## Discovered During GPUaaS Adoption
