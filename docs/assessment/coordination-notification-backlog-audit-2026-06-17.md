@@ -80,3 +80,27 @@ documentation/backlog governance cleanup, not a product implementation blocker.
 No GPUaaS-side task is required from this audit. DNS, Cloudflare Tunnel,
 Cloudflare Access policy, and viewer migration remain deployment-owned outside
 the Fairway repo.
+
+## FW-215 Closeout
+
+`FW-215` corrected the stale completed-task findings by:
+
+- adding implemented references for `FW-184` near status-aware
+  `review-waits wake` guidance;
+- adding implemented references for `FW-187` and `FW-188` near completion
+  handback delivery proof and closeout wait surfacing;
+- updating runtime Fairway task metadata for `FW-184`, `FW-187`, and `FW-188`
+  from missing or broad paths to exact coordination docs and command paths;
+- rerunning the docs-backlog audit with the affected task source docs included.
+
+Final audit result:
+
+- `docs_backlog_ok: true`
+- `docs_scanned=11`
+- `docs_with_backlog_coverage=11`
+- `doc_only_capabilities=0`
+- `command_examples_uncovered=0`
+- `stale_completed_tasks=0`
+
+The remaining historical consumer-project lesson mentions are intentional
+history/internal references, not new product-facing naming.

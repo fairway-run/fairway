@@ -220,6 +220,10 @@ operator to run `merge-ready` or continue closeout. Blocking stale or
 notification-failed waits likewise instruct operators to address the review
 wait before closeout.
 
+Implemented reference: `FW-184` added the status-aware resolved-wait guard so a
+blocked, in-progress, todo, or otherwise non-review-ready task does not receive
+unsafe `merge-ready` or closeout guidance just because review waits resolved.
+
 The first slice also validates static routability before ambiguous wait states:
 `fairway route review` fails when a task declares a required review domain that
 has no configured role, review route, or provider target, and

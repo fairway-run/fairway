@@ -63,6 +63,10 @@ clean Fairway task status alone is not proof that the next actor was informed.
 The handback record does not grant approval, merge, deploy, provider wake, or
 dashboard send authority.
 
+Implemented reference: `FW-187` added the durable completion handback
+notification model over existing handoff and notification rows, including
+delivery/failure proof before cross-role terminal closeout.
+
 If a completion handback becomes obsolete, record an explicit supersede marker
 instead of deleting or ignoring it:
 
@@ -96,6 +100,10 @@ notification waits to mark pending completion handbacks stale. It also projects 
 `live-window closeout` or `next-decision` checkpoint with no completion handback
 as a closeout-to-next-owner wait, so operator closeout cannot disappear into
 silent idle when the control thread was not woken.
+
+Implemented reference: `FW-188` added closeout wait surfacing for pending
+completion handbacks and live-window closeout checkpoints, including stale
+visibility based on `[coordinator].notification_ack_timeout`.
 
 `fairway coordinator tick --completion-handback-wake` is the bounded wake
 surface for these stale waits. It renders fixed prompts from the current
