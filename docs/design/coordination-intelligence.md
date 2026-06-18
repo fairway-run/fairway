@@ -184,6 +184,14 @@ fairway wait wake --send
 fairway wait ack <wait-id>
 ```
 
+`wait add` records a structured checkpoint fact rather than a separate wait
+table, including the wait deadline and deadline source used for stale
+calculation. `wait ack` records a second checkpoint that resolves the wait while
+preserving history. The wait read model projects those checkpoint facts with
+review waits, completion handbacks, live-operation phases, sessions, monitors,
+and stale track memory, so dashboards and coordinator loops keep one
+deterministic wait surface.
+
 `fairway coordinator tick --wakes` can remain the high-level entry point that
 evaluates wait records alongside review waits, completion handbacks,
 live-operation phases, CI monitors, deploy monitors, UAT monitors, and memory

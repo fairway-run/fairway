@@ -7142,13 +7142,25 @@ func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 
 func cmdWait(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("wait requires subcommand: list, tick, wake")
+		return errors.New("wait requires subcommand: add, ack, list, tick, wake")
 	}
 	if args[0] == "--help" || args[0] == "-h" {
-		subcommandUsage("wait", "list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]")
+		subcommandUsage("wait", "add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]")
 		return nil
 	}
 	switch args[0] {
+	case "add":
+		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
+			subcommandUsage("wait", "add --task <task-id> --track <track-id> --on <condition> [--kind <kind>] [--target <target>] [--deadline <time>] [--deadline-source <origin>] [--action <action>] [--reason <text>] [--suggested-command <cmd>]")
+			return nil
+		}
+		return cmdWaitAdd(ctx, opts, args[1:])
+	case "ack":
+		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
+			subcommandUsage("wait", "ack <wait-id> [--reason <text>] [--actor <role-or-track>]")
+			return nil
+		}
+		return cmdWaitAck(ctx, opts, args[1:])
 	case "list", "tick":
 		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
 			subcommandUsage("wait", args[0]+" [--task <task-id>] [--stale] [--kind <kind>]")
@@ -7162,17 +7174,218 @@ func cmdWait(ctx context.Context, opts globalOptions, args []string) error {
 	}
 }
 
+const manualWaitSummaryPrefix = "fairway_wait:"
+
 type waitRow struct {
 	WaitID           string `json:"wait_id"`
 	Kind             string `json:"kind"`
 	TaskID           string `json:"task_id,omitempty"`
+	TrackID          string `json:"track_id,omitempty"`
 	Owner            string `json:"owner,omitempty"`
+	Condition        string `json:"condition,omitempty"`
+	Target           string `json:"target,omitempty"`
 	State            string `json:"state"`
 	Action           string `json:"action"`
 	Reason           string `json:"reason"`
 	Stale            bool   `json:"stale,omitempty"`
+	CreatedAt        string `json:"created_at,omitempty"`
+	Deadline         string `json:"deadline,omitempty"`
+	DeadlineSource   string `json:"deadline_source,omitempty"`
+	StaleAge         string `json:"stale_age,omitempty"`
+	LastWakeAttempt  string `json:"last_wake_attempt_at,omitempty"`
 	Source           string `json:"source"`
 	SuggestedCommand string `json:"suggested_command,omitempty"`
+}
+
+type manualWaitPayload struct {
+	Event            string `json:"event"`
+	WaitID           string `json:"wait_id"`
+	Kind             string `json:"kind"`
+	TaskID           string `json:"task_id"`
+	TrackID          string `json:"track_id"`
+	Condition        string `json:"condition"`
+	Target           string `json:"target,omitempty"`
+	Action           string `json:"action,omitempty"`
+	Reason           string `json:"reason,omitempty"`
+	DeadlineSource   string `json:"deadline_source,omitempty"`
+	SuggestedCommand string `json:"suggested_command,omitempty"`
+	AckReason        string `json:"ack_reason,omitempty"`
+}
+
+func cmdWaitAdd(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("wait add", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	trackID := fs.String("track", "", "durable track or owner waiting on this condition")
+	kind := fs.String("kind", "generic", "wait kind")
+	condition := fs.String("on", "", "wait condition")
+	target := fs.String("target", "", "provider target, thread id, external run id, or actor this wait is waiting on")
+	deadline := fs.String("deadline", "", "deadline or expected closeout time")
+	targetCloseBy := fs.String("target-close-by", "", "alias for --deadline")
+	deadlineSource := fs.String("deadline-source", "manual", "deadline or ack timeout origin")
+	action := fs.String("action", "", "next action while wait is open")
+	reason := fs.String("reason", "", "wait reason")
+	suggestedCommand := fs.String("suggested-command", "", "suggested deterministic command")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected wait add arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	*taskID = strings.TrimSpace(*taskID)
+	*trackID = strings.TrimSpace(*trackID)
+	*kind = strings.TrimSpace(*kind)
+	*condition = strings.TrimSpace(*condition)
+	if *taskID == "" {
+		return errors.New("--task is required")
+	}
+	if *trackID == "" {
+		return errors.New("--track is required")
+	}
+	if *condition == "" {
+		return errors.New("--on is required")
+	}
+	if *kind == "" {
+		*kind = "generic"
+	}
+	deadlineValue := strings.TrimSpace(*deadline)
+	if deadlineValue == "" {
+		deadlineValue = strings.TrimSpace(*targetCloseBy)
+	}
+	if deadlineValue != "" {
+		if _, err := parseFlexibleTime(deadlineValue); err != nil {
+			return fmt.Errorf("invalid --deadline %q: %w", deadlineValue, err)
+		}
+	}
+	deadlineSourceValue := strings.TrimSpace(*deadlineSource)
+	if deadlineSourceValue == "" {
+		deadlineSourceValue = "manual"
+	}
+	waitID := manualWaitID(*taskID, *kind, *trackID, *condition)
+	payload := manualWaitPayload{
+		Event:            "add",
+		WaitID:           waitID,
+		Kind:             *kind,
+		TaskID:           *taskID,
+		TrackID:          *trackID,
+		Condition:        *condition,
+		Target:           strings.TrimSpace(*target),
+		Action:           firstNonEmpty(strings.TrimSpace(*action), "inspect_wait"),
+		Reason:           firstNonEmpty(strings.TrimSpace(*reason), "waiting on "+*condition),
+		DeadlineSource:   deadlineSourceValue,
+		SuggestedCommand: strings.TrimSpace(*suggestedCommand),
+	}
+	if payload.SuggestedCommand == "" {
+		payload.SuggestedCommand = fmt.Sprintf("fairway wait list --task %s --kind %s", payload.TaskID, payload.Kind)
+	}
+	summary, err := encodeManualWaitSummary(payload)
+	if err != nil {
+		return err
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+			TaskID:        payload.TaskID,
+			State:         "awaiting_input",
+			Owner:         payload.TrackID,
+			TargetCloseBy: deadlineValue,
+			Summary:       summary,
+		}); err != nil {
+			return err
+		}
+		row := waitRow{
+			WaitID:           payload.WaitID,
+			Kind:             payload.Kind,
+			TaskID:           payload.TaskID,
+			TrackID:          payload.TrackID,
+			Owner:            payload.TrackID,
+			Condition:        payload.Condition,
+			Target:           payload.Target,
+			State:            "open",
+			Action:           payload.Action,
+			Reason:           payload.Reason,
+			Deadline:         deadlineValue,
+			DeadlineSource:   payload.DeadlineSource,
+			Source:           "manual_wait",
+			SuggestedCommand: payload.SuggestedCommand,
+		}
+		if opts.JSON {
+			return printJSON(row)
+		}
+		fmt.Printf("wait added %s kind=%s task=%s track=%s condition=%s\n", row.WaitID, row.Kind, row.TaskID, row.TrackID, row.Condition)
+		if row.SuggestedCommand != "" {
+			fmt.Printf("suggested_command: %s\n", row.SuggestedCommand)
+		}
+		return nil
+	})
+}
+
+func cmdWaitAck(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("wait ack requires wait id")
+	}
+	waitID := strings.TrimSpace(args[0])
+	fs := flag.NewFlagSet("wait ack", flag.ContinueOnError)
+	reason := fs.String("reason", "", "acknowledgement reason")
+	actor := fs.String("actor", "", "actor recording the acknowledgement")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected wait ack arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if waitID == "" {
+		return errors.New("wait ack requires wait id")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		rows, err := projectedWaitRows(ctx, cfg, root, s, 24*time.Hour)
+		if err != nil {
+			return err
+		}
+		var row waitRow
+		for _, candidate := range rows {
+			if candidate.WaitID == waitID && candidate.Source == "manual_wait" {
+				row = candidate
+				break
+			}
+		}
+		if row.WaitID == "" {
+			return fmt.Errorf("manual wait %q not found or already acknowledged", waitID)
+		}
+		payload := manualWaitPayload{
+			Event:     "ack",
+			WaitID:    row.WaitID,
+			Kind:      row.Kind,
+			TaskID:    row.TaskID,
+			TrackID:   firstNonEmpty(strings.TrimSpace(*actor), row.TrackID, row.Owner),
+			Condition: row.Condition,
+			Target:    row.Target,
+			AckReason: strings.TrimSpace(*reason),
+		}
+		if payload.AckReason == "" {
+			payload.AckReason = "acknowledged"
+		}
+		summary, err := encodeManualWaitSummary(payload)
+		if err != nil {
+			return err
+		}
+		if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+			TaskID:  row.TaskID,
+			State:   "done",
+			Owner:   payload.TrackID,
+			Summary: summary,
+		}); err != nil {
+			return err
+		}
+		row.State = "acknowledged"
+		row.Action = "none"
+		row.Reason = payload.AckReason
+		row.Stale = false
+		row.StaleAge = ""
+		if opts.JSON {
+			return printJSON(row)
+		}
+		fmt.Printf("wait acknowledged %s task=%s track=%s reason=%s\n", row.WaitID, row.TaskID, firstNonEmpty(payload.TrackID, "none"), payload.AckReason)
+		return nil
+	})
 }
 
 func cmdWaitList(ctx context.Context, opts globalOptions, args []string, tick bool) error {
@@ -7219,8 +7432,28 @@ func cmdWaitList(ctx context.Context, opts globalOptions, args []string, tick bo
 			if row.Stale {
 				stale = " stale=true"
 			}
-			fmt.Printf("- %s kind=%s task=%s state=%s owner=%s action=%s%s reason=%s\n",
-				row.WaitID, row.Kind, firstNonEmpty(row.TaskID, "none"), row.State, firstNonEmpty(row.Owner, "none"), row.Action, stale, row.Reason)
+			target := ""
+			if row.Target != "" {
+				target = " target=" + row.Target
+			}
+			deadline := ""
+			if row.Deadline != "" {
+				deadline = " deadline=" + row.Deadline
+			}
+			deadlineSource := ""
+			if row.DeadlineSource != "" {
+				deadlineSource = " deadline_source=" + row.DeadlineSource
+			}
+			staleAge := ""
+			if row.StaleAge != "" {
+				staleAge = " stale_age=" + row.StaleAge
+			}
+			lastWake := ""
+			if row.LastWakeAttempt != "" {
+				lastWake = " last_wake_attempt=" + row.LastWakeAttempt
+			}
+			fmt.Printf("- %s kind=%s task=%s state=%s owner=%s action=%s source=%s%s%s%s%s%s%s reason=%s\n",
+				row.WaitID, row.Kind, firstNonEmpty(row.TaskID, "none"), row.State, firstNonEmpty(row.Owner, "none"), row.Action, firstNonEmpty(row.Source, "unknown"), target, deadline, deadlineSource, stale, staleAge, lastWake, row.Reason)
 			if row.SuggestedCommand != "" {
 				fmt.Printf("  suggested_command: %s\n", row.SuggestedCommand)
 			}
@@ -7376,6 +7609,15 @@ func projectedWaitRows(ctx context.Context, cfg config.Config, root string, s *s
 		return nil, err
 	}
 	rows = append(rows, waitRowsFromTrackMemory(memories, staleMemoryAfter)...)
+	checkpoints, err := s.Checkpoints(ctx, "", true)
+	if err != nil {
+		return nil, err
+	}
+	notifications, err := s.Notifications(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	rows = append(rows, waitRowsFromManualCheckpoints(checkpoints, notifications)...)
 	return dedupeWaitRows(rows), nil
 }
 
@@ -7640,6 +7882,162 @@ func waitRowsFromTrackMemory(memories []store.TrackMemory, staleAfter time.Durat
 		})
 	}
 	return rows
+}
+
+func waitRowsFromManualCheckpoints(checkpoints []store.Checkpoint, notifications []store.Notification) []waitRow {
+	type manualWaitState struct {
+		payload    manualWaitPayload
+		checkpoint store.Checkpoint
+		acked      bool
+		ackAt      string
+	}
+	states := map[string]manualWaitState{}
+	for i := len(checkpoints) - 1; i >= 0; i-- {
+		cp := checkpoints[i]
+		payload, ok := parseManualWaitSummary(cp.Summary)
+		if !ok || payload.WaitID == "" {
+			continue
+		}
+		current := states[payload.WaitID]
+		switch payload.Event {
+		case "ack":
+			current.acked = true
+			current.ackAt = cp.CreatedAt
+			if current.payload.WaitID == "" {
+				current.payload = payload
+				current.checkpoint = cp
+			}
+		case "add":
+			current.payload = payload
+			current.checkpoint = cp
+			current.acked = false
+			current.ackAt = ""
+		}
+		states[payload.WaitID] = current
+	}
+	lastWake := lastGenericWaitWakeAttempts(notifications)
+	now := time.Now().UTC()
+	rows := make([]waitRow, 0, len(states))
+	for _, state := range states {
+		if state.acked || state.payload.WaitID == "" {
+			continue
+		}
+		payload := state.payload
+		row := waitRow{
+			WaitID:           payload.WaitID,
+			Kind:             payload.Kind,
+			TaskID:           payload.TaskID,
+			TrackID:          payload.TrackID,
+			Owner:            payload.TrackID,
+			Condition:        payload.Condition,
+			Target:           payload.Target,
+			State:            "open",
+			Action:           firstNonEmpty(payload.Action, "inspect_wait"),
+			Reason:           firstNonEmpty(payload.Reason, "waiting on "+payload.Condition),
+			CreatedAt:        state.checkpoint.CreatedAt,
+			Deadline:         state.checkpoint.TargetCloseBy,
+			DeadlineSource:   firstNonEmpty(payload.DeadlineSource, "manual"),
+			Source:           "manual_wait",
+			SuggestedCommand: firstNonEmpty(payload.SuggestedCommand, fmt.Sprintf("fairway wait list --task %s --kind %s", payload.TaskID, payload.Kind)),
+			LastWakeAttempt:  lastWake[payload.WaitID],
+		}
+		if row.Kind == "" {
+			row.Kind = "generic"
+		}
+		if row.Deadline != "" {
+			if deadline, err := parseFlexibleTime(row.Deadline); err == nil && now.After(deadline) {
+				row.State = "stale"
+				row.Stale = true
+				row.StaleAge = roundDuration(now.Sub(deadline)).String()
+				if row.Action == "inspect_wait" {
+					row.Action = "wake_or_ack_wait"
+				}
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func lastGenericWaitWakeAttempts(notifications []store.Notification) map[string]string {
+	out := map[string]string{}
+	for _, notification := range notifications {
+		if notification.Domain != "coordinator" || !strings.Contains(notification.Reason, "generic_wait_wake") {
+			continue
+		}
+		waitID := notificationReasonField(notification.Reason, "wait_id")
+		if waitID == "" {
+			continue
+		}
+		if out[waitID] == "" || notification.CreatedAt > out[waitID] {
+			out[waitID] = notification.CreatedAt
+		}
+	}
+	return out
+}
+
+func notificationReasonField(reason, field string) string {
+	prefix := field + "="
+	for _, token := range strings.Fields(reason) {
+		if strings.HasPrefix(token, prefix) {
+			return strings.TrimPrefix(token, prefix)
+		}
+	}
+	return ""
+}
+
+func manualWaitID(taskID, kind, trackID, condition string) string {
+	parts := []string{"manual", taskID, kind, trackID, condition}
+	for i := range parts {
+		parts[i] = slugToken(parts[i])
+	}
+	return strings.Join(parts, ":")
+}
+
+func slugToken(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "none"
+	}
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
+		if ok {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "none"
+	}
+	return out
+}
+
+func encodeManualWaitSummary(payload manualWaitPayload) (string, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return manualWaitSummaryPrefix + string(data), nil
+}
+
+func parseManualWaitSummary(summary string) (manualWaitPayload, bool) {
+	summary = strings.TrimSpace(summary)
+	if !strings.HasPrefix(summary, manualWaitSummaryPrefix) {
+		return manualWaitPayload{}, false
+	}
+	var payload manualWaitPayload
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(summary, manualWaitSummaryPrefix)), &payload); err != nil {
+		return manualWaitPayload{}, false
+	}
+	return payload, true
 }
 
 func waitKindFromAction(action coord.PlanAction) string {
@@ -13089,7 +13487,7 @@ func printCommandHelp(command string) bool {
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale] | fairway live-window retry-budget record|status ...\n  Record and inspect repeated live-operation handshake phases and retry budgets via task checkpoints.",
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
-		"wait":                       "fairway wait list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Project generic parked-work waits from existing Fairway facts and emit bounded wake prompts.",
+		"wait":                       "fairway wait add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, acknowledge them, project wait state, and emit bounded wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

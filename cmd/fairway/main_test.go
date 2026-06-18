@@ -150,7 +150,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"memory", "--help"}, "fairway memory show|update|append|packet|stale"},
 		{[]string{"memory", "show", "--help"}, "fairway memory show [--track <track-id>]"},
 		{[]string{"memory", "packet", "--help"}, "fairway memory packet --track <track-id>"},
-		{[]string{"wait", "--help"}, "fairway wait list|tick|wake"},
+		{[]string{"wait", "--help"}, "fairway wait add|ack|list|tick|wake"},
+		{[]string{"wait", "add", "--help"}, "fairway wait add --task <task-id> --track <track-id> --on <condition>"},
+		{[]string{"wait", "ack", "--help"}, "fairway wait ack <wait-id>"},
 		{[]string{"wait", "list", "--help"}, "fairway wait list [--task <task-id>]"},
 		{[]string{"wait", "tick", "--help"}, "fairway wait tick [--task <task-id>]"},
 		{[]string{"wait", "wake", "--help"}, "fairway wait wake [--task <task-id>]"},
@@ -2755,6 +2757,71 @@ func TestCLI_GenericWaitListAndTick(t *testing.T) {
 	jsonWaits := runCapture(t, "--json", "wait", "list", "--task", "T-001")
 	assertContains(t, jsonWaits, `"kind": "approval"`)
 	assertContains(t, jsonWaits, `"source": "coordinator_plan"`)
+}
+
+func TestCLI_GenericWaitAddAndAck(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Operator handoff", "--role", "backend")
+
+	added := runCapture(t, "wait", "add",
+		"--task", "T-001",
+		"--track", "architecture-control",
+		"--kind", "live_window",
+		"--on", "operator closeout",
+		"--target", "thread-operator",
+		"--deadline", "2000-01-01",
+		"--deadline-source", "manual-live-window",
+		"--action", "collect_closeout",
+		"--reason", "operator must report final state before next decision",
+		"--suggested-command", "fairway live-window control-room --task T-001",
+	)
+	waitID := "manual:t-001:live_window:architecture-control:operator-closeout"
+	assertContains(t, added, "wait added "+waitID)
+	assertContains(t, added, "suggested_command: fairway live-window control-room --task T-001")
+
+	runOK(t, "record", "notification", "T-001",
+		"--domain", "coordinator",
+		"--state", "sent",
+		"--reason", "generic_wait_wake signature=test kind=live_window wait_id="+waitID,
+	)
+
+	waits := runCapture(t, "wait", "list", "--task", "T-001", "--kind", "live_window")
+	assertContains(t, waits, waitID)
+	assertContains(t, waits, "source")
+	assertContains(t, waits, "target=thread-operator")
+	assertContains(t, waits, "deadline=2000-01-01")
+	assertContains(t, waits, "deadline_source=manual-live-window")
+	assertContains(t, waits, "stale=true")
+	assertContains(t, waits, "stale_age=")
+	assertContains(t, waits, "last_wake_attempt=")
+	assertContains(t, waits, "operator must report final state")
+
+	jsonWaits := runCapture(t, "--json", "wait", "list", "--task", "T-001", "--kind", "live_window")
+	assertContains(t, jsonWaits, `"source": "manual_wait"`)
+	assertContains(t, jsonWaits, `"condition": "operator closeout"`)
+	assertContains(t, jsonWaits, `"deadline_source": "manual-live-window"`)
+	assertContains(t, jsonWaits, `"last_wake_attempt_at":`)
+
+	ack := runCapture(t, "wait", "ack", waitID, "--actor", "architecture-control", "--reason", "operator closeout received")
+	assertContains(t, ack, "wait acknowledged "+waitID)
+	assertContains(t, ack, "operator closeout received")
+
+	afterAck := runCapture(t, "wait", "list", "--task", "T-001", "--kind", "live_window")
+	assertContains(t, afterAck, "waits:")
+	assertContains(t, afterAck, "- none")
+
+	checkpoints := runCapture(t, "checkpoint", "status", "--all")
+	assertContains(t, checkpoints, "fairway_wait:")
 }
 
 func TestCLI_GenericWaitWakeDelivery(t *testing.T) {

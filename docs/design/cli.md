@@ -90,6 +90,8 @@ fairway memory update --track <track-id> [--title <text>] [--purpose <text>] [--
 fairway memory append --track <track-id> [fields]
 fairway memory packet --track <track-id> [--for <provider-or-surface>]
 fairway memory stale [--older-than <duration>]
+fairway wait add --task <task-id> --track <track-id> --on <condition> [--kind <kind>] [--target <target>] [--deadline <time>] [--deadline-source <origin>] [--action <action>] [--reason <text>] [--suggested-command <cmd>]
+fairway wait ack <wait-id> [--reason <text>] [--actor <role-or-track>]
 fairway wait list [--task <task-id>] [--stale] [--kind <kind>]
 fairway wait tick [--task <task-id>] [--stale] [--kind <kind>]
 fairway wait wake [--task <task-id>] [--kind <kind>] [--send]
@@ -250,10 +252,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   database state. `memory packet` renders a compact packet from the memory row
   plus current Fairway tasks, sessions, and checkpoints so new provider
   attachments can resume without polling chat.
-- `wait list|tick|wake` projects generic parked-work waits from existing Fairway
-  facts, including review waits, completion handbacks, provider/session and
-  checkpoint plan actions, live-window handoffs, monitor actions, approvals,
-  and stale track memory. `wait tick` is a dry-run/operator visibility surface.
+- `wait add|ack|list|tick|wake` manages generic parked-work waits while keeping
+  Fairway as the state source of truth. `wait add` records a structured
+  checkpoint fact for parked work such as repeated handoffs, live-window
+  closeout, non-review actor waits, or external control-loop waits. The wait
+  checkpoint preserves the configured deadline and `deadline_source` so stale
+  output explains the ack-timeout origin. `wait ack` records an acknowledgement
+  checkpoint without deleting history. `wait list|tick|wake` projects those
+  durable wait checkpoints together with review waits, completion handbacks,
+  provider/session and checkpoint plan actions, live-window handoffs, monitor
+  actions, approvals, and stale track memory. `wait tick` is a dry-run/operator
+  visibility surface.
   `wait wake` renders fixed-template wake prompts for stale or failed
   task-backed waits and, with `--send`, records bounded delivery or
   `notification_failed` evidence through existing task notification rows with a
