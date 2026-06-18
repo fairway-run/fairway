@@ -7,10 +7,29 @@ and uses semantic versioning.
 
 ## Unreleased
 
+## v0.1.7
+
 ### Added
 
-- GitHub release highlights now come from `docs/release-highlights.md` and are
-  prepended to GoReleaser's generated changelog for v0.1.6 and later.
+- Durable generic wait commands: `fairway wait add` records parked work,
+  repeated handoffs, live-window waits, and non-review waits through existing
+  checkpoint-backed wait projection, and `fairway wait ack` records explicit
+  acknowledgement without deleting history.
+- Advisory provider adapter configuration with read-only listing and validation
+  surfaces, keeping provider output non-authoritative and outside approval,
+  merge, deploy, wake, or provider-private data authority.
+- Dry-run external notifier configuration and `fairway notify dry-run` support
+  for fixed-template notification previews without Slack/email/Teams hard
+  dependencies or dashboard send authority.
+- Trusted proxy identity verification design for future Cloudflare Access or
+  identity-aware proxy verification, documented as a model only with runtime
+  verifier middleware split to a later security task.
+
+### Changed
+
+- Docs clarify that external notifier intent records store template/mode
+  metadata only, not arbitrary wake prompts, transcripts, raw tool bodies,
+  generated content, auth tokens, or provider-private data.
 
 ## v0.1.5
 

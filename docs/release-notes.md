@@ -10,6 +10,41 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.1.7
+
+### What Changed
+
+- `fairway wait add` and `fairway wait ack` provide durable generic wait
+  commands for parked work, repeated handoffs, live-window waits, and
+  non-review waits. The implementation projects from existing checkpoint-backed
+  wait state and does not add a parallel wait store.
+- Advisory provider adapters can now be declared in config and inspected with
+  Fairway CLI surfaces. Adapter output remains advisory only: it cannot approve,
+  claim, merge, push, deploy, wake providers, mutate environments, or store
+  prompts, transcripts, raw tool bodies, generated content, auth tokens, or
+  provider-private data.
+- External notifier configuration now has a dry-run/logging interface using
+  fixed templates. This release does not add Slack, email, Teams, dashboard send
+  authority, user subscriptions, or approval/merge/deploy authority.
+- Trusted proxy identity verification is documented as a dashboard-security
+  model for future Cloudflare Access or identity-aware proxy verification.
+  Runtime verifier middleware/config is intentionally not implemented in this
+  release and remains split to a later high-risk security task.
+
+### Release Checklist
+
+- `go test ./...` passes.
+- `go vet ./...` passes.
+- Docusaurus portal builds from `website/`.
+- `goreleaser check` passes.
+- `fairway config validate` passes.
+- `fairway workflow check --mode deploy --require-clean --require-pushed`
+  passes before tagging.
+- `fairway release verify` confirms the public GitHub release, asset URLs,
+  Homebrew cask version, tap commit, and `brew fetch` result.
+- GPUaaS read-only and local full-access dashboards are restarted with the
+  released `v0.1.7` binary and dashboard status/version readback is recorded.
+
 ## v0.1.5
 
 ### What Changed
