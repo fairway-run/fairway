@@ -42,6 +42,8 @@ and put Cloudflare Access, Tailscale, an internal reverse proxy, or another
 trusted access layer in front of it. See
 [dashboard-sharing.md](dashboard-sharing.md) for the Cloudflare Tunnel +
 Cloudflare Access One-Time PIN reference pattern and trust-boundary warnings.
+For Core42 hostname normalization and compatibility planning, see
+[dashboard-share-hostname-release.md](dashboard-share-hostname-release.md).
 
 ## Flow
 

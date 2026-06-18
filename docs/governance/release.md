@@ -417,6 +417,27 @@ production-ready:
 Cloudflare setup belongs to its own tracked task because it includes domain,
 token, static-site, and public-content boundary decisions.
 
+## Shared dashboard hostname updates
+
+Shared read-only dashboard hostnames are deployment-owned. A Core42 deployment
+may use a neutral hostname such as `fairway.aicloud.core42.dev` or
+`aicloud-fairway.core42.dev`, while temporarily keeping an older consumer-named
+hostname such as `fairway-gpuaas.core42.dev` as a compatibility alias.
+
+Changing that hostname does not require a GoReleaser or Homebrew cask change as
+long as Fairway does not embed the public dashboard URL in the binary,
+archives, cask metadata, or generated release assets. Treat it as a
+docs/deployment release note item:
+
+- verify the new DNS, tunnel, and Access policy in the deployment-owned task;
+- update Fairway docs to prefer the neutral hostname;
+- keep the old hostname until replacement reachability and viewer communication
+  are recorded;
+- mention the neutral reference hostname in release notes only after the
+  deployment owner is ready to advertise it.
+
+See [Dashboard Share Hostname Release Plan](../design/dashboard-share-hostname-release.md).
+
 ## Pre-1.0 distribution
 
 - Homebrew cask for tagged releases:

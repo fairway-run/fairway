@@ -25,6 +25,16 @@ The user or project owns:
 `fairway.core42.dev` is only an example user/project hostname. It is not a
 Fairway product default.
 
+For the current Core42 AI Cloud dashboard-share naming work, prefer an
+AI Cloud-aligned Fairway hostname such as `fairway.aicloud.core42.dev` when the
+`aicloud.core42.dev` subdomain can be managed by the deployment owner. If that
+subdomain is not available, use a concrete neutral fallback such as
+`aicloud-fairway.core42.dev` in the existing zone. Keep any historical
+consumer-specific hostname, such as `fairway-gpuaas.core42.dev`, as a temporary
+compatibility alias until the new hostname has passing DNS, tunnel, and
+Access-policy evidence. See
+[Dashboard Share Hostname Release Plan](dashboard-share-hostname-release.md).
+
 ## Reference Config
 
 Bind the Fairway origin to localhost and enable read-only mode:
@@ -108,3 +118,6 @@ When sharing is no longer needed:
 5. Rotate any exposed local operational notes if they included sensitive
    deployment details.
 
+When retiring a compatibility hostname, also record the replacement hostname,
+viewer communication, DNS/Access evidence, and rollback plan in Fairway before
+removing the old route.

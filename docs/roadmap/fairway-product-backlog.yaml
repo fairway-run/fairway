@@ -3285,3 +3285,101 @@ tasks:
       - "Coordinator plan can recommend creating a scoped automation task when repeated work exceeds threshold, but it does not auto-create tasks or mutate workflow without explicit configured policy."
       - "Dashboard or CLI exposes candidates read-only, for example `fairway automation candidates --since <duration> --format text|json`."
       - "Tests cover repeated command detection, repeated review/notification loops, false positives for intentionally manual approvals, threshold configuration, and read-only dashboard/CLI projection."
+
+  - id: FW-212
+    title: Normalize public dashboard share hostname plan
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-sharing
+    source_paths:
+      - docs/design/dashboard-sharing.md
+      - docs/design/dashboard.md
+      - docs/governance/release.md
+      - docs/config-reference.md
+      - README.md
+    target_paths:
+      - docs/design/dashboard-sharing.md
+      - docs/design/dashboard-share-hostname-release.md
+      - docs/design/dashboard.md
+      - docs/governance/release.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - governance
+      - ops
+    risk_level: low
+    migration_type: dashboard-share-hostname-normalization
+    acceptance_checks:
+      - "Fairway docs recommend an AI Cloud-aligned dashboard share hostname and explicitly avoid making legacy consumer-specific hostnames the Fairway product default."
+      - "The plan assesses `fairway.aicloud.core42.dev` first, names `aicloud-fairway.core42.dev` or another concrete fallback when subdomain delegation is not available, and records the reason."
+      - "Docs define a compatibility/deprecation plan for existing `fairway-gpuaas.core42.dev` viewers without making the older name the product-facing default or breaking current access during migration."
+      - "Release/distribution notes state whether Homebrew, GoReleaser, binary packaging, or dashboard command surfaces need changes for the hostname update."
+      - "Trust boundaries remain explicit: dashboard sharing stays read-only, Fairway does not own the Cloudflare account or Access policy, and no dashboard send/write authority is added."
+      - "Validation covers markdown/backlog syntax and a read-only DNS observation or documented blocker for current hostname viability."
+
+  - id: FW-213
+    title: Add dashboard share release update checklist
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release-distribution
+    source_paths:
+      - docs/design/dashboard-share-hostname-release.md
+      - docs/governance/release.md
+      - docs/release-notes.md
+      - .goreleaser.yaml
+      - README.md
+    target_paths:
+      - docs/governance/release.md
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - .goreleaser.yaml
+      - README.md
+    review_domains:
+      - governance
+      - ops
+    risk_level: low
+    migration_type: dashboard-share-release-update
+    depends_on:
+      - FW-212
+    acceptance_checks:
+      - "Release checklist includes the public dashboard/share hostname transition and confirms whether docs-only release notes are sufficient."
+      - "Homebrew and GoReleaser are explicitly reviewed for hostname coupling; if no packaging change is required, evidence records the negative finding."
+      - "Release notes or highlights mention the Fairway-neutral dashboard sharing reference when appropriate for the next public release."
+      - "Compatibility expectations for `fairway-gpuaas.core42.dev` are included in the release handoff or intentionally deferred to a deployment-owner task."
+
+  - id: FW-214
+    title: Audit coordination notification backlog gaps after dashboard share update
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: backlog-governance
+    source_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/live-operation-control-room.md
+      - docs/design/dashboard-sharing.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - docs/roadmap/fairway-product-backlog.yaml
+      - docs/design/coordination-intelligence.md
+      - docs/design/coordinator-loop.md
+      - docs/design/provider-notifications.md
+    review_domains:
+      - governance
+      - ops
+      - backend
+    risk_level: low
+    migration_type: notification-coordination-backlog-gap-audit
+    depends_on:
+      - FW-212
+    acceptance_checks:
+      - "A fresh scan of review-wait notifications, provider notifications, coordinator loop, live-operation control-room, and coordination-intelligence docs identifies remaining Fairway product gaps not already represented by FW-179 through FW-214."
+      - "Any missing Fairway-owned gap is added as a scoped backlog task with source paths, target paths, owner role, review domains, risk, and acceptance checks."
+      - "GPUaaS-specific deployment or incident details remain in consumer-owned tasks unless a reusable Fairway product primitive is missing."
+      - "Audit evidence records the scan commands and explicitly states whether no new backlog tasks were needed."
