@@ -1,3 +1,3 @@
 - Agent cold-start now leaves a local Fairway breadcrumb and offline guide so agents can discover the coordination contract from consumer repos.
 - Release verification and GitHub workflow posture are tighter for Homebrew version checks and Node 24-capable Actions.
-- Rule, readiness, and review handback guardrails continue to harden Fairway as the governed agentic engineering control plane.
+- Shared read-only dashboard guidance now includes AI Cloud-aligned hostname planning without adding dashboard write or send authority.

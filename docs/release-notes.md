@@ -44,6 +44,14 @@ must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
 ## Unreleased
 
+### Dashboard Sharing
+
+- Shared read-only dashboard guidance now uses AI Cloud-aligned hostname
+  planning for Core42 deployments, with a documented compatibility window for
+  older consumer-specific routes and an explicit note that the hostname update
+  does not require GoReleaser or Homebrew changes unless a future package embeds
+  a public dashboard URL.
+
 ### Release Process
 
 - GitHub Releases for v0.1.6 and later use
