@@ -169,7 +169,7 @@ levels = [
 | `listen` | string | `127.0.0.1:7878` | HTTP listen address. Bind to `127.0.0.1` unless you understand the auth implications. |
 | `auto_open` | bool | `true` | Open the system browser when `fairway dashboard` starts. |
 | `read_only` | bool | `false` | Disable dashboard mutation endpoints and hide mutation controls. Use for shared dashboard views behind an identity-aware proxy. |
-| `trusted_proxy` | string | `none` | Deployment note for trusted proxy mode. Supported values: `none`, `cloudflare_access`, `identity_aware_proxy`. Fairway does not trust identity headers unless the origin is exclusively reachable through that proxy and JWT/header verification is handled. |
+| `trusted_proxy` | string | `none` | Deployment note for trusted proxy mode. Supported values: `none`, `cloudflare_access`, `identity_aware_proxy`. Fairway does not trust identity headers unless the origin is exclusively reachable through that proxy and JWT/header verification is handled. See [Trusted Proxy Identity Verification](design/trusted-proxy-identity-verification.md) for the planned verifier model. |
 
 Fairway has one dashboard. `/` serves the wall view, `/board` serves the
 operator board, `/board?tab=diagnostics` serves diagnostics, `/reports` serves

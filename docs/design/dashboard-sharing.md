@@ -51,6 +51,8 @@ trusted_proxy = "cloudflare_access"
 docs. This slice does not verify Cloudflare Access JWTs in core Fairway. Treat
 identity headers as advisory unless the origin is reachable exclusively through
 the trusted tunnel and JWT verification has been added or performed upstream.
+The planned Fairway-side verifier model is defined in
+[Trusted Proxy Identity Verification](trusted-proxy-identity-verification.md).
 
 ## Cloudflare Access Reference Pattern
 
@@ -97,7 +99,8 @@ Before trusting identity headers for authorization beyond local/dev sharing,
 verify Cloudflare Access JWTs or perform authorization in a trusted upstream
 proxy. Fairway shared mode currently blocks writes rather than authorizing them.
 Future write access must be an explicit opt-in with authorization and audit
-requirements.
+requirements. Until the verifier model is implemented, dashboard identity
+display remains advisory and read-only.
 
 ## Audit And Logging
 
