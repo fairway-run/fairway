@@ -1,3 +1,3 @@
-- Agent cold-start now leaves a local Fairway breadcrumb and offline guide so agents can discover the coordination contract from consumer repos.
-- Release verification and GitHub workflow posture are tighter for Homebrew version checks and Node 24-capable Actions.
-- Shared read-only dashboard guidance now includes AI Cloud-aligned hostname planning without adding dashboard write or send authority.
+- Fairway now makes review waits, completion handbacks, repeated live windows, and live-operation control-room handoffs visible as durable coordination state instead of provider chat memory.
+- Coordination-intelligence guidance now covers track memory packets, parked-track waits, bounded wakes, retry packets, risk-scaled reviews, delivery/process-overhead reporting, and automation-candidate detection.
+- Shared read-only dashboard guidance now includes AI Cloud-aligned hostname planning and release-prep boundaries without adding dashboard write or send authority.

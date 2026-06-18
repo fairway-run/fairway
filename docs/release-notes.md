@@ -44,6 +44,37 @@ must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
 ## Unreleased
 
+### Coordination And Notification Control
+
+- Review waits, completion handbacks, repeated live-window phases, and
+  live-operation control-room handoffs are now treated as Fairway-owned
+  coordination state instead of chat-only memory. Coordinator and dashboard
+  surfaces can show the current wait, next actor, deadline, authorization
+  state, stale age, and suggested command without giving the read-only dashboard
+  send, approval, merge, deploy, or execution authority.
+- Review-wait wake guidance is status-aware. A resolved review wait no longer
+  implies task-level merge readiness when the task itself remains blocked,
+  in-progress, or otherwise outside the merge-ready path.
+- Bounded active evidence capture is documented and guarded so approved live
+  operations can attach gate/runtime evidence while active without being
+  mistaken for abandoned work, while stale, sessionless, or unbounded active
+  work remains visible to reconciliation.
+
+### Coordination Intelligence
+
+- Coordination-intelligence docs and backlog now cover track memory packets,
+  generic parked-track waits, bounded wake delivery, known-failure routing,
+  retry packets, advisory recommendation guards, dashboard projections,
+  risk-scaled review profiles, delivery/process-overhead reporting, repeated
+  work automation candidates, and durable follow-up tasks for provider
+  notification lifecycle, routability, retry policy, and backlog coverage.
+- Process guidance now favors evidence and tests for small bounded Fairway
+  slices, grouped review before release or authority-boundary changes, and
+  measurable process rules that improve speed, quality, or safety.
+- Memory-only completion and design-backlog cleanup has been reconciled into
+  durable Fairway task records and assessment artifacts so release notes do not
+  depend on provider chat history.
+
 ### Dashboard Sharing
 
 - Shared read-only dashboard guidance now uses AI Cloud-aligned hostname
@@ -60,6 +91,11 @@ must preserve the rules in [Product boundaries](design/product-boundaries.md).
 - Release owners update the highlights from the current release notes,
   changelog, and release-run assessment, then get governance wording approval
   and ops workflow approval before tagging.
+- Release preparation, dashboard lifecycle/version readback, and release
+  publish are tracked as separate Fairway tasks. A release is not considered
+  published until the tagged binary artifacts, documentation release content,
+  dashboard restart/readback evidence, and Homebrew/GitHub verification are
+  recorded under the publish task.
 
 ## v0.1.4
 

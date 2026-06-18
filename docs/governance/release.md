@@ -33,6 +33,26 @@ Semver. Pre-1.0 means breaking changes are allowed in minor versions; document t
   GoReleaser prepends it to the generated changelog under `## Highlights`.
   Generated changelog detail remains below `## Changelog`.
 
+## Release preparation split
+
+Fairway release work is split into separate tracked tasks so preparation,
+dashboard lifecycle validation, and publishing do not blur together:
+
+- Release preparation updates release notes, highlights, distribution posture,
+  and the release-readiness assessment. It may name the candidate version and
+  source SHA, but it does not tag, publish, restart dashboards, or declare the
+  release complete.
+- Dashboard lifecycle/version-readback work verifies the restart commands and
+  status/version surfaces operators need before a shared dashboard is restarted
+  with a newly built binary.
+- Release publishing cuts the reviewed tag, builds and smoke-verifies
+  artifacts, publishes or stages documentation release content, restarts the
+  configured dashboards when authorized, and records version/readback evidence.
+
+Use this split for release tasks such as FW-218, FW-219, and FW-220. A clean
+release-prep assessment is evidence for publish readiness, not a substitute for
+the publish task.
+
 ## goreleaser
 
 - Config at `.goreleaser.yaml`.
