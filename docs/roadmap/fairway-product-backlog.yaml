@@ -3383,3 +3383,36 @@ tasks:
       - "Any missing Fairway-owned gap is added as a scoped backlog task with source paths, target paths, owner role, review domains, risk, and acceptance checks."
       - "GPUaaS-specific deployment or incident details remain in consumer-owned tasks unless a reusable Fairway product primitive is missing."
       - "Audit evidence records the scan commands and explicitly states whether no new backlog tasks were needed."
+
+  - id: FW-215
+    title: Reconcile stale completed coordination doc references
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: backlog-governance
+    source_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/live-operation-control-room.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/live-operation-control-room.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - governance
+      - backend
+    risk_level: low
+    migration_type: stale-coordination-doc-reference-cleanup
+    depends_on:
+      - FW-214
+    acceptance_checks:
+      - "The docs-backlog audit stale completed-task findings for FW-181, FW-184, FW-187, and FW-188 are reconciled by updating the relevant coordination docs with implemented command/report names or by correcting stale task path metadata."
+      - "The cleanup remains documentation/backlog governance only and does not change review, notification, dashboard, provider-send, merge, deploy, or release authority."
+      - "Validation reruns `fairway audit docs-backlog` for the affected coordination docs and records whether stale completed-task findings were removed or intentionally retained with rationale."
