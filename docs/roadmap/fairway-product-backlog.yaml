@@ -3416,3 +3416,173 @@ tasks:
       - "The docs-backlog audit stale completed-task findings for FW-181, FW-184, FW-187, and FW-188 are reconciled by updating the relevant coordination docs with implemented command/report names or by correcting stale task path metadata."
       - "The cleanup remains documentation/backlog governance only and does not change review, notification, dashboard, provider-send, merge, deploy, or release authority."
       - "Validation reruns `fairway audit docs-backlog` for the affected coordination docs and records whether stale completed-task findings were removed or intentionally retained with rationale."
+
+  - id: FW-216
+    title: Reconcile memory-only Fairway product completions into task records
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: backlog-governance
+    source_paths:
+      - tmp-ux/fairway-product-working-memory-2026-06-10.md
+      - tmp-ux/fairway-product-working-memory-2026-06-11-fw178.md
+      - tmp-ux/fairway-public-dashboard-release-memory-2026-06-17.md
+      - tmp-ux/fairway-coordination-intelligence-2026-06-13.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - docs/roadmap/fairway-product-backlog.yaml
+      - docs/design
+      - tmp-ux
+    review_domains:
+      - governance
+      - ops
+    risk_level: low
+    migration_type: memory-only-completion-reconciliation
+    depends_on:
+      - FW-215
+    acceptance_checks:
+      - "Fairway memory files are scanned for completed implementation, docs, release, dashboard, notification, and coordination work that lacks a durable task or done closeout record."
+      - "Substantial completed batches are represented as grouped task handles with evidence instead of remaining only in memory files."
+      - "The reconciliation explicitly distinguishes completed work, open product gaps, and consumer-specific GPUaaS dogfooding requests."
+      - "Evidence records scan commands, created/closed task handles, and lessons for preventing memory-only closeout."
+
+  - id: FW-217
+    title: Backfill detailed design backlog from coordination-intelligence docs
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: design-backlog
+    source_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/design/coordinator-loop.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/live-operation-control-room.md
+      - docs/design/dashboard-sharing.md
+      - tmp-ux/fairway-coordination-intelligence-2026-06-13.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - docs/roadmap/fairway-product-backlog.yaml
+      - docs/design/coordination-intelligence.md
+      - docs/design/coordinator-loop.md
+      - docs/design/provider-notifications.md
+      - docs/design/review-wait-notification-model.md
+      - docs/design/live-operation-control-room.md
+    review_domains:
+      - architecture
+      - governance
+      - backend
+    risk_level: medium
+    migration_type: detailed-design-backlog-backfill
+    depends_on:
+      - FW-216
+    acceptance_checks:
+      - "Every reusable Fairway product capability described in the coordination-intelligence, review-wait, provider-notification, coordinator-loop, and live-operation-control-room docs maps to an existing task or a newly added scoped backlog task."
+      - "Backlog rows include owner role, layer, source paths, target paths, risk, review domains, and concrete acceptance checks."
+      - "GPUaaS-specific process lessons are converted into reusable Fairway primitives only when the need is product-general."
+      - "A docs-backlog audit passes for the scanned docs or records exact residual blockers."
+
+  - id: FW-218
+    title: Prepare Fairway release after coordination cleanup
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release-distribution
+    source_paths:
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - docs/governance/release.md
+      - .goreleaser.yaml
+      - README.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    target_paths:
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - docs/governance/release.md
+      - .goreleaser.yaml
+      - README.md
+    review_domains:
+      - ops
+      - governance
+    risk_level: medium
+    migration_type: release-prep
+    depends_on:
+      - FW-216
+      - FW-217
+    acceptance_checks:
+      - "Release notes and highlights include the completed dashboard sharing, review-wait/notification, coordination-intelligence, and dogfooding cleanup work."
+      - "Release verification covers `go test ./...`, `go vet ./...`, `goreleaser check`, config validation, and dashboard lifecycle smoke."
+      - "Homebrew/cask and binary distribution posture is checked and either updated or explicitly recorded as unchanged."
+      - "Release handoff names version, commit SHA, artifacts, known limits, and post-release dashboard restart guidance."
+
+  - id: FW-219
+    title: Add dashboard lifecycle restart and version-readback guidance
+    kind: dashboard
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-operations
+    source_paths:
+      - docs/design/dashboard.md
+      - docs/design/dashboard-sharing.md
+      - docs/quickstart.md
+      - README.md
+      - cmd
+      - internal/dashboard
+    target_paths:
+      - docs/design/dashboard.md
+      - docs/design/dashboard-sharing.md
+      - docs/quickstart.md
+      - README.md
+      - cmd
+      - internal/dashboard
+    review_domains:
+      - ops
+      - backend
+    risk_level: low
+    migration_type: dashboard-lifecycle-version-readback
+    depends_on:
+      - FW-218
+    acceptance_checks:
+      - "Dashboard lifecycle docs explain how to restart local full-access and read-only shared dashboards after a new Fairway binary is built."
+      - "Dashboard status or logs expose enough version/build/readback context for operators to verify which binary is serving each surface."
+      - "Slow/stale dashboard diagnosis distinguishes old binary, stale provider sessions, large activity feed, Cloudflare tunnel, and browser/client cache causes."
+      - "Validation includes a local dashboard lifecycle smoke and read-only shared dashboard status check."
+
+  - id: FW-220
+    title: Publish Fairway binary and documentation release
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release-distribution
+    source_paths:
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - docs/governance/release.md
+      - docs
+      - .goreleaser.yaml
+      - README.md
+    target_paths:
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - docs/governance/release.md
+      - docs
+      - .goreleaser.yaml
+      - README.md
+    review_domains:
+      - ops
+      - governance
+    risk_level: medium
+    migration_type: binary-and-docs-release
+    depends_on:
+      - FW-218
+      - FW-219
+    acceptance_checks:
+      - "A tagged Fairway release is cut from a reviewed commit after cleanup/release-prep tasks are merge-ready."
+      - "Binary artifacts are built and smoke-verified on the supported local platform, including `fairway ready`, `fairway reconcile active --dry-run`, and dashboard start/status."
+      - "Documentation release content is published or staged with version, commit SHA, release date, highlights, operator upgrade notes, and known limits."
+      - "Post-release verification restarts the GPUaaS read-only and local full-access dashboards with the released binary and records version/readback evidence."
