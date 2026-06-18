@@ -96,6 +96,9 @@ Adapters are edge contracts. Core Fairway remains provider-neutral.
 - Provider adapters attach agent sessions and optional usage metadata.
 - Utility adapters attach deterministic work such as CI polling.
 - Tracker adapters mirror planning context to or from external issue trackers.
+- Advisory provider adapters may be declared in config as bounded recommendation
+  sources. They are metadata and validation inputs only; they do not make
+  Fairway an LLM provider abstraction or grant execution authority.
 
 Adapters may feed Fairway evidence, sessions, checkpoints, usage, and links.
 They do not decide task status, review approval, merge readiness, or release

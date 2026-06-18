@@ -159,7 +159,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"packet", "--help"}, "fairway packet context|bugfix|retry|watcher"},
 		{[]string{"packet", "retry", "--help"}, "fairway packet retry <task-id> --kind <preflight|live-operation>"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
-		{[]string{"advisory", "--help"}, "fairway advisory validate <task-id>"},
+		{[]string{"advisory", "--help"}, "fairway advisory adapters|validate <task-id>"},
+		{[]string{"advisory", "adapters", "--help"}, "fairway advisory adapters [--include-disabled]"},
 		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
 		{[]string{"automation", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"automation", "candidates", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
@@ -3952,9 +3953,37 @@ domain = "backend"
 provider = "codex-thread"
 target = "thread-backend"
 type = "thread"
+
+[[advisory_provider_adapters]]
+name = "local-rules"
+provider = "ollama"
+type = "local_ollama"
+mode = "advisory"
+trust = "low"
+model = "llama3.1"
+endpoint_env = "FAIRWAY_OLLAMA_ENDPOINT"
+capabilities = ["summarize_evidence", "rank_ready_tasks"]
+allowed_actions = ["inspect_task", "render_packet", "wake_provider"]
+
+[[advisory_provider_adapters]]
+name = "disabled-provider"
+provider = "codex"
+type = "codex"
+mode = "disabled"
+allowed_actions = ["inspect_task"]
 `)
 	runOK(t, "config", "validate")
 	runOK(t, "add", "T-001", "--title", "Advisory target", "--role", "backend")
+
+	adapters := runCapture(t, "advisory", "adapters")
+	assertContains(t, adapters, "advisory_adapters:")
+	assertContains(t, adapters, "local-rules provider=ollama type=local_ollama mode=advisory trust=low")
+	assertContains(t, adapters, "endpoint_env=FAIRWAY_OLLAMA_ENDPOINT")
+	assertContains(t, adapters, "summarize_evidence")
+	assertNotContains(t, adapters, "disabled-provider")
+
+	allAdapters := runCapture(t, "advisory", "adapters", "--include-disabled")
+	assertContains(t, allAdapters, "disabled-provider provider=codex type=codex mode=disabled")
 
 	help := runCapture(t, "advisory", "validate", "--help")
 	assertContains(t, help, "fairway advisory validate <task-id> --action <action>")
@@ -3962,6 +3991,7 @@ type = "thread"
 	assertNotContains(t, help, "error:")
 
 	report := runCapture(t, "advisory", "validate", "T-001",
+		"--provider", "local-rules",
 		"--action", "wake_provider",
 		"--target-role", "backend",
 		"--confidence", "0.82",
@@ -3972,6 +4002,7 @@ type = "thread"
 		"--record-evidence")
 	for _, want := range []string{
 		"advisory_valid: true",
+		"provider: local-rules",
 		"action: wake_provider",
 		"target_role: backend",
 		"requires_human: true",
@@ -3986,13 +4017,33 @@ type = "thread"
 	assertContains(t, detail, "wake_provider")
 
 	jsonReport := runCapture(t, "--json", "advisory", "validate", "T-001",
+		"--provider", "local-rules",
 		"--action", "render_packet",
 		"--target-role", "backend",
 		"--confidence", "0.5",
 		"--rationale", "Render bounded context only.",
 		"--cited-fact", "task:T-001 status=todo")
 	assertContains(t, jsonReport, `"ok": true`)
+	assertContains(t, jsonReport, `"provider": "local-rules"`)
 	assertContains(t, jsonReport, `"action": "render_packet"`)
+
+	disallowed := runCaptureAllowError(t, "advisory", "validate", "T-001",
+		"--provider", "local-rules",
+		"--action", "route_review",
+		"--target-role", "backend",
+		"--confidence", "0.5",
+		"--rationale", "Adapter is not allowed to route review.",
+		"--cited-fact", "task:T-001 status=todo")
+	assertContains(t, disallowed, "configured advisory provider adapter does not allow action: route_review")
+
+	disabled := runCaptureAllowError(t, "advisory", "validate", "T-001",
+		"--provider", "disabled-provider",
+		"--action", "inspect_task",
+		"--target-role", "backend",
+		"--confidence", "0.5",
+		"--rationale", "Disabled provider should not be accepted.",
+		"--cited-fact", "task:T-001 status=todo")
+	assertContains(t, disabled, "configured advisory provider adapter is disabled: disabled-provider")
 
 	invalid := runCaptureAllowError(t, "advisory", "validate", "T-001",
 		"--action", "approve_review",

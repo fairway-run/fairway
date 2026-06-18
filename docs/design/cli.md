@@ -57,7 +57,8 @@ fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [-
 fairway audit ci-learning [--task-id <id>] [--template] # classify failed CI/deploy/smoke/UAT evidence and follow-up coverage
 fairway audit notifications [--task <task-id>] [--all] # read-only provider notification lifecycle audit across waits and handbacks
 fairway audit docs-backlog [--doc <path>]... # advisory coordination docs-to-backlog coverage audit
-fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--requires-human] [--risk-flag <flag>]... [--record-evidence]
+fairway advisory adapters [--include-disabled] # read-only configured advisory provider adapter list
+fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--provider <adapter>] [--requires-human] [--risk-flag <flag>]... [--record-evidence]
 fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
@@ -386,17 +387,22 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   task ids, representative commands/artifacts, likely owner, estimated
   coordination cost, suggested surface, and recommended action. It does not
   auto-create tasks or mutate workflow.
+- `advisory adapters` lists configured advisory provider adapters. It is a
+  read-only config inspection surface; it does not invoke providers, store
+  prompts/transcripts, wake threads, approve work, or mutate task state.
 - `advisory validate` checks a structured recommendation before it is trusted
-  or recorded. The contract contains `action`, `task_id`, `target_role`,
-  `confidence`, `requires_human`, `rationale`, `risk_flags`, and cited Fairway
-  facts. Allowed actions are `inspect_task`, `route_review`,
+  or recorded. The contract contains `provider`, `action`, `task_id`,
+  `target_role`, `confidence`, `requires_human`, `rationale`, `risk_flags`, and
+  cited Fairway facts. Allowed actions are `inspect_task`, `route_review`,
   `record_evidence`, `refresh_memory`, `render_packet`, `create_follow_up`,
-  `wake_provider`, `run_preflight`, and `record_checkpoint`. Risk flags require
-  `--requires-human`; cited facts must name Fairway facts such as `task:<id>`,
-  `evidence:<id>`, `review:<id>`, `checkpoint:<id>`, `session:<id>`,
-  `handoff:<id>`, or `notification:<id>`. `--record-evidence` writes only an
-  `advisory-recommendation` evidence row; it does not approve, merge, deploy,
-  claim, mutate environments, or replace review/gate checks.
+  `wake_provider`, `run_preflight`, and `record_checkpoint`. When `--provider`
+  names a configured adapter, validation also checks adapter mode and
+  `allowed_actions`. Risk flags require `--requires-human`; cited facts must
+  name Fairway facts such as `task:<id>`, `evidence:<id>`, `review:<id>`,
+  `checkpoint:<id>`, `session:<id>`, `handoff:<id>`, or `notification:<id>`.
+  `--record-evidence` writes only an `advisory-recommendation` evidence row; it
+  does not approve, merge, deploy, claim, wake providers, mutate environments,
+  or replace review/gate checks.
 - `batch` commands model shared implementation and validation units. A batch
   can contain multiple granular tasks that share one branch/worktree,
   validation command set, review domains, CI/deploy-run, and evidence set.

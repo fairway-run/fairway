@@ -198,6 +198,88 @@ func TestValidateProviderModelPrices(t *testing.T) {
 	}
 }
 
+func TestValidateAdvisoryAdapters(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.AdvisoryAdapters = []AdvisoryAdapter{
+		{
+			Name:           "local-rules",
+			Provider:       "ollama",
+			Type:           "local_ollama",
+			Mode:           "advisory",
+			Trust:          "low",
+			Model:          "llama3.1",
+			EndpointEnv:    "FAIRWAY_OLLAMA_ENDPOINT",
+			Capabilities:   []string{"summarize_evidence", "rank_ready_tasks"},
+			AllowedActions: []string{"inspect_task", "render_packet"},
+		},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		adapters []AdvisoryAdapter
+		want     string
+	}{
+		{
+			name:     "missing name",
+			adapters: []AdvisoryAdapter{{Provider: "ollama"}},
+			want:     "name is required",
+		},
+		{
+			name:     "missing provider",
+			adapters: []AdvisoryAdapter{{Name: "local"}},
+			want:     "provider is required",
+		},
+		{
+			name:     "duplicate",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama"}, {Name: "local", Provider: "codex"}},
+			want:     "duplicate advisory provider adapter",
+		},
+		{
+			name:     "invalid type",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Type: "browser"}},
+			want:     "type \"browser\" is invalid",
+		},
+		{
+			name:     "invalid mode",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Mode: "blocking"}},
+			want:     "mode \"blocking\" is invalid",
+		},
+		{
+			name:     "invalid trust",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Trust: "root"}},
+			want:     "trust \"root\" is invalid",
+		},
+		{
+			name:     "invalid action",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", AllowedActions: []string{"approve_review"}}},
+			want:     "allowed action \"approve_review\" is invalid",
+		},
+		{
+			name:     "invalid endpoint env",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", EndpointEnv: "FAIRWAY-ENDPOINT"}},
+			want:     "endpoint_env \"FAIRWAY-ENDPOINT\" is invalid",
+		},
+		{
+			name:     "capability must be token",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Capabilities: []string{"raw prompt"}}},
+			want:     "must be a single token",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Defaults(t.TempDir())
+			cfg.AdvisoryAdapters = tc.adapters
+			err := Validate(cfg)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestRootForConfigPath_CustomConfig(t *testing.T) {
 	got := RootForConfigPath(filepath.Join("/tmp", "repo", "fairway.toml"))
 	want := filepath.Join("/tmp", "repo")

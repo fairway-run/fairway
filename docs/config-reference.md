@@ -62,6 +62,17 @@ provider = "codex"
 type = "thread"
 target = "codex-thread-id-or-adapter-target"
 
+[[advisory_provider_adapters]]
+name = "local-rules"
+provider = "ollama"
+type = "local_ollama"                 # noop | rules-only | local_ollama | local_llamacpp | openai-compatible | codex | claude | gemini
+mode = "advisory"                     # advisory | report_only | disabled
+trust = "low"                         # low | medium | high
+model = "llama3.1"
+endpoint_env = "FAIRWAY_OLLAMA_ENDPOINT"
+capabilities = ["summarize_evidence", "rank_ready_tasks"]
+allowed_actions = ["inspect_task", "render_packet"]
+
 [[workstream_profiles]]
 name = "platform-foundation"
 task_kinds = ["architecture-map", "boundary-guard", "facade"]
@@ -266,6 +277,47 @@ for the next owner/domain before Fairway can claim delivery. If the mapping is
 missing, dry-run output names `mapping_required`; `--send` records
 `notification_failed` evidence instead of silently parking the wait or claiming
 thread delivery.
+
+### `[[advisory_provider_adapters]]`
+
+Advisory provider adapters declare optional recommendation sources for
+`fairway advisory validate` and future bounded coordinator surfaces. They are
+configuration metadata only. They do not store prompts, transcripts, raw tool
+bodies, provider-private data, auth tokens, cookies, or credentials; they also
+do not grant approval, review, wake, merge, deploy, release, or live-operation
+authority.
+
+```toml
+[[advisory_provider_adapters]]
+name = "local-rules"
+provider = "ollama"
+type = "local_ollama"
+mode = "advisory"
+trust = "low"
+model = "llama3.1"
+endpoint_env = "FAIRWAY_OLLAMA_ENDPOINT"
+capabilities = ["summarize_evidence", "rank_ready_tasks"]
+allowed_actions = ["inspect_task", "render_packet", "wake_provider"]
+```
+
+Use `fairway advisory adapters` to inspect configured adapters. Disabled
+adapters are hidden by default; use `--include-disabled` for an operator audit.
+Use `fairway advisory validate --provider <name>` to validate a recommendation
+against the adapter's mode and `allowed_actions`. The validated recommendation
+may be recorded as `advisory-recommendation` evidence only; Fairway does not
+apply the recommendation automatically.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | — | Stable adapter name used by `--provider`. |
+| `provider` | string | — | Provider label, such as `ollama`, `codex`, `claude`, or `gemini`. |
+| `type` | string | `noop` | Adapter type: `noop`, `rules-only`, `local_ollama`, `local_llamacpp`, `openai-compatible`, `codex`, `claude`, or `gemini`. |
+| `mode` | string | `advisory` | `advisory`, `report_only`, or `disabled`. Disabled adapters cannot validate recommendations. |
+| `trust` | string | `low` | Trust label: `low`, `medium`, or `high`. Low-trust output with risk flags must stay human-reviewed. |
+| `model` | string | — | Optional model label for operator visibility. |
+| `endpoint_env` | string | — | Optional environment variable name for an endpoint URL. This is an env var name, not the endpoint value and not a credential. |
+| `capabilities` | []string | — | Tokenized advisory capabilities for reporting and review. |
+| `allowed_actions` | []string | all bounded advisory actions | Optional subset of the advisory action enum accepted from this adapter. |
 
 ### `[[provider_model_prices]]`
 

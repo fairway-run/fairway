@@ -211,7 +211,11 @@ state, or carry provider credentials.
 
 Fairway should allow optional advisory providers as plugins or configured
 adapters. The provider is replaceable and advisory; Fairway validates the
-output.
+output. `[[advisory_provider_adapters]]` declares adapter name, provider/type,
+mode, trust label, optional model/endpoint environment variable name,
+capabilities, and allowed advisory actions. The configuration stores metadata
+only: no prompts, transcripts, raw tool bodies, provider-private state, auth
+tokens, cookies, or credentials.
 
 Initial provider types:
 
@@ -264,9 +268,12 @@ Suggested output shape:
 It accepts only the bounded advisory action enum: `inspect_task`,
 `route_review`, `record_evidence`, `refresh_memory`, `render_packet`,
 `create_follow_up`, `wake_provider`, `run_preflight`, and
-`record_checkpoint`. Recommendations must cite Fairway facts and use
-`requires_human` when risk flags are present. A valid recommendation may be
-recorded as `advisory-recommendation` evidence, but it is not applied.
+`record_checkpoint`. `fairway advisory adapters` lists configured adapters, and
+`fairway advisory validate --provider <name>` checks that the adapter is enabled
+and allowed to emit the requested action. Recommendations must cite Fairway
+facts and use `requires_human` when risk flags are present. A valid
+recommendation may be recorded as `advisory-recommendation` evidence, but it is
+not applied.
 
 Fairway validation must reject:
 

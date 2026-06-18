@@ -32,6 +32,7 @@ type Config struct {
 	RuleSources         []RuleSource         `toml:"rule_sources"`
 	ProviderTargets     []ProviderTarget     `toml:"provider_targets"`
 	ProviderModelPrices []ProviderModelPrice `toml:"provider_model_prices"`
+	AdvisoryAdapters    []AdvisoryAdapter    `toml:"advisory_provider_adapters"`
 }
 
 type FairwayConfig struct {
@@ -194,6 +195,18 @@ type ProviderModelPrice struct {
 	OutputPerMillion      *float64 `toml:"output_per_million"`
 	ReasoningPerMillion   *float64 `toml:"reasoning_per_million"`
 	TotalPerMillion       *float64 `toml:"total_per_million"`
+}
+
+type AdvisoryAdapter struct {
+	Name           string   `toml:"name"`
+	Provider       string   `toml:"provider"`
+	Type           string   `toml:"type"`
+	Mode           string   `toml:"mode"`
+	Trust          string   `toml:"trust"`
+	Model          string   `toml:"model"`
+	EndpointEnv    string   `toml:"endpoint_env"`
+	Capabilities   []string `toml:"capabilities"`
+	AllowedActions []string `toml:"allowed_actions"`
 }
 
 func Defaults(root string) Config {
@@ -421,7 +434,105 @@ func Validate(cfg Config) error {
 	if err := validateProviderModelPrices(cfg.ProviderModelPrices); err != nil {
 		return err
 	}
+	if err := validateAdvisoryAdapters(cfg.AdvisoryAdapters); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateAdvisoryAdapters(adapters []AdvisoryAdapter) error {
+	seen := map[string]bool{}
+	for _, adapter := range adapters {
+		name := strings.TrimSpace(adapter.Name)
+		if name == "" {
+			return errors.New("[[advisory_provider_adapters]] name is required")
+		}
+		if seen[name] {
+			return fmt.Errorf("duplicate advisory provider adapter %q", name)
+		}
+		seen[name] = true
+		if strings.TrimSpace(adapter.Provider) == "" {
+			return fmt.Errorf("[[advisory_provider_adapters]] provider is required for %q", name)
+		}
+		adapterType := strings.TrimSpace(adapter.Type)
+		if adapterType == "" {
+			adapterType = "noop"
+		}
+		switch adapterType {
+		case "noop", "rules-only", "local_ollama", "local_llamacpp", "openai-compatible", "codex", "claude", "gemini":
+		default:
+			return fmt.Errorf("[[advisory_provider_adapters]] type %q is invalid for %q", adapter.Type, name)
+		}
+		mode := strings.TrimSpace(adapter.Mode)
+		if mode == "" {
+			mode = "advisory"
+		}
+		switch mode {
+		case "advisory", "report_only", "disabled":
+		default:
+			return fmt.Errorf("[[advisory_provider_adapters]] mode %q is invalid for %q", adapter.Mode, name)
+		}
+		trust := strings.TrimSpace(adapter.Trust)
+		if trust == "" {
+			trust = "low"
+		}
+		switch trust {
+		case "low", "medium", "high":
+		default:
+			return fmt.Errorf("[[advisory_provider_adapters]] trust %q is invalid for %q", adapter.Trust, name)
+		}
+		if err := validateAdapterTokenList("[[advisory_provider_adapters]] capability", name, adapter.Capabilities); err != nil {
+			return err
+		}
+		for _, action := range adapter.AllowedActions {
+			action = strings.TrimSpace(action)
+			if action == "" {
+				return fmt.Errorf("[[advisory_provider_adapters]] allowed_actions contains empty action for %q", name)
+			}
+			if !AllowedAdvisoryAction(action) {
+				return fmt.Errorf("[[advisory_provider_adapters]] allowed action %q is invalid for %q", action, name)
+			}
+		}
+		if endpointEnv := strings.TrimSpace(adapter.EndpointEnv); endpointEnv != "" && !validEnvName(endpointEnv) {
+			return fmt.Errorf("[[advisory_provider_adapters]] endpoint_env %q is invalid for %q", adapter.EndpointEnv, name)
+		}
+	}
+	return nil
+}
+
+func validateAdapterTokenList(label, adapterName string, values []string) error {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return fmt.Errorf("%s contains empty value for %q", label, adapterName)
+		}
+		if strings.ContainsAny(value, " \t\r\n") {
+			return fmt.Errorf("%s %q for %q must be a single token", label, value, adapterName)
+		}
+	}
+	return nil
+}
+
+func validEnvName(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i, r := range value {
+		if r == '_' || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (i > 0 && r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func AllowedAdvisoryAction(action string) bool {
+	switch action {
+	case "inspect_task", "route_review", "record_evidence", "refresh_memory", "render_packet", "create_follow_up", "wake_provider", "run_preflight", "record_checkpoint":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateProviderModelPrices(prices []ProviderModelPrice) error {

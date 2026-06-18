@@ -2313,6 +2313,7 @@ func dedupeNotificationAuditRows(rows []notificationAuditRow) []notificationAudi
 }
 
 type advisoryRecommendation struct {
+	Provider      string   `json:"provider,omitempty"`
 	Action        string   `json:"action"`
 	TaskID        string   `json:"task_id"`
 	TargetRole    string   `json:"target_role"`
@@ -2333,10 +2334,12 @@ type advisoryValidationReport struct {
 
 func cmdAdvisory(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("advisory", "validate <task-id>")
+		subcommandUsage("advisory", "adapters|validate <task-id>")
 		return nil
 	}
 	switch args[0] {
+	case "adapters":
+		return cmdAdvisoryAdapters(ctx, opts, args[1:])
 	case "validate":
 		return cmdAdvisoryValidate(ctx, opts, args[1:])
 	default:
@@ -2344,9 +2347,74 @@ func cmdAdvisory(ctx context.Context, opts globalOptions, args []string) error {
 	}
 }
 
+func cmdAdvisoryAdapters(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway advisory adapters [--include-disabled]")
+		fmt.Println("  List configured advisory provider adapters; read-only and advisory-only.")
+		return nil
+	}
+	fs := flag.NewFlagSet("advisory adapters", flag.ContinueOnError)
+	includeDisabled := fs.Bool("include-disabled", false, "include disabled adapters")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected advisory adapters arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, _ *store.Store) error {
+		adapters := advisoryAdaptersForOutput(cfg.AdvisoryAdapters, *includeDisabled)
+		if opts.JSON {
+			return printJSON(adapters)
+		}
+		fmt.Println("advisory_adapters:")
+		if len(adapters) == 0 {
+			fmt.Println("- none")
+			return nil
+		}
+		for _, adapter := range adapters {
+			fmt.Printf("- %s provider=%s type=%s mode=%s trust=%s\n",
+				adapter.Name,
+				adapter.Provider,
+				firstNonEmpty(adapter.Type, "noop"),
+				firstNonEmpty(adapter.Mode, "advisory"),
+				firstNonEmpty(adapter.Trust, "low"))
+			if adapter.Model != "" {
+				fmt.Printf("  model=%s\n", adapter.Model)
+			}
+			if adapter.EndpointEnv != "" {
+				fmt.Printf("  endpoint_env=%s\n", adapter.EndpointEnv)
+			}
+			printPacketList("  capabilities", adapter.Capabilities)
+			printPacketList("  allowed_actions", adapter.AllowedActions)
+		}
+		return nil
+	})
+}
+
+func advisoryAdaptersForOutput(adapters []config.AdvisoryAdapter, includeDisabled bool) []config.AdvisoryAdapter {
+	out := make([]config.AdvisoryAdapter, 0, len(adapters))
+	for _, adapter := range adapters {
+		adapter.Name = strings.TrimSpace(adapter.Name)
+		adapter.Provider = strings.TrimSpace(adapter.Provider)
+		adapter.Type = firstNonEmpty(strings.TrimSpace(adapter.Type), "noop")
+		adapter.Mode = firstNonEmpty(strings.TrimSpace(adapter.Mode), "advisory")
+		adapter.Trust = firstNonEmpty(strings.TrimSpace(adapter.Trust), "low")
+		adapter.Model = strings.TrimSpace(adapter.Model)
+		adapter.EndpointEnv = strings.TrimSpace(adapter.EndpointEnv)
+		adapter.Capabilities = trimStrings(adapter.Capabilities)
+		adapter.AllowedActions = trimStrings(adapter.AllowedActions)
+		if !includeDisabled && adapter.Mode == "disabled" {
+			continue
+		}
+		out = append(out, adapter)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 func cmdAdvisoryValidate(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
-		fmt.Println("fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--requires-human] [--risk-flag <flag>]... [--record-evidence]")
+		fmt.Println("fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--provider <adapter>] [--requires-human] [--risk-flag <flag>]... [--record-evidence]")
 		fmt.Println("  Validate an advisory recommendation; optional recording writes advisory evidence only.")
 		return nil
 	}
@@ -2355,6 +2423,7 @@ func cmdAdvisoryValidate(ctx context.Context, opts globalOptions, args []string)
 	}
 	taskID := args[0]
 	fs := flag.NewFlagSet("advisory validate", flag.ContinueOnError)
+	provider := fs.String("provider", "", "configured advisory provider adapter name")
 	action := fs.String("action", "", "recommended advisory action")
 	targetRole := fs.String("target-role", "", "target role for the action")
 	confidence := fs.Float64("confidence", -1, "confidence from 0.0 to 1.0")
@@ -2372,6 +2441,7 @@ func cmdAdvisoryValidate(ctx context.Context, opts globalOptions, args []string)
 		return fmt.Errorf("unexpected advisory validate arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	rec := advisoryRecommendation{
+		Provider:      strings.TrimSpace(*provider),
 		Action:        strings.TrimSpace(*action),
 		TaskID:        taskID,
 		TargetRole:    strings.TrimSpace(*targetRole),
@@ -2407,7 +2477,7 @@ func cmdAdvisoryValidate(ctx context.Context, opts globalOptions, args []string)
 			return printJSON(report)
 		}
 		fmt.Printf("advisory_valid: %t\n", report.OK)
-		fmt.Printf("task: %s\naction: %s\ntarget_role: %s\nconfidence: %.2f\nrequires_human: %t\n", rec.TaskID, rec.Action, rec.TargetRole, rec.Confidence, rec.RequiresHuman)
+		fmt.Printf("task: %s\nprovider: %s\naction: %s\ntarget_role: %s\nconfidence: %.2f\nrequires_human: %t\n", rec.TaskID, firstNonEmpty(rec.Provider, "none"), rec.Action, rec.TargetRole, rec.Confidence, rec.RequiresHuman)
 		printPacketList("Risk Flags", rec.RiskFlags)
 		printPacketList("Cited Fairway Facts", rec.CitedFacts)
 		if rec.Rationale != "" {
@@ -2435,6 +2505,23 @@ func validateAdvisoryRecommendation(cfg config.Config, task store.Task, reviews 
 		addIssue("--action is required")
 	} else if !allowedAdvisoryAction(rec.Action) {
 		addIssue("action is not in the advisory allowed-action enum")
+	}
+	if rec.Provider != "" {
+		adapter, ok := configuredAdvisoryAdapter(cfg, rec.Provider)
+		if !ok {
+			addIssue("configured advisory provider adapter not found: " + rec.Provider)
+		} else {
+			mode := firstNonEmpty(strings.TrimSpace(adapter.Mode), "advisory")
+			if mode == "disabled" {
+				addIssue("configured advisory provider adapter is disabled: " + rec.Provider)
+			}
+			if len(adapter.AllowedActions) > 0 && !containsString(trimStrings(adapter.AllowedActions), rec.Action) {
+				addIssue("configured advisory provider adapter does not allow action: " + rec.Action)
+			}
+			if strings.TrimSpace(adapter.Trust) == "low" && len(rec.RiskFlags) > 0 {
+				report.Warnings = append(report.Warnings, "low-trust advisory provider output with risk flags requires human review")
+			}
+		}
 	}
 	if rec.TargetRole == "" {
 		addIssue("--target-role is required")
@@ -2471,12 +2558,7 @@ func validateAdvisoryRecommendation(cfg config.Config, task store.Task, reviews 
 }
 
 func allowedAdvisoryAction(action string) bool {
-	switch action {
-	case "inspect_task", "route_review", "record_evidence", "refresh_memory", "render_packet", "create_follow_up", "wake_provider", "run_preflight", "record_checkpoint":
-		return true
-	default:
-		return false
-	}
+	return config.AllowedAdvisoryAction(action)
 }
 
 func providerTargetAction(action string) bool {
@@ -2514,6 +2596,16 @@ func providerTargetConfigured(targets []config.ProviderTarget, role string) bool
 		}
 	}
 	return false
+}
+
+func configuredAdvisoryAdapter(cfg config.Config, name string) (config.AdvisoryAdapter, bool) {
+	name = strings.TrimSpace(name)
+	for _, adapter := range cfg.AdvisoryAdapters {
+		if strings.TrimSpace(adapter.Name) == name {
+			return adapter, true
+		}
+	}
+	return config.AdvisoryAdapter{}, false
 }
 
 func validAdvisoryFact(fact, taskID string) bool {
@@ -13494,7 +13586,7 @@ func printCommandHelp(command string) bool {
 		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
-		"advisory":                   "fairway advisory validate <task-id> ...\n  Validate structured advisory recommendations and optionally record advisory evidence only.",
+		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
