@@ -261,6 +261,50 @@ func TestCLI_InitPreservesEditedAgentBreadcrumb(t *testing.T) {
 	assertNotContains(t, string(body), "Do not overwrite this file.")
 }
 
+func TestCLI_DashboardStatusIncludesVersionReadback(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+
+	text := runCapture(t, "dashboard", "status")
+	assertContains(t, text, "version="+version)
+	assertContains(t, text, "binary=")
+
+	out := runCapture(t, "--json", "dashboard", "status")
+	var status struct {
+		Running    bool   `json:"running"`
+		URL        string `json:"url"`
+		Version    string `json:"version"`
+		BinaryPath string `json:"binary_path"`
+	}
+	if err := json.Unmarshal([]byte(out), &status); err != nil {
+		t.Fatalf("dashboard status json: %v\n%s", err, out)
+	}
+	if status.Running {
+		t.Fatal("expected stopped dashboard in fresh test repo")
+	}
+	if status.Version != version {
+		t.Fatalf("version=%q, want %q", status.Version, version)
+	}
+	if status.BinaryPath == "" {
+		t.Fatal("expected binary path readback")
+	}
+	if status.URL == "" {
+		t.Fatal("expected dashboard URL readback")
+	}
+}
+
 func TestCLI_AgentGuideOutputsEmbeddedGuide(t *testing.T) {
 	out := runCapture(t, "agent-guide")
 	assertContains(t, out, "# Agent Guide")

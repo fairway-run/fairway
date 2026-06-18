@@ -11995,11 +11995,13 @@ func cmdDashboardMulti(ctx context.Context, opts globalOptions, listen string, n
 }
 
 type dashboardLifecycleStatus struct {
-	PIDFile string `json:"pid_file"`
-	LogFile string `json:"log_file"`
-	PID     int    `json:"pid,omitempty"`
-	Running bool   `json:"running"`
-	URL     string `json:"url,omitempty"`
+	PIDFile    string `json:"pid_file"`
+	LogFile    string `json:"log_file"`
+	PID        int    `json:"pid,omitempty"`
+	Running    bool   `json:"running"`
+	URL        string `json:"url,omitempty"`
+	Version    string `json:"version"`
+	BinaryPath string `json:"binary_path,omitempty"`
 }
 
 func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action string, args []string) error {
@@ -12083,7 +12085,10 @@ func dashboardLifecycleFiles(root, pidFile, logFile string, multi bool) (string,
 }
 
 func readDashboardLifecycleStatus(pidFile, logFile, addr string) (dashboardLifecycleStatus, error) {
-	status := dashboardLifecycleStatus{PIDFile: pidFile, LogFile: logFile, URL: dashboard.URL(addr)}
+	status := dashboardLifecycleStatus{PIDFile: pidFile, LogFile: logFile, URL: dashboard.URL(addr), Version: version}
+	if exe, err := os.Executable(); err == nil {
+		status.BinaryPath = exe
+	}
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -12122,6 +12127,12 @@ func printDashboardLifecycleStatus(status dashboardLifecycleStatus, asJSON bool)
 	}
 	if status.URL != "" {
 		fmt.Printf("\t%s", status.URL)
+	}
+	if status.Version != "" {
+		fmt.Printf("\tversion=%s", status.Version)
+	}
+	if status.BinaryPath != "" {
+		fmt.Printf("\tbinary=%s", status.BinaryPath)
 	}
 	fmt.Printf("\tpid_file=%s\tlog_file=%s\n", status.PIDFile, status.LogFile)
 	return nil
@@ -12182,7 +12193,7 @@ func startDashboardLifecycle(opts globalOptions, addr string, noOpen bool, readO
 	if restarted {
 		verb = "restarted"
 	}
-	fmt.Printf("dashboard %s\tpid=%d\t%s\tpid_file=%s\tlog_file=%s\n", verb, cmd.Process.Pid, dashboard.URL(addr), pidFile, logFile)
+	fmt.Printf("dashboard %s\tpid=%d\t%s\tversion=%s\tbinary=%s\tpid_file=%s\tlog_file=%s\n", verb, cmd.Process.Pid, dashboard.URL(addr), version, exe, pidFile, logFile)
 	return nil
 }
 

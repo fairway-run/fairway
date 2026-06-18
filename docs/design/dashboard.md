@@ -353,6 +353,25 @@ Detached lifecycle commands do not open a browser unless `--open` is passed.
 `restart` is the preferred recovery command after a host app, terminal, or
 agent runtime restart.
 
+`status`, `start`, and `restart` print the Fairway binary version and binary
+path used by the lifecycle command. Use that readback before and after replacing
+a long-running dashboard so operators can tell whether the served dashboard is
+still an old binary:
+
+```bash
+fairway --json dashboard status
+fairway dashboard restart --listen 127.0.0.1:7878 --read-only --no-open
+fairway dashboard status
+fairway version
+```
+
+The version from `dashboard status` should match the release binary intended for
+the dashboard restart. For shared read-only dashboards, also probe the local
+origin and the identity-aware proxy boundary after restart. If the local
+execution surface cannot signal an old listener, use the approved tmux/SSH
+operator lane to stop the old PID and restart from the reviewed binary; do not
+fall back to an untracked foreground process.
+
 ## Multi-Project Mode
 
 `fairway dashboard --multi` aggregates registered projects via SQLite

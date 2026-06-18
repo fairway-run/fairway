@@ -57,7 +57,8 @@ the trusted tunnel and JWT verification has been added or performed upstream.
 1. Start Fairway locally:
 
    ```bash
-   fairway dashboard --listen 127.0.0.1:7878 --read-only --no-open
+   fairway dashboard start --listen 127.0.0.1:7878 --read-only --no-open
+   fairway dashboard status --listen 127.0.0.1:7878
    ```
 
 2. Create a Cloudflare Tunnel that forwards the chosen hostname to
@@ -79,6 +80,11 @@ the trusted tunnel and JWT verification has been added or performed upstream.
 
 7. Confirm the dashboard is reachable only through the tunnel. Do not expose the
    Fairway dashboard directly to the public internet.
+
+For release restarts, record the `fairway dashboard status` version and binary
+path before and after `fairway dashboard restart`. The shared dashboard is still
+read-only after restart; version readback is an operator confidence check, not a
+grant of send, approval, merge, deploy, or execution authority.
 
 ## Trust Boundary
 

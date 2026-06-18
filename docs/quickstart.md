@@ -200,7 +200,19 @@ fairway dashboard stop
 ```
 
 Detached mode writes `.fairway/dashboard.pid` and `.fairway/dashboard.log` by
-default.
+default. `dashboard status`, `start`, and `restart` also print the Fairway
+version and binary path, which is useful when replacing a long-running dashboard
+with a freshly built or released binary:
+
+```bash
+fairway --json dashboard status
+fairway dashboard restart --listen 127.0.0.1:7878 --read-only --no-open
+fairway dashboard status
+```
+
+If a sandboxed desktop surface cannot stop the old listener, perform the
+stop/restart from the approved tmux or SSH operator lane and record the status
+readback as Fairway evidence.
 
 ## A typical loop
 

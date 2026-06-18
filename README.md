@@ -119,6 +119,20 @@ coordination, `/board` is the sortable/filterable operator board,
 `/board?tab=diagnostics` shows sessions/worktrees/watchers/checkpoints, and
 `/tasks/<id>` opens task detail.
 
+For long-running local or shared read-only dashboards, use the detached
+lifecycle commands:
+
+```bash
+fairway dashboard start
+fairway dashboard status
+fairway dashboard restart
+fairway dashboard stop
+```
+
+`dashboard status`, `start`, and `restart` print the Fairway version and binary
+path so operators can verify that a restarted dashboard is serving the expected
+binary before release or shared-dashboard testing.
+
 ## Documentation
 
 Public docs are available at [fairway.run](https://fairway.run).
