@@ -59,6 +59,8 @@ fairway audit notifications [--task <task-id>] [--all] # read-only provider noti
 fairway audit docs-backlog [--doc <path>]... # advisory coordination docs-to-backlog coverage audit
 fairway advisory adapters [--include-disabled] # read-only configured advisory provider adapter list
 fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--provider <adapter>] [--requires-human] [--risk-flag <flag>]... [--record-evidence]
+fairway notify notifiers [--include-disabled] # read-only configured external notifier list
+fairway notify dry-run --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--target <target>] [--record-intent]
 fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
@@ -403,6 +405,14 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `--record-evidence` writes only an `advisory-recommendation` evidence row; it
   does not approve, merge, deploy, claim, wake providers, mutate environments,
   or replace review/gate checks.
+- `notify notifiers` and `notify dry-run` are the first optional external
+  notifier interface. `notifiers` is read-only config inspection. `dry-run`
+  renders a bounded notification request for a configured `noop` or `log`
+  notifier from a fixed template label. With `--record-intent`, it writes a
+  notification row with state `intent` and template metadata only. It does not
+  store arbitrary prompt text for later replay, send
+  Slack/email/Teams/webhook/provider-thread messages, record delivery proof, or
+  give the dashboard send or mutation authority.
 - `batch` commands model shared implementation and validation units. A batch
   can contain multiple granular tasks that share one branch/worktree,
   validation command set, review domains, CI/deploy-run, and evidence set.

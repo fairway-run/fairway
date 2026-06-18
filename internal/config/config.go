@@ -33,6 +33,7 @@ type Config struct {
 	ProviderTargets     []ProviderTarget     `toml:"provider_targets"`
 	ProviderModelPrices []ProviderModelPrice `toml:"provider_model_prices"`
 	AdvisoryAdapters    []AdvisoryAdapter    `toml:"advisory_provider_adapters"`
+	ExternalNotifiers   []ExternalNotifier   `toml:"external_notifiers"`
 }
 
 type FairwayConfig struct {
@@ -207,6 +208,15 @@ type AdvisoryAdapter struct {
 	EndpointEnv    string   `toml:"endpoint_env"`
 	Capabilities   []string `toml:"capabilities"`
 	AllowedActions []string `toml:"allowed_actions"`
+}
+
+type ExternalNotifier struct {
+	Name         string   `toml:"name"`
+	Type         string   `toml:"type"`
+	Mode         string   `toml:"mode"`
+	TargetEnv    string   `toml:"target_env"`
+	Domains      []string `toml:"domains"`
+	TemplateName string   `toml:"template_name"`
 }
 
 func Defaults(root string) Config {
@@ -436,6 +446,51 @@ func Validate(cfg Config) error {
 	}
 	if err := validateAdvisoryAdapters(cfg.AdvisoryAdapters); err != nil {
 		return err
+	}
+	if err := validateExternalNotifiers(cfg.ExternalNotifiers); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateExternalNotifiers(notifiers []ExternalNotifier) error {
+	seen := map[string]bool{}
+	for _, notifier := range notifiers {
+		name := strings.TrimSpace(notifier.Name)
+		if name == "" {
+			return errors.New("[[external_notifiers]] name is required")
+		}
+		if seen[name] {
+			return fmt.Errorf("duplicate external notifier %q", name)
+		}
+		seen[name] = true
+		notifierType := strings.TrimSpace(notifier.Type)
+		if notifierType == "" {
+			notifierType = "noop"
+		}
+		switch notifierType {
+		case "noop", "log":
+		default:
+			return fmt.Errorf("[[external_notifiers]] type %q is invalid for %q", notifier.Type, name)
+		}
+		mode := strings.TrimSpace(notifier.Mode)
+		if mode == "" {
+			mode = "dry_run"
+		}
+		switch mode {
+		case "dry_run", "disabled":
+		default:
+			return fmt.Errorf("[[external_notifiers]] mode %q is invalid for %q", notifier.Mode, name)
+		}
+		if err := validateAdapterTokenList("[[external_notifiers]] domain", name, notifier.Domains); err != nil {
+			return err
+		}
+		if targetEnv := strings.TrimSpace(notifier.TargetEnv); targetEnv != "" && !validEnvName(targetEnv) {
+			return fmt.Errorf("[[external_notifiers]] target_env %q is invalid for %q", notifier.TargetEnv, name)
+		}
+		if strings.ContainsAny(strings.TrimSpace(notifier.TemplateName), "\r\n") {
+			return fmt.Errorf("[[external_notifiers]] template_name for %q must be a single line", name)
+		}
 	}
 	return nil
 }

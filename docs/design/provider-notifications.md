@@ -15,6 +15,25 @@ If direct thread tooling is unavailable, record the Fairway handoff or
 notification state and route through the coordinator/control track. Do not
 claim direct delivery from chat memory alone.
 
+## External Notifier Interface
+
+`[[external_notifiers]]` defines optional notifier endpoints for
+operator-controlled notification workflows. The first interface is intentionally
+dry-run/logging only:
+
+```text
+fairway notify notifiers [--include-disabled]
+fairway notify dry-run --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--record-intent]
+```
+
+`notify dry-run` renders the notification request from a configured fixed
+template label. With `--record-intent`, it records a notification row with state
+`intent` and template metadata only. It does not store arbitrary wake prompt
+text for later replay, send Slack, email, Teams, webhook, or provider-thread
+messages, record `notification_delivered`, or give the read-only dashboard send
+authority. Real senders must be added as reviewed adapter implementations that
+record delivery or failure evidence through the same notification state model.
+
 ## Notification States
 
 - `intent`: notification is planned but not yet attempted.

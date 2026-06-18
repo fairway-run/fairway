@@ -138,6 +138,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdAudit(ctx, opts, args[1:])
 	case "advisory":
 		return cmdAdvisory(ctx, opts, args[1:])
+	case "notify":
+		return cmdNotify(ctx, opts, args[1:])
 	case "automation":
 		return cmdAutomation(ctx, opts, args[1:])
 	case "merge-ready":
@@ -2606,6 +2608,192 @@ func configuredAdvisoryAdapter(cfg config.Config, name string) (config.AdvisoryA
 		}
 	}
 	return config.AdvisoryAdapter{}, false
+}
+
+type notifyDryRunReport struct {
+	OK             bool   `json:"ok"`
+	Notifier       string `json:"notifier"`
+	Type           string `json:"type"`
+	Mode           string `json:"mode"`
+	TaskID         string `json:"task_id"`
+	Domain         string `json:"domain"`
+	Target         string `json:"target,omitempty"`
+	Template       string `json:"template"`
+	RecordIntent   bool   `json:"record_intent"`
+	RecordedState  string `json:"recorded_state,omitempty"`
+	RecordedReason string `json:"recorded_reason,omitempty"`
+	Warning        string `json:"warning,omitempty"`
+}
+
+func cmdNotify(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("notify", "notifiers|dry-run")
+		return nil
+	}
+	switch args[0] {
+	case "notifiers":
+		return cmdNotifyNotifiers(ctx, opts, args[1:])
+	case "dry-run":
+		return cmdNotifyDryRun(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown notify subcommand %q", args[0])
+	}
+}
+
+func cmdNotifyNotifiers(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway notify notifiers [--include-disabled]")
+		fmt.Println("  List configured optional external notifiers; read-only.")
+		return nil
+	}
+	fs := flag.NewFlagSet("notify notifiers", flag.ContinueOnError)
+	includeDisabled := fs.Bool("include-disabled", false, "include disabled notifiers")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected notify notifiers arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, _ *store.Store) error {
+		notifiers := externalNotifiersForOutput(cfg.ExternalNotifiers, *includeDisabled)
+		if opts.JSON {
+			return printJSON(notifiers)
+		}
+		fmt.Println("external_notifiers:")
+		if len(notifiers) == 0 {
+			fmt.Println("- none")
+			return nil
+		}
+		for _, notifier := range notifiers {
+			fmt.Printf("- %s type=%s mode=%s\n", notifier.Name, notifier.Type, notifier.Mode)
+			if notifier.TargetEnv != "" {
+				fmt.Printf("  target_env=%s\n", notifier.TargetEnv)
+			}
+			if notifier.TemplateName != "" {
+				fmt.Printf("  template=%s\n", notifier.TemplateName)
+			}
+			printPacketList("  domains", notifier.Domains)
+		}
+		return nil
+	})
+}
+
+func cmdNotifyDryRun(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway notify dry-run --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--target <target>] [--record-intent]")
+		fmt.Println("  Render a bounded external notification request; optional recording writes notification intent only.")
+		return nil
+	}
+	fs := flag.NewFlagSet("notify dry-run", flag.ContinueOnError)
+	notifierName := fs.String("notifier", "", "configured notifier name")
+	taskID := fs.String("task", "", "task id")
+	domain := fs.String("domain", "", "notification domain or target role")
+	target := fs.String("target", "", "optional target label")
+	templateName := fs.String("template", "", "fixed template name")
+	recordIntent := fs.Bool("record-intent", false, "record notification intent only")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected notify dry-run arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	*notifierName = strings.TrimSpace(*notifierName)
+	*taskID = strings.TrimSpace(*taskID)
+	*domain = strings.TrimSpace(*domain)
+	*templateName = strings.TrimSpace(*templateName)
+	if *notifierName == "" {
+		return errors.New("--notifier is required")
+	}
+	if *taskID == "" {
+		return errors.New("--task is required")
+	}
+	if *domain == "" {
+		return errors.New("--domain is required")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		notifier, ok := configuredExternalNotifier(cfg, *notifierName)
+		if !ok {
+			return fmt.Errorf("external notifier %q is not configured", *notifierName)
+		}
+		notifier = normalizeExternalNotifier(notifier)
+		if notifier.Mode == "disabled" {
+			return fmt.Errorf("external notifier %q is disabled", notifier.Name)
+		}
+		if len(notifier.Domains) > 0 && !containsString(notifier.Domains, *domain) {
+			return fmt.Errorf("external notifier %q does not allow domain %q", notifier.Name, *domain)
+		}
+		template := firstNonEmpty(*templateName, notifier.TemplateName, "external_notification")
+		report := notifyDryRunReport{
+			OK:           true,
+			Notifier:     notifier.Name,
+			Type:         notifier.Type,
+			Mode:         notifier.Mode,
+			TaskID:       *taskID,
+			Domain:       *domain,
+			Target:       firstNonEmpty(strings.TrimSpace(*target), notifier.TargetEnv),
+			Template:     template,
+			RecordIntent: *recordIntent,
+			Warning:      "dry-run/log notifier does not prove external delivery",
+		}
+		if *recordIntent {
+			reason := fmt.Sprintf("external_notifier_intent notifier=%s mode=%s template=%s", notifier.Name, notifier.Mode, shellToken(template))
+			recorded, err := s.RecordNotification(ctx, store.Notification{
+				TaskID:   *taskID,
+				Domain:   *domain,
+				Provider: "external-notifier/" + notifier.Name,
+				Target:   report.Target,
+				State:    "intent",
+				Reason:   reason,
+			})
+			if err != nil {
+				return err
+			}
+			report.RecordedState = recorded.State
+			report.RecordedReason = recorded.Reason
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("notify_dry_run: true\nnotifier: %s\ntype: %s\nmode: %s\ntask: %s\ndomain: %s\ntarget: %s\ntemplate: %s\nwarning: %s\n",
+			report.Notifier, report.Type, report.Mode, report.TaskID, report.Domain, firstNonEmpty(report.Target, "none"), report.Template, report.Warning)
+		if report.RecordedState != "" {
+			fmt.Printf("recorded_state: %s\nrecorded_reason: %s\n", report.RecordedState, report.RecordedReason)
+		}
+		return nil
+	})
+}
+
+func externalNotifiersForOutput(notifiers []config.ExternalNotifier, includeDisabled bool) []config.ExternalNotifier {
+	out := make([]config.ExternalNotifier, 0, len(notifiers))
+	for _, notifier := range notifiers {
+		notifier = normalizeExternalNotifier(notifier)
+		if !includeDisabled && notifier.Mode == "disabled" {
+			continue
+		}
+		out = append(out, notifier)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func configuredExternalNotifier(cfg config.Config, name string) (config.ExternalNotifier, bool) {
+	name = strings.TrimSpace(name)
+	for _, notifier := range cfg.ExternalNotifiers {
+		if strings.TrimSpace(notifier.Name) == name {
+			return notifier, true
+		}
+	}
+	return config.ExternalNotifier{}, false
+}
+
+func normalizeExternalNotifier(notifier config.ExternalNotifier) config.ExternalNotifier {
+	notifier.Name = strings.TrimSpace(notifier.Name)
+	notifier.Type = firstNonEmpty(strings.TrimSpace(notifier.Type), "noop")
+	notifier.Mode = firstNonEmpty(strings.TrimSpace(notifier.Mode), "dry_run")
+	notifier.TargetEnv = strings.TrimSpace(notifier.TargetEnv)
+	notifier.TemplateName = strings.TrimSpace(notifier.TemplateName)
+	notifier.Domains = trimStrings(notifier.Domains)
+	return notifier
 }
 
 func validAdvisoryFact(fact, taskID string) bool {
@@ -13546,7 +13734,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, advisory validate, automation candidates, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, advisory validate, notify notifiers|dry-run, automation candidates, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -13587,6 +13775,7 @@ func printCommandHelp(command string) bool {
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
+		"notify":                     "fairway notify notifiers|dry-run ...\n  Inspect optional external notifier config or render dry-run notification intent.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",

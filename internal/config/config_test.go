@@ -280,6 +280,75 @@ func TestValidateAdvisoryAdapters(t *testing.T) {
 	}
 }
 
+func TestValidateExternalNotifiers(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.ExternalNotifiers = []ExternalNotifier{
+		{
+			Name:         "control-log",
+			Type:         "log",
+			Mode:         "dry_run",
+			TargetEnv:    "FAIRWAY_NOTIFY_LOG",
+			Domains:      []string{"coordinator", "ops"},
+			TemplateName: "control_room_handoff",
+		},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		notifiers []ExternalNotifier
+		want      string
+	}{
+		{
+			name:      "missing name",
+			notifiers: []ExternalNotifier{{Type: "log"}},
+			want:      "name is required",
+		},
+		{
+			name:      "duplicate",
+			notifiers: []ExternalNotifier{{Name: "control"}, {Name: "control"}},
+			want:      "duplicate external notifier",
+		},
+		{
+			name:      "invalid type",
+			notifiers: []ExternalNotifier{{Name: "control", Type: "slack"}},
+			want:      `type "slack" is invalid`,
+		},
+		{
+			name:      "invalid mode",
+			notifiers: []ExternalNotifier{{Name: "control", Mode: "send"}},
+			want:      `mode "send" is invalid`,
+		},
+		{
+			name:      "invalid target env",
+			notifiers: []ExternalNotifier{{Name: "control", TargetEnv: "FAIRWAY-NOTIFY"}},
+			want:      `target_env "FAIRWAY-NOTIFY" is invalid`,
+		},
+		{
+			name:      "domain must be token",
+			notifiers: []ExternalNotifier{{Name: "control", Domains: []string{"ops team"}}},
+			want:      "must be a single token",
+		},
+		{
+			name:      "template is single line",
+			notifiers: []ExternalNotifier{{Name: "control", TemplateName: "one\ntwo"}},
+			want:      "must be a single line",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Defaults(t.TempDir())
+			cfg.ExternalNotifiers = tc.notifiers
+			err := Validate(cfg)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestRootForConfigPath_CustomConfig(t *testing.T) {
 	got := RootForConfigPath(filepath.Join("/tmp", "repo", "fairway.toml"))
 	want := filepath.Join("/tmp", "repo")

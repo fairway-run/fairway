@@ -73,6 +73,14 @@ endpoint_env = "FAIRWAY_OLLAMA_ENDPOINT"
 capabilities = ["summarize_evidence", "rank_ready_tasks"]
 allowed_actions = ["inspect_task", "render_packet"]
 
+[[external_notifiers]]
+name = "control-log"
+type = "log"                           # noop | log
+mode = "dry_run"                       # dry_run | disabled
+target_env = "FAIRWAY_NOTIFY_LOG"
+domains = ["coordinator", "ops"]
+template_name = "control_room_handoff"
+
 [[workstream_profiles]]
 name = "platform-foundation"
 task_kinds = ["architecture-map", "boundary-guard", "facade"]
@@ -318,6 +326,42 @@ apply the recommendation automatically.
 | `endpoint_env` | string | — | Optional environment variable name for an endpoint URL. This is an env var name, not the endpoint value and not a credential. |
 | `capabilities` | []string | — | Tokenized advisory capabilities for reporting and review. |
 | `allowed_actions` | []string | all bounded advisory actions | Optional subset of the advisory action enum accepted from this adapter. |
+
+### `[[external_notifiers]]`
+
+External notifiers declare optional dry-run/logging notification sinks for
+operator-controlled notification workflows. The first supported interface is
+deliberately bounded: `noop` and `log` notifiers can be listed and rendered by
+`fairway notify dry-run`; they do not send Slack, email, Teams, webhook, or
+provider-thread messages, and they do not grant dashboard send authority.
+
+```toml
+[[external_notifiers]]
+name = "control-log"
+type = "log"
+mode = "dry_run"
+target_env = "FAIRWAY_NOTIFY_LOG"
+domains = ["coordinator", "ops"]
+template_name = "control_room_handoff"
+```
+
+Use `fairway notify notifiers` to inspect configured notifiers. Use
+`fairway notify dry-run --notifier <name> --task <task-id> --domain <domain>` to
+render a bounded notification request from the configured fixed template, or
+pass `--template <name>` to choose another fixed template label. With
+`--record-intent`, Fairway records a `record notification` row with state
+`intent` only. That is a durable coordination fact, not proof that an external
+system or provider thread was contacted. Fairway stores the template label in
+the notification reason, not arbitrary prompt text for later replay.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | — | Stable notifier name used by `fairway notify dry-run --notifier`. |
+| `type` | string | `noop` | Notifier type: `noop` or `log`. Network senders are intentionally out of scope for the first interface. |
+| `mode` | string | `dry_run` | `dry_run` or `disabled`. Disabled notifiers fail closed. |
+| `target_env` | string | — | Optional environment variable name for a local log/sink target. This is an env var name, not a secret or URL value. |
+| `domains` | []string | all domains | Optional allowed notification domains/roles. |
+| `template_name` | string | — | Optional fixed-template label for operator review. |
 
 ### `[[provider_model_prices]]`
 

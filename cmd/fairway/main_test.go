@@ -162,6 +162,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"advisory", "--help"}, "fairway advisory adapters|validate <task-id>"},
 		{[]string{"advisory", "adapters", "--help"}, "fairway advisory adapters [--include-disabled]"},
 		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
+		{[]string{"notify", "--help"}, "fairway notify notifiers|dry-run"},
+		{[]string{"notify", "notifiers", "--help"}, "fairway notify notifiers [--include-disabled]"},
+		{[]string{"notify", "dry-run", "--help"}, "fairway notify dry-run --notifier <name> --task <task-id> --domain <domain>"},
 		{[]string{"automation", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"automation", "candidates", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"delivery", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
@@ -4086,6 +4089,86 @@ allowed_actions = ["inspect_task"]
 		"--cited-fact", "task:T-001 status=todo")
 	assertContains(t, warning, "advisory_valid: true")
 	assertContains(t, warning, "target role has no configured provider target")
+}
+
+func TestCLI_NotifyDryRunExternalNotifier(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[external_notifiers]]
+name = "control-log"
+type = "log"
+mode = "dry_run"
+target_env = "FAIRWAY_NOTIFY_LOG"
+domains = ["coordinator", "ops"]
+template_name = "control_room_handoff"
+
+[[external_notifiers]]
+name = "disabled-hook"
+type = "noop"
+mode = "disabled"
+`)
+	runOK(t, "config", "validate")
+	runOK(t, "add", "T-001", "--title", "Notify target", "--role", "backend")
+
+	notifiers := runCapture(t, "notify", "notifiers")
+	assertContains(t, notifiers, "external_notifiers:")
+	assertContains(t, notifiers, "control-log type=log mode=dry_run")
+	assertContains(t, notifiers, "target_env=FAIRWAY_NOTIFY_LOG")
+	assertContains(t, notifiers, "control_room_handoff")
+	assertNotContains(t, notifiers, "disabled-hook")
+
+	allNotifiers := runCapture(t, "notify", "notifiers", "--include-disabled")
+	assertContains(t, allNotifiers, "disabled-hook type=noop mode=disabled")
+
+	dryRun := runCapture(t, "notify", "dry-run",
+		"--notifier", "control-log",
+		"--task", "T-001",
+		"--domain", "coordinator")
+	assertContains(t, dryRun, "notify_dry_run: true")
+	assertContains(t, dryRun, "warning: dry-run/log notifier does not prove external delivery")
+	assertContains(t, dryRun, "template: control_room_handoff")
+	assertNotContains(t, dryRun, "recorded_state:")
+
+	recorded := runCapture(t, "notify", "dry-run",
+		"--notifier", "control-log",
+		"--task", "T-001",
+		"--domain", "coordinator",
+		"--record-intent")
+	assertContains(t, recorded, "recorded_state: intent")
+	assertContains(t, recorded, "external_notifier_intent")
+	assertContains(t, recorded, "template=control_room_handoff")
+	assertNotContains(t, recorded, "operator handback ready")
+
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "intent domain=coordinator provider=external-notifier/control-log")
+	assertContains(t, detail, "template=control_room_handoff")
+	assertNotContains(t, detail, "notification_delivered domain=coordinator")
+
+	_, err = captureRun("notify", "dry-run",
+		"--notifier", "disabled-hook",
+		"--task", "T-001",
+		"--domain", "coordinator")
+	if err == nil || !strings.Contains(err.Error(), `external notifier "disabled-hook" is disabled`) {
+		t.Fatalf("disabled notifier error = %v", err)
+	}
+
+	_, err = captureRun("notify", "dry-run",
+		"--notifier", "control-log",
+		"--task", "T-001",
+		"--domain", "security")
+	if err == nil || !strings.Contains(err.Error(), `does not allow domain "security"`) {
+		t.Fatalf("wrong domain error = %v", err)
+	}
 }
 
 func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
