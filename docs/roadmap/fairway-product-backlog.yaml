@@ -3586,3 +3586,153 @@ tasks:
       - "Binary artifacts are built and smoke-verified on the supported local platform, including `fairway ready`, `fairway reconcile active --dry-run`, and dashboard start/status."
       - "Documentation release content is published or staged with version, commit SHA, release date, highlights, operator upgrade notes, and known limits."
       - "Post-release verification restarts the GPUaaS read-only and local full-access dashboards with the released binary and records version/readback evidence."
+
+  - id: FW-221
+    title: Add durable generic wait add and ack commands
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordination-waits
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/coordinator-loop.md
+      - docs/design/cli.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/coordinator-loop.md
+      - docs/design/cli.md
+      - cmd/fairway
+      - internal
+    review_domains:
+      - backend
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: durable-generic-wait-add-ack
+    depends_on:
+      - FW-217
+    acceptance_checks:
+      - "`fairway wait add` records a durable parked-work wait using existing Fairway task/checkpoint/notification state or a documented lightweight store extension approved by architecture."
+      - "`fairway wait ack` records acknowledgement/resolution proof without deleting wait history."
+      - "`fairway wait list|tick|wake` include waits created by `wait add` and preserve existing projection behavior for review waits, completion handbacks, live-window phases, sessions, and memory staleness."
+      - "Wait records include task id, kind, track/owner, condition, target, deadline or ack timeout origin, state, stale age, last wake attempt, and suggested command."
+      - "The dashboard remains read-only and never sends wake prompts or mutates wait state."
+      - "Tests cover add, list, stale tick, wake rendering, ack, duplicate suppression, resolved suppression, and no approval/merge/deploy authority."
+
+  - id: FW-222
+    title: Add advisory provider adapter configuration
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: advisory-providers
+    source_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/product-boundaries.md
+      - docs/config-reference.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - docs/design/coordination-intelligence.md
+      - docs/design/product-boundaries.md
+      - docs/config-reference.md
+      - docs/design/cli.md
+      - cmd/fairway
+      - internal
+    review_domains:
+      - architecture
+      - governance
+      - backend
+      - security
+    risk_level: medium
+    migration_type: advisory-provider-adapter-config
+    depends_on:
+      - FW-217
+      - FW-201
+    acceptance_checks:
+      - "Fairway config can declare optional advisory providers such as noop/rules-only, local Ollama, local llama.cpp, OpenAI-compatible endpoint, Codex, Claude, and Gemini without making any provider required."
+      - "The first implementation supports at least a noop/rules-only provider and a local/OpenAI-compatible dry-run adapter boundary without storing prompts, transcripts, raw tool bodies, generated content, auth tokens, or provider-private data."
+      - "`fairway advisory validate` remains the authority gate for any provider output and rejects unsupported actions, uncited facts, risk flags without `requires_human`, and state-machine violations."
+      - "Accepted advisory output can be recorded only as advisory evidence or checkpoint context; it does not approve reviews, accept risk, claim tasks, merge, push, deploy, wake providers, or mutate live environments."
+      - "Docs explain provider trust levels, privacy rules, credential sourcing, and local-only defaults."
+      - "Tests cover config parsing, disabled provider behavior, noop/rules-only output, invalid provider output rejection, and privacy redaction boundaries."
+
+  - id: FW-223
+    title: Add optional external notifier interface
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provider-notifications
+    source_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/config-reference.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - docs/design/review-wait-notification-model.md
+      - docs/design/provider-notifications.md
+      - docs/config-reference.md
+      - docs/design/cli.md
+      - cmd/fairway
+      - internal
+    review_domains:
+      - architecture
+      - governance
+      - backend
+      - ops
+      - security
+    risk_level: medium
+    migration_type: optional-external-notifier-interface
+    depends_on:
+      - FW-217
+      - FW-203
+    acceptance_checks:
+      - "Fairway defines a provider-neutral notifier interface for review waits, completion handbacks, generic waits, and live-operation handoffs without introducing Slack/email/Teams as required dependencies."
+      - "The first implementation supports a noop/logging notifier or dry-run notifier and records delivery/failure evidence through existing notification rows."
+      - "Missing external credentials, provider outages, or notifier failures never make Fairway lose workflow state or claim delivery."
+      - "Notifier output uses fixed templates rendered from current Fairway state and does not store arbitrary wake prompt text for later replay."
+      - "Dashboard remains read-only and gains no send authority."
+      - "Tests cover dry-run notification, provider failure, missing credentials, fixed-template rendering, duplicate suppression, and trust-boundary docs."
+
+  - id: FW-224
+    title: Add trusted proxy identity verification model
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-security
+    source_paths:
+      - docs/design/dashboard-sharing.md
+      - docs/design/product-boundaries.md
+      - docs/config-reference.md
+      - internal/dashboard
+      - cmd/fairway
+    target_paths:
+      - docs/design/dashboard-sharing.md
+      - docs/design/product-boundaries.md
+      - docs/config-reference.md
+      - docs/design/cli.md
+      - internal/dashboard
+      - cmd/fairway
+    review_domains:
+      - architecture
+      - governance
+      - backend
+      - ops
+      - security
+    risk_level: high
+    migration_type: trusted-proxy-identity-verification
+    depends_on:
+      - FW-217
+      - FW-178
+    acceptance_checks:
+      - "Fairway defines the security model for trusting identity-aware proxy headers beyond local/dev read-only dashboard sharing."
+      - "Cloudflare Access JWT verification or an equivalent upstream verification contract is documented and exposed through config without making shared dashboard exposure a default."
+      - "The implementation refuses to trust identity headers unless the origin reachability, trusted proxy mode, audience/team/issuer checks, and failure behavior are explicitly configured."
+      - "Read-only mode remains the default shared-dashboard trust boundary; any future write access requires a separate opt-in authorization and audit model."
+      - "Tests cover no proxy, trusted proxy metadata only, invalid/missing JWT, valid verified identity, unreachable verification metadata, and no dashboard mutation authority."
