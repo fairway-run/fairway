@@ -14,9 +14,10 @@ type Registry struct {
 }
 
 type Project struct {
-	Name   string `toml:"name" json:"name"`
-	Path   string `toml:"path" json:"path"`
-	DBPath string `toml:"db_path,omitempty" json:"db_path,omitempty"`
+	Name       string `toml:"name" json:"name"`
+	Path       string `toml:"path" json:"path"`
+	DBPath     string `toml:"db_path,omitempty" json:"db_path,omitempty"`
+	ConfigPath string `toml:"config_path,omitempty" json:"config_path,omitempty"`
 }
 
 func DefaultPath() (string, error) {
@@ -79,21 +80,83 @@ func Register(reg Registry, project Project) (Registry, error) {
 		return Registry{}, err
 	}
 	project.Path = abs
+	project.DBPath = normalizeIdentityPath(project.DBPath, project.Path)
+	project.ConfigPath = normalizeIdentityPath(project.ConfigPath, project.Path)
 	for i, existing := range reg.Projects {
+		existing.Path = normalizePath(existing.Path)
+		existing.DBPath = normalizeIdentityPath(existing.DBPath, existing.Path)
+		existing.ConfigPath = normalizeIdentityPath(existing.ConfigPath, existing.Path)
 		if existing.Name == project.Name {
-			if filepath.Clean(existing.Path) != filepath.Clean(project.Path) {
-				return Registry{}, fmt.Errorf("project name %q is already registered for %s", project.Name, existing.Path)
+			if !sameProjectIdentity(existing, project) {
+				if canUpgradeLegacyProjectIdentity(existing, project) {
+					reg.Projects[i] = project
+					return reg, nil
+				}
+				return Registry{}, fmt.Errorf("project name %q is already registered for path=%s db_path=%s config_path=%s", project.Name, existing.Path, existing.DBPath, existing.ConfigPath)
 			}
 			reg.Projects[i] = project
 			return reg, nil
 		}
-		if filepath.Clean(existing.Path) == filepath.Clean(project.Path) {
-			reg.Projects[i] = project
-			return reg, nil
+		if sameProjectIdentity(existing, project) {
+			return Registry{}, fmt.Errorf("project identity path=%s db_path=%s config_path=%s is already registered as %q", existing.Path, existing.DBPath, existing.ConfigPath, existing.Name)
 		}
 	}
 	reg.Projects = append(reg.Projects, project)
 	return reg, nil
+}
+
+func ResolveDBPath(project Project) string {
+	if project.DBPath == "" {
+		return filepath.Join(project.Path, ".fairway", "state.db")
+	}
+	if filepath.IsAbs(project.DBPath) {
+		return filepath.Clean(project.DBPath)
+	}
+	return filepath.Clean(filepath.Join(project.Path, project.DBPath))
+}
+
+func ResolveConfigPath(project Project) string {
+	if project.ConfigPath == "" {
+		return ""
+	}
+	if filepath.IsAbs(project.ConfigPath) {
+		return filepath.Clean(project.ConfigPath)
+	}
+	return filepath.Clean(filepath.Join(project.Path, project.ConfigPath))
+}
+
+func sameProjectIdentity(left, right Project) bool {
+	return filepath.Clean(left.Path) == filepath.Clean(right.Path) &&
+		ResolveDBPath(left) == ResolveDBPath(right) &&
+		ResolveConfigPath(left) == ResolveConfigPath(right)
+}
+
+func canUpgradeLegacyProjectIdentity(existing, project Project) bool {
+	if filepath.Clean(existing.Path) != filepath.Clean(project.Path) {
+		return false
+	}
+	if existing.DBPath == "" {
+		return true
+	}
+	return existing.ConfigPath == "" && ResolveDBPath(existing) == ResolveDBPath(project)
+}
+
+func normalizePath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(abs)
+}
+
+func normalizeIdentityPath(path, root string) string {
+	if path == "" {
+		return ""
+	}
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(filepath.Join(root, path))
 }
 
 func Unregister(reg Registry, name string) (Registry, bool) {

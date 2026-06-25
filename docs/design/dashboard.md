@@ -385,6 +385,13 @@ registry entry, exposed through the `project` query parameter and Project
 table/export column. Task identity, ownership, evidence, reviews, and gates
 remain authoritative inside the source project store.
 
+The registry can include multiple entries with the same repo path when they
+point at different Fairway DB/config identities. This is useful for a consumer
+repo that tracks implementation and documentation work in separate Fairway
+configs. In that case `/projects` shows each entry's path, config, and DB so
+operators can tell same-path workstreams apart before filtering the board or
+wall.
+
 The multi-project wall is also read-oriented. `/` renders collapsible project
 sections, each with the standard role lanes. `/projects` remains available as a
 compact registry summary. `/wall` redirects to `/`.

@@ -9762,7 +9762,7 @@ func cmdRegister(opts globalOptions, args []string) error {
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected register arguments: %s", strings.Join(fs.Args(), " "))
 	}
-	cfg, root, _, err := loadConfig(opts)
+	cfg, root, configPath, err := loadConfig(opts)
 	if err != nil {
 		return err
 	}
@@ -9778,7 +9778,7 @@ func cmdRegister(opts globalOptions, args []string) error {
 	if err != nil {
 		return err
 	}
-	reg, err = registry.Register(reg, registry.Project{Name: projectName, Path: root, DBPath: config.DBPath(cfg, root)})
+	reg, err = registry.Register(reg, registry.Project{Name: projectName, Path: root, DBPath: config.DBPath(cfg, root), ConfigPath: configPath})
 	if err != nil {
 		return err
 	}
@@ -9839,7 +9839,7 @@ func cmdProjects(opts globalOptions, args []string) error {
 		return printJSON(reg.Projects)
 	}
 	for _, project := range reg.Projects {
-		fmt.Printf("%s\t%s\t%s\n", project.Name, project.Path, project.DBPath)
+		fmt.Printf("%s\t%s\t%s\t%s\n", project.Name, project.Path, project.DBPath, project.ConfigPath)
 	}
 	return nil
 }
@@ -12651,15 +12651,12 @@ func cmdDashboardMulti(ctx context.Context, opts globalOptions, listen string, n
 	}
 	projects := make([]dashboard.ProjectStore, 0, len(reg.Projects))
 	for _, project := range reg.Projects {
-		dbPath := project.DBPath
-		if dbPath == "" {
-			dbPath = filepath.Join(project.Path, ".fairway", "state.db")
-		}
+		dbPath := registry.ResolveDBPath(project)
 		projectStore, err := store.Open(ctx, dbPath, project.Name)
 		if err != nil {
 			return fmt.Errorf("open project %s: %w", project.Name, err)
 		}
-		projects = append(projects, dashboard.ProjectStore{Name: project.Name, Path: project.Path, Store: projectStore})
+		projects = append(projects, dashboard.ProjectStore{Name: project.Name, Path: project.Path, DBPath: dbPath, ConfigPath: registry.ResolveConfigPath(project), Store: projectStore})
 	}
 	url := dashboard.URL(addr)
 	if !isLoopbackAddr(addr) {

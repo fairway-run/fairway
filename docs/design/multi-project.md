@@ -1,6 +1,10 @@
 # Multi-project mode
 
-Fairway's project boundary equals the git repo boundary. Each project has its own `.fairway/state.db`. Multi-project aggregation is opt-in via a registry — there is no single shared database.
+Fairway's project boundary is the configured Fairway DB, normally one DB per
+git repo. A repo may host multiple Fairway configs when it intentionally tracks
+separate workstreams, such as an implementation track and a docs portal track.
+Multi-project aggregation is opt-in via a registry — there is no single shared
+database.
 
 ## Why per-project DBs
 
@@ -19,6 +23,7 @@ Every row in every table carries a `project_id` column (see [schema.md](schema.m
 name = "gpuaas"
 path = "/path/to/GPUasService"
 # db_path optional; defaults to <path>/.fairway/state.db
+# config_path optional; recorded by fairway register for same-repo configs
 
 [[project]]
 name = "fairway"
@@ -29,7 +34,7 @@ The registry is the only file outside of a project's own directory that fairway 
 
 ## Commands
 
-- `fairway register [--name <n>]` — add the current project. Name defaults to `[fairway] project_name` or the repo basename. Idempotent.
+- `fairway register [--name <n>]` — add the current project. Name defaults to `[fairway] project_name` or the repo basename. Idempotent for the same name/path/DB/config identity.
 - `fairway unregister [<name>]` — remove. Defaults to the current project.
 - `fairway projects` — list registered projects with last-activity timestamp.
 
@@ -42,7 +47,24 @@ Each project carries a `project_name`, used to label rows in the multi-project d
 project_name = "gpuaas"      # default: basename of the repo root
 ```
 
-Names must be unique across the registry. `fairway register` refuses duplicates and suggests a suffix.
+Names must be unique across the registry. `fairway register` refuses duplicate
+names for different identities, and refuses duplicate path/DB/config identities
+under different names. It allows multiple entries with the same repo path when
+their names and DB/config identities differ.
+
+For same-repo multi-config work, register each config explicitly:
+
+```bash
+cd /path/to/GPUasService
+fairway --config .fairway/platform-foundation-config.toml register --name gpuaas-platform
+fairway --config .fairway/docusaurus-config.toml register --name gpuaas-docs
+fairway projects
+fairway dashboard start --multi --read-only --listen 127.0.0.1:7878
+```
+
+The registry records both `db_path` and `config_path`, so `/projects`, board
+filters, wall project groups, activity labels, and exports can distinguish
+same-path projects by project name and backing DB.
 
 ## Dashboard modes
 

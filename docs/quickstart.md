@@ -210,6 +210,20 @@ fairway dashboard restart --listen 127.0.0.1:7878 --read-only --no-open
 fairway dashboard status
 ```
 
+For a repo with more than one Fairway config, register each config by name
+before starting a multi-project read-only dashboard:
+
+```bash
+fairway --config .fairway/platform-config.toml register --name platform
+fairway --config .fairway/docs-config.toml register --name docs
+fairway dashboard start --multi --read-only --listen 127.0.0.1:7878 --no-open
+fairway dashboard status --multi --listen 127.0.0.1:7878
+```
+
+The registry keeps same-path projects separate when their DB/config identities
+differ. Use `/projects` to confirm the dashboard is reading the expected DB for
+each project.
+
 If a sandboxed desktop surface cannot stop the old listener, perform the
 stop/restart from the approved tmux or SSH operator lane and record the status
 readback as Fairway evidence.

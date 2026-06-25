@@ -1703,6 +1703,51 @@ func TestMultiDashboardRendersProjects(t *testing.T) {
 	}
 }
 
+func TestMultiDashboardRendersSamePathProjectIdentities(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	platformDB := filepath.Join(root, ".fairway", "platform-foundation.db")
+	docsDB := filepath.Join(root, ".fairway", "fairway-docusaurus-portal.db")
+	platform, err := store.Open(ctx, platformDB, "platform")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer platform.Close()
+	docs, err := store.Open(ctx, docsDB, "docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer docs.Close()
+	if err := platform.ImportTasks(ctx, []store.TaskDefinition{{ID: "PLATFORM-001", Title: "Platform task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := docs.ImportTasks(ctx, []store.TaskDefinition{{ID: "DOCS-001", Title: "Docs task", Role: "governance"}}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewMulti([]ProjectStore{
+		{Name: "platform-foundation", Path: root, DBPath: platformDB, ConfigPath: filepath.Join(root, ".fairway", "platform-foundation-config.toml"), Store: platform},
+		{Name: "docusaurus-portal", Path: root, DBPath: docsDB, ConfigPath: filepath.Join(root, ".fairway", "docusaurus-config.toml"), Store: docs},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/projects", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"platform-foundation",
+		"docusaurus-portal",
+		"platform-foundation.db",
+		"fairway-docusaurus-portal.db",
+		"platform-foundation-config.toml",
+		"docusaurus-config.toml",
+		"PLATFORM-001",
+		"DOCS-001",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("same-path multi dashboard body missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestMultiDashboardBoardFiltersByProject(t *testing.T) {
 	ctx := context.Background()
 	left, err := store.Open(ctx, filepath.Join(t.TempDir(), "left.db"), "left")

@@ -56,9 +56,11 @@ type Rollup struct {
 }
 
 type ProjectStore struct {
-	Name  string
-	Path  string
-	Store *store.Store
+	Name       string
+	Path       string
+	DBPath     string
+	ConfigPath string
+	Store      *store.Store
 }
 
 func New(s *store.Store, cfg config.Config, roles []string, worktrees []WorktreeStatus) *Server {
@@ -80,6 +82,8 @@ func NewMulti(projects []ProjectStore) http.Handler {
 		type projectView struct {
 			Name            string
 			Path            string
+			DBPath          string
+			ConfigPath      string
 			Tasks           []store.Task
 			TaskCount       int
 			SessionCount    int
@@ -89,7 +93,7 @@ func NewMulti(projects []ProjectStore) http.Handler {
 		}
 		var views []projectView
 		for _, project := range projects {
-			view := projectView{Name: project.Name, Path: project.Path}
+			view := projectView{Name: project.Name, Path: project.Path, DBPath: project.DBPath, ConfigPath: project.ConfigPath}
 			tasks, err := project.Store.AllTasks(r.Context())
 			if err != nil {
 				view.Error = err.Error()

@@ -9,6 +9,8 @@ table{border-collapse:collapse;width:100%;background:white;margin-bottom:24px}td
 <section class="project">
 <h2>{{.Name}}</h2>
 <p class="muted">{{.Path}}</p>
+{{if .ConfigPath}}<p class="muted">config: {{.ConfigPath}}</p>{{end}}
+{{if .DBPath}}<p class="muted">db: {{.DBPath}}</p>{{end}}
 {{if .Error}}<p>{{.Error}}</p>{{else}}
 <div class="badges"><span class="badge">tasks: {{.TaskCount}}</span><span class="badge">sessions: {{.SessionCount}}</span><span class="badge">checkpoints: {{.CheckpointCount}}</span><span class="badge">watchers: {{.WatcherCount}}</span></div>
 <table><tr><th>ID</th><th>Title</th><th>Role</th><th>Status</th><th>Review</th></tr>
