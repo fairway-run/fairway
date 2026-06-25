@@ -1,9 +1,10 @@
-- Generic wait coordination now supports durable `fairway wait add` and
-  `fairway wait ack` commands for parked work, repeated handoffs, live-window
-  waits, and non-review waits without adding a second wait store.
-- Advisory provider adapter configuration and validation are now first-class, so
-  teams can declare bounded non-authoritative adapter surfaces without granting
-  approval, merge, deploy, wake, or provider-private data access.
-- External notifier configuration starts with a dry-run/logging interface and
-  fixed templates only, and trusted proxy identity verification is documented as
-  a dashboard-security model without enabling runtime verifier middleware yet.
+- Same-repo multi-config dashboards now keep distinct Fairway project lanes by
+  DB/config identity, so platform and docs work under one repository can be
+  displayed side by side without replacement.
+- `fairway notify send` adds explicitly configured `log` and `webhook`
+  delivery adapters with env-only destinations/tokens, attempt-based rate
+  limits, and durable delivered/failed notification evidence.
+- Environment deploy preflight guidance gives operators a reusable readiness
+  packet for route readback, worker access, smoke, rollback, blockers,
+  next-owner, and next-action handoffs without granting deploy or dashboard send
+  authority.

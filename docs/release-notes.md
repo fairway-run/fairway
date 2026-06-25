@@ -10,6 +10,42 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.1.8
+
+### What Changed
+
+- Multi-project dashboard registration now supports multiple Fairway configs
+  under the same repository root when their DB/config identity differs. This
+  lets one repo publish separate lanes such as platform and docs work without
+  one registration replacing the other, while legacy path-only registry rows
+  can upgrade safely.
+- `fairway notify send` adds explicitly configured real delivery adapters for
+  external notifications. The first send-capable adapters are `log` and
+  `webhook`; destinations and bearer tokens are resolved from environment
+  variables at send time, notification evidence distinguishes send attempts,
+  delivery, and failure, and the read-only dashboard still has no send
+  authority.
+- Environment deploy preflight packets document a reusable readiness and
+  rehearsal model for demo, staging, airgap, and production-like handoffs.
+  Operators can record route readback, worker access, smoke, rollback, blocker,
+  next-owner, and next-action evidence before handoff without granting Fairway
+  deploy, restart, public exposure, or live execution authority.
+
+### Release Checklist
+
+- `go test ./...` passes.
+- `go vet ./...` passes.
+- `git diff --check` passes.
+- `fairway config validate` passes.
+- `fairway workflow check --mode deploy --require-clean --require-pushed`
+  passes before tagging.
+- `goreleaser check` passes.
+- `fairway release verify` confirms the public GitHub release, asset URLs,
+  Homebrew cask version, tap commit, and `brew fetch` result.
+- AI Cloud/GPUaaS read-only and local full-access dashboards are restarted with
+  the released `v0.1.8` binary and dashboard status/version readback is
+  recorded.
+
 ## v0.1.7
 
 ### What Changed

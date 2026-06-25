@@ -7,6 +7,28 @@ and uses semantic versioning.
 
 ## Unreleased
 
+## v0.1.8
+
+### Added
+
+- `fairway notify send` for explicitly configured `log` and `webhook`
+  external notifier adapters. Send destinations and bearer tokens are resolved
+  from environment variables at send time, rate limits are attempt-based, and
+  notification evidence records send attempts plus delivered/failed outcomes.
+- Environment deploy preflight packet guidance for reusable demo, staging,
+  airgap, and production-like deploy rehearsal handoffs using existing packet
+  templates, evidence, checkpoints, handoffs, completion handbacks, and
+  read-only dashboard/report projections.
+
+### Changed
+
+- Project registry identity now includes repository path, DB path, and config
+  path so same-repo multi-config Fairway dashboards can show separate project
+  lanes without one registration replacing another.
+- Dashboard and operator docs clarify same-repo multi-config labels and
+  environment readiness projection while preserving the read-only dashboard
+  trust boundary.
+
 ## v0.1.7
 
 ### Added
