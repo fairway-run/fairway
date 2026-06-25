@@ -300,17 +300,22 @@ is advisory, not approval.
 ## External Notifier Boundary
 
 External notification libraries, Slack/email/Teams adapters, or packages such
-as `nikoksr/notify` belong behind the optional notifier interface. The first
-implemented surface is intentionally dry-run/logging only:
+as `nikoksr/notify` belong behind the optional notifier interface. The notifier
+surface starts with dry-run rendering and adds reviewed, explicitly configured
+send adapters only behind env-resolved destinations and credentials:
 
 ```text
 fairway notify notifiers
 fairway notify dry-run --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--record-intent]
+fairway notify send --notifier <name> --task <task-id> --domain <domain> [--template <name>]
 ```
 
 `--record-intent` records a notification `intent` with a fixed template label,
-not arbitrary wake prompt text or delivery proof. Slack/email/Teams/webhook
-senders remain future reviewed adapters.
+not arbitrary wake prompt text or delivery proof. `notify send` records
+`sent` followed by `notification_delivered` or `notification_failed` through
+reviewed adapter implementations. Slack/email/Teams package integrations remain
+future reviewed adapters; the current built-in senders are bounded `log` and
+`webhook` adapters and do not grant dashboard send authority.
 
 ```go
 type ReviewWaitNotifier interface {

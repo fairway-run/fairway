@@ -329,11 +329,13 @@ apply the recommendation automatically.
 
 ### `[[external_notifiers]]`
 
-External notifiers declare optional dry-run/logging notification sinks for
-operator-controlled notification workflows. The first supported interface is
-deliberately bounded: `noop` and `log` notifiers can be listed and rendered by
-`fairway notify dry-run`; they do not send Slack, email, Teams, webhook, or
-provider-thread messages, and they do not grant dashboard send authority.
+External notifiers declare optional notification sinks for operator-controlled
+notification workflows. `noop` notifiers remain dry-run only. `log` and
+`webhook` notifiers can be enabled for real delivery only with `mode = "send"`.
+Destinations and credentials are read from environment variables at send time;
+Fairway records only the env var name or safe target label, never webhook URLs,
+tokens, arbitrary prompts, transcripts, or raw tool bodies. The dashboard never
+calls notifier send paths and does not gain send authority.
 
 ```toml
 [[external_notifiers]]
@@ -343,6 +345,16 @@ mode = "dry_run"
 target_env = "FAIRWAY_NOTIFY_LOG"
 domains = ["coordinator", "ops"]
 template_name = "control_room_handoff"
+
+[[external_notifiers]]
+name = "control-webhook"
+type = "webhook"
+mode = "send"
+target_env = "FAIRWAY_NOTIFY_WEBHOOK_URL"
+token_env = "FAIRWAY_NOTIFY_WEBHOOK_TOKEN"
+domains = ["coordinator", "ops"]
+template_name = "control_room_handoff"
+rate_limit_per_minute = 30
 ```
 
 Use `fairway notify notifiers` to inspect configured notifiers. Use
@@ -354,14 +366,27 @@ pass `--template <name>` to choose another fixed template label. With
 system or provider thread was contacted. Fairway stores the template label in
 the notification reason, not arbitrary prompt text for later replay.
 
+Use `fairway notify send --notifier <name> --task <task-id> --domain <domain>`
+only for explicitly configured `mode = "send"` notifiers. Send records a
+`sent` notification row before delivery and then records either
+`notification_delivered` or `notification_failed`. Webhook send uses HTTP POST
+with a fixed JSON body rendered from current task/domain/template metadata.
+If `token_env` is configured and set, the value is sent as a bearer token but is
+not printed or recorded. The optional `--target` value is only a safe display
+label and is restricted to letters, digits, dots, dashes, and underscores.
+Rate limiting is per notifier send attempt and degrades to
+`notification_failed` evidence instead of silent loss.
+
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `name` | string | — | Stable notifier name used by `fairway notify dry-run --notifier`. |
-| `type` | string | `noop` | Notifier type: `noop` or `log`. Network senders are intentionally out of scope for the first interface. |
-| `mode` | string | `dry_run` | `dry_run` or `disabled`. Disabled notifiers fail closed. |
-| `target_env` | string | — | Optional environment variable name for a local log/sink target. This is an env var name, not a secret or URL value. |
+| `name` | string | — | Stable notifier name used by `fairway notify dry-run --notifier` and `fairway notify send --notifier`. |
+| `type` | string | `noop` | Notifier type: `noop`, `log`, or `webhook`. `noop` cannot use `mode = "send"`. |
+| `mode` | string | `dry_run` | `dry_run`, `send`, or `disabled`. Disabled notifiers fail closed. |
+| `target_env` | string | — | Environment variable name for the destination, such as a log path or webhook URL. Required for `mode = "send"`. This is an env var name, not a secret or URL value. |
+| `token_env` | string | — | Optional environment variable name for a webhook bearer token. The value is used only at send time and is not recorded. |
 | `domains` | []string | all domains | Optional allowed notification domains/roles. |
 | `template_name` | string | — | Optional fixed-template label for operator review. |
+| `rate_limit_per_minute` | int | `30` for send mode | Maximum sends per notifier per minute. `0` uses the send-mode default. |
 
 ### `[[provider_model_prices]]`
 

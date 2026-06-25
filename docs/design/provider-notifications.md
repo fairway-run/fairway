@@ -18,12 +18,14 @@ claim direct delivery from chat memory alone.
 ## External Notifier Interface
 
 `[[external_notifiers]]` defines optional notifier endpoints for
-operator-controlled notification workflows. The first interface is intentionally
-dry-run/logging only:
+operator-controlled notification workflows. Dry-run rendering remains available
+for all enabled notifiers, and reviewed `mode = "send"` notifiers can deliver
+through bounded adapters:
 
 ```text
 fairway notify notifiers [--include-disabled]
 fairway notify dry-run --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--record-intent]
+fairway notify send --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--target <label>]
 ```
 
 `notify dry-run` renders the notification request from a configured fixed
@@ -31,8 +33,20 @@ template label. With `--record-intent`, it records a notification row with state
 `intent` and template metadata only. It does not store arbitrary wake prompt
 text for later replay, send Slack, email, Teams, webhook, or provider-thread
 messages, record `notification_delivered`, or give the read-only dashboard send
-authority. Real senders must be added as reviewed adapter implementations that
-record delivery or failure evidence through the same notification state model.
+authority.
+
+`notify send` is the real-delivery adapter path. It is available only for
+explicitly configured `mode = "send"` notifiers with delivery-capable types
+(`log` or `webhook`). Destinations and webhook bearer tokens are environment
+variable values resolved at send time; Fairway records the notifier name,
+domain, fixed template label, state, and a safe target label/env var name, not
+URLs, tokens, arbitrary prompts, transcripts, generated content, or raw tool
+bodies. The optional CLI `--target` override is a display label only and is
+restricted to letters, digits, dots, dashes, and underscores. Send records
+`sent` before the adapter call, then records `notification_delivered` or
+`notification_failed`. Configured rate limits count send attempts and also
+degrade to `notification_failed` evidence so a missed delivery remains visible
+as a durable wait. The dashboard remains read-only and never invokes this path.
 
 ## Notification States
 

@@ -291,6 +291,16 @@ func TestValidateExternalNotifiers(t *testing.T) {
 			Domains:      []string{"coordinator", "ops"},
 			TemplateName: "control_room_handoff",
 		},
+		{
+			Name:               "control-webhook",
+			Type:               "webhook",
+			Mode:               "send",
+			TargetEnv:          "FAIRWAY_NOTIFY_WEBHOOK",
+			TokenEnv:           "FAIRWAY_NOTIFY_TOKEN",
+			Domains:            []string{"coordinator"},
+			TemplateName:       "control_room_handoff",
+			RateLimitPerMinute: 10,
+		},
 	}
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("Validate() error = %v", err)
@@ -317,14 +327,29 @@ func TestValidateExternalNotifiers(t *testing.T) {
 			want:      `type "slack" is invalid`,
 		},
 		{
-			name:      "invalid mode",
-			notifiers: []ExternalNotifier{{Name: "control", Mode: "send"}},
-			want:      `mode "send" is invalid`,
+			name:      "send noop invalid",
+			notifiers: []ExternalNotifier{{Name: "control", Type: "noop", Mode: "send", TargetEnv: "FAIRWAY_NOTIFY_LOG"}},
+			want:      `mode send requires a delivery-capable type`,
 		},
 		{
 			name:      "invalid target env",
 			notifiers: []ExternalNotifier{{Name: "control", TargetEnv: "FAIRWAY-NOTIFY"}},
 			want:      `target_env "FAIRWAY-NOTIFY" is invalid`,
+		},
+		{
+			name:      "send requires target env",
+			notifiers: []ExternalNotifier{{Name: "control", Type: "log", Mode: "send"}},
+			want:      `target_env is required`,
+		},
+		{
+			name:      "invalid token env",
+			notifiers: []ExternalNotifier{{Name: "control", Type: "webhook", Mode: "send", TargetEnv: "FAIRWAY_NOTIFY_WEBHOOK", TokenEnv: "BAD-TOKEN"}},
+			want:      `token_env "BAD-TOKEN" is invalid`,
+		},
+		{
+			name:      "invalid rate limit",
+			notifiers: []ExternalNotifier{{Name: "control", Type: "log", Mode: "send", TargetEnv: "FAIRWAY_NOTIFY_LOG", RateLimitPerMinute: -1}},
+			want:      "rate_limit_per_minute must be non-negative",
 		},
 		{
 			name:      "domain must be token",

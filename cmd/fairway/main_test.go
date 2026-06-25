@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -162,9 +164,10 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"advisory", "--help"}, "fairway advisory adapters|validate <task-id>"},
 		{[]string{"advisory", "adapters", "--help"}, "fairway advisory adapters [--include-disabled]"},
 		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
-		{[]string{"notify", "--help"}, "fairway notify notifiers|dry-run"},
+		{[]string{"notify", "--help"}, "fairway notify notifiers|dry-run|send"},
 		{[]string{"notify", "notifiers", "--help"}, "fairway notify notifiers [--include-disabled]"},
 		{[]string{"notify", "dry-run", "--help"}, "fairway notify dry-run --notifier <name> --task <task-id> --domain <domain>"},
+		{[]string{"notify", "send", "--help"}, "fairway notify send --notifier <name> --task <task-id> --domain <domain>"},
 		{[]string{"automation", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"automation", "candidates", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"delivery", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
@@ -4116,6 +4119,15 @@ template_name = "control_room_handoff"
 name = "disabled-hook"
 type = "noop"
 mode = "disabled"
+
+[[external_notifiers]]
+name = "ops-log"
+type = "log"
+mode = "send"
+target_env = "FAIRWAY_NOTIFY_LOG_PATH"
+domains = ["ops"]
+template_name = "ops_handoff"
+rate_limit_per_minute = 5
 `)
 	runOK(t, "config", "validate")
 	runOK(t, "add", "T-001", "--title", "Notify target", "--role", "backend")
@@ -4129,6 +4141,8 @@ mode = "disabled"
 
 	allNotifiers := runCapture(t, "notify", "notifiers", "--include-disabled")
 	assertContains(t, allNotifiers, "disabled-hook type=noop mode=disabled")
+	assertContains(t, allNotifiers, "ops-log type=log mode=send")
+	assertContains(t, allNotifiers, "rate_limit_per_minute=5")
 
 	dryRun := runCapture(t, "notify", "dry-run",
 		"--notifier", "control-log",
@@ -4169,6 +4183,154 @@ mode = "disabled"
 	if err == nil || !strings.Contains(err.Error(), `does not allow domain "security"`) {
 		t.Fatalf("wrong domain error = %v", err)
 	}
+
+	logPath := filepath.Join(repo, "notify.log")
+	t.Setenv("FAIRWAY_NOTIFY_LOG_PATH", logPath)
+	sent := runCapture(t, "notify", "send",
+		"--notifier", "ops-log",
+		"--task", "T-001",
+		"--domain", "ops")
+	assertContains(t, sent, "notify_send: true")
+	assertContains(t, sent, "attempt_state: sent")
+	assertContains(t, sent, "delivery_state: notification_delivered")
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"notifier":"ops-log"`, `"task_id":"T-001"`, `"domain":"ops"`, `"template":"ops_handoff"`} {
+		if !strings.Contains(string(logBody), want) {
+			t.Fatalf("log notifier body missing %q:\n%s", want, string(logBody))
+		}
+	}
+	detail = runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "sent domain=ops provider=external-notifier/ops-log")
+	assertContains(t, detail, "notification_delivered domain=ops provider=external-notifier/ops-log")
+}
+
+func TestCLI_NotifySendWebhookExternalNotifier(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Webhook notify target", "--role", "backend")
+	var gotBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method=%s", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("authorization header=%q", got)
+		}
+		raw := new(bytes.Buffer)
+		if _, err := raw.ReadFrom(r.Body); err != nil {
+			t.Fatal(err)
+		}
+		gotBody = raw.String()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+	t.Setenv("FAIRWAY_NOTIFY_WEBHOOK", server.URL)
+	t.Setenv("FAIRWAY_NOTIFY_TOKEN", "test-token")
+	appendFile(t, ".fairway/config.toml", `
+[[external_notifiers]]
+name = "control-webhook"
+type = "webhook"
+mode = "send"
+target_env = "FAIRWAY_NOTIFY_WEBHOOK"
+token_env = "FAIRWAY_NOTIFY_TOKEN"
+domains = ["coordinator"]
+template_name = "control_room_handoff"
+rate_limit_per_minute = 2
+`)
+	runOK(t, "config", "validate")
+	sent := runCapture(t, "notify", "send",
+		"--notifier", "control-webhook",
+		"--task", "T-001",
+		"--domain", "coordinator")
+	assertContains(t, sent, "delivery_state: notification_delivered")
+	assertContains(t, gotBody, `"notifier":"control-webhook"`)
+	assertContains(t, gotBody, `"template":"control_room_handoff"`)
+	assertNotContains(t, sent, server.URL)
+	assertNotContains(t, runCapture(t, "task-detail", "T-001"), server.URL)
+
+	second := runCapture(t, "notify", "send",
+		"--notifier", "control-webhook",
+		"--task", "T-001",
+		"--domain", "coordinator",
+		"--target", "control-room")
+	assertContains(t, second, "delivery_state: notification_delivered")
+	assertContains(t, second, "target: control-room")
+
+	_, err = captureRun("notify", "send",
+		"--notifier", "control-webhook",
+		"--task", "T-001",
+		"--domain", "coordinator")
+	if err == nil || !strings.Contains(err.Error(), "rate limited") {
+		t.Fatalf("rate limit error=%v", err)
+	}
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "notification_failed domain=coordinator provider=external-notifier/control-webhook")
+	assertContains(t, detail, "external_notifier_rate_limited")
+	assertNotContains(t, detail, "test-token")
+
+	_, err = captureRun("notify", "send",
+		"--notifier", "control-webhook",
+		"--task", "T-001",
+		"--domain", "coordinator",
+		"--target", server.URL)
+	if err == nil || !strings.Contains(err.Error(), "--target must be a safe label") {
+		t.Fatalf("unsafe target error=%v", err)
+	}
+	assertNotContains(t, runCapture(t, "task-detail", "T-001"), server.URL)
+}
+
+func TestCLI_NotifySendWebhookRecordsFailure(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Webhook notify failure", "--role", "backend")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+	t.Setenv("FAIRWAY_NOTIFY_WEBHOOK_FAIL", server.URL)
+	appendFile(t, ".fairway/config.toml", `
+[[external_notifiers]]
+name = "failing-webhook"
+type = "webhook"
+mode = "send"
+target_env = "FAIRWAY_NOTIFY_WEBHOOK_FAIL"
+domains = ["ops"]
+template_name = "ops_handoff"
+`)
+	runOK(t, "config", "validate")
+	_, err = captureRun("notify", "send",
+		"--notifier", "failing-webhook",
+		"--task", "T-001",
+		"--domain", "ops")
+	if err == nil || !strings.Contains(err.Error(), "delivery failed") {
+		t.Fatalf("failure error=%v", err)
+	}
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "sent domain=ops provider=external-notifier/failing-webhook")
+	assertContains(t, detail, "notification_failed domain=ops provider=external-notifier/failing-webhook")
+	assertContains(t, detail, "webhook_returned_status_502")
+	assertNotContains(t, detail, server.URL)
 }
 
 func TestCLI_ReleaseVerifyScenarios(t *testing.T) {

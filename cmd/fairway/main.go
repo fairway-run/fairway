@@ -2625,9 +2625,24 @@ type notifyDryRunReport struct {
 	Warning        string `json:"warning,omitempty"`
 }
 
+type notifySendReport struct {
+	OK             bool   `json:"ok"`
+	Notifier       string `json:"notifier"`
+	Type           string `json:"type"`
+	Mode           string `json:"mode"`
+	TaskID         string `json:"task_id"`
+	Domain         string `json:"domain"`
+	Target         string `json:"target,omitempty"`
+	Template       string `json:"template"`
+	AttemptState   string `json:"attempt_state,omitempty"`
+	DeliveryState  string `json:"delivery_state,omitempty"`
+	RecordedReason string `json:"recorded_reason,omitempty"`
+	Error          string `json:"error,omitempty"`
+}
+
 func cmdNotify(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("notify", "notifiers|dry-run")
+		subcommandUsage("notify", "notifiers|dry-run|send")
 		return nil
 	}
 	switch args[0] {
@@ -2635,6 +2650,8 @@ func cmdNotify(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdNotifyNotifiers(ctx, opts, args[1:])
 	case "dry-run":
 		return cmdNotifyDryRun(ctx, opts, args[1:])
+	case "send":
+		return cmdNotifySend(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown notify subcommand %q", args[0])
 	}
@@ -2669,8 +2686,14 @@ func cmdNotifyNotifiers(ctx context.Context, opts globalOptions, args []string) 
 			if notifier.TargetEnv != "" {
 				fmt.Printf("  target_env=%s\n", notifier.TargetEnv)
 			}
+			if notifier.TokenEnv != "" {
+				fmt.Printf("  token_env=%s\n", notifier.TokenEnv)
+			}
 			if notifier.TemplateName != "" {
 				fmt.Printf("  template=%s\n", notifier.TemplateName)
+			}
+			if notifier.RateLimitPerMinute > 0 {
+				fmt.Printf("  rate_limit_per_minute=%d\n", notifier.RateLimitPerMinute)
 			}
 			printPacketList("  domains", notifier.Domains)
 		}
@@ -2709,6 +2732,9 @@ func cmdNotifyDryRun(ctx context.Context, opts globalOptions, args []string) err
 	}
 	if *domain == "" {
 		return errors.New("--domain is required")
+	}
+	if strings.TrimSpace(*target) != "" && !validExternalNotifierTargetLabel(strings.TrimSpace(*target)) {
+		return errors.New("--target must be a safe label containing only letters, digits, dot, dash, or underscore")
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		notifier, ok := configuredExternalNotifier(cfg, *notifierName)
@@ -2763,6 +2789,149 @@ func cmdNotifyDryRun(ctx context.Context, opts globalOptions, args []string) err
 	})
 }
 
+func cmdNotifySend(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway notify send --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--target <label>]")
+		fmt.Println("  Deliver through an explicitly configured external notifier and record attempted/delivered/failed notification evidence.")
+		return nil
+	}
+	fs := flag.NewFlagSet("notify send", flag.ContinueOnError)
+	notifierName := fs.String("notifier", "", "configured notifier name")
+	taskID := fs.String("task", "", "task id")
+	domain := fs.String("domain", "", "notification domain or target role")
+	target := fs.String("target", "", "optional safe target label for recorded evidence")
+	templateName := fs.String("template", "", "fixed template name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected notify send arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	*notifierName = strings.TrimSpace(*notifierName)
+	*taskID = strings.TrimSpace(*taskID)
+	*domain = strings.TrimSpace(*domain)
+	*templateName = strings.TrimSpace(*templateName)
+	if *notifierName == "" {
+		return errors.New("--notifier is required")
+	}
+	if *taskID == "" {
+		return errors.New("--task is required")
+	}
+	if *domain == "" {
+		return errors.New("--domain is required")
+	}
+	if strings.TrimSpace(*target) != "" && !validExternalNotifierTargetLabel(strings.TrimSpace(*target)) {
+		return errors.New("--target must be a safe label containing only letters, digits, dot, dash, or underscore")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		notifier, ok := configuredExternalNotifier(cfg, *notifierName)
+		if !ok {
+			return fmt.Errorf("external notifier %q is not configured", *notifierName)
+		}
+		notifier = normalizeExternalNotifier(notifier)
+		if notifier.Mode == "disabled" {
+			return fmt.Errorf("external notifier %q is disabled", notifier.Name)
+		}
+		if notifier.Mode != "send" {
+			return fmt.Errorf("external notifier %q is mode %q; send requires mode=send", notifier.Name, notifier.Mode)
+		}
+		if notifier.Type == "noop" {
+			return fmt.Errorf("external notifier %q type noop cannot deliver", notifier.Name)
+		}
+		if len(notifier.Domains) > 0 && !containsString(notifier.Domains, *domain) {
+			return fmt.Errorf("external notifier %q does not allow domain %q", notifier.Name, *domain)
+		}
+		template := firstNonEmpty(*templateName, notifier.TemplateName, "external_notification")
+		targetLabel := firstNonEmpty(strings.TrimSpace(*target), notifier.TargetEnv)
+		report := notifySendReport{
+			OK:       true,
+			Notifier: notifier.Name,
+			Type:     notifier.Type,
+			Mode:     notifier.Mode,
+			TaskID:   *taskID,
+			Domain:   *domain,
+			Target:   targetLabel,
+			Template: template,
+		}
+		rateLimited, rateReason, err := externalNotifierRateLimited(ctx, s, notifier)
+		if err != nil {
+			return err
+		}
+		if rateLimited {
+			recorded, err := s.RecordNotification(ctx, store.Notification{
+				TaskID:   *taskID,
+				Domain:   *domain,
+				Provider: "external-notifier/" + notifier.Name,
+				Target:   targetLabel,
+				State:    "notification_failed",
+				Reason:   rateReason,
+			})
+			if err != nil {
+				return err
+			}
+			report.OK = false
+			report.DeliveryState = recorded.State
+			report.RecordedReason = recorded.Reason
+			report.Error = "rate_limited"
+			if opts.JSON {
+				return printJSON(report)
+			}
+			fmt.Printf("notify_send: false\nnotifier: %s\ntype: %s\nmode: %s\ntask: %s\ndomain: %s\ntarget: %s\ntemplate: %s\ndelivery_state: %s\nreason: %s\n",
+				report.Notifier, report.Type, report.Mode, report.TaskID, report.Domain, firstNonEmpty(report.Target, "none"), report.Template, report.DeliveryState, report.RecordedReason)
+			return fmt.Errorf("external notifier %q rate limited", notifier.Name)
+		}
+		attemptReason := fmt.Sprintf("external_notifier_attempted notifier=%s type=%s template=%s", notifier.Name, notifier.Type, shellToken(template))
+		attempted, err := s.RecordNotification(ctx, store.Notification{
+			TaskID:   *taskID,
+			Domain:   *domain,
+			Provider: "external-notifier/" + notifier.Name,
+			Target:   targetLabel,
+			State:    "sent",
+			Reason:   attemptReason,
+		})
+		if err != nil {
+			return err
+		}
+		report.AttemptState = attempted.State
+		deliveryErr := deliverExternalNotification(ctx, notifier, notifyPayload{
+			TaskID:   *taskID,
+			Domain:   *domain,
+			Template: template,
+		})
+		state := "notification_delivered"
+		reason := fmt.Sprintf("external_notifier_delivered notifier=%s type=%s template=%s", notifier.Name, notifier.Type, shellToken(template))
+		if deliveryErr != nil {
+			state = "notification_failed"
+			reason = fmt.Sprintf("external_notifier_failed notifier=%s type=%s template=%s error=%s", notifier.Name, notifier.Type, shellToken(template), shellToken(redactNotifierError(deliveryErr.Error())))
+			report.OK = false
+			report.Error = redactNotifierError(deliveryErr.Error())
+		}
+		recorded, err := s.RecordNotification(ctx, store.Notification{
+			TaskID:   *taskID,
+			Domain:   *domain,
+			Provider: "external-notifier/" + notifier.Name,
+			Target:   targetLabel,
+			State:    state,
+			Reason:   reason,
+		})
+		if err != nil {
+			return err
+		}
+		report.DeliveryState = recorded.State
+		report.RecordedReason = recorded.Reason
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("notify_send: %t\nnotifier: %s\ntype: %s\nmode: %s\ntask: %s\ndomain: %s\ntarget: %s\ntemplate: %s\nattempt_state: %s\ndelivery_state: %s\nrecorded_reason: %s\n",
+			report.OK, report.Notifier, report.Type, report.Mode, report.TaskID, report.Domain, firstNonEmpty(report.Target, "none"), report.Template, report.AttemptState, report.DeliveryState, report.RecordedReason)
+		if report.Error != "" {
+			fmt.Printf("error: %s\n", report.Error)
+			return fmt.Errorf("external notifier %q delivery failed", notifier.Name)
+		}
+		return nil
+	})
+}
+
 func externalNotifiersForOutput(notifiers []config.ExternalNotifier, includeDisabled bool) []config.ExternalNotifier {
 	out := make([]config.ExternalNotifier, 0, len(notifiers))
 	for _, notifier := range notifiers {
@@ -2791,9 +2960,155 @@ func normalizeExternalNotifier(notifier config.ExternalNotifier) config.External
 	notifier.Type = firstNonEmpty(strings.TrimSpace(notifier.Type), "noop")
 	notifier.Mode = firstNonEmpty(strings.TrimSpace(notifier.Mode), "dry_run")
 	notifier.TargetEnv = strings.TrimSpace(notifier.TargetEnv)
+	notifier.TokenEnv = strings.TrimSpace(notifier.TokenEnv)
 	notifier.TemplateName = strings.TrimSpace(notifier.TemplateName)
 	notifier.Domains = trimStrings(notifier.Domains)
+	if notifier.Mode == "send" && notifier.RateLimitPerMinute == 0 {
+		notifier.RateLimitPerMinute = 30
+	}
 	return notifier
+}
+
+type notifyPayload struct {
+	TaskID   string
+	Domain   string
+	Template string
+}
+
+func externalNotifierRateLimited(ctx context.Context, s *store.Store, notifier config.ExternalNotifier) (bool, string, error) {
+	limit := notifier.RateLimitPerMinute
+	if limit <= 0 {
+		return false, "", nil
+	}
+	notifications, err := s.Notifications(ctx, "")
+	if err != nil {
+		return false, "", err
+	}
+	provider := "external-notifier/" + notifier.Name
+	cutoff := time.Now().UTC().Add(-1 * time.Minute)
+	count := 0
+	for _, notification := range notifications {
+		if notification.Provider != provider {
+			continue
+		}
+		created, err := time.Parse(time.RFC3339Nano, notification.CreatedAt)
+		if err != nil || created.Before(cutoff) {
+			continue
+		}
+		switch notification.State {
+		case "sent":
+			count++
+		}
+	}
+	if count < limit {
+		return false, "", nil
+	}
+	return true, fmt.Sprintf("external_notifier_rate_limited notifier=%s limit_per_minute=%d", notifier.Name, limit), nil
+}
+
+func deliverExternalNotification(ctx context.Context, notifier config.ExternalNotifier, payload notifyPayload) error {
+	target, ok := os.LookupEnv(notifier.TargetEnv)
+	if !ok || strings.TrimSpace(target) == "" {
+		return fmt.Errorf("target env %s is unset", notifier.TargetEnv)
+	}
+	body := externalNotifierBody(notifier, payload)
+	switch notifier.Type {
+	case "log":
+		return deliverLogNotification(strings.TrimSpace(target), body)
+	case "webhook":
+		return deliverWebhookNotification(ctx, strings.TrimSpace(target), notifier, body)
+	default:
+		return fmt.Errorf("unsupported notifier type %s", notifier.Type)
+	}
+}
+
+func externalNotifierBody(notifier config.ExternalNotifier, payload notifyPayload) string {
+	data := map[string]string{
+		"notifier": notifier.Name,
+		"type":     notifier.Type,
+		"task_id":  payload.TaskID,
+		"domain":   payload.Domain,
+		"template": payload.Template,
+		"sent_at":  time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return "{}"
+	}
+	return string(raw)
+}
+
+func deliverLogNotification(path string, body string) error {
+	if path == "" {
+		return errors.New("log target path is empty")
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(body + "\n")
+	return err
+}
+
+func deliverWebhookNotification(ctx context.Context, endpoint string, notifier config.ExternalNotifier, body string) error {
+	if endpoint == "" {
+		return errors.New("webhook endpoint is empty")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if notifier.TokenEnv != "" {
+		if token := strings.TrimSpace(os.Getenv(notifier.TokenEnv)); token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func redactNotifierError(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "unknown"
+	}
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 || len(parts[1]) < 8 {
+			continue
+		}
+		raw = strings.ReplaceAll(raw, parts[1], "<redacted>")
+	}
+	return raw
+}
+
+func validExternalNotifierTargetLabel(label string) bool {
+	label = strings.TrimSpace(label)
+	if label == "" || len(label) > 128 {
+		return false
+	}
+	for _, r := range label {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '.', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func validAdvisoryFact(fact, taskID string) bool {
@@ -13731,7 +14046,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, advisory validate, notify notifiers|dry-run, automation candidates, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, advisory validate, notify notifiers|dry-run|send, automation candidates, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -13772,7 +14087,7 @@ func printCommandHelp(command string) bool {
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
-		"notify":                     "fairway notify notifiers|dry-run ...\n  Inspect optional external notifier config or render dry-run notification intent.",
+		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",

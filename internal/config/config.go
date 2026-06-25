@@ -211,12 +211,14 @@ type AdvisoryAdapter struct {
 }
 
 type ExternalNotifier struct {
-	Name         string   `toml:"name"`
-	Type         string   `toml:"type"`
-	Mode         string   `toml:"mode"`
-	TargetEnv    string   `toml:"target_env"`
-	Domains      []string `toml:"domains"`
-	TemplateName string   `toml:"template_name"`
+	Name               string   `toml:"name"`
+	Type               string   `toml:"type"`
+	Mode               string   `toml:"mode"`
+	TargetEnv          string   `toml:"target_env"`
+	TokenEnv           string   `toml:"token_env"`
+	Domains            []string `toml:"domains"`
+	TemplateName       string   `toml:"template_name"`
+	RateLimitPerMinute int      `toml:"rate_limit_per_minute"`
 }
 
 func Defaults(root string) Config {
@@ -469,7 +471,7 @@ func validateExternalNotifiers(notifiers []ExternalNotifier) error {
 			notifierType = "noop"
 		}
 		switch notifierType {
-		case "noop", "log":
+		case "noop", "log", "webhook":
 		default:
 			return fmt.Errorf("[[external_notifiers]] type %q is invalid for %q", notifier.Type, name)
 		}
@@ -478,15 +480,27 @@ func validateExternalNotifiers(notifiers []ExternalNotifier) error {
 			mode = "dry_run"
 		}
 		switch mode {
-		case "dry_run", "disabled":
+		case "dry_run", "send", "disabled":
 		default:
 			return fmt.Errorf("[[external_notifiers]] mode %q is invalid for %q", notifier.Mode, name)
+		}
+		if mode == "send" && notifierType == "noop" {
+			return fmt.Errorf("[[external_notifiers]] mode send requires a delivery-capable type for %q", name)
 		}
 		if err := validateAdapterTokenList("[[external_notifiers]] domain", name, notifier.Domains); err != nil {
 			return err
 		}
 		if targetEnv := strings.TrimSpace(notifier.TargetEnv); targetEnv != "" && !validEnvName(targetEnv) {
 			return fmt.Errorf("[[external_notifiers]] target_env %q is invalid for %q", notifier.TargetEnv, name)
+		}
+		if mode == "send" && strings.TrimSpace(notifier.TargetEnv) == "" {
+			return fmt.Errorf("[[external_notifiers]] target_env is required for send notifier %q", name)
+		}
+		if tokenEnv := strings.TrimSpace(notifier.TokenEnv); tokenEnv != "" && !validEnvName(tokenEnv) {
+			return fmt.Errorf("[[external_notifiers]] token_env %q is invalid for %q", notifier.TokenEnv, name)
+		}
+		if notifier.RateLimitPerMinute < 0 {
+			return fmt.Errorf("[[external_notifiers]] rate_limit_per_minute must be non-negative for %q", name)
 		}
 		if strings.ContainsAny(strings.TrimSpace(notifier.TemplateName), "\r\n") {
 			return fmt.Errorf("[[external_notifiers]] template_name for %q must be a single line", name)
