@@ -480,7 +480,10 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   selected and non-applicable rule-pack context, required evidence, recommended
   commands, review domains, rationale, and residual-risk/stop-condition fields;
   record that packet as evidence explicitly when it is used for review or
-  handoff.
+  handoff. Use configured `packet template` entries for reusable deploy
+  rehearsal packets such as
+  [environment-deploy-preflight.md](environment-deploy-preflight.md); those
+  packets remain readiness/handoff context and do not authorize execution.
 - `db compat --backend postgres` is a planned adapter harness, not the default
   v1 runtime.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that

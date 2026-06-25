@@ -511,6 +511,11 @@ review context. The current built-in packet commands still render their
 specific packet shapes, but templates let projects add profile-specific packets
 without Fairway code changes.
 
+For deploy handoffs, use a reusable template such as
+`environment-deploy-preflight`; see
+[environment-deploy-preflight.md](design/environment-deploy-preflight.md) for
+the recommended fields, evidence types, and readiness gates.
+
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `profiles` | []string | — | Optional list of workstream profile names this packet template belongs to. If profiles are configured, references must match a configured profile. |

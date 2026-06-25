@@ -234,6 +234,15 @@ mapping gaps, wake target provider/thread, last wake attempt, and fixed CLI
 recovery suggestions. It does not add dashboard wake authority or write
 notification, review, task, merge, deploy, or execution state.
 
+Environment deploy readiness is also projected from existing task tags,
+profile gates, evidence, checkpoints, handoffs, and completion handbacks. A
+deploy rehearsal task tagged with values such as `environment:staging` and
+evidence types such as `environment-preflight`, `environment-blocker`,
+`route-readback`, `worker-access`, `app-smoke`, or `rollback-proof` appears in
+the same task detail, readiness, and report surfaces. The dashboard does not
+run deploy preflights, approve promotion, restart services, or mutate the
+environment; it only displays the recorded readiness and unresolved blockers.
+
 Diagnostics tables are sortable. The task-table export action is hidden on the
 diagnostics tab because there is no task table there.
 
