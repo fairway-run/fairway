@@ -396,6 +396,11 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   objective, scope, acceptance, source facts, validation gates, evidence refs,
   review refs, and forbidden actions, but it does not authorize execution,
   review approval, merge, push, deploy, release, or dashboard mutation.
+- `provenance manifest --path <file>... [--format text|json]` builds a
+  content-free SHA-256 manifest over selected evidence or provenance exports.
+  It reports missing artifacts, changed hashes, and privacy-rejected path names
+  without embedding artifact contents. It is tamper-evidence for review and
+  release packets, not proof that a change was benign or malicious.
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic
   command, evidence, and notification patterns, then reports frequency, recent

@@ -3406,6 +3406,7 @@ func cmdProvenance(ctx context.Context, opts globalOptions, args []string) error
 	if len(args) == 0 || isHelpOnly(args) {
 		fmt.Println("fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]")
 		fmt.Println("fairway provenance prompt-packet --task <task-id> [--format markdown|json]")
+		fmt.Println("fairway provenance manifest --path <file>... [--format text|json]")
 		fmt.Println("  Export metadata-only supply-chain provenance and bounded task prompt packets from existing Fairway state.")
 		return nil
 	}
@@ -3414,6 +3415,8 @@ func cmdProvenance(ctx context.Context, opts globalOptions, args []string) error
 		return cmdProvenanceReport(ctx, opts, args[1:])
 	case "prompt-packet":
 		return cmdProvenancePromptPacket(ctx, opts, args[1:])
+	case "manifest":
+		return cmdProvenanceManifest(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown provenance subcommand %q", args[0])
 	}
@@ -3495,6 +3498,42 @@ func cmdProvenancePromptPacket(ctx context.Context, opts globalOptions, args []s
 	})
 }
 
+func cmdProvenanceManifest(_ context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway provenance manifest --path <file>... [--format text|json]")
+		fmt.Println("  Build a content-free sha256 manifest for selected evidence or provenance exports.")
+		return nil
+	}
+	fs := flag.NewFlagSet("provenance manifest", flag.ContinueOnError)
+	var paths multiFlag
+	fs.Var(&paths, "path", "artifact or export path; repeatable")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected provenance manifest arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	manifest, err := provenance.BuildManifest(provenance.ManifestOptions{Paths: paths})
+	if err != nil {
+		return err
+	}
+	if opts.JSON || *format == "json" {
+		if err := printJSON(manifest); err != nil {
+			return err
+		}
+	} else {
+		printProvenanceManifestText(manifest)
+	}
+	if !manifest.OK {
+		return errors.New("provenance manifest failed")
+	}
+	return nil
+}
+
 func printProvenanceReportText(report provenance.Report) {
 	fmt.Println("provenance_report_ok: true")
 	fmt.Printf("schema: %s\n", report.Schema)
@@ -3541,6 +3580,34 @@ func printProvenanceReportText(report provenance.Report) {
 		}
 		for _, ref := range task.ReviewRefs {
 			fmt.Printf("  review: %s domain=%s verdict=%s reviewer=%s\n", ref.Ref, firstNonEmpty(ref.Domain, "unspecified"), firstNonEmpty(ref.Verdict, "unknown"), firstNonEmpty(ref.Reviewer, "unknown"))
+		}
+	}
+}
+
+func printProvenanceManifestText(manifest provenance.Manifest) {
+	fmt.Printf("provenance_manifest_ok: %t\n", manifest.OK)
+	fmt.Printf("schema: %s\n", manifest.Schema)
+	fmt.Printf("generated_at: %s\n", manifest.GeneratedAt)
+	fmt.Printf("algorithm: %s\n", manifest.Algorithm)
+	fmt.Println("privacy: file contents are hashed only and are not embedded")
+	if len(manifest.Entries) == 0 {
+		fmt.Println("entries: none")
+	} else {
+		fmt.Println("entries:")
+		for _, entry := range manifest.Entries {
+			fmt.Printf("- %s status=%s bytes=%d sha256=%s\n", entry.Path, entry.Status, entry.Bytes, firstNonEmpty(entry.SHA256, "none"))
+		}
+	}
+	if len(manifest.Issues) > 0 {
+		fmt.Println("issues:")
+		for _, issue := range manifest.Issues {
+			fmt.Printf("- %s\n", issue)
+		}
+	}
+	if len(manifest.Warnings) > 0 {
+		fmt.Println("warnings:")
+		for _, warning := range manifest.Warnings {
+			fmt.Printf("- %s\n", warning)
 		}
 	}
 }
@@ -14378,7 +14445,7 @@ func printCommandHelp(command string) bool {
 		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
-		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json]\n  Export metadata-only supply-chain provenance and bounded task prompt packets.",
+		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
 		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",

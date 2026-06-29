@@ -175,6 +175,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"provenance", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "report", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "prompt-packet", "--help"}, "fairway provenance prompt-packet --task <task-id> [--format markdown|json]"},
+		{[]string{"provenance", "manifest", "--help"}, "fairway provenance manifest --path <file>... [--format text|json]"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -1592,6 +1593,49 @@ func TestCLI_ProvenanceReportAndPromptPacket(t *testing.T) {
 	assertContains(t, packet, "do not include raw prompt bodies")
 	assertContains(t, packet, "`evidence:T-001:1`")
 	assertNotContains(t, packet, "supersecret")
+}
+
+func TestCLI_ProvenanceManifest(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	writeFile(t, "artifacts/provenance.json", `{"schema":"fairway.provenance.v1","task":"T-001"}`)
+	first := runCapture(t, "--json", "provenance", "manifest", "--path", "artifacts/provenance.json")
+	assertContains(t, first, `"schema": "fairway.provenance-manifest.v1"`)
+	assertContains(t, first, `"ok": true`)
+	assertContains(t, first, `"status": "hashed"`)
+	assertContains(t, first, `"sha256":`)
+	assertNotContains(t, first, `"schema\":\"fairway.provenance.v1\"`)
+
+	writeFile(t, "artifacts/provenance.json", `{"schema":"fairway.provenance.v1","task":"T-001","changed":true}`)
+	second := runCapture(t, "--json", "provenance", "manifest", "--path", "artifacts/provenance.json")
+	if extractJSONValue(first, "sha256") == extractJSONValue(second, "sha256") {
+		t.Fatalf("manifest hash did not change after artifact content changed:\nfirst=%s\nsecond=%s", first, second)
+	}
+
+	missing := runCaptureAllowError(t, "provenance", "manifest", "--path", "artifacts/missing.json")
+	assertContains(t, missing, "provenance_manifest_ok: false")
+	assertContains(t, missing, "missing artifact artifacts/missing.json")
+
+	if err := os.MkdirAll("artifacts/directory", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	directory := runCaptureAllowError(t, "provenance", "manifest", "--path", "artifacts/directory")
+	assertContains(t, directory, "directory_rejected")
+	assertContains(t, directory, "refusing directory artifact artifacts/directory")
+
+	writeFile(t, "artifacts/secret-token.json", "do-not-export")
+	rejected := runCaptureAllowError(t, "provenance", "manifest", "--path", "artifacts/secret-token.json")
+	assertContains(t, rejected, "privacy_rejected")
+	assertContains(t, rejected, "refusing suspicious evidence path artifacts/secret-token.json")
+	assertNotContains(t, rejected, "do-not-export")
 }
 
 func TestCLI_UsageCostReport(t *testing.T) {
@@ -5361,6 +5405,20 @@ func assertNotContains(t *testing.T, got, want string) {
 	if strings.Contains(got, want) {
 		t.Fatalf("expected output not to contain %q; got:\n%s", want, got)
 	}
+}
+
+func extractJSONValue(body, key string) string {
+	needle := `"` + key + `": "`
+	idx := strings.Index(body, needle)
+	if idx < 0 {
+		return ""
+	}
+	start := idx + len(needle)
+	end := strings.Index(body[start:], `"`)
+	if end < 0 {
+		return ""
+	}
+	return body[start : start+end]
 }
 
 func git(t *testing.T, dir string, args ...string) {

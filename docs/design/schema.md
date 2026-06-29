@@ -147,6 +147,13 @@ Index: `(project_id, to_role, acknowledged_at)`.
 
 Artifact paths and result classifications.
 
+Evidence rows are append-only execution facts. Corrections should add a new
+evidence row, checkpoint, review, or superseding task note rather than editing
+or deleting historical evidence out of band. Fairway stores metadata and
+references here, not artifact contents. Use `fairway provenance manifest` to
+hash selected exported bundles or artifacts when a release/audit packet needs
+tamper-evidence.
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | INTEGER PK | |

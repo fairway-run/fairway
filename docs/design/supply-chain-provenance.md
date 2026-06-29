@@ -227,12 +227,27 @@ artifact path was recorded.
 
 ## Tamper-Evidence Requirements
 
-`FW-234` will define the first implementation. The model requirement is:
+`FW-234` adds the first content-free hash manifest surface:
+
+```bash
+fairway provenance manifest \
+  --path artifacts/fairway-provenance-v0.1.2.json \
+  --path artifacts/fairway-provenance-v0.1.2.md \
+  --format json
+```
+
+The manifest hashes selected evidence or provenance exports with SHA-256. It
+records path, byte count, hash, and status, but never embeds file content. It
+reports missing files, rejects directories, and refuses suspicious
+secret-bearing path names such as `secret`, `token`, `password`,
+`credential`, `private-key`, `apikey`, or `api_key`.
+
+The model requirement is:
 
 - provenance bundles are deterministic for the same DB/config/source state;
 - exported bundles can be hashed;
-- a manifest can list bundle hash, selected artifact references, artifact
-  hashes when available, source commit, Fairway version, and generation command;
+- a manifest can list bundle hashes and selected artifact hashes without
+  copying artifact contents into Fairway;
 - missing artifacts and changed artifact hashes are explicit findings;
 - manifests never require copying sensitive artifact contents into Fairway.
 

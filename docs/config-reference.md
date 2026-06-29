@@ -14,6 +14,12 @@ current config. See
 [supply-chain-provenance.md](design/supply-chain-provenance.md) for the privacy
 boundary and future export model.
 
+Tamper-evident evidence manifests are also config-free. Use
+`fairway provenance manifest --path <file>` on selected exported provenance
+bundles or redacted artifacts. The command hashes files and records path/hash
+metadata only; it does not store artifact contents, secrets, or credentials in
+Fairway.
+
 ## Full schema
 
 ```toml
