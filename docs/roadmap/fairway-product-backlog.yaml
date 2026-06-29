@@ -3877,3 +3877,148 @@ tasks:
       - "Backup/restore guidance covers local SQLite, exported provenance bundles, and external archival targets without storing secrets."
       - "Retention classes distinguish source-control-worthy provenance, local scratch, sensitive evidence references, and external compliance artifacts."
       - "Tests cover hash manifest generation, changed artifact detection, missing artifact reporting, and privacy boundary checks."
+
+  - id: FW-235
+    title: Add cross-project activity rollup dashboard
+    kind: dashboard
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: multi-project-reports
+    source_paths:
+      - docs/design/multi-project.md
+      - docs/design/reports.md
+      - docs/design/dashboard.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/multi-project.md
+      - docs/design/reports.md
+      - docs/design/dashboard.md
+    review_domains:
+      - backend
+      - ui
+      - governance
+    risk_level: medium
+    migration_type: cross-project-activity-rollup
+    tags:
+      - dashboard
+      - multi-project
+      - reports
+    acceptance_checks:
+      - "Dashboard and reports can show activity across configured Fairway project registries, not only the currently selected DB."
+      - "Rollup answers what happened today by project, task, provider/session, evidence count, status movement, and commit/release refs."
+      - "Default view makes days with evidence but no Git commits visible without treating generated artifacts as source commits."
+      - "Filters support project, profile, role, tag, date range, task status, and evidence type."
+      - "Tests cover attached DB aggregation, duplicate task ids across projects, missing project DBs, and read-only dashboard behavior."
+
+  - id: FW-236
+    title: Add safe evidence artifact viewer and redaction gate
+    kind: dashboard
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: evidence-viewer
+    source_paths:
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - docs/design/product-boundaries.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - internal/dashboard
+      - cmd/fairway
+      - docs/design/dashboard.md
+      - docs/design/reports.md
+      - docs/config-reference.md
+    review_domains:
+      - ui
+      - security
+      - backend
+      - governance
+    risk_level: high
+    migration_type: evidence-artifact-viewer
+    tags:
+      - evidence
+      - dashboard
+      - security
+    acceptance_checks:
+      - "Fairway can render linked Markdown, JSON, text, and HTML evidence artifacts through a safe viewer instead of raw downloads when configured."
+      - "Viewer applies internal URL/secret redaction rules and clearly labels local-only, internal-only, and publishable evidence."
+      - "Viewer never serves paths outside configured evidence roots and never follows symlinks outside allowed roots."
+      - "Dashboard task detail links evidence through the viewer while retaining raw path readback for local operators."
+      - "Tests cover markdown/json/html rendering, path traversal rejection, symlink rejection, internal URL redaction, and read-only dashboard authority."
+
+  - id: FW-237
+    title: Promote environment rehearsal packets into executable Fairway templates
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: environment-rehearsal
+    source_paths:
+      - docs/design/environment-deploy-preflight.md
+      - docs/design/regression-packets.md
+      - docs/design/reports.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/environment-deploy-preflight.md
+      - docs/design/regression-packets.md
+      - docs/design/cli.md
+    review_domains:
+      - ops
+      - backend
+      - governance
+    risk_level: medium
+    migration_type: executable-rehearsal-packets
+    tags:
+      - deploy
+      - airgap
+      - preflight
+    acceptance_checks:
+      - "Fairway supports reusable rehearsal packet templates for demo/dev/staging/airgap workflows with required inputs, preflight checks, expected evidence, rollback, and closeout shape."
+      - "A packet can be rendered as Markdown/JSON and optionally instantiated as child tasks or waits without hand-copying prompt text."
+      - "Rehearsal packets distinguish setup gaps, product defects, environment drift, and operator-access blockers."
+      - "Reports can group repeated rehearsal failures by packet/check id to show where automation should be added."
+      - "Tests cover packet rendering, required-input validation, child task instantiation, and no live/deploy authority without explicit task state."
+
+  - id: FW-238
+    title: Add reusable task prompt library and recipe extraction
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: context-packets
+    source_paths:
+      - docs/design/context-packets.md
+      - docs/design/coordination-intelligence.md
+      - docs/agent-guide.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - docs/design/context-packets.md
+      - docs/design/coordination-intelligence.md
+      - docs/design/cli.md
+      - cmd/fairway
+      - internal
+    review_domains:
+      - governance
+      - arch
+      - backend
+    risk_level: medium
+    migration_type: task-prompt-library
+    tags:
+      - prompt-library
+      - agentic-engineering
+      - provenance
+    acceptance_checks:
+      - "Fairway can promote a completed task into a reusable recipe/context packet containing objective, scope, inputs, forbidden actions, validation gates, expected evidence, and closeout rules."
+      - "Recipes reference evidence and source facts instead of storing raw transcripts or arbitrary provider prompt bodies by default."
+      - "CLI can render a recipe into a new task prompt packet with task-specific substitutions and privacy checks."
+      - "Dashboard exposes recipes as prompt/runbook library entries linked to completed source tasks."
+      - "Tests cover recipe extraction, substitution, privacy rejection, missing source facts, and recipe-to-task instantiation."
