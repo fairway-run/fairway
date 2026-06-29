@@ -282,6 +282,24 @@ fairway packet release-run FW-REL-012 \
   --verification-command "brew fetch --cask --force fairway-run/tap/fairway"
 ```
 
+Generate a Fairway provenance bundle before release review. The bundle should
+name the release source SHA, included Fairway task ids, evidence summaries,
+review gates, CI/CD checks, and known waivers, without embedding raw prompts,
+private transcripts, raw tool bodies, generated-content dumps, credentials, or
+secrets:
+
+```bash
+fairway provenance report --since 168h --format json > artifacts/fairway-provenance-v0.1.2.json
+fairway provenance report --since 168h --format markdown > artifacts/fairway-provenance-v0.1.2.md
+```
+
+The JSON bundle can be attached to release review evidence, archived with the
+release packet, or referenced from release notes. Public release notes may link
+to a reviewed public bundle or summarize its digest/reference, but they should
+not expose internal-only URLs or sensitive artifact paths. This is the Fairway
+control-plane input for future SLSA or in-toto attestations; it does not require
+or replace those systems in the first implementation.
+
 Cut the release tag from a clean, pushed `main`:
 
 ```bash
@@ -361,8 +379,15 @@ fairway release verify \
   --homebrew-version 0.1.2 \
   --homebrew-tap-commit <tap-commit-sha> \
   --brew-fetch-status pass \
+  --provenance-bundle artifacts/fairway-provenance-v0.1.2.json \
   --verification-command "brew fetch --cask --force fairway-run/tap/fairway"
 ```
+
+`fairway release verify` warns when no provenance bundle is named. If
+`--provenance-bundle` is provided, the path must exist; otherwise release
+verification fails. The guard also warns when the bundle does not mention the
+release version or supplied source SHA, so reviewers can catch stale provenance
+before tagging or publishing.
 
 Git tags include the `v` prefix (`v0.1.2`), while Homebrew cask versions
 normally omit it (`0.1.2`). `fairway release verify` normalizes that prefix for

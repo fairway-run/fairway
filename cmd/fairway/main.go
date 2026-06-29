@@ -5668,6 +5668,7 @@ type releaseVerifyReport struct {
 	ReleaseURL         string               `json:"release_url,omitempty"`
 	HomebrewVersion    string               `json:"homebrew_version,omitempty"`
 	HomebrewTapCommit  string               `json:"homebrew_tap_commit,omitempty"`
+	ProvenanceBundle   string               `json:"provenance_bundle,omitempty"`
 	Statuses           map[string]string    `json:"statuses,omitempty"`
 	AssetResults       []releaseAssetResult `json:"asset_results,omitempty"`
 	Issues             []string             `json:"issues,omitempty"`
@@ -5711,6 +5712,7 @@ func cmdReleaseVerify(ctx context.Context, opts globalOptions, args []string) er
 	homebrewVersion := fs.String("homebrew-version", "", "Homebrew cask version")
 	homebrewTapCommit := fs.String("homebrew-tap-commit", "", "Homebrew tap commit sha")
 	brewFetchStatus := fs.String("brew-fetch-status", "", "brew fetch status: pass, fail, skipped, or blocked")
+	provenanceBundle := fs.String("provenance-bundle", "", "path to Fairway provenance bundle for this release")
 	var assets multiFlag
 	var verification multiFlag
 	fs.Var(&assets, "asset", "asset check as URL=STATUS; may repeat")
@@ -5736,6 +5738,7 @@ func cmdReleaseVerify(ctx context.Context, opts globalOptions, args []string) er
 		HomebrewVersion:      *homebrewVersion,
 		HomebrewTapCommit:    *homebrewTapCommit,
 		BrewFetchStatus:      *brewFetchStatus,
+		ProvenanceBundlePath: *provenanceBundle,
 		Assets:               assets,
 		VerificationCommands: verification,
 	})
@@ -5753,6 +5756,9 @@ func cmdReleaseVerify(ctx context.Context, opts globalOptions, args []string) er
 		}
 		if report.HomebrewVersion != "" {
 			fmt.Printf("homebrew_version: %s\n", report.HomebrewVersion)
+		}
+		if report.ProvenanceBundle != "" {
+			fmt.Printf("provenance_bundle: %s\n", report.ProvenanceBundle)
 		}
 		if len(report.AssetResults) > 0 {
 			fmt.Println("assets:")
@@ -5800,6 +5806,7 @@ type releaseVerifyInput struct {
 	HomebrewVersion      string
 	HomebrewTapCommit    string
 	BrewFetchStatus      string
+	ProvenanceBundlePath string
 	Assets               []string
 	VerificationCommands []string
 }
@@ -5822,6 +5829,7 @@ func buildReleaseVerifyReport(input releaseVerifyInput) (releaseVerifyReport, er
 		ReleaseURL:         strings.TrimSpace(input.ReleaseURL),
 		HomebrewVersion:    strings.TrimSpace(input.HomebrewVersion),
 		HomebrewTapCommit:  strings.TrimSpace(input.HomebrewTapCommit),
+		ProvenanceBundle:   strings.TrimSpace(input.ProvenanceBundlePath),
 		VerificationInputs: append([]string{}, input.VerificationCommands...),
 		Statuses: map[string]string{
 			"ci":         strings.ToLower(strings.TrimSpace(input.CIStatus)),
@@ -5875,6 +5883,7 @@ func buildReleaseVerifyReport(input releaseVerifyInput) (releaseVerifyReport, er
 	if len(report.AssetResults) == 0 {
 		report.Issues = append(report.Issues, "missing asset URL verification")
 	}
+	checkReleaseProvenanceBundle(&report, report.ProvenanceBundle)
 	if report.HomebrewVersion == "" {
 		report.Issues = append(report.Issues, "missing Homebrew cask version")
 	} else if report.Version != "" && !sameReleaseVersion(report.HomebrewVersion, report.Version) {
@@ -5892,6 +5901,27 @@ func buildReleaseVerifyReport(input releaseVerifyInput) (releaseVerifyReport, er
 	}
 	report.OK = len(report.Issues) == 0
 	return report, nil
+}
+
+func checkReleaseProvenanceBundle(report *releaseVerifyReport, bundlePath string) {
+	bundlePath = strings.TrimSpace(bundlePath)
+	if bundlePath == "" {
+		report.Warnings = append(report.Warnings, "missing Fairway provenance bundle")
+		report.Recommendations = append(report.Recommendations, "generate a release provenance bundle with fairway provenance report and publish or archive its reviewed reference")
+		return
+	}
+	data, err := os.ReadFile(filepath.Clean(bundlePath))
+	if err != nil {
+		report.Issues = append(report.Issues, fmt.Sprintf("missing provenance bundle at %s", bundlePath))
+		return
+	}
+	text := string(data)
+	if report.Version != "" && !strings.Contains(text, report.Version) {
+		report.Warnings = append(report.Warnings, "provenance bundle does not mention release version")
+	}
+	if report.SourceSHA != "" && !strings.Contains(text, report.SourceSHA) {
+		report.Warnings = append(report.Warnings, "provenance bundle does not mention source SHA")
+	}
 }
 
 func sameReleaseVersion(a, b string) bool {
@@ -14354,7 +14384,7 @@ func printCommandHelp(command string) bool {
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
-		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> ...\n  Verify release evidence and publication state.",
+		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
 		"audit":                      "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog ...\n  Run advisory coverage, CI/deploy learning, known-failure routing, provider notification lifecycle, and docs-to-backlog reports.",

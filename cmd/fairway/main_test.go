@@ -4425,6 +4425,7 @@ func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(oldwd) })
 	writeFile(t, "docs/release-notes.md", "## v0.1.2\n- release notes\n")
 	writeFile(t, "CHANGELOG.md", "## v0.1.2\n- changes\n")
+	writeFile(t, "artifacts/provenance-v0.1.2.json", `{"schema":"fairway.provenance.v1","release":"v0.1.2","source_sha":"abc123","tasks":["FW-232"]}`)
 
 	cleanArgs := []string{
 		"release", "verify",
@@ -4441,11 +4442,13 @@ func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
 		"--homebrew-version", "v0.1.2",
 		"--homebrew-tap-commit", "tap123",
 		"--brew-fetch-status", "pass",
+		"--provenance-bundle", "artifacts/provenance-v0.1.2.json",
 		"--verification-command", "brew fetch --cask --force fairway-run/tap/fairway",
 	}
 	runOK(t, cleanArgs...)
 	cleanJSON := runCapture(t, append([]string{"--json"}, cleanArgs...)...)
 	assertContains(t, cleanJSON, `"ok": true`)
+	assertContains(t, cleanJSON, `"provenance_bundle": "artifacts/provenance-v0.1.2.json"`)
 
 	homebrewNormalizedArgs := append([]string{}, cleanArgs...)
 	for i := range homebrewNormalizedArgs {
@@ -4478,6 +4481,16 @@ func TestCLI_ReleaseVerifyScenarios(t *testing.T) {
 
 	missingNotes := runCaptureAllowError(t, "release", "verify", "--version", "v0.1.2", "--tag", "v0.1.2", "--release-notes", "docs/missing.md", "--changelog", "CHANGELOG.md", "--ci-status", "pass", "--docs-status", "pass", "--signing-status", "pass", "--notary-status", "pass", "--release-state", "public", "--asset", "https://example.test/fairway.tar.gz=200", "--homebrew-version", "v0.1.2", "--homebrew-tap-commit", "tap123", "--brew-fetch-status", "pass")
 	assertContains(t, missingNotes, "missing release notes")
+
+	missingProvenanceArgs := append([]string{}, cleanArgs...)
+	for i := range missingProvenanceArgs {
+		if missingProvenanceArgs[i] == "artifacts/provenance-v0.1.2.json" && i > 0 && missingProvenanceArgs[i-1] == "--provenance-bundle" {
+			missingProvenanceArgs[i] = "artifacts/missing-provenance.json"
+			break
+		}
+	}
+	missingProvenance := runCaptureAllowError(t, missingProvenanceArgs...)
+	assertContains(t, missingProvenance, "missing provenance bundle at artifacts/missing-provenance.json")
 
 	failedAsset := runCaptureAllowError(t, "release", "verify", "--version", "v0.1.2", "--tag", "v0.1.2", "--ci-status", "pass", "--docs-status", "pass", "--signing-status", "pass", "--notary-status", "pass", "--release-state", "public", "--asset", "https://github.com/fairway-run/fairway/releases/download/v0.1.2/fairway.tar.gz=404", "--homebrew-version", "v0.1.2", "--homebrew-tap-commit", "tap123", "--brew-fetch-status", "pass")
 	assertContains(t, failedAsset, "asset URL failed")

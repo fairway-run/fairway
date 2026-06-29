@@ -97,5 +97,6 @@ or CLI should require them.
 - Schema migration policy is stable.
 - Homebrew packaging is working.
 - Release artifacts are signed or checksummed.
+- Release verification includes a reviewed Fairway provenance bundle reference.
 - Postgres compatibility harness exists, even if the runtime adapter remains
   v2.

@@ -176,6 +176,22 @@ release-run`, `fairway release verify`, or `fairway packet release-run`.
 Ordinary evidence notes or commands that merely contain the word "release" do
 not prove release lineage.
 
+Release verification accepts an explicit provenance bundle reference:
+
+```bash
+fairway release verify \
+  --version v0.1.2 \
+  --tag v0.1.2 \
+  --source-sha <sha> \
+  --provenance-bundle artifacts/fairway-provenance-v0.1.2.json \
+  ...
+```
+
+When a bundle path is supplied, the path must exist. Fairway warns when no
+bundle is supplied, or when the bundle does not mention the release version or
+source SHA. That keeps release provenance visible without making Fairway an
+artifact signer, SBOM system, SLSA generator, or in-toto attestation authority.
+
 ## Prompt-Packet Export
 
 Prompt packets are provenance inputs, not arbitrary transcript storage. A task
