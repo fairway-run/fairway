@@ -3736,3 +3736,144 @@ tasks:
       - "The implementation refuses to trust identity headers unless the origin reachability, trusted proxy mode, audience/team/issuer checks, and failure behavior are explicitly configured."
       - "Read-only mode remains the default shared-dashboard trust boundary; any future write access requires a separate opt-in authorization and audit model."
       - "Tests cover no proxy, trusted proxy metadata only, invalid/missing JWT, valid verified identity, unreachable verification metadata, and no dashboard mutation authority."
+
+  - id: FW-231
+    title: Define Fairway supply-chain provenance model
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provenance
+    source_paths:
+      - docs/design/product-boundaries.md
+      - docs/design/reports.md
+      - docs/design/schema.md
+      - docs/design/provider-usage-accounting.md
+    target_paths:
+      - docs/design/supply-chain-provenance.md
+      - docs/design/product-boundaries.md
+      - docs/design/reports.md
+      - docs/config-reference.md
+    review_domains:
+      - arch
+      - governance
+      - security
+    risk_level: high
+    migration_type: supply-chain-provenance-model
+    tags:
+      - supply-chain
+      - provenance
+      - agentic-engineering
+    acceptance_checks:
+      - "Fairway explicitly defines its role as supply-chain provenance metadata, not a compiler/runtime dependency."
+      - "Model distinguishes source code, build artifacts, CI/CD, Fairway work provenance, provider usage, prompts/context packets, evidence, reviews, and release decisions."
+      - "Trust boundaries state what Fairway must not store: raw secrets, provider auth state, raw prompt bodies by default, private transcripts, raw tool bodies, or generated content dumps."
+      - "Design covers task-to-commit-to-release linkage, provenance export shape, retention, backup, and future tamper-evidence requirements."
+      - "Docs explain how consumers can audit why work happened, who/what executed it, which evidence existed, and which gates were satisfied."
+
+  - id: FW-232
+    title: Add provenance report and task prompt-packet export
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: reports
+    source_paths:
+      - docs/design/supply-chain-provenance.md
+      - docs/design/reports.md
+      - docs/design/context-packets.md
+      - cmd/fairway
+      - internal
+    target_paths:
+      - cmd/fairway
+      - internal
+      - docs/design/reports.md
+      - docs/design/cli.md
+      - docs/design/supply-chain-provenance.md
+    review_domains:
+      - backend
+      - governance
+      - security
+    risk_level: medium
+    migration_type: provenance-report-export
+    tags:
+      - supply-chain
+      - provenance
+      - reports
+    acceptance_checks:
+      - "CLI can export a task or date-range provenance packet containing task metadata, checkpoints, evidence refs, review refs, commit refs, release refs, provider/session refs, and usage refs without raw prompt/transcript/content storage."
+      - "Export supports JSON and Markdown and is deterministic enough for audit diffs."
+      - "Prompt-packet export includes objective, scope, acceptance, source facts, forbidden actions, validation gates, and evidence refs when present, while preserving privacy boundaries."
+      - "Dashboard/reports can show supply-chain provenance summaries by task, day, release, and commit SHA."
+      - "Tests cover JSON/Markdown export, missing evidence, privacy rejection/redaction, and date-range rollup."
+
+  - id: FW-233
+    title: Link Fairway provenance to release attestations
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release-governance
+    source_paths:
+      - docs/governance/release.md
+      - docs/design/release-cuts.md
+      - docs/design/supply-chain-provenance.md
+      - docs/release-notes.md
+    target_paths:
+      - docs/governance/release.md
+      - docs/design/release-cuts.md
+      - docs/design/supply-chain-provenance.md
+      - cmd/fairway
+      - internal
+    review_domains:
+      - governance
+      - security
+      - ops
+    risk_level: high
+    migration_type: release-provenance-attestation
+    tags:
+      - supply-chain
+      - release
+      - provenance
+    acceptance_checks:
+      - "Release process requires a provenance bundle naming release SHA, included Fairway task IDs, evidence summaries, review gates, CI/CD checks, and known waivers."
+      - "Release notes or release artifacts can reference the provenance bundle without exposing internal-only URLs or secrets."
+      - "The model supports SLSA/in-toto-style future attestation without requiring those systems in the first implementation."
+      - "Release checks fail or warn when committed source changes lack linked Fairway task IDs or provenance evidence."
+      - "Docs include operator steps for generating, storing, and reviewing release provenance."
+
+  - id: FW-234
+    title: Add tamper-evident evidence retention and backup posture
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: evidence-custody
+    source_paths:
+      - docs/design/supply-chain-provenance.md
+      - docs/design/schema.md
+      - docs/config-reference.md
+      - docs/governance/release.md
+    target_paths:
+      - docs/design/supply-chain-provenance.md
+      - docs/design/schema.md
+      - docs/config-reference.md
+      - cmd/fairway
+      - internal
+    review_domains:
+      - security
+      - governance
+      - backend
+      - ops
+    risk_level: high
+    migration_type: evidence-retention-tamper-evidence
+    tags:
+      - supply-chain
+      - evidence
+      - retention
+    acceptance_checks:
+      - "Design and implementation define append-only evidence/checkpoint retention expectations and explicit mutation boundaries."
+      - "Fairway can produce a hash manifest over selected evidence/provenance exports for tamper-evidence."
+      - "Backup/restore guidance covers local SQLite, exported provenance bundles, and external archival targets without storing secrets."
+      - "Retention classes distinguish source-control-worthy provenance, local scratch, sensitive evidence references, and external compliance artifacts."
+      - "Tests cover hash manifest generation, changed artifact detection, missing artifact reporting, and privacy boundary checks."
