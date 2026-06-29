@@ -3754,6 +3754,7 @@ tasks:
       - docs/design/product-boundaries.md
       - docs/design/reports.md
       - docs/config-reference.md
+      - website/sidebars.js
     review_domains:
       - arch
       - governance

@@ -92,6 +92,20 @@ Show:
 This should use the same review-domain and gate logic as the board and
 `merge-ready` checks.
 
+### Supply-Chain Provenance
+
+Reports may include a provenance section for task, day, release, or commit
+scopes. Provenance is a summary over existing Fairway metadata: task state,
+checkpoints, sessions, handoffs, evidence references, review verdicts,
+provider usage counts, batches, commits, and release verification. It is not a
+raw transcript, prompt, tool-body, generated-content, credential, or artifact
+content export.
+
+The section should answer why work happened, who or what executed it, which
+evidence existed, which gates were satisfied, which commit carried it, and
+whether a release bundle or attestation reference exists. See
+[supply-chain-provenance.md](supply-chain-provenance.md).
+
 ### Rule Pack Signals
 
 Show rule-pack applicability without turning the report into a rule dump:
@@ -149,6 +163,10 @@ Use `task_state_history`, task definitions, evidence, reviews, checkpoints, and
 session tables as read models. The report should query by persisted timestamps
 and project timezone rules consistently with the dashboard's "done today"
 metric.
+
+Supply-chain provenance reports use the same read-model principle. The first
+implementation should export deterministic JSON/Markdown from existing records
+instead of adding a second provenance store.
 
 The dashboard treats monitor/watch/deploy-run shaped tasks as bookkeeping for
 summary purposes. They remain visible in the CI/deploy/UAT timeline and can be

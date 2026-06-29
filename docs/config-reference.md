@@ -7,6 +7,13 @@ curated resume summaries and source fact references in the Fairway DB. It does
 not store provider credentials, raw prompts, transcripts, cookies, tokens, or
 private provider state.
 
+Supply-chain provenance exports are derived from existing task, evidence,
+review, session, checkpoint, batch, usage, and release records. There is no
+provenance-specific credential, provider, or content-capture setting in the
+current config. See
+[supply-chain-provenance.md](design/supply-chain-provenance.md) for the privacy
+boundary and future export model.
+
 ## Full schema
 
 ```toml

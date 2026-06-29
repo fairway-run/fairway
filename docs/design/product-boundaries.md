@@ -20,6 +20,9 @@ accounting, and dashboard features do not drift into hidden decision-making.
 - Recommend next actions through CLI reports, dashboard diagnostics, and
   dry-run controller plans.
 - Record provider-neutral usage metadata when an adapter supplies it.
+- Record supply-chain provenance metadata that links tasks, sessions,
+  checkpoints, evidence, reviews, commits, release verification, and safe
+  artifact references without becoming a compiler/runtime dependency.
 - Coordinate deterministic utilities such as CI monitors, codegen drift checks,
   release asset checks, and registry freshness checks.
 - Integrate with planning systems such as Plane, Jira, Linear, and GitHub
@@ -47,6 +50,10 @@ accounting, and dashboard features do not drift into hidden decision-making.
   state.
 - Become an LLM provider abstraction. Fairway records sessions and usage
   metadata supplied by adapters; providers remain external.
+- Become a compiler, package manager, artifact signer, SBOM system,
+  attestation authority, or runtime dependency. Fairway may export provenance
+  metadata for those systems to reference, but source/build/release integrity
+  remains with the project supply-chain tooling.
 - Store prompts, transcripts, secrets, provider credentials, or private auth
   material by default.
 - Gate task completion on token cost, provider spend, or model choice. Usage
@@ -88,6 +95,17 @@ Provider usage records are for planning and retrospection:
 Usage records must not include prompts, transcripts, secrets, or provider auth
 material. Fairway may report counts, phases, roles, task IDs, provider names,
 confidence, and source metadata.
+
+## Provenance Rule
+
+Fairway provenance is metadata and linkage, not content capture. Provenance
+exports may include task IDs, state history, checkpoint summaries, evidence
+references, review verdicts, session lifecycle, provider usage counts, commit
+SHAs, release tags, and verification outcomes. They must not include raw
+secrets, provider auth state, raw prompt bodies by default, private
+transcripts, raw tool bodies, or generated-content dumps.
+
+See [supply-chain-provenance.md](supply-chain-provenance.md) for the model.
 
 ## Adapter Rule
 

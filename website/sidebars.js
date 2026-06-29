@@ -67,6 +67,7 @@ const sidebars = {
       label: 'Design And Roadmap',
       items: [
         'design/release-cuts',
+        'design/supply-chain-provenance',
         'design/implementation-roadmap',
         'design/regression-packets',
         'design/issue-tracker-integrations',
