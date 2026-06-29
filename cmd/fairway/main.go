@@ -31,6 +31,7 @@ import (
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
 	"github.com/subashram/fairway/internal/livewindow"
+	"github.com/subashram/fairway/internal/provenance"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/registry"
 	"github.com/subashram/fairway/internal/reviewpolicy"
@@ -124,6 +125,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdCompletionHandbackReport(ctx, opts, args[1:])
 	case "delivery":
 		return cmdDelivery(ctx, opts, args[1:])
+	case "provenance":
+		return cmdProvenance(ctx, opts, args[1:])
 	case "dispatch-plan":
 		return cmdDispatchPlan(ctx, opts, args[1:])
 	case "git-check":
@@ -3397,6 +3400,265 @@ func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) e
 		}
 		return nil
 	})
+}
+
+func cmdProvenance(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		fmt.Println("fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]")
+		fmt.Println("fairway provenance prompt-packet --task <task-id> [--format markdown|json]")
+		fmt.Println("  Export metadata-only supply-chain provenance and bounded task prompt packets from existing Fairway state.")
+		return nil
+	}
+	switch args[0] {
+	case "report":
+		return cmdProvenanceReport(ctx, opts, args[1:])
+	case "prompt-packet":
+		return cmdProvenancePromptPacket(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown provenance subcommand %q", args[0])
+	}
+}
+
+func cmdProvenanceReport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]")
+		fmt.Println("  Export task/day/range provenance refs without raw prompts, transcripts, tool bodies, generated content, or secrets.")
+		return nil
+	}
+	fs := flag.NewFlagSet("provenance report", flag.ContinueOnError)
+	taskID := fs.String("task", "", "limit to task id")
+	since := fs.Duration("since", 7*24*time.Hour, "time window when --task is omitted")
+	format := fs.String("format", "text", "text, markdown, or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected provenance report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *taskID != "" && *since != 7*24*time.Hour {
+		return errors.New("--task and --since cannot be combined")
+	}
+	if *taskID == "" && *since <= 0 {
+		return errors.New("--since must be positive")
+	}
+	if *format != "text" && *format != "markdown" && *format != "json" {
+		return errors.New("--format must be text, markdown, or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, configPath string, s *store.Store) error {
+		report, err := provenance.Build(ctx, cfg, configPath, s, provenance.Options{TaskID: *taskID, Since: *since})
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(report)
+		}
+		if *format == "markdown" {
+			printProvenanceReportMarkdown(report)
+			return nil
+		}
+		printProvenanceReportText(report)
+		return nil
+	})
+}
+
+func cmdProvenancePromptPacket(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway provenance prompt-packet --task <task-id> [--format markdown|json]")
+		fmt.Println("  Render a bounded task prompt packet from existing metadata and refs; does not authorize execution.")
+		return nil
+	}
+	fs := flag.NewFlagSet("provenance prompt-packet", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	format := fs.String("format", "markdown", "markdown or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected provenance prompt-packet arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *taskID == "" {
+		return errors.New("provenance prompt-packet requires --task")
+	}
+	if *format != "markdown" && *format != "json" {
+		return errors.New("--format must be markdown or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, configPath string, s *store.Store) error {
+		packet, err := provenance.BuildPromptPacket(ctx, cfg, configPath, s, *taskID, time.Time{})
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(packet)
+		}
+		printProvenancePromptPacketMarkdown(packet)
+		return nil
+	})
+}
+
+func printProvenanceReportText(report provenance.Report) {
+	fmt.Println("provenance_report_ok: true")
+	fmt.Printf("schema: %s\n", report.Schema)
+	fmt.Printf("generated_at: %s\n", report.GeneratedAt)
+	fmt.Printf("project: %s\n", report.Project.Name)
+	if report.Scope.TaskID != "" {
+		fmt.Printf("task: %s\n", report.Scope.TaskID)
+	} else {
+		fmt.Printf("window: %s..%s\n", firstNonEmpty(report.Scope.Since, "all"), firstNonEmpty(report.Scope.Until, "now"))
+	}
+	fmt.Printf("privacy: raw_prompts=%t transcripts=%t tool_bodies=%t generated_content=%t redaction_applied=%t\n",
+		report.Privacy.RawPromptsIncluded,
+		report.Privacy.TranscriptsIncluded,
+		report.Privacy.ToolBodiesIncluded,
+		report.Privacy.GeneratedContentIncluded,
+		report.Privacy.RedactionApplied)
+	if len(report.Warnings) > 0 {
+		fmt.Println("warnings:")
+		for _, warning := range report.Warnings {
+			fmt.Printf("- %s\n", warning)
+		}
+	}
+	if len(report.Tasks) == 0 {
+		fmt.Println("tasks: none")
+		return
+	}
+	fmt.Println("tasks:")
+	for _, task := range report.Tasks {
+		fmt.Printf("- %s status=%s role=%s evidence=%d reviews=%d checkpoints=%d sessions=%d usage=%d commits=%s\n",
+			task.ID,
+			task.Status,
+			firstNonEmpty(task.Role, "unknown"),
+			len(task.EvidenceRefs),
+			len(task.ReviewRefs),
+			len(task.CheckpointRefs),
+			len(task.SessionRefs),
+			len(task.UsageRefs),
+			firstNonEmpty(strings.Join(task.CommitRefs, ","), "none"))
+		for _, gate := range task.ValidationGates {
+			fmt.Printf("  gate: %s\n", gate)
+		}
+		for _, ref := range task.EvidenceRefs {
+			fmt.Printf("  evidence: %s result=%s artifact=%s command=%s\n", ref.Ref, firstNonEmpty(ref.Result, "unknown"), firstNonEmpty(ref.ArtifactPath, "none"), firstNonEmpty(ref.CommandText, "none"))
+		}
+		for _, ref := range task.ReviewRefs {
+			fmt.Printf("  review: %s domain=%s verdict=%s reviewer=%s\n", ref.Ref, firstNonEmpty(ref.Domain, "unspecified"), firstNonEmpty(ref.Verdict, "unknown"), firstNonEmpty(ref.Reviewer, "unknown"))
+		}
+	}
+}
+
+func printProvenanceReportMarkdown(report provenance.Report) {
+	fmt.Println("# Fairway Provenance Report")
+	fmt.Println()
+	fmt.Printf("- schema: `%s`\n", report.Schema)
+	fmt.Printf("- generated_at: `%s`\n", report.GeneratedAt)
+	fmt.Printf("- project: `%s`\n", report.Project.Name)
+	if report.Scope.TaskID != "" {
+		fmt.Printf("- task: `%s`\n", report.Scope.TaskID)
+	} else {
+		fmt.Printf("- window: `%s` to `%s`\n", firstNonEmpty(report.Scope.Since, "all"), firstNonEmpty(report.Scope.Until, "now"))
+	}
+	fmt.Println("- privacy: raw prompts, private transcripts, raw tool bodies, and generated-content dumps are excluded")
+	if len(report.Warnings) > 0 {
+		fmt.Println()
+		fmt.Println("## Warnings")
+		for _, warning := range report.Warnings {
+			fmt.Printf("- %s\n", warning)
+		}
+	}
+	fmt.Println()
+	fmt.Println("## Tasks")
+	if len(report.Tasks) == 0 {
+		fmt.Println("- none")
+		return
+	}
+	for _, task := range report.Tasks {
+		fmt.Printf("\n### %s\n\n", task.ID)
+		fmt.Printf("- title: %s\n", task.Title)
+		fmt.Printf("- status: `%s`\n", task.Status)
+		fmt.Printf("- role: `%s`\n", firstNonEmpty(task.Role, "unknown"))
+		fmt.Printf("- evidence refs: %d\n", len(task.EvidenceRefs))
+		fmt.Printf("- review refs: %d\n", len(task.ReviewRefs))
+		fmt.Printf("- checkpoint refs: %d\n", len(task.CheckpointRefs))
+		fmt.Printf("- session refs: %d\n", len(task.SessionRefs))
+		fmt.Printf("- usage refs: %d\n", len(task.UsageRefs))
+		if len(task.CommitRefs) > 0 {
+			fmt.Printf("- commit refs: `%s`\n", strings.Join(task.CommitRefs, "`, `"))
+		}
+		if len(task.ValidationGates) > 0 {
+			fmt.Println("- validation gates:")
+			for _, gate := range task.ValidationGates {
+				fmt.Printf("  - `%s`\n", gate)
+			}
+		}
+		if len(task.EvidenceRefs) > 0 {
+			fmt.Println("- evidence:")
+			for _, ref := range task.EvidenceRefs {
+				fmt.Printf("  - `%s` result=%s artifact=%s command=`%s`\n", ref.Ref, firstNonEmpty(ref.Result, "unknown"), firstNonEmpty(ref.ArtifactPath, "none"), firstNonEmpty(ref.CommandText, "none"))
+			}
+		}
+		if len(task.ReviewRefs) > 0 {
+			fmt.Println("- reviews:")
+			for _, ref := range task.ReviewRefs {
+				fmt.Printf("  - `%s` domain=%s verdict=%s reviewer=%s\n", ref.Ref, firstNonEmpty(ref.Domain, "unspecified"), firstNonEmpty(ref.Verdict, "unknown"), firstNonEmpty(ref.Reviewer, "unknown"))
+			}
+		}
+	}
+}
+
+func printProvenancePromptPacketMarkdown(packet provenance.PromptPacket) {
+	fmt.Printf("# Fairway Prompt Packet: %s\n\n", packet.TaskID)
+	fmt.Printf("- schema: `%s`\n", packet.Schema)
+	fmt.Printf("- generated_at: `%s`\n", packet.GeneratedAt)
+	fmt.Println()
+	fmt.Println("## Objective")
+	fmt.Println(packet.Objective)
+	if len(packet.Scope) > 0 {
+		fmt.Println()
+		fmt.Println("## Scope")
+		for _, item := range packet.Scope {
+			fmt.Printf("- %s\n", item)
+		}
+	}
+	if len(packet.Acceptance) > 0 {
+		fmt.Println()
+		fmt.Println("## Acceptance")
+		for _, item := range packet.Acceptance {
+			fmt.Printf("- %s\n", item)
+		}
+	}
+	fmt.Println()
+	fmt.Println("## Source Facts")
+	for _, fact := range packet.SourceFacts {
+		fmt.Printf("- %s\n", fact)
+	}
+	fmt.Println()
+	fmt.Println("## Forbidden Actions")
+	for _, item := range packet.ForbiddenActions {
+		fmt.Printf("- %s\n", item)
+	}
+	if len(packet.ValidationGates) > 0 {
+		fmt.Println()
+		fmt.Println("## Validation Gates")
+		for _, gate := range packet.ValidationGates {
+			fmt.Printf("- `%s`\n", gate)
+		}
+	}
+	if len(packet.EvidenceRefs) > 0 {
+		fmt.Println()
+		fmt.Println("## Evidence Refs")
+		for _, ref := range packet.EvidenceRefs {
+			fmt.Printf("- `%s` result=%s artifact=%s\n", ref.Ref, firstNonEmpty(ref.Result, "unknown"), firstNonEmpty(ref.ArtifactPath, "none"))
+		}
+	}
+	if len(packet.ReviewRefs) > 0 {
+		fmt.Println()
+		fmt.Println("## Review Refs")
+		for _, ref := range packet.ReviewRefs {
+			fmt.Printf("- `%s` domain=%s verdict=%s\n", ref.Ref, firstNonEmpty(ref.Domain, "unspecified"), firstNonEmpty(ref.Verdict, "unknown"))
+		}
+	}
+	fmt.Println()
+	fmt.Println("## Privacy")
+	fmt.Println("- raw prompts, private transcripts, raw tool bodies, generated-content dumps, secrets, and credentials are excluded")
 }
 
 func cmdAutomation(ctx context.Context, opts globalOptions, args []string) error {
@@ -14046,7 +14308,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, advisory validate, notify notifiers|dry-run|send, automation candidates, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -14086,6 +14348,7 @@ func printCommandHelp(command string) bool {
 		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
+		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json]\n  Export metadata-only supply-chain provenance and bounded task prompt packets.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
 		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",

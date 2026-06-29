@@ -172,6 +172,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"automation", "candidates", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"delivery", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
 		{[]string{"delivery", "report", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
+		{[]string{"provenance", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
+		{[]string{"provenance", "report", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
+		{[]string{"provenance", "prompt-packet", "--help"}, "fairway provenance prompt-packet --task <task-id> [--format markdown|json]"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -1512,6 +1515,83 @@ func TestCLI_ProviderUsageAccounting(t *testing.T) {
 	if err := run(context.Background(), []string{"record", "usage", "T-001", "--provider", "codex", "--metadata", "access_token=do not store"}); err == nil {
 		t.Fatal("expected token-like usage metadata key to be rejected")
 	}
+}
+
+func TestCLI_ProvenanceReportAndPromptPacket(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001",
+		"--title", "Provenance",
+		"--role", "backend",
+		"--risk-level", "medium",
+		"--target-paths", "cmd/fairway/main.go,internal/provenance/report.go",
+		"--source-paths", "docs/design/supply-chain-provenance.md",
+		"--acceptance", "export metadata-only provenance refs",
+		"--acceptance", "redact token=supersecret before rendering")
+	runOK(t, "add", "T-002", "--title", "No evidence yet", "--role", "governance")
+	runOK(t, "add", "T-003", "--title", "Release word only", "--role", "ops")
+	runOK(t, "session", "upsert", "--id", "codex-provenance-1", "--role", "backend", "--provider", "codex", "--backend", "codex", "--task-id", "T-001", "--status", "running")
+	runOK(t, "record", "evidence", "T-001",
+		"--command-text", "go test ./... && curl -H 'authorization: Bearer supersecret' 'https://example.invalid?token=supersecret'",
+		"--result", "pass",
+		"--artifact", "artifacts/provenance.md?api_key=supersecret",
+		"--artifact-type", "validation",
+		"--notes", "release verification without storing raw prompts")
+	runOK(t, "record", "evidence", "T-001",
+		"--command-text", "fairway release verify --version v0.1.2 --tag v0.1.2",
+		"--result", "pass",
+		"--artifact", "artifacts/release-verify-v0.1.2.md",
+		"--artifact-type", "release-verify")
+	runOK(t, "record", "evidence", "T-003",
+		"--command-text", "echo release wording only",
+		"--result", "pass",
+		"--artifact-type", "validation",
+		"--notes", "ordinary note mentions release but is not release verification")
+	runOK(t, "record", "review", "T-001", "--domain", "backend", "--reviewer", "backend-reviewer", "--verdict", "approve", "--commit", "abc1234")
+	runOK(t, "record", "usage", "T-001", "--provider", "codex", "--session-id", "codex-provenance-1", "--role", "backend", "--source", "provider_reported", "--confidence", "exact", "--total-tokens", "42")
+
+	markdown := runCapture(t, "provenance", "report", "--task", "T-001", "--format", "markdown")
+	assertContains(t, markdown, "# Fairway Provenance Report")
+	assertContains(t, markdown, "### T-001")
+	assertContains(t, markdown, "`evidence:T-001:1`")
+	assertContains(t, markdown, "`review:T-001:1`")
+	assertContains(t, markdown, "<redacted>")
+	assertContains(t, markdown, "raw prompts, private transcripts, raw tool bodies, and generated-content dumps are excluded")
+	assertNotContains(t, markdown, "supersecret")
+
+	jsonOut := runCapture(t, "--json", "provenance", "report", "--task", "T-001")
+	assertContains(t, jsonOut, `"schema": "fairway.provenance.v1"`)
+	assertContains(t, jsonOut, `"raw_prompts_included": false`)
+	assertContains(t, jsonOut, `"redaction_applied": true`)
+	assertContains(t, jsonOut, `"total_tokens": 42`)
+	assertContains(t, jsonOut, `"release_refs": [`)
+	assertContains(t, jsonOut, `"artifacts/release-verify-v0.1.2.md"`)
+	assertNotContains(t, jsonOut, "supersecret")
+
+	falsePositive := runCapture(t, "--json", "provenance", "report", "--task", "T-003")
+	assertContains(t, falsePositive, `"id": "T-003"`)
+	assertNotContains(t, falsePositive, `"release_refs"`)
+
+	rangeJSON := runCapture(t, "--json", "provenance", "report", "--since", "720h")
+	assertContains(t, rangeJSON, `"id": "T-001"`)
+	assertContains(t, rangeJSON, `"id": "T-002"`)
+	assertContains(t, rangeJSON, "task=T-002 has no evidence refs")
+
+	packet := runCapture(t, "provenance", "prompt-packet", "--task", "T-001")
+	assertContains(t, packet, "# Fairway Prompt Packet: T-001")
+	assertContains(t, packet, "## Forbidden Actions")
+	assertContains(t, packet, "do not include raw prompt bodies")
+	assertContains(t, packet, "`evidence:T-001:1`")
+	assertNotContains(t, packet, "supersecret")
 }
 
 func TestCLI_UsageCostReport(t *testing.T) {

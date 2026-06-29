@@ -116,9 +116,15 @@ review prove why the documentation changed and which boundary it described.
 
 ## Export Shape
 
-The future `FW-232` export should support task-scoped and range-scoped
-provenance. The canonical JSON object should be deterministic enough for audit
-diffs:
+`FW-232` adds task-scoped and range-scoped provenance export:
+
+```bash
+fairway provenance report --task <task-id> --format markdown
+fairway provenance report --since 168h --format json
+fairway provenance prompt-packet --task <task-id>
+```
+
+The canonical JSON object is deterministic enough for audit diffs:
 
 ```json
 {
@@ -130,11 +136,9 @@ diffs:
     "config_path": ".fairway/config.toml"
   },
   "scope": {
-    "task_ids": ["FW-231"],
-    "since": null,
-    "until": null,
-    "commit_range": null,
-    "release": null
+    "task_id": "FW-231",
+    "since": "",
+    "until": ""
   },
   "tasks": [
     {
@@ -143,7 +147,7 @@ diffs:
       "status": "done",
       "role": "arch",
       "risk_level": "high",
-      "commit_sha": "<sha>",
+      "commit_refs": ["<sha>"],
       "evidence_refs": [],
       "review_refs": [],
       "session_refs": [],
@@ -151,13 +155,12 @@ diffs:
       "usage_refs": []
     }
   ],
-  "release": null,
   "privacy": {
     "raw_prompts_included": false,
     "transcripts_included": false,
     "tool_bodies_included": false,
     "generated_content_included": false,
-    "redaction_required": false
+    "redaction_applied": false
   },
   "warnings": []
 }
@@ -166,6 +169,12 @@ diffs:
 Markdown exports should present the same fields in operator-readable sections:
 scope, task summary, evidence, reviews, commits, release linkage, warnings, and
 privacy statement.
+
+Release refs must come from explicit release-run or release-verification
+evidence, such as `artifact_type = release-verify`, `artifact_type =
+release-run`, `fairway release verify`, or `fairway packet release-run`.
+Ordinary evidence notes or commands that merely contain the word "release" do
+not prove release lineage.
 
 ## Prompt-Packet Export
 
@@ -233,7 +242,8 @@ without requiring a provider chat replay.
 
 ## Follow-On Slices
 
-- `FW-232`: add deterministic provenance report and prompt-packet export.
+- `FW-232`: implemented deterministic provenance report and prompt-packet
+  export.
 - `FW-233`: link release-run packets and release verification to provenance
   bundles or attestation references.
 - `FW-234`: add hash manifests, retention guidance, and backup posture.

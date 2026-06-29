@@ -101,6 +101,14 @@ provider usage counts, batches, commits, and release verification. It is not a
 raw transcript, prompt, tool-body, generated-content, credential, or artifact
 content export.
 
+The CLI exposes the same read model with:
+
+```bash
+fairway provenance report --task <task-id> --format markdown
+fairway provenance report --since 168h --format json
+fairway provenance prompt-packet --task <task-id>
+```
+
 The section should answer why work happened, who or what executed it, which
 evidence existed, which gates were satisfied, which commit carried it, and
 whether a release bundle or attestation reference exists. See
@@ -165,7 +173,7 @@ and project timezone rules consistently with the dashboard's "done today"
 metric.
 
 Supply-chain provenance reports use the same read-model principle. The first
-implementation should export deterministic JSON/Markdown from existing records
+implementation exports deterministic JSON/Markdown from existing records
 instead of adding a second provenance store.
 
 The dashboard treats monitor/watch/deploy-run shaped tasks as bookkeeping for

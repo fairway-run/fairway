@@ -384,6 +384,18 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   notification/wake and handoff counts, outcome-source buckets, and loop
   signals. It is advisory by default and does not approve reviews, mutate task
   status, merge, deploy, or gate release.
+- `provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]`
+  is a metadata-only supply-chain provenance export over existing Fairway task
+  metadata, evidence refs, review refs, checkpoints, sessions, usage counts,
+  handoffs, commit refs, and release refs. It excludes raw prompts, private
+  transcripts, raw tool bodies, generated-content dumps, credentials, and
+  secrets, applying bounded redaction to sensitive-looking refs before
+  rendering.
+- `provenance prompt-packet --task <task-id> [--format markdown|json]`
+  renders a bounded task packet from the same provenance read model. It carries
+  objective, scope, acceptance, source facts, validation gates, evidence refs,
+  review refs, and forbidden actions, but it does not authorize execution,
+  review approval, merge, push, deploy, release, or dashboard mutation.
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic
   command, evidence, and notification patterns, then reports frequency, recent
