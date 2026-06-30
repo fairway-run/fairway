@@ -155,6 +155,9 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass", ArtifactType: "local-test", ArtifactPath: "dist/test.log"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "rough-edge: owner could not find release status", Result: "partial", ArtifactType: "rough-edge", ArtifactPath: "artifacts/walkthrough.png", Notes: `{"owner":"ui","severity":"high","decision":"fix-now","expires":"2026-07-01","summary":"Owner could not find release status"}`}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.SetStatus(ctx, "W-001", "done", "ci passed", false); err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +200,9 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 		"approval loops",
 		"reopen/retry count",
 		"review usefulness ratio",
+		"Owner Rough-Edge Queue",
+		"Owner could not find release status",
+		"fix-now",
 		"Provider Usage Attribution",
 		"Work batches / batched tasks",
 		"codex",

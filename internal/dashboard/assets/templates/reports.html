@@ -77,6 +77,17 @@
 </section>
 
 <section class="report-section">
+<header class="section-head"><h2>Owner Rough-Edge Queue</h2><span>found while using the product</span></header>
+{{if .RoughEdges}}
+<ul class="review-gap-list">
+{{range .RoughEdges}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Severity}} {{.Decision}} <span>owner={{.Owner}} expires={{if .Expires}}{{.Expires}}{{else}}none{{end}} expired={{.Expired}} {{.Summary}}</span></li>{{end}}
+</ul>
+{{else}}
+<p class="muted">No rough edges recorded.</p>
+{{end}}
+</section>
+
+<section class="report-section">
 <header class="section-head"><h2>Lane Outcomes</h2><span>delivery grouped by role, domain, and kind</span></header>
 <div class="lane-report-grid">
 {{range .Lanes}}

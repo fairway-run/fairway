@@ -404,6 +404,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   templates, or automation actually reduced defects or blocked time. It is
   advisory by default and does not approve reviews, mutate task status, merge,
   deploy, or gate release.
+- `rough-edge add --task <task-id> --owner <role> --severity <low|medium|high|critical> --decision <fix-now|defer> --summary <text> [--expires <date>] [--artifact <path>]`
+  records a rough edge found while actually using the product as structured
+  `rough-edge` evidence on the task. It captures owner, severity, fix-now/defer
+  decision, optional expiry, summary, and a linked artifact reference without
+  ingesting artifact contents. Expiry accepts RFC3339Nano, RFC3339, or
+  `YYYY-MM-DD`; invalid expiry input is rejected rather than silently stored as
+  non-expiring feedback.
+- `rough-edge list [--task <task-id>] [--owner <role>] [--expired] [--format text|json]`
+  projects the owner rough-edge queue from existing evidence rows. It is
+  read-only and does not create backlog tasks, mutate status, approve reviews,
+  send notifications, merge, deploy, or change dashboard authority.
 - `provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]`
   is a metadata-only supply-chain provenance export over existing Fairway task
   metadata, evidence refs, review refs, checkpoints, sessions, usage counts,

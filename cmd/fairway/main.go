@@ -37,6 +37,7 @@ import (
 	"github.com/subashram/fairway/internal/registry"
 	"github.com/subashram/fairway/internal/reviewpolicy"
 	"github.com/subashram/fairway/internal/reviewstate"
+	"github.com/subashram/fairway/internal/roughedge"
 	"github.com/subashram/fairway/internal/rules"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
@@ -126,6 +127,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdCompletionHandbackReport(ctx, opts, args[1:])
 	case "delivery":
 		return cmdDelivery(ctx, opts, args[1:])
+	case "rough-edge":
+		return cmdRoughEdge(ctx, opts, args[1:])
 	case "provenance":
 		return cmdProvenance(ctx, opts, args[1:])
 	case "dispatch-plan":
@@ -3421,6 +3424,149 @@ func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) e
 				firstNonEmpty(row.OutcomeSource, "none"),
 				firstNonEmpty(row.DefectSource, "none"),
 				firstNonEmpty(row.LoopSignal, "none"))
+		}
+		return nil
+	})
+}
+
+func cmdRoughEdge(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		fmt.Println("fairway rough-edge add --task <task-id> --owner <role> --severity <low|medium|high|critical> --decision <fix-now|defer> --summary <text> [--expires <date>] [--artifact <path>]")
+		fmt.Println("fairway rough-edge list [--task <task-id>] [--owner <role>] [--expired] [--format text|json]")
+		fmt.Println("  Record and inspect owner rough edges found while using the product; read-only list does not mutate backlog or workflow.")
+		return nil
+	}
+	switch args[0] {
+	case "add":
+		return cmdRoughEdgeAdd(ctx, opts, args[1:])
+	case "list":
+		return cmdRoughEdgeList(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown rough-edge subcommand %q", args[0])
+	}
+}
+
+func cmdRoughEdgeAdd(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("rough-edge add", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id")
+	owner := fs.String("owner", "", "owner role or lane")
+	severity := fs.String("severity", "medium", "low, medium, high, or critical")
+	decision := fs.String("decision", "defer", "fix-now or defer")
+	summary := fs.String("summary", "", "rough-edge summary")
+	expires := fs.String("expires", "", "expiry date or timestamp")
+	artifact := fs.String("artifact", "", "linked evidence artifact path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected rough-edge add arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*taskID) == "" {
+		return errors.New("--task is required")
+	}
+	if strings.TrimSpace(*owner) == "" {
+		return errors.New("--owner is required")
+	}
+	if strings.TrimSpace(*summary) == "" {
+		return errors.New("--summary is required")
+	}
+	switch strings.ToLower(strings.TrimSpace(*severity)) {
+	case "low", "medium", "high", "critical":
+	default:
+		return errors.New("--severity must be low, medium, high, or critical")
+	}
+	switch strings.ToLower(strings.TrimSpace(*decision)) {
+	case "fix-now", "defer":
+	default:
+		return errors.New("--decision must be fix-now or defer")
+	}
+	if strings.TrimSpace(*expires) != "" {
+		if _, ok := roughedge.ParseExpiry(*expires); !ok {
+			return errors.New("--expires must be RFC3339Nano, RFC3339, or YYYY-MM-DD")
+		}
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		ev, err := roughedge.Evidence("rough-edge: "+strings.TrimSpace(*summary), "partial", *artifact, roughedge.Notes{
+			Owner:    *owner,
+			Severity: *severity,
+			Decision: *decision,
+			Expires:  *expires,
+			Summary:  *summary,
+		})
+		if err != nil {
+			return err
+		}
+		if err := s.RecordEvidence(ctx, *taskID, ev); err != nil {
+			return err
+		}
+		if opts.JSON {
+			rows, err := roughedge.Rows(ctx, s, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			for _, row := range rows {
+				if row.TaskID == *taskID && row.Summary == strings.TrimSpace(*summary) {
+					return printJSON(row)
+				}
+			}
+			return printJSON(map[string]string{"task_id": *taskID, "summary": *summary})
+		}
+		fmt.Printf("rough_edge recorded task=%s owner=%s severity=%s decision=%s\n", *taskID, *owner, *severity, *decision)
+		return nil
+	})
+}
+
+func cmdRoughEdgeList(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("rough-edge list", flag.ContinueOnError)
+	taskID := fs.String("task", "", "filter by task id")
+	owner := fs.String("owner", "", "filter by owner")
+	expiredOnly := fs.Bool("expired", false, "only expired rough edges")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected rough-edge list arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		rows, err := roughedge.Rows(ctx, s, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		filtered := make([]roughedge.Row, 0, len(rows))
+		for _, row := range rows {
+			if *taskID != "" && row.TaskID != *taskID {
+				continue
+			}
+			if *owner != "" && row.Owner != *owner {
+				continue
+			}
+			if *expiredOnly && !row.Expired {
+				continue
+			}
+			filtered = append(filtered, row)
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(filtered)
+		}
+		if len(filtered) == 0 {
+			fmt.Println("rough_edges: none")
+			return nil
+		}
+		fmt.Println("rough_edges:")
+		for _, row := range filtered {
+			fmt.Printf("- task=%s owner=%s severity=%s decision=%s expires=%s expired=%t artifact=%s summary=%s\n",
+				row.TaskID,
+				row.Owner,
+				row.Severity,
+				row.Decision,
+				firstNonEmpty(row.Expires, "none"),
+				row.Expired,
+				firstNonEmpty(row.ArtifactPath, "none"),
+				row.Summary)
 		}
 		return nil
 	})
@@ -14449,7 +14595,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -14494,6 +14640,7 @@ func printCommandHelp(command string) bool {
 		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
+		"rough-edge":                 "fairway rough-edge add --task <task-id> --owner <role> --severity <level> --decision <fix-now|defer> --summary <text> | fairway rough-edge list [--task <task-id>] [--owner <role>] [--expired]\n  Record and inspect owner rough edges found while using the product; list is read-only.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",

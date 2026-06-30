@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/subashram/fairway/internal/deliveryreport"
+	"github.com/subashram/fairway/internal/roughedge"
 	"github.com/subashram/fairway/internal/rules"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -35,6 +36,7 @@ type ReportViewData struct {
 	RuleSummary   ReportRuleSummary     `json:"rule_summary"`
 	Usage         ReportUsage           `json:"usage"`
 	Delivery      deliveryreport.Report `json:"delivery"`
+	RoughEdges    []roughedge.Row       `json:"rough_edges,omitempty"`
 	Rows          []ReportTaskRow       `json:"rows"`
 	TableRows     []ReportTaskRow       `json:"-"`
 	Pagination    TablePagination       `json:"pagination"`
@@ -216,6 +218,10 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
+	roughEdges, err := roughedge.Rows(r.Context(), s.store, end.UTC())
+	if err != nil {
+		return ReportViewData{}, err
+	}
 	reviewActivityByTask := reportReviewActivityByTask(activity, start, end)
 	facts := make([]reportTaskFacts, 0, len(tasks))
 	for _, task := range tasks {
@@ -262,6 +268,7 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		RuleSummary:   reportRuleSummary(s.cfg, packs, facts),
 		Usage:         usage,
 		Delivery:      delivery,
+		RoughEdges:    roughEdges,
 		Rows:          rows,
 		TableRows:     tableRows,
 		Pagination:    pagination,

@@ -172,6 +172,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"automation", "candidates", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"delivery", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
 		{[]string{"delivery", "report", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
+		{[]string{"rough-edge", "--help"}, "fairway rough-edge add --task <task-id>"},
 		{[]string{"provenance", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "report", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "prompt-packet", "--help"}, "fairway provenance prompt-packet --task <task-id> [--format markdown|json]"},
@@ -4001,6 +4002,59 @@ func TestCLI_DeliveryReport(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestCLI_RoughEdgeAddList(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Owner walkthrough", "--role", "backend")
+	if _, err := captureRun("rough-edge", "add", "--task", "T-001", "--owner", "ui", "--severity", "high", "--decision", "fix-now", "--summary", "Invalid expiry", "--expires", "next sprint"); err == nil || !strings.Contains(err.Error(), "--expires must be RFC3339Nano, RFC3339, or YYYY-MM-DD") {
+		t.Fatalf("invalid expiry error=%v, want clear expiry validation error", err)
+	}
+	out := runCapture(t, "rough-edge", "add", "--task", "T-001", "--owner", "ui", "--severity", "high", "--decision", "fix-now", "--summary", "Owner could not find release status", "--expires", "2026-07-01", "--artifact", "artifacts/walkthrough.png")
+	assertContains(t, out, "rough_edge recorded task=T-001 owner=ui severity=high decision=fix-now")
+	runOK(t, "rough-edge", "add", "--task", "T-001", "--owner", "backend", "--severity", "medium", "--decision", "defer", "--summary", "Old rough edge should expire", "--expires", "2000-01-01")
+
+	list := runCapture(t, "rough-edge", "list")
+	for _, want := range []string{
+		"rough_edges:",
+		"task=T-001",
+		"owner=ui",
+		"severity=high",
+		"decision=fix-now",
+		"artifact=artifacts/walkthrough.png",
+		"Owner could not find release status",
+	} {
+		assertContains(t, list, want)
+	}
+
+	expired := runCapture(t, "rough-edge", "list", "--expired")
+	assertContains(t, expired, "Old rough edge should expire")
+	assertNotContains(t, expired, "Owner could not find release status")
+
+	jsonRows := runCapture(t, "--json", "rough-edge", "list", "--owner", "ui")
+	for _, want := range []string{
+		`"task_id": "T-001"`,
+		`"owner": "ui"`,
+		`"severity": "high"`,
+		`"decision": "fix-now"`,
+		`"artifact_path": "artifacts/walkthrough.png"`,
+		`"expired": false`,
+	} {
+		assertContains(t, jsonRows, want)
+	}
+	jsonExpired := runCapture(t, "--json", "rough-edge", "list", "--expired")
+	assertContains(t, jsonExpired, `"summary": "Old rough edge should expire"`)
+	assertContains(t, jsonExpired, `"expired": true`)
 }
 
 func TestCLI_AutomationCandidates(t *testing.T) {

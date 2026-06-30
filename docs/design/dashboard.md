@@ -189,6 +189,19 @@ evidence for reducing ceremony and investing in tests, preflight, UAT, packet
 templates, or automation; the dashboard remains read-only and the report does
 not approve reviews, mutate task status, merge, deploy, or release.
 
+The reports view also includes an Owner Rough-Edge Queue projected from
+structured `rough-edge` evidence rows recorded by `fairway rough-edge add`.
+This queue is separate from the generic backlog table so product gaps found
+while using Fairway, AI Cloud dashboards, demos, UAT, docs portal flows, or
+release/status walkthroughs remain visible with owner, severity, fix-now/defer
+decision, expiry, summary, and linked artifact reference. The dashboard only
+displays the queue; it does not create tasks, acknowledge edges, send messages,
+approve reviews, merge, deploy, or serve artifact contents.
+Expiry is trustworthy because `rough-edge add` validates supplied expiry values
+up front using the same accepted formats used by the projection: RFC3339Nano,
+RFC3339, or `YYYY-MM-DD`. Invalid expiry text is rejected instead of becoming a
+silent non-expiring row.
+
 Task detail shows review waits from the same read model as
 `fairway review-waits list`, including state, blocking flag, target
 provider/target, expected response time, suggested action, and reason. It also
