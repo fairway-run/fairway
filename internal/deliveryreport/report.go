@@ -18,14 +18,15 @@ type Options struct {
 }
 
 type Report struct {
-	OK             bool              `json:"ok"`
-	Since          string            `json:"since"`
-	Profile        string            `json:"profile,omitempty"`
-	Summary        Summary           `json:"summary"`
-	Overhead       Overhead          `json:"overhead"`
-	OutcomeSources []OutcomeSource   `json:"outcome_sources,omitempty"`
-	Loops          []LoopSummary     `json:"loops,omitempty"`
-	Rows           []TaskDeliveryRow `json:"rows,omitempty"`
+	OK             bool               `json:"ok"`
+	Since          string             `json:"since"`
+	Profile        string             `json:"profile,omitempty"`
+	Summary        Summary            `json:"summary"`
+	Overhead       Overhead           `json:"overhead"`
+	OutcomeSources []OutcomeSource    `json:"outcome_sources,omitempty"`
+	Loops          []LoopSummary      `json:"loops,omitempty"`
+	Batches        []BatchDeliveryRow `json:"batches,omitempty"`
+	Rows           []TaskDeliveryRow  `json:"rows,omitempty"`
 }
 
 type Summary struct {
@@ -36,6 +37,8 @@ type Summary struct {
 	TotalReviewWaitSeconds          int `json:"total_review_wait_seconds"`
 	FirstEvidenceToDoneSeconds      int `json:"first_evidence_to_done_seconds"`
 	DoneToMergeReadySecondsObserved int `json:"done_to_merge_ready_seconds_observed"`
+	ApprovalLoops                   int `json:"approval_loops"`
+	ReopenRetryCount                int `json:"reopen_retry_count"`
 }
 
 type Overhead struct {
@@ -47,6 +50,8 @@ type Overhead struct {
 	NotificationFailures       int     `json:"notification_failures"`
 	Wakes                      int     `json:"wakes"`
 	Handoffs                   int     `json:"handoffs"`
+	ApprovalLoops              int     `json:"approval_loops"`
+	ReopenRetryCount           int     `json:"reopen_retry_count"`
 	ReviewWaitsNoChanges       int     `json:"review_waits_no_changes"`
 	ReviewUsefulnessRatio      float64 `json:"review_usefulness_ratio"`
 	TasksWithProcessOverhead   int     `json:"tasks_with_process_overhead"`
@@ -78,10 +83,28 @@ type TaskDeliveryRow struct {
 	ReviewChangesRequested    int    `json:"review_changes_requested"`
 	Notifications             int    `json:"notifications"`
 	Handoffs                  int    `json:"handoffs"`
+	ApprovalLoops             int    `json:"approval_loops"`
+	ReopenRetryCount          int    `json:"reopen_retry_count"`
 	OutcomeSource             string `json:"outcome_source,omitempty"`
+	DefectSource              string `json:"defect_source,omitempty"`
 	LoopSignal                string `json:"loop_signal,omitempty"`
 	RecommendedAction         string `json:"recommended_action,omitempty"`
 	MergeReadyTimingAvailable bool   `json:"merge_ready_timing_available"`
+}
+
+type BatchDeliveryRow struct {
+	BatchID           string          `json:"batch_id"`
+	Title             string          `json:"title"`
+	Tasks             int             `json:"tasks"`
+	CompletedTasks    int             `json:"completed_tasks"`
+	BlockedSeconds    int             `json:"blocked_seconds"`
+	ReviewWaitSeconds int             `json:"review_wait_seconds"`
+	ReviewRecords     int             `json:"review_records"`
+	ApprovalLoops     int             `json:"approval_loops"`
+	ReopenRetryCount  int             `json:"reopen_retry_count"`
+	Notifications     int             `json:"notifications"`
+	Handoffs          int             `json:"handoffs"`
+	OutcomeSources    []OutcomeSource `json:"outcome_sources,omitempty"`
 }
 
 func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options) (Report, error) {
@@ -119,6 +142,7 @@ func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options)
 		report.Rows = append(report.Rows, row)
 		addSummary(&report.Summary, row)
 		addOverhead(&report.Overhead, detail, evidence, reviews, notifications, handoffs)
+		report.Overhead.ReopenRetryCount += row.ReopenRetryCount
 		if row.OutcomeSource != "" {
 			outcomes[row.OutcomeSource]++
 		}
@@ -132,6 +156,11 @@ func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options)
 		}
 	}
 	report.OutcomeSources = outcomeSources(outcomes)
+	batches, err := s.WorkBatches(ctx)
+	if err != nil {
+		return Report{}, err
+	}
+	report.Batches = batchRows(batches, report.Rows)
 	sort.SliceStable(report.Rows, func(i, j int) bool {
 		if report.Rows[i].CompletedAt != report.Rows[j].CompletedAt {
 			return report.Rows[i].CompletedAt > report.Rows[j].CompletedAt
@@ -156,11 +185,14 @@ func taskRow(cfg config.Config, task store.Task, transitions []store.Transition,
 		Handoffs:      len(handoffs),
 		OutcomeSource: outcomeSource(evidence, reviews),
 	}
+	row.DefectSource = defectSource(evidence, reviews)
 	for _, review := range reviews {
 		if review.Verdict == "changes" || review.Verdict == "reject" {
 			row.ReviewChangesRequested++
 		}
 	}
+	row.ApprovalLoops = approvalLoopCount(reviews)
+	row.ReopenRetryCount = reopenRetryCount(transitions)
 	row.BlockedSeconds = blockedSeconds(transitions, now)
 	row.FirstEvidenceToDone = firstEvidenceToDoneSeconds(task, evidence)
 	if ackTimeout > 0 {
@@ -229,12 +261,15 @@ func addSummary(summary *Summary, row TaskDeliveryRow) {
 	}
 	summary.TotalReviewWaitSeconds += row.ReviewWaitSeconds
 	summary.FirstEvidenceToDoneSeconds += row.FirstEvidenceToDone
+	summary.ApprovalLoops += row.ApprovalLoops
+	summary.ReopenRetryCount += row.ReopenRetryCount
 }
 
 func addOverhead(overhead *Overhead, task store.Task, evidence []store.Evidence, reviews []store.Review, notifications []store.Notification, handoffs []store.Handoff) {
 	overhead.ReviewRecords += len(reviews)
 	overhead.Notifications += len(notifications)
 	overhead.Handoffs += len(handoffs)
+	overhead.ApprovalLoops += approvalLoopCount(reviews)
 	if len(reviews) > 0 || len(notifications) > 0 || len(handoffs) > 0 {
 		overhead.TasksWithProcessOverhead++
 	}
@@ -261,6 +296,77 @@ func addOverhead(overhead *Overhead, task store.Task, evidence []store.Evidence,
 			overhead.Wakes++
 		}
 	}
+}
+
+func approvalLoopCount(reviews []store.Review) int {
+	loops := 0
+	for _, review := range reviews {
+		if review.Verdict == "changes" || review.Verdict == "reject" {
+			loops++
+		}
+	}
+	return loops
+}
+
+func reopenRetryCount(transitions []store.Transition) int {
+	count := 0
+	for _, transition := range transitions {
+		fromTerminal := transition.FromStatus == "done" || transition.FromStatus == "blocked" || transition.FromStatus == "cancelled"
+		toActive := transition.ToStatus == "todo" || transition.ToStatus == "in_progress" || transition.ToStatus == "review"
+		reason := strings.ToLower(transition.Reason)
+		if toActive && (strings.Contains(reason, "reopen") || strings.Contains(reason, "retry") || strings.Contains(reason, "rerun")) {
+			count++
+			continue
+		}
+		if fromTerminal && toActive {
+			count++
+		}
+	}
+	return count
+}
+
+func batchRows(batches []store.WorkBatch, rows []TaskDeliveryRow) []BatchDeliveryRow {
+	byTask := make(map[string]TaskDeliveryRow, len(rows))
+	for _, row := range rows {
+		byTask[row.TaskID] = row
+	}
+	out := make([]BatchDeliveryRow, 0, len(batches))
+	for _, batch := range batches {
+		row := BatchDeliveryRow{BatchID: batch.ID, Title: batch.Title}
+		outcomes := map[string]int{}
+		for _, taskID := range batch.Tasks {
+			taskRow, ok := byTask[taskID]
+			if !ok {
+				continue
+			}
+			row.Tasks++
+			if taskRow.Status == "done" && taskRow.CompletedAt != "" {
+				row.CompletedTasks++
+			}
+			row.BlockedSeconds += taskRow.BlockedSeconds
+			row.ReviewWaitSeconds += taskRow.ReviewWaitSeconds
+			row.ReviewRecords += taskRow.ReviewRecords
+			row.ApprovalLoops += taskRow.ApprovalLoops
+			row.ReopenRetryCount += taskRow.ReopenRetryCount
+			row.Notifications += taskRow.Notifications
+			row.Handoffs += taskRow.Handoffs
+			if taskRow.OutcomeSource != "" {
+				outcomes[taskRow.OutcomeSource]++
+			}
+		}
+		if row.Tasks == 0 {
+			continue
+		}
+		row.OutcomeSources = outcomeSources(outcomes)
+		out = append(out, row)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CompletedTasks != out[j].CompletedTasks {
+			return out[i].CompletedTasks > out[j].CompletedTasks
+		}
+		return out[i].BatchID < out[j].BatchID
+	})
+	return out
 }
 
 func blockedSeconds(transitions []store.Transition, now time.Time) int {
@@ -316,7 +422,30 @@ func outcomeSource(evidence []store.Evidence, reviews []store.Review) string {
 			return "review"
 		}
 	}
-	text := strings.ToLower(evidenceText(evidence))
+	return sourceFromText(evidenceText(evidence), len(evidence) > 0)
+}
+
+func defectSource(evidence []store.Evidence, reviews []store.Review) string {
+	for _, review := range reviews {
+		if review.Verdict == "changes" || review.Verdict == "reject" {
+			return "review"
+		}
+	}
+	issueEvidence := make([]store.Evidence, 0, len(evidence))
+	for _, ev := range evidence {
+		switch strings.ToLower(strings.TrimSpace(ev.Result)) {
+		case "fail", "blocked", "partial":
+			issueEvidence = append(issueEvidence, ev)
+		}
+	}
+	if len(issueEvidence) == 0 {
+		return ""
+	}
+	return sourceFromText(evidenceText(issueEvidence), true)
+}
+
+func sourceFromText(raw string, hasEvidence bool) string {
+	text := strings.ToLower(raw)
 	switch {
 	case strings.Contains(text, "live"):
 		return "live-window"
@@ -333,7 +462,7 @@ func outcomeSource(evidence []store.Evidence, reviews []store.Review) string {
 	case strings.Contains(text, "manual"):
 		return "manual"
 	default:
-		if len(evidence) > 0 {
+		if hasEvidence {
 			return "evidence"
 		}
 		return ""

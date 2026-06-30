@@ -176,6 +176,19 @@ It links to task detail. The board preserves role/status/project/profile/kind/
 domain/risk/review/search/sort/column state when switching between task and
 diagnostics tabs.
 
+The reports view includes the same delivery/process-overhead read model as
+`fairway delivery report`. It shows completed tasks, blocked and review-wait
+time, review records, changes requested, approval loops, reopen/retry count,
+notification/wake and handoff counts, outcome-source buckets, defect-source
+rows, loop signals, and work-batch rollups. Outcome sources describe where
+normal evidence came from. Defect sources are narrower and appear only when
+review changes/rejects or non-pass evidence (`fail`, `blocked`, or `partial`)
+show where an issue was discovered, so passing preflight, deploy, test, or UAT
+proof does not inflate defect-discovery counts. These metrics are advisory
+evidence for reducing ceremony and investing in tests, preflight, UAT, packet
+templates, or automation; the dashboard remains read-only and the report does
+not approve reviews, mutate task status, merge, deploy, or release.
+
 Task detail shows review waits from the same read model as
 `fairway review-waits list`, including state, blocking flag, target
 provider/target, expected response time, suggested action, and reason. It also

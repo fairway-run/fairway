@@ -3918,26 +3918,89 @@ func TestCLI_DeliveryReport(t *testing.T) {
 	runOK(t, "record", "evidence", "T-002", "--command-text", "preflight failed again", "--result", "blocked", "--artifact-type", "preflight")
 	runOK(t, "record", "review", "T-002", "--reviewer", "arch", "--domain", "arch", "--verdict", "changes", "--reason", "same layer failure")
 
+	runOK(t, "add", "T-003", "--title", "Retried UAT task", "--role", "backend", "--profile", "fairway-adoption")
+	runOK(t, "claim", "T-003")
+	runOK(t, "record", "evidence", "T-003", "--command-text", "owner UAT found rough edge", "--result", "fail", "--artifact-type", "uat-proof")
+	runOK(t, "set-status", "T-003", "done", "--reason", "closed before retry")
+	runOK(t, "set-status", "T-003", "in_progress", "--reopen", "--reason", "retry after owner feedback")
+	runOK(t, "record", "evidence", "T-003", "--command-text", "owner UAT pass", "--result", "pass", "--artifact-type", "uat-proof")
+	runOK(t, "set-status", "T-003", "done", "--reason", "closed after retry")
+
+	runOK(t, "add", "T-004", "--title", "Passing preflight", "--role", "backend", "--profile", "fairway-adoption")
+	runOK(t, "claim", "T-004")
+	runOK(t, "record", "evidence", "T-004", "--command-text", "preflight passed", "--result", "pass", "--artifact-type", "preflight")
+
+	runOK(t, "add", "T-005", "--title", "Partial preflight", "--role", "backend", "--profile", "fairway-adoption")
+	runOK(t, "claim", "T-005")
+	runOK(t, "record", "evidence", "T-005", "--command-text", "preflight found missing route", "--result", "partial", "--artifact-type", "preflight")
+
+	runOK(t, "add", "T-006", "--title", "Passing UAT", "--role", "backend", "--profile", "fairway-adoption")
+	runOK(t, "claim", "T-006")
+	runOK(t, "record", "evidence", "T-006", "--command-text", "owner UAT pass", "--result", "pass", "--artifact-type", "uat-proof")
+
+	runOK(t, "batch", "create", "BATCH-001", "--title", "Fairway adoption batch", "--task", "T-001")
+	runOK(t, "batch", "add", "BATCH-001", "T-002", "T-003", "T-004", "T-005", "T-006")
+
 	report := runCapture(t, "delivery", "report", "--since", "720h", "--profile", "fairway-adoption")
 	for _, want := range []string{
 		"delivery_report_ok: true",
 		"profile: fairway-adoption",
-		"completed=1",
+		"completed=2",
 		"reviews=2",
 		"changes_requested=2",
+		"approval_loops=2",
+		"reopen_retry_count=1",
 		"outcome_sources:",
 		"- review=2",
+		"- uat=2",
+		"- preflight=2",
 		"loop_signals:",
 		"task=T-002",
 		"repeated_failures_after_review",
+		"batches:",
+		"batch=BATCH-001",
+		"defect_source=uat",
+		"task=T-004 status=in_progress",
+		"outcome=preflight defect_source=none",
+		"task=T-005 status=in_progress",
+		"outcome=preflight defect_source=preflight",
+		"task=T-006 status=in_progress",
+		"outcome=uat defect_source=none",
 	} {
 		assertContains(t, report, want)
 	}
 
 	jsonReport := runCapture(t, "delivery", "report", "--since", "720h", "--format", "json")
-	assertContains(t, jsonReport, `"completed_tasks": 1`)
+	assertContains(t, jsonReport, `"completed_tasks": 2`)
 	assertContains(t, jsonReport, `"review_changes_requested": 2`)
+	assertContains(t, jsonReport, `"approval_loops": 2`)
+	assertContains(t, jsonReport, `"reopen_retry_count": 1`)
+	assertContains(t, jsonReport, `"defect_source": "uat"`)
+	assertContains(t, jsonReport, `"defect_source": "preflight"`)
+	assertContains(t, jsonReport, `"batch_id": "BATCH-001"`)
 	assertContains(t, jsonReport, `"signal": "repeated_failures_after_review"`)
+	var parsed struct {
+		Rows []struct {
+			TaskID        string `json:"task_id"`
+			OutcomeSource string `json:"outcome_source"`
+			DefectSource  string `json:"defect_source"`
+		} `json:"rows"`
+	}
+	if err := json.Unmarshal([]byte(jsonReport), &parsed); err != nil {
+		t.Fatalf("parse delivery report json: %v\n%s", err, jsonReport)
+	}
+	for _, row := range parsed.Rows {
+		switch row.TaskID {
+		case "T-004":
+			if row.OutcomeSource != "preflight" || row.DefectSource != "" {
+				t.Fatalf("passing preflight should keep outcome but no defect source: %+v", row)
+			}
+		case "T-006":
+			if row.OutcomeSource != "uat" || row.DefectSource != "" {
+				t.Fatalf("passing UAT should keep outcome but no defect source: %+v", row)
+			}
+		}
+	}
 }
 
 func TestCLI_AutomationCandidates(t *testing.T) {

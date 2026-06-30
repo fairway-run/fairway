@@ -53,6 +53,8 @@
 <div><b>{{.Delivery.Summary.TotalReviewWaitSeconds}}s</b><span>review-wait time</span></div>
 <div><b>{{.Delivery.Overhead.ReviewRecords}}</b><span>review records</span></div>
 <div><b>{{.Delivery.Overhead.ReviewChangesRequested}}</b><span>changes requested</span></div>
+<div><b>{{.Delivery.Overhead.ApprovalLoops}}</b><span>approval loops</span></div>
+<div><b>{{.Delivery.Overhead.ReopenRetryCount}}</b><span>reopen/retry count</span></div>
 <div><b>{{printf "%.2f" .Delivery.Overhead.ReviewUsefulnessRatio}}</b><span>review usefulness ratio</span></div>
 <div><b>{{.Delivery.Overhead.Notifications}}</b><span>wakes/notifications</span></div>
 <div><b>{{len .Delivery.Loops}}</b><span>loop signals</span></div>
@@ -65,6 +67,11 @@
 {{if .Delivery.Loops}}
 <ul class="review-gap-list">
 {{range .Delivery.Loops}}<li><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a> {{.Signal}} <span>{{.Recommended}}</span></li>{{end}}
+</ul>
+{{end}}
+{{if .Delivery.Batches}}
+<ul class="review-gap-list">
+{{range .Delivery.Batches}}<li>{{.BatchID}} <span>{{.CompletedTasks}}/{{.Tasks}} done, {{.ApprovalLoops}} approval loops, {{.ReopenRetryCount}} reopen/retry</span></li>{{end}}
 </ul>
 {{end}}
 </section>

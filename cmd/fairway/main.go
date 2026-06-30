@@ -3347,15 +3347,17 @@ func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) e
 		if report.Profile != "" {
 			fmt.Printf("profile: %s\n", report.Profile)
 		}
-		fmt.Printf("summary: completed=%d blocked_opened=%d blocked_resolved=%d blocked_seconds=%d review_wait_seconds=%d first_evidence_to_done_seconds=%d done_to_merge_ready_seconds_observed=%d\n",
+		fmt.Printf("summary: completed=%d blocked_opened=%d blocked_resolved=%d blocked_seconds=%d review_wait_seconds=%d first_evidence_to_done_seconds=%d done_to_merge_ready_seconds_observed=%d approval_loops=%d reopen_retry_count=%d\n",
 			report.Summary.CompletedTasks,
 			report.Summary.BlockedOpened,
 			report.Summary.BlockedResolved,
 			report.Summary.TotalBlockedSeconds,
 			report.Summary.TotalReviewWaitSeconds,
 			report.Summary.FirstEvidenceToDoneSeconds,
-			report.Summary.DoneToMergeReadySecondsObserved)
-		fmt.Printf("overhead: reviews=%d approvals=%d changes_requested=%d same_lane_mappings=%d notifications=%d notification_failures=%d wakes=%d handoffs=%d review_waits_no_changes=%d review_usefulness_ratio=%.2f tasks_with_process_overhead=%d tasks_with_engineering_output=%d\n",
+			report.Summary.DoneToMergeReadySecondsObserved,
+			report.Summary.ApprovalLoops,
+			report.Summary.ReopenRetryCount)
+		fmt.Printf("overhead: reviews=%d approvals=%d changes_requested=%d same_lane_mappings=%d notifications=%d notification_failures=%d wakes=%d handoffs=%d approval_loops=%d reopen_retry_count=%d review_waits_no_changes=%d review_usefulness_ratio=%.2f tasks_with_process_overhead=%d tasks_with_engineering_output=%d\n",
 			report.Overhead.ReviewRecords,
 			report.Overhead.ReviewApprovals,
 			report.Overhead.ReviewChangesRequested,
@@ -3364,6 +3366,8 @@ func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) e
 			report.Overhead.NotificationFailures,
 			report.Overhead.Wakes,
 			report.Overhead.Handoffs,
+			report.Overhead.ApprovalLoops,
+			report.Overhead.ReopenRetryCount,
 			report.Overhead.ReviewWaitsNoChanges,
 			report.Overhead.ReviewUsefulnessRatio,
 			report.Overhead.TasksWithProcessOverhead,
@@ -3380,13 +3384,29 @@ func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) e
 				fmt.Printf("- task=%s signal=%s count=%d next=%s\n", loop.TaskID, loop.Signal, loop.Count, loop.Recommended)
 			}
 		}
+		if len(report.Batches) > 0 {
+			fmt.Println("batches:")
+			for _, batch := range report.Batches {
+				fmt.Printf("- batch=%s tasks=%d completed=%d blocked_seconds=%d review_wait_seconds=%d reviews=%d approval_loops=%d reopen_retry_count=%d notifications=%d handoffs=%d\n",
+					batch.BatchID,
+					batch.Tasks,
+					batch.CompletedTasks,
+					batch.BlockedSeconds,
+					batch.ReviewWaitSeconds,
+					batch.ReviewRecords,
+					batch.ApprovalLoops,
+					batch.ReopenRetryCount,
+					batch.Notifications,
+					batch.Handoffs)
+			}
+		}
 		if len(report.Rows) == 0 {
 			fmt.Println("rows: none")
 			return nil
 		}
 		fmt.Println("rows:")
 		for _, row := range report.Rows {
-			fmt.Printf("- task=%s status=%s completed_at=%s blocked_seconds=%d review_wait_seconds=%d reviews=%d changes_requested=%d notifications=%d handoffs=%d outcome=%s loop=%s\n",
+			fmt.Printf("- task=%s status=%s completed_at=%s blocked_seconds=%d review_wait_seconds=%d reviews=%d changes_requested=%d approval_loops=%d reopen_retry_count=%d notifications=%d handoffs=%d outcome=%s defect_source=%s loop=%s\n",
 				row.TaskID,
 				row.Status,
 				firstNonEmpty(row.CompletedAt, "none"),
@@ -3394,9 +3414,12 @@ func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) e
 				row.ReviewWaitSeconds,
 				row.ReviewRecords,
 				row.ReviewChangesRequested,
+				row.ApprovalLoops,
+				row.ReopenRetryCount,
 				row.Notifications,
 				row.Handoffs,
 				firstNonEmpty(row.OutcomeSource, "none"),
+				firstNonEmpty(row.DefectSource, "none"),
 				firstNonEmpty(row.LoopSignal, "none"))
 		}
 		return nil

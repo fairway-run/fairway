@@ -393,9 +393,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   task transitions, evidence, reviews, handoffs, notifications, and review-wait
   projections to report completed tasks, blocked time, review-wait time,
   first-evidence-to-done time, review approvals versus changes requested,
-  notification/wake and handoff counts, outcome-source buckets, and loop
-  signals. It is advisory by default and does not approve reviews, mutate task
-  status, merge, deploy, or gate release.
+  notification/wake and handoff counts, approval loops, reopen/retry count,
+  outcome-source buckets, defect-source rows, work-batch rollups, and loop
+  signals. `outcome_source` is the broader evidence/source classifier;
+  `defect_source` is populated only when a review requests changes/rejects or
+  non-pass evidence (`fail`, `blocked`, or `partial`) indicates where an issue
+  was discovered. Passing tests, preflight, deploy, or UAT proof can contribute
+  outcome evidence without being counted as defect discovery. Teams use these
+  metrics to identify where extra review, preflight, UAT, tests, packet
+  templates, or automation actually reduced defects or blocked time. It is
+  advisory by default and does not approve reviews, mutate task status, merge,
+  deploy, or gate release.
 - `provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]`
   is a metadata-only supply-chain provenance export over existing Fairway task
   metadata, evidence refs, review refs, checkpoints, sessions, usage counts,

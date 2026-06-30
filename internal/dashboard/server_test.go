@@ -194,6 +194,8 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 		"CI-FIX",
 		"Missing Required Review Domains",
 		"Delivery Velocity And Process Overhead",
+		"approval loops",
+		"reopen/retry count",
 		"review usefulness ratio",
 		"Provider Usage Attribution",
 		"Work batches / batched tasks",
