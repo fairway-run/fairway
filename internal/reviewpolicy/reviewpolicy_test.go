@@ -38,6 +38,78 @@ func TestEvaluateOneReviewMicroSlice(t *testing.T) {
 	}
 }
 
+func TestEvaluateDefaultReversibleProfile(t *testing.T) {
+	task := store.Task{Definition: store.TaskDefinition{ID: "REV-001", RiskLevel: "reversible", ReviewDomains: []string{"backend", "governance"}}}
+	eval := Evaluate(config.Config{}, Options{Task: task})
+	if eval.Profile != "reversible" || eval.Mode != "advisory" || !eval.SafeIterationZone {
+		t.Fatalf("eval=%+v, want reversible advisory safe iteration profile", eval)
+	}
+	if len(eval.EffectiveDomains) != 0 || len(eval.MissingReviewDomains) != 0 {
+		t.Fatalf("eval=%+v, reversible profile should not block on review domains", eval)
+	}
+	statusByDomain := map[string]string{}
+	for _, req := range eval.Requirements {
+		statusByDomain[req.Domain] = req.Status
+	}
+	for _, domain := range []string{"backend", "governance"} {
+		if statusByDomain[domain] != "waived" {
+			t.Fatalf("domain %s status=%q, want waived; eval=%+v", domain, statusByDomain[domain], eval)
+		}
+	}
+}
+
+func TestEvaluateDefaultBoundaryProfiles(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		task store.Task
+		want []string
+	}{
+		{
+			name: "irreversible",
+			task: store.Task{Definition: store.TaskDefinition{ID: "IRR-001", RiskLevel: "irreversible"}},
+			want: []string{"architecture", "governance", "ops", "security"},
+		},
+		{
+			name: "live-boundary",
+			task: store.Task{Definition: store.TaskDefinition{ID: "LIVE-001", Kind: "live-window"}},
+			want: []string{"backend", "governance", "ops", "security"},
+		},
+		{
+			name: "release-boundary",
+			task: store.Task{Definition: store.TaskDefinition{ID: "REL-001", Kind: "release-risk"}},
+			want: []string{"governance", "ops", "security"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			eval := Evaluate(config.Config{}, Options{Task: tc.task})
+			if eval.Profile != tc.name || eval.Mode != "blocking" {
+				t.Fatalf("eval=%+v, want profile %s blocking", eval, tc.name)
+			}
+			if len(eval.EffectiveDomains) != len(tc.want) || len(eval.MissingReviewDomains) != len(tc.want) {
+				t.Fatalf("eval=%+v, want domains %v", eval, tc.want)
+			}
+			for i, want := range tc.want {
+				if eval.EffectiveDomains[i] != want || eval.MissingReviewDomains[i] != want {
+					t.Fatalf("eval=%+v, want sorted domain %s at %d", eval, want, i)
+				}
+			}
+		})
+	}
+}
+
+func TestEvaluateConfiguredProfileOverridesDefaultName(t *testing.T) {
+	cfg := config.Config{ReviewProfiles: []config.ReviewProfile{{
+		Name:                  "reversible",
+		MatchTags:             []string{"custom-reversible"},
+		RequiredReviewDomains: []string{"governance"},
+	}}}
+	task := store.Task{Definition: store.TaskDefinition{ID: "REV-002", RiskLevel: "reversible"}}
+	eval := Evaluate(cfg, Options{Task: task})
+	if eval.Profile != "" || len(eval.Requirements) != 0 {
+		t.Fatalf("eval=%+v, configured profile name should replace default reversible matching", eval)
+	}
+}
+
 func TestEvaluateGroupedChildReviewInheritance(t *testing.T) {
 	cfg := config.Config{ReviewProfiles: []config.ReviewProfile{{
 		Name:                  "grouped-slice",

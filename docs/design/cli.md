@@ -239,15 +239,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   retry` fails closed until an existing Fairway causal reset task and reset
   reason are recorded. This does not authorize another live window; it only
   makes the retry/reset decision explicit.
-- `review-policy report` summarizes configured review-profile pilots and
-  blocking policies. It compares review overhead with Fairway outcome signals
-  such as defects caught, rework-reduction signals, blocked tasks, completed
-  tasks, and avoided unsafe actions. Advisory profiles with overhead but no
-  useful outcomes should be narrowed or removed rather than promoted to
-  blocking defaults. It also reports loop-detected causal-reset recommendations
-  when repeated meaningful failures, same-layer fixes, or approvals without
-  end-to-end flow progress show that another retry needs a failure chain, real
-  unknowns, proof-before-retry, and a lighter safe-boundary review plan.
+- `review-policy report` summarizes configured and built-in review-profile
+  pilots and blocking policies. Built-in defaults distinguish reversible
+  evidence-led work from irreversible, live, and release boundaries. The report
+  compares review overhead with Fairway outcome signals such as defects caught,
+  rework-reduction signals, blocked tasks, completed tasks, and avoided unsafe
+  actions. Advisory profiles with overhead but no useful outcomes should be
+  narrowed or removed rather than promoted to blocking defaults. It also
+  reports loop-detected causal-reset recommendations when repeated meaningful
+  failures, same-layer fixes, or approvals without end-to-end flow progress
+  show that another retry needs a failure chain, real unknowns,
+  proof-before-retry, and a lighter safe-boundary review plan.
 - `memory show|update|append|packet|stale` provides first-class track memory
   for coordinator and provider resume packets. Track memory stores curated
   operating summaries, blockers, decisions, next actions, and numeric Fairway

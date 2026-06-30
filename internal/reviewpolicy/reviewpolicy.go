@@ -98,6 +98,9 @@ func Evaluate(cfg config.Config, opts Options) Evaluation {
 	task := opts.Task
 	profile, hasProfile := selectProfile(cfg.ReviewProfiles, task, opts.ChangedPaths)
 	if !hasProfile {
+		profile, hasProfile = selectDefaultProfile(cfg.ReviewProfiles, task, opts.ChangedPaths)
+	}
+	if !hasProfile {
 		domains := normalizedUnique(task.Definition.ReviewDomains)
 		return Evaluation{Requirements: requiredRequirements(domains, "task review_domains"), EffectiveDomains: domains, MissingReviewDomains: MissingDomains(domains, opts.Reviews)}
 	}
@@ -138,6 +141,114 @@ func Evaluate(cfg config.Config, opts Options) Evaluation {
 	}
 	eval.MissingReviewDomains = MissingDomains(eval.EffectiveDomains, opts.Reviews)
 	return eval
+}
+
+func EffectiveProfiles(configured []config.ReviewProfile) []config.ReviewProfile {
+	defaults := DefaultProfiles()
+	if len(configured) == 0 {
+		return defaults
+	}
+	overrides := map[string]bool{}
+	out := append([]config.ReviewProfile{}, configured...)
+	for _, profile := range configured {
+		overrides[strings.TrimSpace(profile.Name)] = true
+	}
+	for _, profile := range defaults {
+		if !overrides[profile.Name] {
+			out = append(out, profile)
+		}
+	}
+	return out
+}
+
+func DefaultProfiles() []config.ReviewProfile {
+	return []config.ReviewProfile{
+		{
+			Name:                     "reversible",
+			Mode:                     "advisory",
+			MatchRiskLevels:          []string{"reversible"},
+			MatchTags:                []string{"reversible", "risk:reversible", "review:reversible"},
+			WaiveReviewDomains:       []string{"architecture", "backend", "governance", "ops", "security"},
+			SafeIterationZone:        true,
+			SafeIterationDefectClass: "product-shape, docs, harness, setup, readback, or prototype defect",
+			SafeIterationControl:     "reversible non-live boundary with recorded evidence",
+			ExtraReviewerRationale:   "extra reviewers should be requested only when they catch a named defect class or reduce unsafe action",
+			ProcessHypothesis:        "reversible product work ships faster with evidence and self-check than with full review ceremony",
+			OutcomeMetrics:           []string{"cycle_time", "blocked_time", "defects_caught", "rework_reduced"},
+		},
+		{
+			Name:                    "irreversible",
+			Mode:                    "blocking",
+			MatchRiskLevels:         []string{"irreversible"},
+			MatchTags:               []string{"irreversible", "risk:irreversible", "boundary:irreversible", "credentials", "security", "prod"},
+			RequiredReviewDomains:   []string{"architecture", "governance", "ops", "security"},
+			NoInheritanceRiskLevels: []string{"high", "irreversible"},
+			NoInheritanceTags:       []string{"credentials", "security", "prod", "live", "deploy", "public-exposure"},
+			ExtraReviewerRationale:  "irreversible work can expand authority, mutate environments, expose users, or weaken safety controls",
+			ProcessHypothesis:       "explicit review on irreversible boundaries avoids unsafe action that evidence-only self-check cannot reverse",
+			OutcomeMetrics:          []string{"avoided_unsafe_actions", "defects_caught", "blocked_time"},
+		},
+		{
+			Name:                   "live-boundary",
+			Mode:                   "blocking",
+			MatchKinds:             []string{"live-window"},
+			MatchTags:              []string{"live", "live-window", "boundary:live", "environment:production"},
+			RequiredReviewDomains:  []string{"backend", "governance", "ops", "security"},
+			NoInheritanceTags:      []string{"credentials", "security", "prod", "live", "deploy", "public-exposure"},
+			ExtraReviewerRationale: "live work needs explicit operational, security, and rollback readiness before execution",
+			ProcessHypothesis:      "live-boundary approval prevents using drills or UAT as first dependency discovery",
+			OutcomeMetrics:         []string{"avoided_unsafe_actions", "defects_caught", "blocked_time"},
+		},
+		{
+			Name:                   "release-boundary",
+			Mode:                   "blocking",
+			MatchKinds:             []string{"release-risk"},
+			MatchTags:              []string{"release", "boundary:release", "deploy", "public-exposure"},
+			MatchPaths:             []string{"docs/release", "CHANGELOG", ".goreleaser", "dist/", "scripts/release"},
+			RequiredReviewDomains:  []string{"governance", "ops", "security"},
+			NoInheritanceTags:      []string{"release", "deploy", "public-exposure"},
+			ExtraReviewerRationale: "release work changes public distribution and needs release evidence, rollback, and provenance review",
+			ProcessHypothesis:      "release-boundary review catches distribution, provenance, and public-exposure defects before publish",
+			OutcomeMetrics:         []string{"defects_caught", "avoided_unsafe_actions", "cycle_time"},
+		},
+	}
+}
+
+func selectDefaultProfile(configured []config.ReviewProfile, task store.Task, changedPaths []string) (config.ReviewProfile, bool) {
+	defaults := profileByName(DefaultProfiles())
+	overrides := profileByName(configured)
+	paths := append(append([]string{}, task.Definition.SourcePaths...), append(task.Definition.TargetPaths, changedPaths...)...)
+	tags := normalizedUnique(task.Definition.Tags)
+	risk := strings.TrimSpace(task.Definition.RiskLevel)
+	kind := strings.TrimSpace(task.Definition.Kind)
+	switch {
+	case kind == "release-risk" || risk == "release-boundary" || anyOverlap([]string{"release", "boundary:release", "deploy", "public-exposure"}, tags) || anyPathPrefix([]string{"docs/release", "CHANGELOG", ".goreleaser", "dist/", "scripts/release"}, paths):
+		return defaultProfile(defaults, overrides, "release-boundary")
+	case kind == "live-window" || risk == "live-boundary" || anyOverlap([]string{"live", "live-window", "boundary:live", "environment:production"}, tags):
+		return defaultProfile(defaults, overrides, "live-boundary")
+	case risk == "irreversible" || anyOverlap([]string{"irreversible", "risk:irreversible", "boundary:irreversible", "credentials", "security", "prod"}, tags):
+		return defaultProfile(defaults, overrides, "irreversible")
+	case risk == "reversible" || anyOverlap([]string{"reversible", "risk:reversible", "review:reversible"}, tags):
+		return defaultProfile(defaults, overrides, "reversible")
+	default:
+		return config.ReviewProfile{}, false
+	}
+}
+
+func defaultProfile(defaults, overrides map[string]config.ReviewProfile, name string) (config.ReviewProfile, bool) {
+	if _, ok := overrides[name]; ok {
+		return config.ReviewProfile{}, false
+	}
+	profile, ok := defaults[name]
+	return profile, ok
+}
+
+func profileByName(profiles []config.ReviewProfile) map[string]config.ReviewProfile {
+	out := map[string]config.ReviewProfile{}
+	for _, profile := range profiles {
+		out[profile.Name] = profile
+	}
+	return out
 }
 
 func MissingDomains(domains []string, reviews []store.Review) []string {

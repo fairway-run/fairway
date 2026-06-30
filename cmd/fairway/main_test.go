@@ -1050,6 +1050,9 @@ artifact_required = true
 	assertContains(t, failed, "profile gate release-readiness/security-review missing")
 
 	runOK(t, "record", "evidence", "T-001", "--command-text", "security review", "--result", "pass", "--artifact", "dist/security.txt", "--artifact-type", "security-review")
+	for _, domain := range []string{"governance", "ops", "security"} {
+		runOK(t, "record", "review", "T-001", "--reviewer", "fairway-reviewer", "--domain", domain, "--verdict", "approve", "--reason", "release boundary check")
+	}
 	runOK(t, "merge-ready", "T-001")
 	jsonReport := runCapture(t, "--json", "merge-ready", "T-001")
 	assertContains(t, jsonReport, `"gate_evaluations"`)
@@ -2616,6 +2619,59 @@ group_review = true
 	childWaits := runCapture(t, "review-waits", "list", "--task", "CHILD-001")
 	assertContains(t, childWaits, "domain=backend state=resolved blocking=false action=none policy=inherited profile=grouped-slice")
 	assertContains(t, childWaits, "domain=governance state=resolved blocking=false action=none policy=inherited profile=grouped-slice")
+}
+
+func TestCLI_DefaultReviewPolicyProfilesExplainRiskBoundaries(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "REV-001", "--title", "Reversible slice", "--role", "backend", "--risk-level", "reversible", "--review-domains", "backend,governance")
+	reversible := runCapture(t, "task-detail", "REV-001")
+	for _, want := range []string{
+		"review_policy:",
+		"profile: reversible mode=advisory",
+		"backend: waived",
+		"governance: waived",
+		"safe_iteration_zone: true defect_class=product-shape, docs, harness, setup, readback, or prototype defect control=reversible non-live boundary with recorded evidence",
+		"process_hypothesis: reversible product work ships faster with evidence and self-check than with full review ceremony",
+		"outcome_metrics: blocked_time, cycle_time, defects_caught, rework_reduced",
+	} {
+		assertContains(t, reversible, want)
+	}
+	assertNotContains(t, reversible, "missing review domains:")
+
+	runOK(t, "add", "LIVE-001", "--title", "Live boundary", "--role", "ops", "--risk-level", "live-boundary")
+	live := runCapture(t, "task-detail", "LIVE-001")
+	for _, want := range []string{
+		"review_policy:",
+		"profile: live-boundary mode=blocking",
+		"backend: required",
+		"governance: required",
+		"ops: required",
+		"security: required",
+		"process_hypothesis: live-boundary approval prevents using drills or UAT as first dependency discovery",
+		"missing review domains:",
+	} {
+		assertContains(t, live, want)
+	}
+
+	report := runCapture(t, "review-policy", "report")
+	for _, want := range []string{
+		"profile=reversible mode=advisory",
+		"profile=live-boundary mode=blocking",
+		"hypothesis=reversible product work ships faster with evidence and self-check than with full review ceremony",
+		"hypothesis=live-boundary approval prevents using drills or UAT as first dependency discovery",
+	} {
+		assertContains(t, report, want)
+	}
 }
 
 func TestCLI_ReviewWaitsWakeSelectionAndSuppression(t *testing.T) {

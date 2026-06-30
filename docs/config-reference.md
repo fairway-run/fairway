@@ -217,15 +217,22 @@ such as `codex`, `claude`, `gemini`, or `shell`.
 
 ### `[[review_profiles]]`
 
-Review profiles define risk-scaled review policy. They are deterministic config
-rules used by `merge-ready`, `task-detail`, `review-waits`, and coordinator
-plan output. They do not approve reviews, waive safety gates, or authorize live
+Review profiles define risk-scaled review policy. They are deterministic rules
+used by `merge-ready`, `task-detail`, `review-waits`, and coordinator plan
+output. They do not approve reviews, waive safety gates, or authorize live
 execution by themselves.
 
 Profiles are evaluated in file order. The first matching profile can add
 required review domains, waive or defer domains for the current slice, inherit
 domains from an approved parent/group packet, and explain why extra reviewers
 improve risk control.
+
+Fairway also provides built-in default profiles named `reversible`,
+`irreversible`, `live-boundary`, and `release-boundary`. These defaults cover
+the common small-team policy: reversible non-live work is advisory and
+evidence-led, while irreversible, live, and release boundaries remain blocking.
+A configured `[[review_profiles]]` entry with the same `name` replaces the
+built-in default for that name.
 
 Key fields:
 

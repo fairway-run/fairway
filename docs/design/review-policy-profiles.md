@@ -12,11 +12,16 @@ Process is useful only when it improves speed, quality, or safety. New review
 or gate policies should start as bounded pilots in `advisory` mode with a
 stated hypothesis before becoming blocking defaults.
 
-Profiles are configured in `.fairway/config.toml` with `[[review_profiles]]`.
-They are deterministic policy inputs for `merge-ready`, `task-detail`,
-`review-waits`, and coordinator plan output. They are not approval authority.
-They do not authorize live execution, merge, deploy, production mutation,
-credential action, safety-gate weakening, or public exposure.
+Profiles can come from Fairway's built-in defaults or from
+`.fairway/config.toml` `[[review_profiles]]` entries. They are deterministic
+policy inputs for `merge-ready`, `task-detail`, `review-waits`, and coordinator
+plan output. They are not approval authority. They do not authorize live
+execution, merge, deploy, production mutation, credential action, safety-gate
+weakening, or public exposure.
+
+Config entries are evaluated before built-in defaults. A configured profile
+with the same name as a built-in profile replaces that built-in profile, so
+consumer repos can tune local policy without carrying a second hidden rule.
 
 ## Model
 
@@ -59,6 +64,22 @@ can see why a full matrix was not requested for that slice.
 If a profile runs in `advisory` mode, missing required domains are reported as
 warnings rather than blockers. This lets teams measure process value before
 turning the policy into a blocking gate.
+
+## Built-In Defaults
+
+Fairway ships four default profiles for the common risk boundaries. They are
+active when no configured profile has the same name:
+
+| Profile | Matches | Default effect |
+|---|---|---|
+| `reversible` | `risk_level = "reversible"` or tags `reversible`, `risk:reversible`, `review:reversible` | Advisory safe-iteration profile. Normal architecture, backend, governance, ops, and security review domains are waived for the slice and remain visible as waived policy rows. Evidence and self-check are expected. |
+| `irreversible` | `risk_level = "irreversible"` or tags `irreversible`, `risk:irreversible`, `boundary:irreversible`, `credentials`, `security`, or `prod` | Blocking architecture, governance, ops, and security review. Inheritance is disabled for high/irreversible risk and authority-expanding tags. |
+| `live-boundary` | `risk_level = "live-boundary"`, kind `live-window`, or tags `live`, `live-window`, `boundary:live`, `environment:production` | Blocking backend, governance, ops, and security review before live execution. |
+| `release-boundary` | `risk_level = "release-boundary"`, kind `release-risk`, release/deploy/public-exposure tags, or release paths such as `docs/release`, `.goreleaser`, `dist/`, or `scripts/release` | Blocking governance, ops, and security review before public distribution or release changes. |
+
+The defaults encode the small-team operating principle: reversible work should
+move quickly with evidence, while irreversible, live, and release boundaries
+keep explicit controls. They do not weaken explicit gates configured elsewhere.
 
 ## Safe Iteration Zones
 
