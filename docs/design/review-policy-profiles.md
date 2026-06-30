@@ -58,8 +58,9 @@ deferred
 ```
 
 Only `required` domains block `merge-ready` when missing. Inherited, waived, and
-deferred domains remain visible in review-wait/task detail output so operators
-can see why a full matrix was not requested for that slice.
+deferred domains remain visible in review-wait/task detail and dashboard task
+detail output so operators can see why a full matrix was not requested for that
+slice.
 
 If a profile runs in `advisory` mode, missing required domains are reported as
 warnings rather than blockers. This lets teams measure process value before
@@ -102,13 +103,21 @@ window execution, deploy, production-readiness, compliance, enforcement,
 credential handling, safety-gate changes, public exposure, and authority
 expansion.
 
+Live, release, irreversible, production, credential, deploy, public-exposure,
+and security markers always block inherited/grouped review coverage even when a
+configured grouped profile matches first. Fairway overlays the relevant boundary
+review domains and reports the child as requiring direct review instead of
+letting parent approval satisfy the boundary.
+
 ## Coordinator Behavior
 
 Coordinator plan may recommend grouped review for related ready tasks that
 match a safe iteration profile. The recommendation should say that Fairway is
 continuing safe-boundary iteration and reserving the full matrix for boundary
-exit. This reduces provider token burn and review churn without hiding review
-policy from the control surface.
+exit. CLI and dashboard surfaces must show whether a child is covered by an
+approved parent/group packet or still needs direct review. This reduces
+provider token burn and review churn without hiding review policy from the
+control surface.
 
 `fairway review-policy report` compares review/gate overhead with outcomes
 recorded in Fairway facts. The first slice reports per-profile task count,

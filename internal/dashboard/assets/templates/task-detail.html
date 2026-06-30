@@ -193,6 +193,16 @@
 {{else}}<p class="muted">no review waits projected for this task</p>{{end}}
 </article>
 <article class="detail-panel">
+<h2>Review Policy</h2>
+{{if .ReviewPolicy.Requirements}}
+<p><b>Profile</b>: {{if .ReviewPolicy.Profile}}<code>{{.ReviewPolicy.Profile}}</code>{{else}}task review domains{{end}} · mode {{if .ReviewPolicy.Mode}}<code>{{.ReviewPolicy.Mode}}</code>{{else}}<code>blocking</code>{{end}}{{if .ReviewPolicy.GroupReview}} · grouped review{{end}}</p>
+<table class="detail-table"><thead><tr><th>Domain</th><th>Status</th><th>Reason</th></tr></thead><tbody>
+{{range .ReviewPolicy.Requirements}}<tr><td><code>{{.Domain}}</code></td><td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td><td>{{.Reason}}</td></tr>{{end}}
+</tbody></table>
+{{if .ReviewPolicy.InheritanceBlocked}}<p><b>Inheritance blocked</b>: {{range .ReviewPolicy.InheritanceBlockers}}<code>{{.}}</code> {{end}}</p>{{end}}
+{{else}}<p class="muted">no review policy requirements apply to this task</p>{{end}}
+</article>
+<article class="detail-panel">
 <h2>Reviews</h2>
 <div class="detail-stack">
 {{if .MissingReviewDomains}}<p><b>Missing required domains</b>: {{range .MissingReviewDomains}}<code>{{.}}</code> {{end}}</p>{{end}}

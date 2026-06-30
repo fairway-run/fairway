@@ -104,6 +104,7 @@ func Evaluate(cfg config.Config, opts Options) Evaluation {
 		domains := normalizedUnique(task.Definition.ReviewDomains)
 		return Evaluation{Requirements: requiredRequirements(domains, "task review_domains"), EffectiveDomains: domains, MissingReviewDomains: MissingDomains(domains, opts.Reviews)}
 	}
+	profile = applyBoundaryOverlay(profile, task, opts.ChangedPaths)
 	required := normalizedUnique(append(append([]string{}, task.Definition.ReviewDomains...), profile.RequiredReviewDomains...))
 	eval := Evaluation{
 		Profile:                  profile.Name,
@@ -241,6 +242,41 @@ func defaultProfile(defaults, overrides map[string]config.ReviewProfile, name st
 	}
 	profile, ok := defaults[name]
 	return profile, ok
+}
+
+func applyBoundaryOverlay(profile config.ReviewProfile, task store.Task, changedPaths []string) config.ReviewProfile {
+	defaults := profileByName(DefaultProfiles())
+	boundaryName := boundaryProfileName(task, changedPaths)
+	if boundaryName == "" || profile.Name == boundaryName {
+		return profile
+	}
+	boundary, ok := defaults[boundaryName]
+	if !ok {
+		return profile
+	}
+	profile.RequiredReviewDomains = normalizedUnique(append(profile.RequiredReviewDomains, boundary.RequiredReviewDomains...))
+	profile.NoInheritanceKinds = normalizedUnique(append(profile.NoInheritanceKinds, boundary.NoInheritanceKinds...))
+	profile.NoInheritanceRiskLevels = normalizedUnique(append(profile.NoInheritanceRiskLevels, boundary.NoInheritanceRiskLevels...))
+	profile.NoInheritanceTags = normalizedUnique(append(profile.NoInheritanceTags, boundary.NoInheritanceTags...))
+	profile.NoInheritancePaths = normalizedUnique(append(profile.NoInheritancePaths, boundary.NoInheritancePaths...))
+	return profile
+}
+
+func boundaryProfileName(task store.Task, changedPaths []string) string {
+	paths := append(append([]string{}, task.Definition.SourcePaths...), append(task.Definition.TargetPaths, changedPaths...)...)
+	tags := normalizedUnique(task.Definition.Tags)
+	risk := strings.TrimSpace(task.Definition.RiskLevel)
+	kind := strings.TrimSpace(task.Definition.Kind)
+	switch {
+	case kind == "release-risk" || risk == "release-boundary" || anyOverlap([]string{"release", "boundary:release", "deploy", "public-exposure"}, tags) || anyPathPrefix([]string{"docs/release", "CHANGELOG", ".goreleaser", "dist/", "scripts/release"}, paths):
+		return "release-boundary"
+	case kind == "live-window" || risk == "live-boundary" || anyOverlap([]string{"live", "live-window", "boundary:live", "environment:production"}, tags):
+		return "live-boundary"
+	case risk == "irreversible" || anyOverlap([]string{"irreversible", "risk:irreversible", "boundary:irreversible", "credentials", "security", "prod"}, tags):
+		return "irreversible"
+	default:
+		return ""
+	}
 }
 
 func profileByName(profiles []config.ReviewProfile) map[string]config.ReviewProfile {
@@ -390,6 +426,9 @@ func matchesProfile(profile config.ReviewProfile, task store.Task, changedPaths 
 
 func inheritanceBlocked(profile config.ReviewProfile, task store.Task, changedPaths []string) (bool, []string) {
 	var reasons []string
+	if boundary := boundaryProfileName(task, changedPaths); boundary != "" {
+		reasons = append(reasons, boundary+" boundary blocks inherited review coverage")
+	}
 	if contains(profile.NoInheritanceKinds, task.Definition.Kind) {
 		reasons = append(reasons, "task kind blocks inheritance")
 	}

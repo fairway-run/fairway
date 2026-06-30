@@ -178,9 +178,18 @@ diagnostics tabs.
 
 Task detail shows review waits from the same read model as
 `fairway review-waits list`, including state, blocking flag, target
-provider/target, expected response time, suggested action, and reason. This is
-a read-only visibility surface; it does not approve reviews, send provider
-wake prompts, merge, deploy, or create notification subscriptions.
+provider/target, expected response time, suggested action, and reason. It also
+shows the effective review-policy rows that `merge-ready` and `task-detail`
+use, so grouped child tasks show whether a domain is inherited from an approved
+parent/group packet, waived, deferred, or still required. Dashboard
+missing-review badges use that effective policy instead of raw
+`review_domains`, which keeps grouped-review coverage visible without treating
+it as direct approval authority. If a grouped child carries live, release,
+irreversible, credential, deploy, security, production, or public-exposure
+markers, the dashboard shows inheritance blocked and keeps the boundary review
+domains missing until direct review is recorded. This is a read-only visibility
+surface; it does not approve reviews, send provider wake prompts, merge,
+deploy, or create notification subscriptions.
 
 Task detail also shows completion-handback projection rows and coordinator
 completion-handback waits. The panel includes next owner/action, completion

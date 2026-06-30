@@ -24,6 +24,7 @@ import (
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
+	"github.com/subashram/fairway/internal/reviewpolicy"
 	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
@@ -314,6 +315,7 @@ type TaskDetailViewData struct {
 	Handoffs             []store.Handoff
 	Reviews              []store.Review
 	MissingReviewDomains []string
+	ReviewPolicy         reviewpolicy.Evaluation
 	ReviewStatus         string
 	ReviewHandback       *coord.ReviewCompletionHandback
 	ReviewNotifications  []reviewstate.ReviewNotificationStatus
@@ -2307,7 +2309,12 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	missingReviewDomains := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+	reviewPolicy, err := s.dashboardReviewPolicyEvaluation(r.Context(), task, reviews)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	missingReviewDomains := reviewPolicy.MissingReviewDomains
 	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 	reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
 	reviewWaitOptions, err := s.reviewWaitOptions(time.Now().UTC())
@@ -2333,6 +2340,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Handoffs:             handoffs,
 		Reviews:              reviews,
 		MissingReviewDomains: missingReviewDomains,
+		ReviewPolicy:         reviewPolicy,
 		ReviewStatus:         dashboardEffectiveReviewStatus(task.ReviewStatus, missingReviewDomains),
 		ReviewHandback:       optionalDashboardReviewHandback(reviewHandback, hasReviewHandback),
 		ReviewNotifications:  reviewNotifications,
@@ -2514,19 +2522,38 @@ func optionalDashboardReviewHandback(handback coord.ReviewCompletionHandback, ok
 func (s *Server) dashboardMissingReviewDomainsByTask(ctx context.Context, tasks []store.Task) (map[string][]string, error) {
 	missingByTask := map[string][]string{}
 	for _, task := range tasks {
-		if len(task.Definition.ReviewDomains) == 0 {
-			continue
-		}
-		_, _, _, _, reviews, err := s.store.TaskDetail(ctx, task.Definition.ID)
+		detailTask, _, _, _, reviews, err := s.store.TaskDetail(ctx, task.Definition.ID)
 		if err != nil {
 			return nil, err
 		}
-		missing := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, reviews)
+		eval, err := s.dashboardReviewPolicyEvaluation(ctx, detailTask, reviews)
+		if err != nil {
+			return nil, err
+		}
+		missing := eval.MissingReviewDomains
 		if len(missing) > 0 {
 			missingByTask[task.Definition.ID] = missing
 		}
 	}
 	return missingByTask, nil
+}
+
+func (s *Server) dashboardReviewPolicyEvaluation(ctx context.Context, task store.Task, reviews []store.Review) (reviewpolicy.Evaluation, error) {
+	var parent *store.Task
+	var parentReviews []store.Review
+	if strings.TrimSpace(task.Definition.ParentID) != "" {
+		parentTask, _, _, _, parentTaskReviews, err := s.store.TaskDetail(ctx, task.Definition.ParentID)
+		if err == nil {
+			parent = &parentTask
+			parentReviews = parentTaskReviews
+		}
+	}
+	return reviewpolicy.Evaluate(s.cfg, reviewpolicy.Options{
+		Task:          task,
+		Parent:        parent,
+		Reviews:       reviews,
+		ParentReviews: parentReviews,
+	}), nil
 }
 
 func localBackHref(referer, currentHost, role string) string {

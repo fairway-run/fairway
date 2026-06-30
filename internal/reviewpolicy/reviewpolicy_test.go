@@ -136,6 +136,66 @@ func TestEvaluateGroupedChildReviewInheritance(t *testing.T) {
 	}
 }
 
+func TestEvaluateGroupedChildBoundaryMarkersBlockInheritance(t *testing.T) {
+	cfg := config.Config{ReviewProfiles: []config.ReviewProfile{{
+		Name:                  "grouped-slice",
+		MatchTags:             []string{"slice:grouped"},
+		RequiredReviewDomains: []string{"backend", "governance"},
+		InheritFromParent:     true,
+		InheritReviewDomains:  []string{"backend", "governance"},
+		GroupReview:           true,
+	}}}
+	parent := store.Task{Definition: store.TaskDefinition{ID: "EPIC-001"}}
+	parentReviews := []store.Review{
+		{Domain: "architecture", Verdict: "approve"},
+		{Domain: "backend", Verdict: "approve"},
+		{Domain: "governance", Verdict: "approve"},
+		{Domain: "ops", Verdict: "approve"},
+		{Domain: "security", Verdict: "approve"},
+	}
+	safe := store.Task{Definition: store.TaskDefinition{ID: "SAFE-001", ParentID: "EPIC-001", Tags: []string{"slice:grouped"}}}
+	safeEval := Evaluate(cfg, Options{Task: safe, Parent: &parent, ParentReviews: parentReviews})
+	if safeEval.InheritanceBlocked || len(safeEval.EffectiveDomains) != 0 || len(safeEval.MissingReviewDomains) != 0 {
+		t.Fatalf("safe grouped child eval=%+v, want inherited parent coverage", safeEval)
+	}
+	for _, tc := range []struct {
+		name string
+		task store.Task
+		want []string
+	}{
+		{
+			name: "irreversible",
+			task: store.Task{Definition: store.TaskDefinition{ID: "IRR-001", ParentID: "EPIC-001", RiskLevel: "irreversible", Tags: []string{"slice:grouped"}}},
+			want: []string{"architecture", "backend", "governance", "ops", "security"},
+		},
+		{
+			name: "live",
+			task: store.Task{Definition: store.TaskDefinition{ID: "LIVE-001", ParentID: "EPIC-001", RiskLevel: "live-boundary", Tags: []string{"slice:grouped"}}},
+			want: []string{"backend", "governance", "ops", "security"},
+		},
+		{
+			name: "release",
+			task: store.Task{Definition: store.TaskDefinition{ID: "REL-001", ParentID: "EPIC-001", RiskLevel: "release-boundary", Tags: []string{"slice:grouped"}}},
+			want: []string{"backend", "governance", "ops", "security"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			eval := Evaluate(cfg, Options{Task: tc.task, Parent: &parent, ParentReviews: parentReviews})
+			if !eval.GroupReview || !eval.InheritanceBlocked {
+				t.Fatalf("eval=%+v, want grouped profile with blocked inheritance", eval)
+			}
+			if len(eval.EffectiveDomains) != len(tc.want) || len(eval.MissingReviewDomains) != len(tc.want) {
+				t.Fatalf("eval=%+v, want missing domains %v", eval, tc.want)
+			}
+			for i, want := range tc.want {
+				if eval.EffectiveDomains[i] != want || eval.MissingReviewDomains[i] != want {
+					t.Fatalf("eval=%+v, want domain %s at %d", eval, want, i)
+				}
+			}
+		})
+	}
+}
+
 func TestEvaluateLatestReviewVerdictWins(t *testing.T) {
 	cfg := config.Config{ReviewProfiles: []config.ReviewProfile{{
 		Name:                  "grouped-slice",

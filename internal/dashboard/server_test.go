@@ -1047,6 +1047,133 @@ func TestBoardDiagnosticsRendersFailedCILearningWithoutFollowUp(t *testing.T) {
 	}
 }
 
+func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "EPIC-001", Title: "Feature packet", Role: "governance", Kind: "task"},
+		{ID: "CHILD-001", ParentID: "EPIC-001", Title: "Covered child", Role: "backend", Kind: "task", Tags: []string{"review:grouped"}},
+		{ID: "CHILD-002", Title: "Uncovered child", Role: "backend", Kind: "task", Tags: []string{"review:grouped"}},
+		{ID: "CHILD-003", ParentID: "EPIC-001", Title: "Live child", Role: "backend", Kind: "task", RiskLevel: "live-boundary", Tags: []string{"review:grouped"}},
+		{ID: "CHILD-004", ParentID: "EPIC-001", Title: "Release child", Role: "backend", Kind: "task", RiskLevel: "release-boundary", Tags: []string{"review:grouped"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, domain := range []string{"backend", "governance", "ops", "security"} {
+		if err := s.RecordReview(ctx, "EPIC-001", store.Review{Reviewer: "reviewer", Domain: domain, Verdict: "approve", Reason: "group packet"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.ReviewProfiles = []config.ReviewProfile{{
+		Name:                  "grouped-slice",
+		MatchTags:             []string{"review:grouped"},
+		RequiredReviewDomains: []string{"backend", "governance"},
+		InheritFromParent:     true,
+		InheritReviewDomains:  []string{"backend", "governance"},
+		GroupReview:           true,
+	}}
+	server := New(s, cfg, []string{"governance", "backend"}, nil)
+
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing, err := server.dashboardMissingReviewDomainsByTask(ctx, tasks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := missing["CHILD-001"]; len(got) != 0 {
+		t.Fatalf("covered child missing reviews=%v, want none", got)
+	}
+	if got := strings.Join(missing["CHILD-002"], ","); got != "backend,governance" {
+		t.Fatalf("uncovered child missing reviews=%q, want backend,governance", got)
+	}
+	if got := strings.Join(missing["CHILD-003"], ","); got != "backend,governance,ops,security" {
+		t.Fatalf("live child missing reviews=%q, want backend,governance,ops,security", got)
+	}
+	if got := strings.Join(missing["CHILD-004"], ","); got != "backend,governance,ops,security" {
+		t.Fatalf("release child missing reviews=%q, want backend,governance,ops,security", got)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/tasks/CHILD-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Review Policy",
+		"grouped-slice",
+		"grouped review",
+		"inherited",
+		"inherited from approved parent task EPIC-001",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("covered grouped child detail missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Missing required domains") {
+		t.Fatalf("covered grouped child rendered missing review domains:\n%s", body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/tasks/CHILD-002", nil)
+	rec = httptest.NewRecorder()
+	server.task(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{
+		"Review Policy",
+		"grouped-slice",
+		"backend",
+		"governance",
+		"required",
+		"Missing required domains",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("uncovered grouped child detail missing %q:\n%s", want, body)
+		}
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/tasks/CHILD-003", nil)
+	rec = httptest.NewRecorder()
+	server.task(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{
+		"Review Policy",
+		"grouped-slice",
+		"grouped review",
+		"Inheritance blocked",
+		"live-boundary boundary blocks inherited review coverage",
+		"backend",
+		"governance",
+		"ops",
+		"security",
+		"Missing required domains",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("live grouped child detail missing %q:\n%s", want, body)
+		}
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/tasks/CHILD-004", nil)
+	rec = httptest.NewRecorder()
+	server.task(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{
+		"Review Policy",
+		"grouped-slice",
+		"Inheritance blocked",
+		"release-boundary boundary blocks inherited review coverage",
+		"Missing required domains",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("release grouped child detail missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestTaskDetailRendersTaskScopedCoverage(t *testing.T) {
 	ctx := context.Background()
 	root := initDashboardGitRepo(t)
