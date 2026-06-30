@@ -68,11 +68,12 @@ turning the policy into a blocking gate.
 
 ## Built-In Defaults
 
-Fairway ships four default profiles for the common risk boundaries. They are
+Fairway ships default profiles for common iteration and risk boundaries. They are
 active when no configured profile has the same name:
 
 | Profile | Matches | Default effect |
 |---|---|---|
+| `prototype-first` | `risk_level = "prototype"` or tags `prototype`, `prototype-first`, `review:prototype`, `mode:prototype-first` | Advisory safe-iteration profile for uncertain product or UX work. Normal architecture, backend, governance, ops, and security review domains are waived for the slice while operators collect prototype evidence and a stabilization decision. |
 | `reversible` | `risk_level = "reversible"` or tags `reversible`, `risk:reversible`, `review:reversible` | Advisory safe-iteration profile. Normal architecture, backend, governance, ops, and security review domains are waived for the slice and remain visible as waived policy rows. Evidence and self-check are expected. |
 | `irreversible` | `risk_level = "irreversible"` or tags `irreversible`, `risk:irreversible`, `boundary:irreversible`, `credentials`, `security`, or `prod` | Blocking architecture, governance, ops, and security review. Inheritance is disabled for high/irreversible risk and authority-expanding tags. |
 | `live-boundary` | `risk_level = "live-boundary"`, kind `live-window`, or tags `live`, `live-window`, `boundary:live`, `environment:production` | Blocking backend, governance, ops, and security review before live execution. |
@@ -81,6 +82,27 @@ active when no configured profile has the same name:
 The defaults encode the small-team operating principle: reversible work should
 move quickly with evidence, while irreversible, live, and release boundaries
 keep explicit controls. They do not weaken explicit gates configured elsewhere.
+
+## Prototype-First Workflow
+
+Use `prototype-first` when the uncertainty is product shape, UX flow, workflow
+fit, or integration feel, and the work is reversible. The expected loop is:
+build a thin slice, use it with the owner or operator, capture rough edges, then
+decide whether to stabilize, continue iterating, or discard it.
+
+Record evidence with these artifact types:
+
+| Artifact type | Meaning |
+|---|---|
+| `prototype-artifact` | The thin slice, mock, command, dashboard panel, or local build exists for owner/operator use. |
+| `owner-usage-proof` | The intended owner/operator used the prototype or reviewed a concrete capture from it. |
+| `prototype-gap-list` | Gaps, rough edges, missing contracts, or confusing flows found during use. |
+| `stabilization-decision` | Decision to harden, keep iterating, discard, or promote to a stricter boundary profile. |
+
+Prototype-first is preferred over design-heavy upfront process when the fastest
+way to learn is to use a small reversible slice. It is not appropriate for live,
+prod, security, release, deploy, credential, or public-exposure work; those
+markers still overlay blocking boundary review requirements.
 
 ## Safe Iteration Zones
 

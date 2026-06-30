@@ -165,6 +165,19 @@ func EffectiveProfiles(configured []config.ReviewProfile) []config.ReviewProfile
 func DefaultProfiles() []config.ReviewProfile {
 	return []config.ReviewProfile{
 		{
+			Name:                     "prototype-first",
+			Mode:                     "advisory",
+			MatchRiskLevels:          []string{"prototype"},
+			MatchTags:                []string{"prototype", "prototype-first", "review:prototype", "mode:prototype-first"},
+			WaiveReviewDomains:       []string{"architecture", "backend", "governance", "ops", "security"},
+			SafeIterationZone:        true,
+			SafeIterationDefectClass: "product-shape, UX, workflow, integration, or owner-usage defect",
+			SafeIterationControl:     "thin reversible prototype with owner usage proof and stabilization decision",
+			ExtraReviewerRationale:   "extra reviewers should be requested only when prototype usage reveals a named defect class or boundary exit",
+			ProcessHypothesis:        "uncertain product and UX work should build a thin slice, use it, capture gaps, then stabilize docs and contracts",
+			OutcomeMetrics:           []string{"cycle_time", "defects_caught", "rework_reduced", "owner_usage_proof"},
+		},
+		{
 			Name:                     "reversible",
 			Mode:                     "advisory",
 			MatchRiskLevels:          []string{"reversible"},
@@ -229,6 +242,8 @@ func selectDefaultProfile(configured []config.ReviewProfile, task store.Task, ch
 		return defaultProfile(defaults, overrides, "live-boundary")
 	case risk == "irreversible" || anyOverlap([]string{"irreversible", "risk:irreversible", "boundary:irreversible", "credentials", "security", "prod"}, tags):
 		return defaultProfile(defaults, overrides, "irreversible")
+	case risk == "prototype" || anyOverlap([]string{"prototype", "prototype-first", "review:prototype", "mode:prototype-first"}, tags):
+		return defaultProfile(defaults, overrides, "prototype-first")
 	case risk == "reversible" || anyOverlap([]string{"reversible", "risk:reversible", "review:reversible"}, tags):
 		return defaultProfile(defaults, overrides, "reversible")
 	default:

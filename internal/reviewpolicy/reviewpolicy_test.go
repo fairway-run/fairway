@@ -58,6 +58,29 @@ func TestEvaluateDefaultReversibleProfile(t *testing.T) {
 	}
 }
 
+func TestEvaluateDefaultPrototypeFirstProfile(t *testing.T) {
+	task := store.Task{Definition: store.TaskDefinition{ID: "PROTO-001", RiskLevel: "prototype", ReviewDomains: []string{"governance"}, Tags: []string{"prototype-first"}}}
+	eval := Evaluate(config.Config{}, Options{Task: task})
+	if eval.Profile != "prototype-first" || eval.Mode != "advisory" || !eval.SafeIterationZone {
+		t.Fatalf("eval=%+v, want prototype-first advisory safe iteration profile", eval)
+	}
+	if eval.SafeIterationDefectClass != "product-shape, UX, workflow, integration, or owner-usage defect" {
+		t.Fatalf("defect class=%q", eval.SafeIterationDefectClass)
+	}
+	if eval.SafeIterationControl != "thin reversible prototype with owner usage proof and stabilization decision" {
+		t.Fatalf("control=%q", eval.SafeIterationControl)
+	}
+	if eval.ProcessHypothesis != "uncertain product and UX work should build a thin slice, use it, capture gaps, then stabilize docs and contracts" {
+		t.Fatalf("hypothesis=%q", eval.ProcessHypothesis)
+	}
+	if len(eval.EffectiveDomains) != 0 || len(eval.MissingReviewDomains) != 0 {
+		t.Fatalf("eval=%+v, prototype-first profile should not block on normal review domains", eval)
+	}
+	if len(eval.Requirements) != 1 || eval.Requirements[0].Domain != "governance" || eval.Requirements[0].Status != "waived" {
+		t.Fatalf("requirements=%+v, want visible waived governance requirement", eval.Requirements)
+	}
+}
+
 func TestEvaluateDefaultBoundaryProfiles(t *testing.T) {
 	for _, tc := range []struct {
 		name string

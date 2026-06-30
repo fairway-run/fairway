@@ -2674,6 +2674,57 @@ func TestCLI_DefaultReviewPolicyProfilesExplainRiskBoundaries(t *testing.T) {
 	}
 }
 
+func TestCLI_DefaultPrototypeFirstProfileExplainsEvidenceWorkflow(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "PROTO-001", "--title", "Prototype slice", "--role", "backend", "--risk-level", "prototype", "--tag", "prototype-first", "--review-domains", "governance")
+	for _, ev := range []struct {
+		artifactType string
+		notes        string
+	}{
+		{"prototype-artifact", "thin slice available for owner use"},
+		{"owner-usage-proof", "owner used the prototype and captured friction"},
+		{"prototype-gap-list", "rough edges and missing contracts listed"},
+		{"stabilization-decision", "continue, harden, or discard decision recorded"},
+	} {
+		runOK(t, "record", "evidence", "PROTO-001", "--command-text", ev.artifactType, "--result", "pass", "--artifact-type", ev.artifactType, "--notes", ev.notes)
+	}
+
+	detail := runCapture(t, "task-detail", "PROTO-001")
+	for _, want := range []string{
+		"review_policy:",
+		"profile: prototype-first mode=advisory",
+		"governance: waived",
+		"safe_iteration_zone: true defect_class=product-shape, UX, workflow, integration, or owner-usage defect control=thin reversible prototype with owner usage proof and stabilization decision",
+		"process_hypothesis: uncertain product and UX work should build a thin slice, use it, capture gaps, then stabilize docs and contracts",
+		"prototype-artifact",
+		"owner-usage-proof",
+		"prototype-gap-list",
+		"stabilization-decision",
+	} {
+		assertContains(t, detail, want)
+	}
+
+	report := runCapture(t, "review-policy", "report", "--profile", "prototype-first")
+	for _, want := range []string{
+		"review_policy_report:",
+		"profile=prototype-first mode=advisory",
+		"hypothesis=uncertain product and UX work should build a thin slice, use it, capture gaps, then stabilize docs and contracts",
+		"outcome_metrics=cycle_time, defects_caught, owner_usage_proof, rework_reduced",
+	} {
+		assertContains(t, report, want)
+	}
+}
+
 func TestCLI_ReviewWaitsWakeSelectionAndSuppression(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

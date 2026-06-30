@@ -227,12 +227,18 @@ required review domains, waive or defer domains for the current slice, inherit
 domains from an approved parent/group packet, and explain why extra reviewers
 improve risk control.
 
-Fairway also provides built-in default profiles named `reversible`,
-`irreversible`, `live-boundary`, and `release-boundary`. These defaults cover
-the common small-team policy: reversible non-live work is advisory and
+Fairway also provides built-in default profiles named `prototype-first`,
+`reversible`, `irreversible`, `live-boundary`, and `release-boundary`. These
+defaults cover the common small-team policy: uncertain reversible product/UX
+work can run as prototype-first, reversible non-live work is advisory and
 evidence-led, while irreversible, live, and release boundaries remain blocking.
 A configured `[[review_profiles]]` entry with the same `name` replaces the
 built-in default for that name.
+
+For `prototype-first` work, use evidence artifact types
+`prototype-artifact`, `owner-usage-proof`, `prototype-gap-list`, and
+`stabilization-decision` to show the build-use-learn loop before stabilizing
+contracts or moving to a stricter profile.
 
 Key fields:
 
