@@ -28,6 +28,7 @@ import (
 	coord "github.com/subashram/fairway/internal/coordinator"
 	"github.com/subashram/fairway/internal/dashboard"
 	"github.com/subashram/fairway/internal/deliveryreport"
+	"github.com/subashram/fairway/internal/evidencemodel"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
 	"github.com/subashram/fairway/internal/livewindow"
@@ -14108,6 +14109,8 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if err != nil {
 		return err
 	}
+	uxMediaEvidence := evidencemodel.UXMediaRows(evidence)
+	uxMediaSummary := evidencemodel.UXMediaSummaryFor(uxMediaEvidence)
 	if asJSON {
 		missingReviewDomains := reviewPolicy.MissingReviewDomains
 		reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
@@ -14118,6 +14121,8 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			ReviewStatus         string                                 `json:"review_status"`
 			Transitions          []store.Transition                     `json:"transitions"`
 			Evidence             []store.Evidence                       `json:"evidence"`
+			UXMediaEvidence      []evidencemodel.UXMediaEvidence        `json:"ux_media_evidence,omitempty"`
+			UXMediaSummary       evidencemodel.UXMediaSummary           `json:"ux_media_summary"`
 			Handoffs             []store.Handoff                        `json:"handoffs"`
 			CompletionHandbacks  []completionhandback.Handback          `json:"completion_handbacks,omitempty"`
 			Reviews              []store.Review                         `json:"reviews"`
@@ -14130,7 +14135,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			UsageRollups         []store.UsageRollup                    `json:"usage_rollups"`
 			Batches              []store.WorkBatch                      `json:"batches"`
 			Notifications        []store.Notification                   `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, handoffs, completionHandbacks, reviews, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
+		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := reviewPolicy.MissingReviewDomains
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
@@ -14165,6 +14170,22 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			notes = " " + strings.TrimSpace(ev.Notes)
 		}
 		fmt.Printf("- %s %s %s%s\n", ev.Result, ev.CommandText, ev.ArtifactPath, notes)
+	}
+	fmt.Println("\nux media evidence:")
+	if len(uxMediaEvidence) == 0 {
+		fmt.Println("- none")
+	} else {
+		fmt.Printf("- summary screenshots=%d videos=%d browser_traces=%d uat=%d exercised=%t\n", uxMediaSummary.Screenshots, uxMediaSummary.Videos, uxMediaSummary.BrowserTraces, uxMediaSummary.UAT, uxMediaSummary.Exercised)
+		for _, row := range uxMediaEvidence {
+			fmt.Printf("- kind=%s artifact_type=%s result=%s artifact=%s redaction_required=%t boundary=%s\n",
+				row.Kind,
+				row.ArtifactType,
+				firstNonEmpty(row.Result, "unknown"),
+				firstNonEmpty(row.ArtifactPath, "none"),
+				row.RedactionRequired,
+				row.Boundary,
+			)
+		}
 	}
 	fmt.Println("\nhandoffs:")
 	for _, h := range handoffs {

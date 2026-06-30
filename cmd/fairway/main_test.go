@@ -2725,6 +2725,54 @@ func TestCLI_DefaultPrototypeFirstProfileExplainsEvidenceWorkflow(t *testing.T) 
 	}
 }
 
+func TestCLI_TaskDetailReportsUXMediaEvidence(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "UX-001", "--title", "User visible slice", "--role", "backend")
+	for _, ev := range []struct {
+		artifactType string
+		artifact     string
+	}{
+		{"screenshot", "artifacts/home.png"},
+		{"video", "artifacts/demo.mp4"},
+		{"browser-trace", "artifacts/trace.zip"},
+		{"uat", "artifacts/uat.md"},
+	} {
+		runOK(t, "record", "evidence", "UX-001", "--command-text", ev.artifactType, "--result", "pass", "--artifact", ev.artifact, "--artifact-type", ev.artifactType, "--notes", "redacted media proof")
+	}
+	out := runCapture(t, "task-detail", "UX-001")
+	for _, want := range []string{
+		"ux media evidence:",
+		"summary screenshots=1 videos=1 browser_traces=1 uat=1 exercised=true",
+		"kind=screenshot artifact_type=screenshot result=pass artifact=artifacts/home.png redaction_required=true",
+		"kind=video artifact_type=video result=pass artifact=artifacts/demo.mp4 redaction_required=true",
+		"kind=browser-trace artifact_type=browser-trace result=pass artifact=artifacts/trace.zip redaction_required=true",
+		"kind=uat artifact_type=uat result=pass artifact=artifacts/uat.md redaction_required=true",
+		"do not store raw secrets, auth tokens, provider-private transcripts, or unredacted user data",
+	} {
+		assertContains(t, out, want)
+	}
+
+	jsonOut := runCapture(t, "--json", "task-detail", "UX-001")
+	for _, want := range []string{
+		`"ux_media_evidence"`,
+		`"kind": "screenshot"`,
+		`"browser_traces": 1`,
+		`"exercised": true`,
+	} {
+		assertContains(t, jsonOut, want)
+	}
+}
+
 func TestCLI_ReviewWaitsWakeSelectionAndSuppression(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

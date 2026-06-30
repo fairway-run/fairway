@@ -317,7 +317,11 @@ shows:
   rationale,
 - notes, dependencies, and acceptance checks,
 - transition history,
-- evidence,
+- evidence, including a UX media evidence panel for `screenshot`, `video`,
+  `browser-trace`, and `uat` artifact types so operators can see whether
+  user-visible work was exercised. The panel displays artifact references and a
+  redaction-required boundary only; it must not display raw secrets, auth
+  tokens, provider-private transcripts, prompt bodies, or unredacted user data,
 - task-scoped work coverage and CI/deploy learning diagnostics,
 - task-bound sessions,
 - handoffs and reviews,

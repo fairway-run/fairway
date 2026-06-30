@@ -21,6 +21,7 @@ import (
 	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
 	coord "github.com/subashram/fairway/internal/coordinator"
+	"github.com/subashram/fairway/internal/evidencemodel"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
@@ -312,6 +313,8 @@ type TaskDetailViewData struct {
 	Task                 store.Task
 	Transitions          []store.Transition
 	Evidence             []store.Evidence
+	UXMediaEvidence      []evidencemodel.UXMediaEvidence
+	UXMediaSummary       evidencemodel.UXMediaSummary
 	Handoffs             []store.Handoff
 	Reviews              []store.Review
 	MissingReviewDomains []string
@@ -2315,6 +2318,8 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	missingReviewDomains := reviewPolicy.MissingReviewDomains
+	uxMediaEvidence := evidencemodel.UXMediaRows(evidence)
+	uxMediaSummary := evidencemodel.UXMediaSummaryFor(uxMediaEvidence)
 	reviewHandback, hasReviewHandback := coord.ReviewHandbackForTask(s.cfg, task, evidence, handoffs, reviews, coord.ReviewHandbackOptions{IncludeHistorical: true, Notifications: notifications})
 	reviewNotifications := reviewstate.StatusesForTask(task, handoffs, reviews, notifications)
 	reviewWaitOptions, err := s.reviewWaitOptions(time.Now().UTC())
@@ -2337,6 +2342,8 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Task:                 task,
 		Transitions:          transitions,
 		Evidence:             evidence,
+		UXMediaEvidence:      uxMediaEvidence,
+		UXMediaSummary:       uxMediaSummary,
 		Handoffs:             handoffs,
 		Reviews:              reviews,
 		MissingReviewDomains: missingReviewDomains,

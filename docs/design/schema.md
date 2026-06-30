@@ -163,7 +163,7 @@ tamper-evidence.
 | `command_text` | TEXT | Command or check that produced this evidence. |
 | `result` | TEXT | `pass` / `fail` / `partial` / `skipped` / `blocked` / NULL. |
 | `artifact_path` | TEXT | Screenshot, log, transcript, report, or other artifact path. |
-| `artifact_type` | TEXT | Optional display hint, e.g. `log`, `screenshot`, `playwright`, `coverage`, `report`. |
+| `artifact_type` | TEXT | Optional display hint, e.g. `log`, `screenshot`, `video`, `browser-trace`, `uat`, `coverage`, `report`. UX media types are stored as artifact references only and must be redacted before recording. |
 | `duration_seconds` | INTEGER | Optional elapsed time for timing reports. |
 | `notes` | TEXT | |
 | `created_at` | DATETIME NOT NULL | |

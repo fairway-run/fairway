@@ -149,6 +149,15 @@
 <div class="detail-stack">{{range .Evidence}}<p><code>{{.Result}}</code> {{.CommandText}} {{.ArtifactPath}}</p>{{else}}<p>none</p>{{end}}</div>
 </article>
 <article class="detail-panel wide">
+<h2>UX Media Evidence</h2>
+{{if .UXMediaEvidence}}
+<p>{{.UXMediaSummary.Total}} media evidence item(s): {{.UXMediaSummary.Screenshots}} screenshot, {{.UXMediaSummary.Videos}} video, {{.UXMediaSummary.BrowserTraces}} browser trace, {{.UXMediaSummary.UAT}} UAT. User-visible work exercised: {{.UXMediaSummary.Exercised}}.</p>
+<table class="detail-table"><thead><tr><th>Kind</th><th>Result</th><th>Artifact</th><th>Boundary</th></tr></thead><tbody>
+{{range .UXMediaEvidence}}<tr><td><code>{{.Kind}}</code><br><span class="muted">{{.ArtifactType}}</span></td><td>{{if .Result}}{{.Result}}{{else}}unknown{{end}}</td><td>{{if .ArtifactPath}}<code>{{.ArtifactPath}}</code>{{else}}none{{end}}</td><td>{{if .RedactionRequired}}redaction required<br>{{end}}<span class="muted">{{.Boundary}}</span></td></tr>{{end}}
+</tbody></table>
+{{else}}<p class="muted">no screenshot, video, browser trace, or UAT evidence recorded for this task</p>{{end}}
+</article>
+<article class="detail-panel wide">
 <h2>Sessions</h2>
 {{if .ActiveFindings}}
 <table class="detail-table"><thead><tr><th>Finding</th><th>Provider</th><th>Session</th><th>Expected</th><th>Action</th><th>Reason</th></tr></thead><tbody>

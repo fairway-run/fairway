@@ -254,6 +254,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   fixes, or approvals without end-to-end flow progress show that another retry
   needs a failure chain, real unknowns, proof-before-retry, and a lighter
   safe-boundary review plan.
+- `record evidence` treats `artifact_type` values `screenshot`, `video`,
+  `browser-trace`, and `uat` as UX media evidence. `task-detail` reports a
+  `ux media evidence` summary so operators can see whether user-visible work
+  was actually exercised. These rows are references to redacted artifacts only:
+  do not store raw secrets, auth tokens, provider-private transcripts,
+  arbitrary prompt bodies, or unredacted user data in Fairway evidence.
 - `memory show|update|append|packet|stale` provides first-class track memory
   for coordinator and provider resume packets. Track memory stores curated
   operating summaries, blockers, decisions, next actions, and numeric Fairway

@@ -1174,6 +1174,48 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 	}
 }
 
+func TestTaskDetailRendersUXMediaEvidence(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "UX-001", Title: "User visible slice", Role: "backend", Kind: "task"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []store.Evidence{
+		{CommandText: "capture screenshot", Result: "pass", ArtifactType: "screenshot", ArtifactPath: "artifacts/home.png"},
+		{CommandText: "record demo", Result: "pass", ArtifactType: "video", ArtifactPath: "artifacts/demo.mp4"},
+		{CommandText: "playwright trace", Result: "pass", ArtifactType: "browser-trace", ArtifactPath: "artifacts/trace.zip"},
+		{CommandText: "owner UAT", Result: "partial", ArtifactType: "uat", ArtifactPath: "artifacts/uat.md"},
+	} {
+		if err := s.RecordEvidence(ctx, "UX-001", ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/UX-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"UX Media Evidence",
+		"4 media evidence item(s): 1 screenshot, 1 video, 1 browser trace, 1 UAT",
+		"User-visible work exercised: true",
+		"artifacts/home.png",
+		"artifacts/demo.mp4",
+		"artifacts/trace.zip",
+		"artifacts/uat.md",
+		"redaction required",
+		"do not store raw secrets, auth tokens, provider-private transcripts, or unredacted user data",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail missing UX media evidence %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestTaskDetailRendersTaskScopedCoverage(t *testing.T) {
 	ctx := context.Background()
 	root := initDashboardGitRepo(t)
