@@ -10,6 +10,8 @@ The operating model is
 [governed agentic engineering](governed-agentic-engineering.md): agents can do
 substantial implementation work, but evidence, review, ownership, promotion,
 and human comprehension remain first-class engineering controls.
+For small teams using Fairway in AI Cloud-style loops, see the
+[Small-team autonomy operating model](design/small-team-autonomy-operating-model.md).
 
 Fairway is the local-first coordination control plane for that model.
 Traffic-control lanes were the first useful primitive: one lane, one role, one
