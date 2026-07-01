@@ -77,6 +77,17 @@
 </section>
 
 <section class="report-section">
+<header class="section-head"><h2>Recipe Library</h2><span>reusable packets from completed tasks</span></header>
+{{if .Recipes}}
+<ul class="review-gap-list">
+{{range .Recipes}}<li><a href="/tasks/{{.SourceTaskID}}">{{.SourceTaskID}}</a> {{.Name}} <span>{{.Title}} · <code>{{.Path}}</code> · facts={{len .SourceFacts}}</span></li>{{end}}
+</ul>
+{{else}}
+<p class="muted">No task recipes extracted.</p>
+{{end}}
+</section>
+
+<section class="report-section">
 <header class="section-head"><h2>Owner Rough-Edge Queue</h2><span>found while using the product</span></header>
 {{if .RoughEdges}}
 <ul class="review-gap-list">

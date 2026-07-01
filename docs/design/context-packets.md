@@ -108,6 +108,40 @@ with current task, session, and checkpoint facts. The packet is a compact
 provider-independent resume view. It does not approve work, expand scope, send
 provider prompts, or mutate task state.
 
+## Task Recipes
+
+Completed tasks can be promoted into reusable recipe packets:
+
+```bash
+fairway recipe extract --task T-123 --name release-prep \
+  --input "version={{version}}" \
+  --forbidden-action "do not publish release" \
+  --closeout-rule "record release verification evidence"
+
+fairway recipe render --recipe .fairway/recipes/release-prep.json \
+  --task T-456 \
+  --field version=v0.2.0
+```
+
+Recipes are JSON files, normally stored under `.fairway/recipes`, that carry
+source task id, objective, scope, expected inputs, forbidden actions,
+validation gates, expected evidence, closeout rules, and source facts such as
+evidence and review references. They do not store raw provider prompt bodies,
+private transcripts, raw tool bodies, generated-content dumps, secrets, or
+credentials. Rendering a recipe substitutes task-specific fields into a bounded
+packet; it does not create tasks, approve, merge, deploy, release, wake
+providers, or mutate dashboard state.
+
+Recipe reads fail closed. Fairway accepts only the exact
+`fairway.task-recipe.v1` schema, requires source facts, and scans every
+rendered/listed JSON text field, including privacy warnings and substitution
+values, for secret-like markers before emitting recipe output.
+
+The read-only dashboard reports page exposes extracted recipes as a prompt and
+runbook library linked back to the completed source task. The dashboard lists
+recipe metadata and source-fact counts only; operators still use the CLI in a
+trusted worktree to render or update recipe files.
+
 ## Related Packets
 
 Bug fixes use a narrower review packet because reviewers need root cause,

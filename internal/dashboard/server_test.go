@@ -134,7 +134,8 @@ func TestDashboardRoutes(t *testing.T) {
 
 func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	ctx := context.Background()
-	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	root := t.TempDir()
+	s, err := store.Open(ctx, filepath.Join(root, "state.db"), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,17 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	if err := s.UpsertWorkBatch(ctx, store.WorkBatch{ID: "BATCH-001", Title: "Portal validation batch", Branch: "feature/portal", Tasks: []string{"T-001", "W-001"}}); err != nil {
 		t.Fatal(err)
 	}
-	server := New(s, config.Defaults(t.TempDir()), []string{"backend", "ops/watch"}, nil)
+	recipeDir := filepath.Join(root, ".fairway", "recipes")
+	if err := os.MkdirAll(recipeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(recipeDir, "portal-release.json"), []byte(`{"schema":"fairway.task-recipe.v1","name":"portal-release","title":"Portal release recipe","source_task_id":"T-001","source_facts":["evidence:T-001"],"privacy":{"raw_prompts_included":false}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(recipeDir, "unsafe.json"), []byte(`{"schema":"fairway.task-recipe.v1","name":"unsafe","title":"Authorization: Bearer supersecret","source_task_id":"T-001","source_facts":["evidence:T-001"],"privacy":{"raw_prompts_included":false}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithRoot(s, config.Defaults(root), []string{"backend", "ops/watch"}, nil, root)
 	req := httptest.NewRequest(http.MethodGet, "/reports", nil)
 	rec := httptest.NewRecorder()
 	server.reports(rec, req)
@@ -201,6 +212,9 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 		"reopen/retry count",
 		"review usefulness ratio",
 		"Owner Rough-Edge Queue",
+		"Recipe Library",
+		"portal-release",
+		"Portal release recipe",
 		"Owner could not find release status",
 		"fix-now",
 		"Provider Usage Attribution",
@@ -217,6 +231,9 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	}
 	if strings.Contains(body, "<td>W-001</td>") || strings.Contains(body, `href="/tasks/W-001">W-001</a></td>`) {
 		t.Fatalf("default report drill-down table included monitor bookkeeping:\n%s", body)
+	}
+	if strings.Contains(body, "supersecret") || strings.Contains(body, "Authorization: Bearer") {
+		t.Fatalf("reports recipe library rendered unsafe recipe metadata:\n%s", body)
 	}
 	req = httptest.NewRequest(http.MethodGet, "/reports?include_bookkeeping=1", nil)
 	rec = httptest.NewRecorder()

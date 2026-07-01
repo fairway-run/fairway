@@ -131,6 +131,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdRoughEdge(ctx, opts, args[1:])
 	case "provenance":
 		return cmdProvenance(ctx, opts, args[1:])
+	case "recipe":
+		return cmdRecipe(ctx, opts, args[1:])
 	case "dispatch-plan":
 		return cmdDispatchPlan(ctx, opts, args[1:])
 	case "git-check":
@@ -3902,6 +3904,424 @@ func printProvenancePromptPacketMarkdown(packet provenance.PromptPacket) {
 	fmt.Println()
 	fmt.Println("## Privacy")
 	fmt.Println("- raw prompts, private transcripts, raw tool bodies, generated-content dumps, secrets, and credentials are excluded")
+}
+
+type taskRecipe struct {
+	Schema           string            `json:"schema"`
+	Name             string            `json:"name"`
+	Title            string            `json:"title"`
+	SourceTaskID     string            `json:"source_task_id"`
+	SourceFacts      []string          `json:"source_facts"`
+	Objective        string            `json:"objective"`
+	Scope            []string          `json:"scope"`
+	Inputs           []string          `json:"inputs"`
+	ForbiddenActions []string          `json:"forbidden_actions"`
+	ValidationGates  []string          `json:"validation_gates"`
+	ExpectedEvidence []string          `json:"expected_evidence"`
+	CloseoutRules    []string          `json:"closeout_rules"`
+	Substitutions    map[string]string `json:"substitutions,omitempty"`
+	Privacy          recipePrivacy     `json:"privacy"`
+}
+
+type recipePrivacy struct {
+	RawPromptsIncluded       bool     `json:"raw_prompts_included"`
+	TranscriptsIncluded      bool     `json:"transcripts_included"`
+	ToolBodiesIncluded       bool     `json:"tool_bodies_included"`
+	GeneratedContentIncluded bool     `json:"generated_content_included"`
+	Rejected                 bool     `json:"rejected"`
+	Warnings                 []string `json:"warnings,omitempty"`
+}
+
+const taskRecipeSchema = "fairway.task-recipe.v1"
+
+func cmdRecipe(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		fmt.Println("fairway recipe extract|render|list ...")
+		fmt.Println("  Extract completed tasks into privacy-bounded recipe packets and render them for new tasks; recipes do not store raw prompts or transcripts.")
+		return nil
+	}
+	switch args[0] {
+	case "extract":
+		return cmdRecipeExtract(ctx, opts, args[1:])
+	case "render":
+		return cmdRecipeRender(ctx, opts, args[1:])
+	case "list":
+		return cmdRecipeList(opts, args[1:])
+	default:
+		return fmt.Errorf("unknown recipe subcommand %q", args[0])
+	}
+}
+
+func cmdRecipeExtract(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway recipe extract --task <task-id> --name <name> [--output <path>] [--input <text>]... [--forbidden-action <text>]... [--closeout-rule <text>]...")
+		return nil
+	}
+	fs := flag.NewFlagSet("recipe extract", flag.ContinueOnError)
+	taskID := fs.String("task", "", "completed source task id")
+	name := fs.String("name", "", "recipe name")
+	output := fs.String("output", "", "output recipe JSON path")
+	var inputs multiFlag
+	var forbidden multiFlag
+	var closeout multiFlag
+	fs.Var(&inputs, "input", "recipe input placeholder or required input")
+	fs.Var(&forbidden, "forbidden-action", "forbidden action; may repeat")
+	fs.Var(&closeout, "closeout-rule", "closeout rule; may repeat")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected recipe extract arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*taskID) == "" {
+		return errors.New("recipe extract requires --task")
+	}
+	if strings.TrimSpace(*name) == "" {
+		return errors.New("recipe extract requires --name")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, *taskID)
+		if err != nil {
+			return err
+		}
+		if !terminalStatusSet(cfg.States.Terminal)[task.Status] {
+			return fmt.Errorf("recipe extract requires completed source task %s, status=%s", task.Definition.ID, task.Status)
+		}
+		recipe := buildTaskRecipe(*name, task, evidence, reviews, inputs, forbidden, closeout)
+		if err := validateRecipePrivacy(recipe); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(recipe)
+		}
+		path := strings.TrimSpace(*output)
+		if path == "" {
+			path = filepath.Join(root, ".fairway", "recipes", sanitizeRecipeFileName(*name)+".json")
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(root, path)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		data, err := json.MarshalIndent(recipe, "", "  ")
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("recipe extracted %s source_task=%s path=%s\n", recipe.Name, recipe.SourceTaskID, path)
+		return nil
+	})
+}
+
+func cmdRecipeRender(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway recipe render --recipe <path> --task <task-id> [--field <key=value>]... [--format markdown|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("recipe render", flag.ContinueOnError)
+	recipePath := fs.String("recipe", "", "recipe JSON path")
+	taskID := fs.String("task", "", "target task id for rendered packet")
+	format := fs.String("format", "markdown", "markdown or json")
+	var fields multiFlag
+	fs.Var(&fields, "field", "substitution field as key=value; may repeat")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected recipe render arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*recipePath) == "" {
+		return errors.New("recipe render requires --recipe")
+	}
+	if strings.TrimSpace(*taskID) == "" {
+		return errors.New("recipe render requires --task")
+	}
+	if *format != "markdown" && *format != "json" {
+		return errors.New("--format must be markdown or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, root string, s *store.Store) error {
+		recipe, err := readTaskRecipe(root, *recipePath)
+		if err != nil {
+			return err
+		}
+		values, err := parsePacketTemplateFields(fields)
+		if err != nil {
+			return err
+		}
+		rendered, err := renderTaskRecipe(ctx, s, recipe, *taskID, values)
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(rendered)
+		}
+		printTaskRecipePacket(rendered)
+		return nil
+	})
+}
+
+func cmdRecipeList(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway recipe list [--dir <path>] [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("recipe list", flag.ContinueOnError)
+	dir := fs.String("dir", ".fairway/recipes", "recipe directory")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected recipe list arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	entries, err := recipeList(*dir)
+	if err != nil {
+		return err
+	}
+	if opts.JSON || *format == "json" {
+		return printJSON(entries)
+	}
+	fmt.Println("recipes:")
+	if len(entries) == 0 {
+		fmt.Println("- none")
+	}
+	for _, recipe := range entries {
+		fmt.Printf("- %s source_task=%s path=%s title=%s\n", recipe.Name, recipe.SourceTaskID, recipePathDisplay(recipe), recipe.Title)
+	}
+	return nil
+}
+
+func buildTaskRecipe(name string, task store.Task, evidence []store.Evidence, reviews []store.Review, inputs, forbidden, closeout []string) taskRecipe {
+	recipe := taskRecipe{
+		Schema:       taskRecipeSchema,
+		Name:         strings.TrimSpace(name),
+		Title:        firstNonEmpty(task.Definition.Title, task.Definition.ID),
+		SourceTaskID: task.Definition.ID,
+		Objective:    firstNonEmpty(task.Definition.Notes, task.Definition.Title),
+		Scope: cleanRepeatedValues(append(append([]string{},
+			task.Definition.SourcePaths...),
+			task.Definition.TargetPaths...,
+		)),
+		Inputs:           cleanRepeatedValues(inputs),
+		ForbiddenActions: cleanRepeatedValues(forbidden),
+		CloseoutRules:    cleanRepeatedValues(closeout),
+		Substitutions:    map[string]string{"task_id": "{{task_id}}"},
+		Privacy: recipePrivacy{
+			RawPromptsIncluded:       false,
+			TranscriptsIncluded:      false,
+			ToolBodiesIncluded:       false,
+			GeneratedContentIncluded: false,
+		},
+	}
+	if len(recipe.ForbiddenActions) == 0 {
+		recipe.ForbiddenActions = []string{"do not include raw prompt bodies", "do not include private transcripts", "do not include raw tool bodies", "do not include credentials or secrets", "do not treat recipe output as approval, merge, deploy, release, or live-operation authority"}
+	}
+	for _, ev := range evidence {
+		ref := firstNonEmpty(ev.ArtifactPath, ev.ArtifactType, ev.CommandText)
+		if ref != "" {
+			recipe.SourceFacts = append(recipe.SourceFacts, fmt.Sprintf("evidence:%s result=%s ref=%s", task.Definition.ID, firstNonEmpty(ev.Result, "unknown"), ref))
+		}
+		if ev.ArtifactType != "" {
+			recipe.ExpectedEvidence = append(recipe.ExpectedEvidence, ev.ArtifactType)
+		}
+		if ev.CommandText != "" && (ev.Result == "pass" || ev.Result == "partial") {
+			recipe.ValidationGates = append(recipe.ValidationGates, ev.CommandText)
+		}
+	}
+	for _, review := range reviews {
+		recipe.SourceFacts = append(recipe.SourceFacts, fmt.Sprintf("review:%s domain=%s verdict=%s", task.Definition.ID, firstNonEmpty(review.Domain, "unspecified"), firstNonEmpty(review.Verdict, "unknown")))
+	}
+	recipe.SourceFacts = uniqueStrings(recipe.SourceFacts)
+	recipe.ExpectedEvidence = uniqueStrings(recipe.ExpectedEvidence)
+	recipe.ValidationGates = uniqueStrings(recipe.ValidationGates)
+	return recipe
+}
+
+func readTaskRecipe(root, path string) (taskRecipe, error) {
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return taskRecipe{}, err
+	}
+	var recipe taskRecipe
+	if err := json.Unmarshal(data, &recipe); err != nil {
+		return taskRecipe{}, err
+	}
+	if recipe.Schema != taskRecipeSchema {
+		if recipe.Schema == "" {
+			return taskRecipe{}, errors.New("recipe missing schema")
+		}
+		return taskRecipe{}, fmt.Errorf("unsupported recipe schema %q", recipe.Schema)
+	}
+	if recipe.Name == "" {
+		return taskRecipe{}, errors.New("recipe missing name")
+	}
+	if len(recipe.SourceFacts) == 0 {
+		return taskRecipe{}, errors.New("recipe missing source facts")
+	}
+	if err := validateRecipePrivacy(recipe); err != nil {
+		return taskRecipe{}, err
+	}
+	return recipe, nil
+}
+
+func renderTaskRecipe(ctx context.Context, s *store.Store, recipe taskRecipe, taskID string, values map[string][]string) (taskRecipe, error) {
+	task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+	if err != nil {
+		return taskRecipe{}, err
+	}
+	rendered := recipe
+	rendered.SourceTaskID = recipe.SourceTaskID
+	rendered.Substitutions = map[string]string{"task_id": task.Definition.ID, "task_title": task.Definition.Title}
+	for key, vals := range values {
+		if len(vals) > 0 {
+			rendered.Substitutions[key] = vals[len(vals)-1]
+		}
+	}
+	apply := func(value string) string {
+		for key, replacement := range rendered.Substitutions {
+			value = strings.ReplaceAll(value, "{{"+key+"}}", replacement)
+		}
+		return value
+	}
+	rendered.Objective = apply(rendered.Objective)
+	for i := range rendered.Scope {
+		rendered.Scope[i] = apply(rendered.Scope[i])
+	}
+	for i := range rendered.Inputs {
+		rendered.Inputs[i] = apply(rendered.Inputs[i])
+	}
+	for i := range rendered.ForbiddenActions {
+		rendered.ForbiddenActions[i] = apply(rendered.ForbiddenActions[i])
+	}
+	for i := range rendered.ValidationGates {
+		rendered.ValidationGates[i] = apply(rendered.ValidationGates[i])
+	}
+	for i := range rendered.ExpectedEvidence {
+		rendered.ExpectedEvidence[i] = apply(rendered.ExpectedEvidence[i])
+	}
+	for i := range rendered.CloseoutRules {
+		rendered.CloseoutRules[i] = apply(rendered.CloseoutRules[i])
+	}
+	if err := validateRecipePrivacy(rendered); err != nil {
+		return taskRecipe{}, err
+	}
+	return rendered, nil
+}
+
+func printTaskRecipePacket(recipe taskRecipe) {
+	fmt.Printf("# Recipe Packet: %s\n\n", recipe.Name)
+	fmt.Printf("source_task: %s\n", recipe.SourceTaskID)
+	fmt.Printf("title: %s\n", recipe.Title)
+	fmt.Println("\n## Objective")
+	fmt.Println(recipe.Objective)
+	printRecipeSection("Scope", recipe.Scope)
+	printRecipeSection("Inputs", recipe.Inputs)
+	printRecipeSection("Forbidden Actions", recipe.ForbiddenActions)
+	printRecipeSection("Validation Gates", recipe.ValidationGates)
+	printRecipeSection("Expected Evidence", recipe.ExpectedEvidence)
+	printRecipeSection("Closeout Rules", recipe.CloseoutRules)
+	printRecipeSection("Source Facts", recipe.SourceFacts)
+	fmt.Println("\n## Privacy")
+	fmt.Println("- raw prompts, private transcripts, raw tool bodies, generated-content dumps, secrets, and credentials are excluded")
+}
+
+func printRecipeSection(title string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	fmt.Printf("\n## %s\n", title)
+	for _, value := range values {
+		fmt.Printf("- %s\n", value)
+	}
+}
+
+func validateRecipePrivacy(recipe taskRecipe) error {
+	if recipe.Privacy.RawPromptsIncluded || recipe.Privacy.TranscriptsIncluded || recipe.Privacy.ToolBodiesIncluded || recipe.Privacy.GeneratedContentIncluded || recipe.Privacy.Rejected {
+		return errors.New("recipe privacy rejected: raw prompts, transcripts, tool bodies, or generated content are not allowed")
+	}
+	for _, value := range recipeTextValues(recipe) {
+		lower := strings.ToLower(value)
+		for _, marker := range []string{"raw_prompt:", "raw_prompt=", "transcript:", "tool_body:", "tool_body=", "generated_content:", "generated_content=", "authorization:", "bearer ", "api_key=", "access_token=", "refresh_token=", "client_secret=", "password=", "secret="} {
+			if strings.Contains(lower, marker) {
+				return fmt.Errorf("recipe privacy rejected: disallowed marker %q", marker)
+			}
+		}
+	}
+	return nil
+}
+
+func recipeTextValues(recipe taskRecipe) []string {
+	values := []string{recipe.Schema, recipe.Name, recipe.Title, recipe.SourceTaskID, recipe.Objective}
+	values = append(values, recipe.SourceFacts...)
+	values = append(values, recipe.Scope...)
+	values = append(values, recipe.Inputs...)
+	values = append(values, recipe.ForbiddenActions...)
+	values = append(values, recipe.ValidationGates...)
+	values = append(values, recipe.ExpectedEvidence...)
+	values = append(values, recipe.CloseoutRules...)
+	values = append(values, recipe.Privacy.Warnings...)
+	for key, value := range recipe.Substitutions {
+		values = append(values, key, value)
+	}
+	return values
+}
+
+func recipeList(dir string) ([]taskRecipe, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var recipes []taskRecipe
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		recipe, err := readTaskRecipe("", path)
+		if err != nil {
+			return nil, fmt.Errorf("invalid recipe %s: %w", path, err)
+		}
+		recipes = append(recipes, recipe)
+	}
+	sort.SliceStable(recipes, func(i, j int) bool { return recipes[i].Name < recipes[j].Name })
+	return recipes, nil
+}
+
+func recipePathDisplay(recipe taskRecipe) string {
+	return filepath.Join(".fairway", "recipes", sanitizeRecipeFileName(recipe.Name)+".json")
+}
+
+func sanitizeRecipeFileName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune(r)
+		case r == ' ' || r == '/':
+			b.WriteRune('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-_")
+	if out == "" {
+		return "recipe"
+	}
+	return out
 }
 
 func cmdAutomation(ctx context.Context, opts globalOptions, args []string) error {
@@ -14817,7 +15237,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -14858,6 +15278,7 @@ func printCommandHelp(command string) bool {
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
+		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
 		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",

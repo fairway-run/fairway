@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,6 +39,7 @@ type ReportViewData struct {
 	Usage         ReportUsage           `json:"usage"`
 	Delivery      deliveryreport.Report `json:"delivery"`
 	RoughEdges    []roughedge.Row       `json:"rough_edges,omitempty"`
+	Recipes       []RecipeLibraryRow    `json:"recipes,omitempty"`
 	Rows          []ReportTaskRow       `json:"rows"`
 	TableRows     []ReportTaskRow       `json:"-"`
 	Pagination    TablePagination       `json:"pagination"`
@@ -45,6 +48,14 @@ type ReportViewData struct {
 	Groups        []RoleGroup           `json:"-"`
 	TaskRoles     map[string]string
 	ExportBase    string `json:"-"`
+}
+
+type RecipeLibraryRow struct {
+	Name         string   `json:"name"`
+	Title        string   `json:"title"`
+	SourceTaskID string   `json:"source_task_id"`
+	Path         string   `json:"path"`
+	SourceFacts  []string `json:"source_facts,omitempty"`
 }
 
 type ReportWindow struct {
@@ -222,6 +233,10 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
+	recipes, err := recipeLibraryRows(s.root)
+	if err != nil {
+		return ReportViewData{}, err
+	}
 	reviewActivityByTask := reportReviewActivityByTask(activity, start, end)
 	facts := make([]reportTaskFacts, 0, len(tasks))
 	for _, task := range tasks {
@@ -269,6 +284,7 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		Usage:         usage,
 		Delivery:      delivery,
 		RoughEdges:    roughEdges,
+		Recipes:       recipes,
 		Rows:          rows,
 		TableRows:     tableRows,
 		Pagination:    pagination,
@@ -309,6 +325,85 @@ func (s *Server) reportUsage(ctx context.Context, start, end time.Time) (ReportU
 		addReportUsageInt(&usage.TotalTokens, roll.TotalTokens)
 	}
 	return usage, nil
+}
+
+func recipeLibraryRows(root string) ([]RecipeLibraryRow, error) {
+	if root == "" {
+		root = "."
+	}
+	dir := filepath.Join(root, ".fairway", "recipes")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var rows []RecipeLibraryRow
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var raw struct {
+			Schema       string   `json:"schema"`
+			Name         string   `json:"name"`
+			Title        string   `json:"title"`
+			SourceTaskID string   `json:"source_task_id"`
+			SourceFacts  []string `json:"source_facts"`
+			Privacy      struct {
+				RawPromptsIncluded       bool `json:"raw_prompts_included"`
+				TranscriptsIncluded      bool `json:"transcripts_included"`
+				ToolBodiesIncluded       bool `json:"tool_bodies_included"`
+				GeneratedContentIncluded bool `json:"generated_content_included"`
+				Rejected                 bool `json:"rejected"`
+			} `json:"privacy"`
+		}
+		if err := json.Unmarshal(data, &raw); err != nil {
+			continue
+		}
+		if raw.Schema != "fairway.task-recipe.v1" || raw.Name == "" || raw.SourceTaskID == "" || len(raw.SourceFacts) == 0 {
+			continue
+		}
+		if raw.Privacy.RawPromptsIncluded || raw.Privacy.TranscriptsIncluded || raw.Privacy.ToolBodiesIncluded || raw.Privacy.GeneratedContentIncluded || raw.Privacy.Rejected {
+			continue
+		}
+		if !recipeMetadataPrivacyOK(raw.Name, raw.Title, raw.SourceTaskID, raw.SourceFacts) {
+			continue
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			rel = path
+		}
+		rows = append(rows, RecipeLibraryRow{Name: raw.Name, Title: raw.Title, SourceTaskID: raw.SourceTaskID, SourceFacts: raw.SourceFacts, Path: rel})
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
+	return rows, nil
+}
+
+func recipeMetadataPrivacyOK(values ...any) bool {
+	var text []string
+	for _, value := range values {
+		switch v := value.(type) {
+		case string:
+			text = append(text, v)
+		case []string:
+			text = append(text, v...)
+		}
+	}
+	for _, value := range text {
+		lower := strings.ToLower(value)
+		for _, marker := range []string{"raw_prompt:", "raw_prompt=", "transcript:", "tool_body:", "tool_body=", "generated_content:", "generated_content=", "authorization:", "bearer ", "api_key=", "access_token=", "refresh_token=", "client_secret=", "password=", "secret="} {
+			if strings.Contains(lower, marker) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func addReportUsageInt(total **int, value *int) {

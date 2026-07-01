@@ -177,6 +177,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"provenance", "report", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "prompt-packet", "--help"}, "fairway provenance prompt-packet --task <task-id> [--format markdown|json]"},
 		{[]string{"provenance", "manifest", "--help"}, "fairway provenance manifest --path <file>... [--format text|json]"},
+		{[]string{"recipe", "--help"}, "fairway recipe extract|render|list"},
+		{[]string{"recipe", "extract", "--help"}, "fairway recipe extract --task <task-id> --name <name>"},
+		{[]string{"recipe", "render", "--help"}, "fairway recipe render --recipe <path> --task <task-id>"},
 		{[]string{"usage", "--help"}, "fairway usage report|cost-report"},
 		{[]string{"usage", "report", "--help"}, "fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>]"},
 		{[]string{"usage", "cost-report", "--help"}, "fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>]"},
@@ -1640,6 +1643,109 @@ func TestCLI_ProvenanceManifest(t *testing.T) {
 	assertContains(t, rejected, "privacy_rejected")
 	assertContains(t, rejected, "refusing suspicious evidence path artifacts/secret-token.json")
 	assertNotContains(t, rejected, "do-not-export")
+}
+
+func TestCLI_TaskRecipeExtractRender(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "SRC-001", "--title", "Reusable release prep", "--role", "ops", "--notes", "Prepare {{task_id}} release packet", "--source-paths", "docs/release.md", "--target-paths", "cmd/fairway")
+	runOK(t, "claim", "SRC-001")
+	runOK(t, "record", "evidence", "SRC-001", "--command-text", "go test ./...", "--result", "pass", "--artifact-type", "test", "--artifact", "artifacts/test.txt")
+	runOK(t, "record", "review", "SRC-001", "--reviewer", "arch", "--domain", "governance", "--verdict", "approve", "--reason", "recipe source approved")
+	runOK(t, "set-status", "SRC-001", "done", "--reason", "source task complete")
+
+	runOK(t, "add", "DST-001", "--title", "Next release prep", "--role", "ops")
+	recipePath := filepath.Join(repo, ".fairway", "recipes", "release-prep.json")
+	extracted := runCapture(t, "recipe", "extract", "--task", "SRC-001", "--name", "release-prep", "--output", recipePath, "--input", "version={{version}}", "--forbidden-action", "do not publish release", "--closeout-rule", "record release verification evidence")
+	assertContains(t, extracted, "recipe extracted release-prep")
+	assertContains(t, extracted, "source_task=SRC-001")
+
+	rendered := runCapture(t, "recipe", "render", "--recipe", recipePath, "--task", "DST-001", "--field", "version=v0.2.0")
+	assertContains(t, rendered, "# Recipe Packet: release-prep")
+	assertContains(t, rendered, "Prepare DST-001 release packet")
+	assertContains(t, rendered, "version=v0.2.0")
+	assertContains(t, rendered, "evidence:SRC-001")
+	assertContains(t, rendered, "raw prompts, private transcripts, raw tool bodies")
+	assertNotContains(t, rendered, "raw transcript")
+	assertNotContains(t, rendered, "supersecret")
+
+	list := runCapture(t, "recipe", "list", "--dir", filepath.Join(repo, ".fairway", "recipes"))
+	assertContains(t, list, "release-prep")
+	jsonRendered := runCapture(t, "--json", "recipe", "render", "--recipe", recipePath, "--task", "DST-001")
+	assertContains(t, jsonRendered, `"schema": "fairway.task-recipe.v1"`)
+	assertContains(t, jsonRendered, `"raw_prompts_included": false`)
+}
+
+func TestCLI_TaskRecipePrivacyAndSourceFactGuards(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "SRC-001", "--title", "Unsafe source", "--role", "ops")
+	runOK(t, "claim", "SRC-001")
+	runOK(t, "record", "evidence", "SRC-001", "--command-text", "go test ./...", "--result", "pass", "--artifact-type", "test")
+	if err := run(context.Background(), []string{"recipe", "extract", "--task", "SRC-001", "--name", "unsafe"}); err == nil || !strings.Contains(err.Error(), "requires completed source task") {
+		t.Fatalf("expected incomplete source task rejection, got %v", err)
+	}
+	runOK(t, "set-status", "SRC-001", "done", "--reason", "complete")
+
+	unsafePath := filepath.Join(repo, "unsafe.json")
+	writeFile(t, unsafePath, `{"schema":"fairway.task-recipe.v1","name":"unsafe","source_task_id":"SRC-001","source_facts":["evidence:SRC-001"],"objective":"authorization: Bearer supersecret","privacy":{"raw_prompts_included":false}}`)
+	if err := run(context.Background(), []string{"recipe", "render", "--recipe", unsafePath, "--task", "SRC-001"}); err == nil || !strings.Contains(err.Error(), "recipe privacy rejected") {
+		t.Fatalf("expected privacy rejection, got %v", err)
+	}
+
+	missingFactsPath := filepath.Join(repo, "missing-facts.json")
+	writeFile(t, missingFactsPath, `{"schema":"fairway.task-recipe.v1","name":"missing","source_task_id":"SRC-001","objective":"safe","privacy":{"raw_prompts_included":false}}`)
+	if err := run(context.Background(), []string{"recipe", "render", "--recipe", missingFactsPath, "--task", "SRC-001"}); err == nil || !strings.Contains(err.Error(), "recipe missing source facts") {
+		t.Fatalf("expected missing source facts rejection, got %v", err)
+	}
+
+	unsupportedSchemaPath := filepath.Join(repo, "unsupported-schema.json")
+	writeFile(t, unsupportedSchemaPath, `{"schema":"unexpected.schema","name":"unsafe-warning","source_task_id":"SRC-001","source_facts":["evidence:SRC-001"],"objective":"safe","privacy":{"raw_prompts_included":false,"warnings":["ok"]}}`)
+	if err := run(context.Background(), []string{"recipe", "render", "--recipe", unsupportedSchemaPath, "--task", "SRC-001"}); err == nil || !strings.Contains(err.Error(), "unsupported recipe schema") {
+		t.Fatalf("expected unsupported schema rejection, got %v", err)
+	}
+
+	unsafeWarningPath := filepath.Join(repo, "unsafe-warning.json")
+	writeFile(t, unsafeWarningPath, `{"schema":"fairway.task-recipe.v1","name":"unsafe-warning","source_task_id":"SRC-001","source_facts":["evidence:SRC-001"],"objective":"safe","privacy":{"raw_prompts_included":false,"warnings":["authorization: Bearer SHOULD_NOT_RENDER"]}}`)
+	if err := run(context.Background(), []string{"--json", "recipe", "render", "--recipe", unsafeWarningPath, "--task", "SRC-001"}); err == nil || !strings.Contains(err.Error(), "recipe privacy rejected") {
+		t.Fatalf("expected unsafe warning rejection, got %v", err)
+	}
+
+	safePath := filepath.Join(repo, "safe.json")
+	writeFile(t, safePath, `{"schema":"fairway.task-recipe.v1","name":"safe","source_task_id":"SRC-001","source_facts":["evidence:SRC-001"],"objective":"safe","privacy":{"raw_prompts_included":false}}`)
+	if err := run(context.Background(), []string{"--json", "recipe", "render", "--recipe", safePath, "--task", "SRC-001", "--field", "callback=access_token=SHOULD_NOT_RENDER"}); err == nil || !strings.Contains(err.Error(), "recipe privacy rejected") {
+		t.Fatalf("expected unsafe substitution rejection, got %v", err)
+	}
+
+	recipeDir := filepath.Join(repo, "recipes")
+	if err := os.MkdirAll(recipeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(recipeDir, "safe.json"), `{"schema":"fairway.task-recipe.v1","name":"safe","source_task_id":"SRC-001","source_facts":["evidence:SRC-001"],"objective":"safe","privacy":{"raw_prompts_included":false}}`)
+	list := runCapture(t, "--json", "recipe", "list", "--dir", recipeDir)
+	assertContains(t, list, `"schema": "fairway.task-recipe.v1"`)
+	writeFile(t, filepath.Join(recipeDir, "unsafe.json"), `{"schema":"fairway.task-recipe.v1","name":"unsafe","source_task_id":"SRC-001","source_facts":["evidence:SRC-001"],"objective":"safe","privacy":{"raw_prompts_included":false,"warnings":["authorization: Bearer SHOULD_NOT_RENDER"]}}`)
+	if err := run(context.Background(), []string{"--json", "recipe", "list", "--dir", recipeDir}); err == nil || !strings.Contains(err.Error(), "invalid recipe") {
+		t.Fatalf("expected recipe list privacy rejection, got %v", err)
+	}
 }
 
 func TestCLI_UsageCostReport(t *testing.T) {

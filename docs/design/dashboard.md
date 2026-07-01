@@ -196,7 +196,13 @@ while using Fairway, AI Cloud dashboards, demos, UAT, docs portal flows, or
 release/status walkthroughs remain visible with owner, severity, fix-now/defer
 decision, expiry, summary, and linked artifact reference. The dashboard only
 displays the queue; it does not create tasks, acknowledge edges, send messages,
-approve reviews, merge, deploy, or serve artifact contents.
+or mutate backlog state.
+
+The reports view includes a read-only Recipe Library panel backed by
+`.fairway/recipes/*.json`. Each recipe links to the completed source task and
+shows recipe metadata plus source-fact counts. The dashboard does not render,
+edit, approve, or execute recipes; operators use `fairway recipe render` in a
+trusted CLI/worktree lane when they want a task-specific packet.
 Expiry is trustworthy because `rough-edge add` validates supplied expiry values
 up front using the same accepted formats used by the projection: RFC3339Nano,
 RFC3339, or `YYYY-MM-DD`. Invalid expiry text is rejected instead of becoming a
@@ -314,6 +320,8 @@ The page layout should be scannable:
 - a rule-pack signal section showing selected task-rule matches, tasks with
   missing rule evidence, blocking gaps, advisory gaps, and non-applicable
   rules,
+- a recipe library section showing reusable prompt/runbook packets extracted
+  from completed source tasks,
 - a bounded task table for drill-down, with pagination and export.
 
 Visual density should match the board: restrained cards, clear section rhythm,

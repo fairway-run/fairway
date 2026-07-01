@@ -80,6 +80,9 @@ fairway packet vertical-slice <task-id> --target-seam <text> --old-path <path> -
 fairway regression-pack list [--catalog <path>]
 fairway regression-pack show <pack-id> [--catalog <path>]
 fairway regression-pack validate [<catalog-path>]
+fairway recipe extract --task <task-id> --name <name> [--output <path>] [--input <text>]... [--forbidden-action <text>]... [--closeout-rule <text>]...
+fairway recipe render --recipe <path> --task <task-id> [--field <key=value>]... [--format markdown|json]
+fairway recipe list [--dir <path>] [--format text|json]
 fairway watcher start <watch-id> --task <task-id> [--owner <role-or-lane>] [--process <text>] [--command <cmd>] [--success <text>] [--failure <text>]
 fairway watcher finish <watch-id> --result <pass|fail|blocked> [--artifact <path-or-url>] [--duration-seconds <n>] [--notes <text>]
 fairway watcher status [--include-done]
@@ -427,6 +430,16 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   objective, scope, acceptance, source facts, validation gates, evidence refs,
   review refs, and forbidden actions, but it does not authorize execution,
   review approval, merge, push, deploy, release, or dashboard mutation.
+- `recipe extract|render|list` promotes completed tasks into reusable
+  recipe/context packets. Recipes are JSON files, normally under
+  `.fairway/recipes`, that reference source facts, evidence refs, validation
+  gates, expected evidence, forbidden actions, and closeout rules. They reject
+  unsupported schemas, raw prompts, transcripts, tool bodies,
+  generated-content dumps, secret-like values, unsafe privacy warnings,
+  unsafe substitution values, and recipes without source facts. `recipe render`
+  substitutes task-specific fields into a bounded Markdown or JSON packet; it
+  does not create tasks, approve, merge, deploy, release, wake providers, or
+  mutate dashboard state.
 - `provenance manifest --path <file>... [--format text|json]` builds a
   content-free SHA-256 manifest over selected evidence or provenance exports.
   It reports missing artifacts, changed hashes, and privacy-rejected path names
