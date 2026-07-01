@@ -215,6 +215,18 @@ type reportTaskFacts struct {
 }
 
 func (s *Server) reportViewData(r *http.Request, timing *dashboardTiming) (ReportViewData, error) {
+	if dashboardSnapshotCacheable(r) {
+		key := dashboardSnapshotKey("reports", r)
+		data, status, err := dashboardSnapshotGet(s.snapshots, key, func() (ReportViewData, error) {
+			return s.buildReportViewData(r, timing)
+		})
+		timing.add("reports.snapshot_cache", 0, "status="+status)
+		return data, err
+	}
+	return s.buildReportViewData(r, timing)
+}
+
+func (s *Server) buildReportViewData(r *http.Request, timing *dashboardTiming) (ReportViewData, error) {
 	now := time.Now()
 	window, start, end := reportWindowFromQuery(r.URL.Query(), now, time.Local)
 	filters := reportFiltersFromRequest(r)

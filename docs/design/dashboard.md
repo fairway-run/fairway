@@ -142,6 +142,14 @@ hydration once per rendered task. Slow-route timing logs should show
 `dashboard.missing_review_domains.batch_reviews` so regressions back to
 per-task `TaskDetail` loops are visible.
 
+The local dashboard keeps a short in-process snapshot cache for GET read-model
+data on wall, board, and reports routes. The cache TTL is intentionally small
+and request-keyed, and concurrent identical requests are coalesced so one slow
+projection build serves the waiting callers. Successful dashboard mutations
+clear the cache before redirecting. The cache never stores POST bodies, never
+adds dashboard write authority, and does not change the underlying Fairway DB as
+the source of truth.
+
 It includes:
 
 - a control-room header with total filtered scope,

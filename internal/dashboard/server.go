@@ -38,6 +38,7 @@ type Server struct {
 	roles     []string
 	worktrees []WorktreeStatus
 	csrfToken string
+	snapshots *dashboardSnapshotCache
 }
 
 const taskDetailCompletionActionLimit = 10000
@@ -71,7 +72,7 @@ func New(s *store.Store, cfg config.Config, roles []string, worktrees []Worktree
 }
 
 func NewWithRoot(s *store.Store, cfg config.Config, roles []string, worktrees []WorktreeStatus, root string) *Server {
-	return &Server{store: s, cfg: cfg, root: root, roles: roles, worktrees: worktrees, csrfToken: newCSRFToken()}
+	return &Server{store: s, cfg: cfg, root: root, roles: roles, worktrees: worktrees, csrfToken: newCSRFToken(), snapshots: newDashboardSnapshotCache(dashboardSnapshotCacheTTL)}
 }
 
 func NewMulti(projects []ProjectStore) http.Handler {
@@ -514,6 +515,18 @@ func (s *MultiServer) wallRedirect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) dashboardViewData(r *http.Request, view string, timing *dashboardTiming) (DashboardViewData, error) {
+	if dashboardSnapshotCacheable(r) {
+		key := dashboardSnapshotKey("dashboard:"+view, r)
+		data, status, err := dashboardSnapshotGet(s.snapshots, key, func() (DashboardViewData, error) {
+			return s.buildDashboardViewData(r, view, timing)
+		})
+		timing.add("dashboard.snapshot_cache", 0, "status="+status)
+		return data, err
+	}
+	return s.buildDashboardViewData(r, view, timing)
+}
+
+func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *dashboardTiming) (DashboardViewData, error) {
 	var tasks []store.Task
 	if err := timing.step("dashboard.tasks", func() error {
 		var err error
@@ -722,6 +735,17 @@ func (s *Server) dashboardViewData(r *http.Request, view string, timing *dashboa
 		MutableStates:        dashboardMutableStates(s.cfg),
 		Roles:                append([]string(nil), s.roles...),
 	}, nil
+}
+
+func dashboardSnapshotCacheable(r *http.Request) bool {
+	return r != nil && r.Method == http.MethodGet && r.URL != nil
+}
+
+func dashboardSnapshotKey(prefix string, r *http.Request) string {
+	if r == nil || r.URL == nil {
+		return prefix
+	}
+	return prefix + ":" + r.URL.RequestURI()
 }
 
 func (s *Server) dashboardCloseoutReports(ctx context.Context, tasks []store.Task, limit int, timing *dashboardTiming) ([]reconcile.CloseoutReport, error) {
@@ -2829,6 +2853,7 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.claim", TaskID: taskID, Detail: "claimed from dashboard"})
+	s.snapshots.clear()
 	http.Redirect(w, r, "/tasks/"+taskID, http.StatusSeeOther)
 }
 
@@ -2866,6 +2891,7 @@ func (s *Server) setStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.set-status", TaskID: taskID, Detail: "status=" + target})
+	s.snapshots.clear()
 	http.Redirect(w, r, "/tasks/"+taskID, http.StatusSeeOther)
 }
 
@@ -2886,6 +2912,7 @@ func (s *Server) bulkClaim(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.bulk.claim", TaskID: taskID, Detail: "claimed from board bulk action"})
 	}
+	s.snapshots.clear()
 	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
 }
 
@@ -2907,6 +2934,7 @@ func (s *Server) bulkHandoff(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.bulk.handoff", TaskID: taskID, Detail: "to=" + toRole})
 	}
+	s.snapshots.clear()
 	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
 }
 
@@ -2942,6 +2970,7 @@ func (s *Server) bulkSetStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.bulk.set-status", TaskID: taskID, Detail: "status=" + target})
 	}
+	s.snapshots.clear()
 	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
 }
 
@@ -2966,6 +2995,7 @@ func (s *Server) bulkEvidence(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.bulk.evidence", TaskID: taskID, Detail: "result=" + result})
 	}
+	s.snapshots.clear()
 	http.Redirect(w, r, bulkReturnTo(r), http.StatusSeeOther)
 }
 
@@ -2987,6 +3017,7 @@ func (s *Server) saveView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.RecordAudit(r.Context(), store.AuditEvent{Action: "dashboard.saved-view.save", Detail: "name=" + view.Name})
+	s.snapshots.clear()
 	http.Redirect(w, r, savedViewReturnTo(r, view), http.StatusSeeOther)
 }
 
