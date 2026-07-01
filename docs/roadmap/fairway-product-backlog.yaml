@@ -4115,3 +4115,33 @@ tasks:
       - "No implementation or public exposure is authorized by the design task."
       - "Separate dashboard routes, command-shaped write APIs, provider adapter APIs, and local-only release/git/live-operation flows."
       - "Preserve privacy boundaries for prompts, transcripts, raw tool bodies, tokens, cookies, credentials, and artifact content."
+
+  - id: FW-258
+    title: Design shared-team concurrency sync and conflict model
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: storage
+    source_paths:
+      - docs/design
+      - internal/store
+      - internal/reconcile
+    target_paths:
+      - docs/design/shared-team-concurrency-and-sync.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - governance
+      - ops
+    risk_level: high
+    migration_type: shared-team-concurrency-sync
+    dependencies:
+      - FW-256
+    acceptance_checks:
+      - "Define multi-writer semantics for task status, evidence, reviews, waits, sessions, imports, recipes, and dashboard actions."
+      - "Cover optimistic concurrency, row locking, idempotency, append-only facts, offline writes, conflict detection, and operator-reviewed reconciliation."
+      - "Clarify what belongs in Postgres/server mode versus local SQLite plus export/import or event replication."
+      - "Define conflict response shape and retry/idempotency behavior without exposing private payloads."
+      - "Preserve Fairway DB as source of truth and reject hidden bidirectional workflow sync."
