@@ -7,6 +7,30 @@ and uses semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- Supply-chain provenance reports, prompt packets, hash manifests, and release
+  attestation links that avoid embedding raw prompts, transcripts, tool bodies,
+  generated content, auth tokens, or provider-private data.
+- Safe read-only dashboard evidence artifact viewer for configured local roots,
+  with traversal/symlink/remote/directory rejection, escaped rendering, and
+  credential/internal URL redaction before display truncation.
+- Reversible-risk, grouped-review, and prototype-first review policy profiles,
+  plus UX media evidence summaries, process-overhead reporting, owner
+  rough-edge queue, and small-team autonomy operating documentation.
+- Environment deploy preflight packet rendering, reusable task recipe
+  extraction/rendering, and cross-project `/reports` activity rollups for
+  registered Fairway project DBs.
+
+### Changed
+
+- Multi-project reports now label duplicate task IDs by project, expose
+  project/status/evidence-type filters, and degrade unavailable project DBs into
+  visible report rows instead of failing available project visibility.
+- Dashboard/report additions remain read-only and do not add provider-send,
+  workflow mutation, approval, merge, deploy, release, or live-operation
+  authority.
+
 ## v0.1.8
 
 ### Added

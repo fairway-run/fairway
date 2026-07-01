@@ -10,6 +10,69 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.1.9
+
+### What Changed
+
+- Supply-chain provenance is now a Fairway-owned release primitive. Tasks can
+  export provenance reports and prompt packets, build content-free SHA-256
+  manifests over selected artifacts, and link release attestations without
+  storing raw prompts, transcripts, tool bodies, generated content, auth tokens,
+  or provider-private data.
+- The dashboard can render configured local evidence artifacts through a safe
+  read-only viewer. The viewer is limited to task-recorded evidence under
+  configured local roots, rejects traversal/symlink/remote/directory paths,
+  escapes rendered content, redacts common credential/internal URL classes
+  before display truncation, and is defense-in-depth rather than a publishing
+  sanitizer.
+- Review policy profiles now support reversible-risk defaults, grouped-review
+  inheritance, and prototype-first workflows. Reversible work can move quickly
+  with evidence while live, deploy, release, irreversible, credential,
+  security, production, and public-exposure boundaries still require explicit
+  review.
+- UX media evidence, delivery/process-overhead metrics, owner rough-edge queues,
+  and the small-team autonomy operating model make product feedback, screenshots
+  or UAT proof, review usefulness, loop signals, and found-while-using gaps
+  visible without turning every small reversible slice into release approval.
+- Environment deploy preflight packets and reusable task recipes turn repeated
+  handoff/checklist work into bounded packets. They can render readiness,
+  evidence, forbidden-action, closeout, and source-fact context, but they do not
+  create tasks, approve work, wake providers, merge, deploy, release, mutate
+  dashboards, or authorize live operations.
+- Multi-project `/reports` now aggregates registered Fairway project DBs into a
+  read-only Cross-Project Activity rollup. Rows and exports include project
+  labels so duplicate task ids across registered DBs remain distinct, filters
+  include project/status/evidence type, and unavailable project DBs degrade into
+  visible unavailable rows instead of hiding the rest of the report.
+
+### Known Limits
+
+- Trusted proxy identity verification remains model-only until a later
+  high-risk dashboard-security implementation task adds runtime verifier
+  middleware/config.
+- The safe evidence viewer is a local operator aid, not a public artifact
+  publishing sanitizer. Public release/docs content must still be reviewed and
+  redacted at the source.
+- Recipes and rehearsal packets are packet/rendering surfaces only. They do not
+  execute commands, send provider messages, or mutate project state.
+- Multi-project reports read available registered DBs but do not migrate,
+  repair, or mutate unavailable project stores.
+
+### Release Checklist
+
+- `go test ./...` passes.
+- `go vet ./...` passes.
+- `git diff --check` passes.
+- `fairway config validate` passes.
+- `fairway workflow check --mode deploy --require-clean --require-pushed`
+  passes before tagging.
+- `goreleaser check` passes.
+- `fairway release verify` confirms the public GitHub release, asset URLs,
+  Homebrew cask version, tap commit, and `brew fetch` result.
+- AI Cloud/GPUaaS read-only and local full-access dashboards are restarted with
+  the released `v0.1.9` binary and dashboard status/version readback is
+  recorded under FW-248.
+
 ## v0.1.8
 
 ### What Changed
