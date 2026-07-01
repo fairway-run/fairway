@@ -4145,3 +4145,35 @@ tasks:
       - "Clarify what belongs in Postgres/server mode versus local SQLite plus export/import or event replication."
       - "Define conflict response shape and retry/idempotency behavior without exposing private payloads."
       - "Preserve Fairway DB as source of truth and reject hidden bidirectional workflow sync."
+
+  - id: FW-259
+    title: Design shared-team Fairway deployment and operations model
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: deployment
+    source_paths:
+      - docs/design
+      - docs/config-reference.md
+      - docs/quickstart.md
+    target_paths:
+      - docs/design/shared-team-deployment-operations.md
+      - docs/config-reference.md
+      - docs/quickstart.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: shared-team-deployment-ops
+    dependencies:
+      - FW-256
+    acceptance_checks:
+      - "Define deployment topologies for single-host team server, airgap/internal server, and managed shared dashboard without assuming Cloudflare."
+      - "Cover backups, restore/PITR, upgrades, observability, performance budgets, secrets, TLS, least privilege, and disaster recovery."
+      - "Define release gates before any shared-team runtime is advertised as supported."
+      - "Keep shared read-only dashboard and shared write API as independent switches."
+      - "State that this design does not authorize runtime deployment, public exposure, release tag, dashboard restart, or write-capable dashboard behavior."
