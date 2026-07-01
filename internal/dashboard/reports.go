@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/deliveryreport"
 	"github.com/subashram/fairway/internal/roughedge"
 	"github.com/subashram/fairway/internal/rules"
@@ -38,6 +39,7 @@ type ReportViewData struct {
 	RuleSummary   ReportRuleSummary     `json:"rule_summary"`
 	Usage         ReportUsage           `json:"usage"`
 	Delivery      deliveryreport.Report `json:"delivery"`
+	ProjectRollup []ProjectActivityRow  `json:"project_rollup,omitempty"`
 	RoughEdges    []roughedge.Row       `json:"rough_edges,omitempty"`
 	Recipes       []RecipeLibraryRow    `json:"recipes,omitempty"`
 	Rows          []ReportTaskRow       `json:"rows"`
@@ -66,11 +68,14 @@ type ReportWindow struct {
 
 type ReportFilters struct {
 	Search             string
+	Project            string
 	Role               string
+	Status             string
 	Profile            string
 	Kind               string
 	OwningDomain       string
 	RiskLevel          string
+	EvidenceType       string
 	Tags               []string
 	IncludeBookkeeping bool
 	TableLimit         int
@@ -137,6 +142,7 @@ type ReportReview struct {
 	ReviewsRecorded int                   `json:"reviews_recorded"`
 	EvidenceRows    int                   `json:"evidence_rows"`
 	FailedEvidence  int                   `json:"failed_evidence"`
+	EvidenceTypes   []string              `json:"evidence_types,omitempty"`
 	MissingDomains  []ReportMissingReview `json:"missing_domains"`
 }
 
@@ -157,6 +163,7 @@ type ReportMissingReview struct {
 }
 
 type ReportTaskRow struct {
+	Project          string   `json:"project,omitempty"`
 	ID               string   `json:"id"`
 	Title            string   `json:"title"`
 	Role             string   `json:"role"`
@@ -171,11 +178,25 @@ type ReportTaskRow struct {
 	Moving           bool     `json:"moving"`
 	Created          bool     `json:"created"`
 	EvidenceCount    int      `json:"evidence_count"`
+	EvidenceTypes    []string `json:"evidence_types,omitempty"`
 	ReviewCount      int      `json:"review_count"`
 	MissingReviews   []string `json:"missing_reviews,omitempty"`
 	LatestEvidence   string   `json:"latest_evidence,omitempty"`
 	LastActivityAt   string   `json:"last_activity_at"`
 	FollowUpTaxonomy string   `json:"follow_up_taxonomy,omitempty"`
+}
+
+type ProjectActivityRow struct {
+	Project         string `json:"project"`
+	Error           string `json:"error,omitempty"`
+	Tasks           int    `json:"tasks"`
+	CompletedTasks  int    `json:"completed_tasks"`
+	MovingTasks     int    `json:"moving_tasks"`
+	EvidenceRows    int    `json:"evidence_rows"`
+	ReviewsRecorded int    `json:"reviews_recorded"`
+	Sessions        int    `json:"sessions"`
+	ActivityRows    int    `json:"activity_rows"`
+	LastActivityAt  string `json:"last_activity_at,omitempty"`
 }
 
 type reportTaskFacts struct {
@@ -201,10 +222,12 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
+	tasks = tagTasksProject(tasks, s.cfg.Fairway.ProjectName)
 	sessions, err := s.store.Sessions(r.Context(), false)
 	if err != nil {
 		return ReportViewData{}, err
 	}
+	sessions = tagSessionsProject(sessions, s.cfg.Fairway.ProjectName)
 	activity, err := s.store.ActivityFiltered(r.Context(), store.ActivityOptions{
 		Limit:       maxActivityFetchLimit,
 		CreatedFrom: start.Format(time.RFC3339Nano),
@@ -213,6 +236,7 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
+	activity = tagActivityProject(activity, s.cfg.Fairway.ProjectName)
 	watchers, err := s.store.Watchers(r.Context(), true)
 	if err != nil {
 		return ReportViewData{}, err
@@ -237,24 +261,142 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 	if err != nil {
 		return ReportViewData{}, err
 	}
-	reviewActivityByTask := reportReviewActivityByTask(activity, start, end)
-	facts := make([]reportTaskFacts, 0, len(tasks))
-	for _, task := range tasks {
-		detailTask, transitions, evidence, _, reviews, err := s.store.TaskDetail(r.Context(), task.Definition.ID)
-		if err != nil {
-			return ReportViewData{}, err
+	facts, err := reportFactsForStore(r.Context(), s.store, tasks, activity)
+	if err != nil {
+		return ReportViewData{}, err
+	}
+	return buildReportViewData(r, reportBuildInput{
+		Window:     window,
+		Start:      start,
+		End:        end,
+		Filters:    filters,
+		Config:     s.cfg,
+		Root:       s.root,
+		Tasks:      tasks,
+		Sessions:   sessions,
+		Activity:   activity,
+		Watchers:   watchers,
+		Batches:    batches,
+		Usage:      usage,
+		Delivery:   delivery,
+		RoughEdges: roughEdges,
+		Recipes:    recipes,
+		Facts:      facts,
+		Roles:      s.roles,
+	})
+}
+
+func (s *MultiServer) reportViewData(r *http.Request) (ReportViewData, error) {
+	now := time.Now()
+	window, start, end := reportWindowFromQuery(r.URL.Query(), now, time.Local)
+	filters := reportFiltersFromRequest(r)
+	var tasks []store.Task
+	var sessions []store.Session
+	var activity []store.Activity
+	var watchers []store.Watcher
+	var batches []store.WorkBatch
+	var facts []reportTaskFacts
+	var projectRollup []ProjectActivityRow
+	for _, project := range s.projects {
+		if project.Store == nil || project.Error != "" {
+			errText := project.Error
+			if errText == "" {
+				errText = "project store unavailable"
+			}
+			projectRollup = append(projectRollup, ProjectActivityRow{Project: project.Name, Error: errText})
+			continue
 		}
-		fact := reportTaskFacts{Task: detailTask, Transitions: transitions, Evidence: evidence, Reviews: reviews, ReviewActivities: reviewActivityByTask[task.Definition.ID]}
-		fact.applyWindow(start, end)
+		projectTasks, err := project.Store.AllTasks(r.Context())
+		if err != nil {
+			return ReportViewData{}, fmt.Errorf("%s tasks: %w", project.Name, err)
+		}
+		projectTasks = tagTasksProject(projectTasks, project.Name)
+		tasks = append(tasks, projectTasks...)
+		if projectSessions, err := project.Store.Sessions(r.Context(), false); err == nil {
+			sessions = append(sessions, tagSessionsProject(projectSessions, project.Name)...)
+		}
+		projectActivity, err := project.Store.ActivityFiltered(r.Context(), store.ActivityOptions{
+			Limit:       maxActivityFetchLimit,
+			CreatedFrom: start.Format(time.RFC3339Nano),
+			CreatedTo:   end.Format(time.RFC3339Nano),
+		})
+		if err != nil {
+			return ReportViewData{}, fmt.Errorf("%s activity: %w", project.Name, err)
+		}
+		activity = append(activity, tagActivityProject(projectActivity, project.Name)...)
+		if projectWatchers, err := project.Store.Watchers(r.Context(), true); err == nil {
+			watchers = append(watchers, projectWatchers...)
+		}
+		if projectBatches, err := project.Store.WorkBatches(r.Context()); err == nil {
+			batches = append(batches, projectBatches...)
+		}
+		projectFacts, err := reportFactsForStore(r.Context(), project.Store, projectTasks, tagActivityProject(projectActivity, project.Name))
+		if err != nil {
+			return ReportViewData{}, fmt.Errorf("%s facts: %w", project.Name, err)
+		}
+		facts = append(facts, projectFacts...)
+	}
+	sort.SliceStable(activity, func(i, j int) bool { return activity[i].CreatedAt > activity[j].CreatedAt })
+	if len(activity) > maxActivityFetchLimit {
+		activity = activity[:maxActivityFetchLimit]
+	}
+	return buildReportViewData(r, reportBuildInput{
+		Window:        window,
+		Start:         start,
+		End:           end,
+		Filters:       filters,
+		Config:        config.Defaults(""),
+		Tasks:         tasks,
+		Sessions:      sessions,
+		Activity:      activity,
+		Watchers:      watchers,
+		Batches:       batches,
+		Facts:         facts,
+		Roles:         rolesFromTasks(tasks),
+		ProjectRollup: projectRollup,
+	})
+}
+
+type reportBuildInput struct {
+	Window        ReportWindow
+	Start         time.Time
+	End           time.Time
+	Filters       ReportFilters
+	Config        config.Config
+	Root          string
+	Tasks         []store.Task
+	Sessions      []store.Session
+	Activity      []store.Activity
+	Watchers      []store.Watcher
+	Batches       []store.WorkBatch
+	Usage         ReportUsage
+	Delivery      deliveryreport.Report
+	RoughEdges    []roughedge.Row
+	Recipes       []RecipeLibraryRow
+	Facts         []reportTaskFacts
+	Roles         []string
+	ProjectRollup []ProjectActivityRow
+}
+
+func buildReportViewData(r *http.Request, input reportBuildInput) (ReportViewData, error) {
+	window := input.Window
+	start := input.Start
+	end := input.End
+	filters := input.Filters
+	for i := range input.Facts {
+		input.Facts[i].applyWindow(start, end)
+	}
+	facts := make([]reportTaskFacts, 0, len(input.Facts))
+	for _, fact := range input.Facts {
 		if reportTaskInWindow(fact, start, end) {
 			facts = append(facts, fact)
 		}
 	}
 	rows := reportRowsFromFacts(facts, filters)
-	packs, err := rules.LoadConfigured(s.cfg, s.root, rules.LoadOptions{
-		Root:            s.root,
-		KnownDomains:    rules.ReviewDomainSet(s.cfg),
-		KnownEvidence:   rules.ConfigGateEvidenceSet(s.cfg),
+	packs, err := rules.LoadConfigured(input.Config, input.Root, rules.LoadOptions{
+		Root:            input.Root,
+		KnownDomains:    rules.ReviewDomainSet(input.Config),
+		KnownEvidence:   rules.ConfigGateEvidenceSet(input.Config),
 		IncludeDisabled: true,
 	})
 	if err != nil {
@@ -274,26 +416,41 @@ func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
 		View:          "reports",
 		Window:        window,
 		Filters:       filters,
-		FilterOptions: filterOptions(tasks, activity, s.cfg.Fairway.ProjectName),
-		Summary:       reportSummary(facts, summaryRows, watchers, batches, start, end),
+		FilterOptions: filterOptions(input.Tasks, input.Activity, ""),
+		Summary:       reportSummary(facts, summaryRows, input.Watchers, input.Batches, start, end),
 		Lanes:         reportLanes(rows),
-		Timeline:      reportTimeline(facts, watchers, rows, start, end),
+		Timeline:      reportTimeline(facts, input.Watchers, rows, start, end),
 		FollowUps:     reportFollowUps(rows),
 		ReviewSummary: reportReviewSummary(facts, rows),
-		RuleSummary:   reportRuleSummary(s.cfg, packs, facts),
-		Usage:         usage,
-		Delivery:      delivery,
-		RoughEdges:    roughEdges,
-		Recipes:       recipes,
+		RuleSummary:   reportRuleSummary(input.Config, packs, facts),
+		Usage:         input.Usage,
+		Delivery:      input.Delivery,
+		ProjectRollup: append(input.ProjectRollup, reportProjectActivityRollup(rows, input.Sessions, input.Activity)...),
+		RoughEdges:    input.RoughEdges,
+		Recipes:       input.Recipes,
 		Rows:          rows,
 		TableRows:     tableRows,
 		Pagination:    pagination,
-		Sessions:      sessions,
-		Activity:      activity,
-		Groups:        groupTasks(tasks, s.roles),
-		TaskRoles:     taskRoleMap(tasks),
+		Sessions:      input.Sessions,
+		Activity:      input.Activity,
+		Groups:        groupTasks(input.Tasks, input.Roles),
+		TaskRoles:     taskRoleMap(input.Tasks),
 		ExportBase:    reportExportBase(r.URL.Query()),
 	}, nil
+}
+
+func reportFactsForStore(ctx context.Context, s *store.Store, tasks []store.Task, activity []store.Activity) ([]reportTaskFacts, error) {
+	reviewActivityByTask := reportReviewActivityByTask(activity, time.Time{}, time.Now().AddDate(100, 0, 0))
+	facts := make([]reportTaskFacts, 0, len(tasks))
+	for _, task := range tasks {
+		detailTask, transitions, evidence, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, err
+		}
+		detailTask.Project = taskProject(task, "")
+		facts = append(facts, reportTaskFacts{Task: detailTask, Transitions: transitions, Evidence: evidence, Reviews: reviews, ReviewActivities: reviewActivityByTask[detailTask.Definition.ID]})
+	}
+	return facts, nil
 }
 
 func (s *Server) reportUsage(ctx context.Context, start, end time.Time) (ReportUsage, error) {
@@ -471,11 +628,14 @@ func reportFiltersFromRequest(r *http.Request) ReportFilters {
 	query := r.URL.Query()
 	return ReportFilters{
 		Search:             strings.TrimSpace(query.Get("q")),
+		Project:            strings.TrimSpace(query.Get("project")),
 		Role:               strings.TrimSpace(query.Get("role")),
+		Status:             strings.TrimSpace(query.Get("status")),
 		Profile:            strings.TrimSpace(query.Get("profile")),
 		Kind:               strings.TrimSpace(query.Get("kind")),
 		OwningDomain:       strings.TrimSpace(query.Get("owning_domain")),
 		RiskLevel:          strings.TrimSpace(query.Get("risk_level")),
+		EvidenceType:       strings.TrimSpace(query.Get("evidence_type")),
 		Tags:               splitQueryValues(query["tag"]),
 		IncludeBookkeeping: query.Get("include_bookkeeping") == "1" || query.Get("include_bookkeeping") == "true",
 		TableLimit:         boundedQueryInt(query.Get("table_limit"), defaultReportTableLimit, maxReportTableLimit),
@@ -550,7 +710,13 @@ func reportRowsFromFacts(facts []reportTaskFacts, filters ReportFilters) []Repor
 		if filters.Search != "" && !reportRowMatchesSearch(row, filters.Search) {
 			continue
 		}
+		if filters.Project != "" && row.Project != filters.Project {
+			continue
+		}
 		if filters.Role != "" && row.Role != filters.Role {
+			continue
+		}
+		if filters.Status != "" && row.Status != filters.Status {
 			continue
 		}
 		if filters.Profile != "" && row.Profile != filters.Profile {
@@ -565,6 +731,9 @@ func reportRowsFromFacts(facts []reportTaskFacts, filters ReportFilters) []Repor
 		if filters.RiskLevel != "" && row.RiskLevel != filters.RiskLevel {
 			continue
 		}
+		if filters.EvidenceType != "" && !containsString(row.EvidenceTypes, filters.EvidenceType) {
+			continue
+		}
 		if len(filters.Tags) > 0 && !containsAllStrings(row.Tags, filters.Tags) {
 			continue
 		}
@@ -577,6 +746,7 @@ func reportRowFromFact(fact reportTaskFacts) ReportTaskRow {
 	task := fact.Task
 	missing := dashboardMissingApprovedReviewDomains(task.Definition.ReviewDomains, fact.Reviews)
 	row := ReportTaskRow{
+		Project:          taskProject(task, ""),
 		ID:               task.Definition.ID,
 		Title:            task.Definition.Title,
 		Role:             task.Definition.Role,
@@ -591,6 +761,7 @@ func reportRowFromFact(fact reportTaskFacts) ReportTaskRow {
 		Moving:           fact.Moving,
 		Created:          fact.Created,
 		EvidenceCount:    len(fact.EvidenceWindow),
+		EvidenceTypes:    reportEvidenceTypes(fact.EvidenceWindow),
 		ReviewCount:      len(fact.ReviewActivities),
 		MissingReviews:   missing,
 		LatestEvidence:   latestEvidenceArtifact(fact.Evidence),
@@ -622,10 +793,41 @@ func reportRowMatchesSearch(row ReportTaskRow, raw string) bool {
 	if needle == "" {
 		return true
 	}
-	haystacks := []string{row.ID, row.Title, row.Role, row.Status, row.Kind, row.Profile, row.OwningDomain, row.RiskLevel, row.DeliveryClass, row.FollowUpTaxonomy}
+	haystacks := []string{row.Project, row.ID, row.Title, row.Role, row.Status, row.Kind, row.Profile, row.OwningDomain, row.RiskLevel, row.DeliveryClass, row.FollowUpTaxonomy}
 	haystacks = append(haystacks, row.Tags...)
+	haystacks = append(haystacks, row.EvidenceTypes...)
 	hay := strings.Join(haystacks, " ")
 	return strings.Contains(strings.ToLower(hay), needle)
+}
+
+func reportEvidenceTypes(evidence []store.Evidence) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, ev := range evidence {
+		value := strings.TrimSpace(ev.ArtifactType)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func uniqueSortedStrings(values []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func reportSummary(facts []reportTaskFacts, rows []ReportTaskRow, watchers []store.Watcher, batches []store.WorkBatch, start, end time.Time) ReportSummary {
@@ -640,7 +842,7 @@ func reportSummary(facts []reportTaskFacts, rows []ReportTaskRow, watchers []sto
 	summary.BatchedTasks = len(seenBatchTasks)
 	rowIDs := map[string]bool{}
 	for _, row := range rows {
-		rowIDs[row.ID] = true
+		rowIDs[reportRowKey(row)] = true
 		if row.Completed {
 			if row.DeliveryClass == "bookkeeping" {
 				summary.BookkeepingDone++
@@ -662,7 +864,7 @@ func reportSummary(facts []reportTaskFacts, rows []ReportTaskRow, watchers []sto
 		}
 	}
 	for _, fact := range facts {
-		if !rowIDs[fact.Task.Definition.ID] {
+		if !rowIDs[reportTaskKey(fact.Task)] {
 			continue
 		}
 		if fact.BlockedOpened {
@@ -706,6 +908,78 @@ func reportSummary(facts []reportTaskFacts, rows []ReportTaskRow, watchers []sto
 		}
 	}
 	return summary
+}
+
+func reportProjectActivityRollup(rows []ReportTaskRow, sessions []store.Session, activity []store.Activity) []ProjectActivityRow {
+	byProject := map[string]*ProjectActivityRow{}
+	rowFor := func(project string) *ProjectActivityRow {
+		project = strings.TrimSpace(project)
+		if project == "" {
+			project = "current"
+		}
+		row := byProject[project]
+		if row == nil {
+			row = &ProjectActivityRow{Project: project}
+			byProject[project] = row
+		}
+		return row
+	}
+	for _, task := range rows {
+		row := rowFor(task.Project)
+		row.Tasks++
+		if task.Completed {
+			row.CompletedTasks++
+		}
+		if task.Moving {
+			row.MovingTasks++
+		}
+		row.EvidenceRows += task.EvidenceCount
+		row.ReviewsRecorded += task.ReviewCount
+		row.LastActivityAt = maxTimeString(row.LastActivityAt, task.LastActivityAt)
+	}
+	for _, session := range sessions {
+		project := strings.TrimSpace(session.Lane)
+		if strings.Contains(project, "/") {
+			project = strings.SplitN(project, "/", 2)[0]
+		}
+		rowFor(project).Sessions++
+	}
+	for _, item := range activity {
+		project := activityProject(item)
+		row := rowFor(project)
+		row.ActivityRows++
+		row.LastActivityAt = maxTimeString(row.LastActivityAt, item.CreatedAt)
+	}
+	projects := make([]string, 0, len(byProject))
+	for project := range byProject {
+		projects = append(projects, project)
+	}
+	sort.Strings(projects)
+	out := make([]ProjectActivityRow, 0, len(projects))
+	for _, project := range projects {
+		out = append(out, *byProject[project])
+	}
+	return out
+}
+
+func activityProject(item store.Activity) string {
+	if strings.HasPrefix(item.Summary, "[") {
+		if end := strings.Index(item.Summary, "]"); end > 1 {
+			return strings.TrimSpace(item.Summary[1:end])
+		}
+	}
+	if strings.Contains(item.Actor, "/") {
+		return strings.TrimSpace(strings.SplitN(item.Actor, "/", 2)[0])
+	}
+	return strings.TrimSpace(item.Actor)
+}
+
+func reportTaskKey(task store.Task) string {
+	return strings.TrimSpace(taskProject(task, "")) + "\x00" + task.Definition.ID
+}
+
+func reportRowKey(row ReportTaskRow) string {
+	return strings.TrimSpace(row.Project) + "\x00" + row.ID
 }
 
 func reportLanes(rows []ReportTaskRow) []ReportLane {
@@ -788,7 +1062,7 @@ func reportGroups(rows []ReportTaskRow) []ReportGroup {
 func reportTimeline(facts []reportTaskFacts, watchers []store.Watcher, rows []ReportTaskRow, start, end time.Time) []ReportRun {
 	taskByID := map[string]store.Task{}
 	for _, fact := range facts {
-		taskByID[fact.Task.Definition.ID] = fact.Task
+		taskByID[reportTaskKey(fact.Task)] = fact.Task
 	}
 	followUps := followUpsBySource(rows)
 	var runs []ReportRun
@@ -796,7 +1070,10 @@ func reportTimeline(facts []reportTaskFacts, watchers []store.Watcher, rows []Re
 		if !timeInWindow(watcher.FinishedAt, start, end) {
 			continue
 		}
-		task := taskByID[watcher.TaskID]
+		task := taskByID["\x00"+watcher.TaskID]
+		if task.Definition.ID == "" {
+			task = taskByID[watcher.TaskID]
+		}
 		runs = append(runs, ReportRun{
 			Kind:            firstNonEmpty(watcher.Process, "watcher"),
 			TaskID:          watcher.TaskID,
@@ -867,8 +1144,12 @@ func reportReviewSummary(facts []reportTaskFacts, rows []ReportTaskRow) ReportRe
 			if evidenceFailed(ev.Result) {
 				summary.FailedEvidence++
 			}
+			if strings.TrimSpace(ev.ArtifactType) != "" {
+				summary.EvidenceTypes = append(summary.EvidenceTypes, ev.ArtifactType)
+			}
 		}
 	}
+	summary.EvidenceTypes = uniqueSortedStrings(summary.EvidenceTypes)
 	for _, row := range rows {
 		if row.Status == "done" && len(row.MissingReviews) > 0 {
 			summary.MissingDomains = append(summary.MissingDomains, ReportMissingReview{TaskID: row.ID, Title: row.Title, Domains: row.MissingReviews})
@@ -935,11 +1216,14 @@ func reportFilterValues(filters ReportFilters) url.Values {
 		}
 	}
 	setIf("q", filters.Search)
+	setIf("project", filters.Project)
 	setIf("role", filters.Role)
+	setIf("status", filters.Status)
 	setIf("profile", filters.Profile)
 	setIf("kind", filters.Kind)
 	setIf("owning_domain", filters.OwningDomain)
 	setIf("risk_level", filters.RiskLevel)
+	setIf("evidence_type", filters.EvidenceType)
 	for _, tag := range filters.Tags {
 		values.Add("tag", tag)
 	}
@@ -977,9 +1261,9 @@ func writeReportCSV(w http.ResponseWriter, data ReportViewData) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", `attachment; filename="fairway-report.csv"`)
 	writer := csv.NewWriter(w)
-	_ = writer.Write([]string{"id", "title", "role", "status", "kind", "profile", "domain", "risk", "tags", "class", "completed", "moving", "created", "evidence", "reviews", "missing_reviews", "latest_evidence", "last_activity"})
+	_ = writer.Write([]string{"project", "id", "title", "role", "status", "kind", "profile", "domain", "risk", "tags", "class", "completed", "moving", "created", "evidence", "evidence_types", "reviews", "missing_reviews", "latest_evidence", "last_activity"})
 	for _, row := range data.Rows {
-		_ = writer.Write([]string{row.ID, row.Title, row.Role, row.Status, row.Kind, row.Profile, row.OwningDomain, row.RiskLevel, strings.Join(row.Tags, ";"), row.DeliveryClass, strconv.FormatBool(row.Completed), strconv.FormatBool(row.Moving), strconv.FormatBool(row.Created), strconv.Itoa(row.EvidenceCount), strconv.Itoa(row.ReviewCount), strings.Join(row.MissingReviews, ";"), row.LatestEvidence, row.LastActivityAt})
+		_ = writer.Write([]string{row.Project, row.ID, row.Title, row.Role, row.Status, row.Kind, row.Profile, row.OwningDomain, row.RiskLevel, strings.Join(row.Tags, ";"), row.DeliveryClass, strconv.FormatBool(row.Completed), strconv.FormatBool(row.Moving), strconv.FormatBool(row.Created), strconv.Itoa(row.EvidenceCount), strings.Join(row.EvidenceTypes, ";"), strconv.Itoa(row.ReviewCount), strings.Join(row.MissingReviews, ";"), row.LatestEvidence, row.LastActivityAt})
 	}
 	writer.Flush()
 }
@@ -994,7 +1278,7 @@ func writeReportMarkdown(w http.ResponseWriter, data ReportViewData) {
 	}
 	fmt.Fprintln(w, "\n## Tasks")
 	for _, row := range data.Rows {
-		fmt.Fprintf(w, "- %s %s [%s/%s]\n", row.ID, row.Title, row.Role, row.Status)
+		fmt.Fprintf(w, "- %s %s %s [%s/%s]\n", firstNonEmpty(row.Project, "current"), row.ID, row.Title, row.Role, row.Status)
 	}
 }
 

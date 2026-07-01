@@ -78,6 +78,13 @@ same-path projects by project name and backing DB.
 - The wall lanes strip groups lanes under project headers.
 - `/board` exposes the project selector as URL-backed project filter state and
   an active project filter chip.
+- `/reports` aggregates registered project DBs into a read-only
+  cross-project activity rollup. It keeps duplicate task ids distinct with a
+  project label and supports project, profile, role, tag, status, date range,
+  and evidence-type filters.
+- If a registered project DB cannot be opened, multi-project dashboard startup
+  keeps serving available projects and shows the unavailable registry entry in
+  `/projects` and `/reports` with its open error.
 - The activity feed prefixes entries with `[project] `.
 
 Single-project and multi-project queries share the same Go view layer; the multi-project path swaps the data source.

@@ -14140,7 +14140,8 @@ func cmdDashboardMulti(ctx context.Context, opts globalOptions, listen string, n
 		dbPath := registry.ResolveDBPath(project)
 		projectStore, err := store.Open(ctx, dbPath, project.Name)
 		if err != nil {
-			return fmt.Errorf("open project %s: %w", project.Name, err)
+			projects = append(projects, dashboard.ProjectStore{Name: project.Name, Path: project.Path, DBPath: dbPath, ConfigPath: registry.ResolveConfigPath(project), Error: fmt.Sprintf("open project %s: %v", project.Name, err)})
+			continue
 		}
 		projects = append(projects, dashboard.ProjectStore{Name: project.Name, Path: project.Path, DBPath: dbPath, ConfigPath: registry.ResolveConfigPath(project), Store: projectStore})
 	}

@@ -455,6 +455,14 @@ registry entry, exposed through the `project` query parameter and Project
 table/export column. Task identity, ownership, evidence, reviews, and gates
 remain authoritative inside the source project store.
 
+The multi-project reports surface extends the same read-only boundary to
+retrospective activity. `/reports` shows a Cross-Project Activity rollup by
+registered project with task, evidence, review, session, and activity counts,
+and the drill-down table carries a Project column so duplicate task ids from
+different DBs do not collapse together. Project, profile, role, tag, status,
+date-range, and evidence-type filters apply to the report and its JSON,
+Markdown, and CSV exports.
+
 The registry can include multiple entries with the same repo path when they
 point at different Fairway DB/config identities. This is useful for a consumer
 repo that tracks implementation and documentation work in separate Fairway

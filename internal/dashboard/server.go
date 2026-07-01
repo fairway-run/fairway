@@ -63,6 +63,7 @@ type ProjectStore struct {
 	DBPath     string
 	ConfigPath string
 	Store      *store.Store
+	Error      string
 }
 
 func New(s *store.Store, cfg config.Config, roles []string, worktrees []WorktreeStatus) *Server {
@@ -79,6 +80,7 @@ func NewMulti(projects []ProjectStore) http.Handler {
 	mux.Handle("/assets/", dashboardAssetHandler())
 	mux.HandleFunc("/board", server.board)
 	mux.HandleFunc("/board/export", server.boardExport)
+	mux.HandleFunc("/reports", server.reports)
 	mux.HandleFunc("/wall", server.wallRedirect)
 	mux.HandleFunc("/projects", func(w http.ResponseWriter, r *http.Request) {
 		type projectView struct {
@@ -95,7 +97,14 @@ func NewMulti(projects []ProjectStore) http.Handler {
 		}
 		var views []projectView
 		for _, project := range projects {
-			view := projectView{Name: project.Name, Path: project.Path, DBPath: project.DBPath, ConfigPath: project.ConfigPath}
+			view := projectView{Name: project.Name, Path: project.Path, DBPath: project.DBPath, ConfigPath: project.ConfigPath, Error: project.Error}
+			if project.Store == nil || project.Error != "" {
+				if view.Error == "" {
+					view.Error = "project store unavailable"
+				}
+				views = append(views, view)
+				continue
+			}
 			tasks, err := project.Store.AllTasks(r.Context())
 			if err != nil {
 				view.Error = err.Error()
@@ -452,6 +461,26 @@ func (s *Server) reports(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *MultiServer) reports(w http.ResponseWriter, r *http.Request) {
+	data, err := s.reportViewData(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	switch strings.TrimSpace(r.URL.Query().Get("format")) {
+	case "json":
+		writeReportJSON(w, data)
+	case "csv":
+		writeReportCSV(w, data)
+	case "md", "markdown":
+		writeReportMarkdown(w, data)
+	default:
+		if err := reportsTemplate.ExecuteTemplate(w, "layout", data); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
 func (s *Server) wallRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
@@ -752,6 +781,9 @@ func (s *MultiServer) projectFacts(ctx context.Context, filters TaskFilters) ([]
 	var watchers []store.Watcher
 	var activity []store.Activity
 	for _, project := range s.projects {
+		if project.Store == nil || project.Error != "" {
+			continue
+		}
 		projectTasks, err := project.Store.AllTasks(ctx)
 		if err != nil {
 			return nil, nil, nil, nil, nil, fmt.Errorf("%s tasks: %w", project.Name, err)
@@ -1550,8 +1582,14 @@ func tagSessionsProject(sessions []store.Session, project string) []store.Sessio
 	}
 	out := append([]store.Session(nil), sessions...)
 	for i := range out {
-		if out[i].Lane == "" {
+		lane := strings.TrimSpace(out[i].Lane)
+		switch {
+		case lane == "":
 			out[i].Lane = project
+		case strings.HasPrefix(lane, project+"/"):
+			out[i].Lane = lane
+		default:
+			out[i].Lane = project + "/" + lane
 		}
 	}
 	return out

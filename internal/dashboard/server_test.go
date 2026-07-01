@@ -2152,6 +2152,95 @@ func TestMultiDashboardWallGroupsLanesByProject(t *testing.T) {
 	}
 }
 
+func TestMultiDashboardReportsRollupFiltersDuplicateTaskIDs(t *testing.T) {
+	ctx := context.Background()
+	left, err := store.Open(ctx, filepath.Join(t.TempDir(), "left.db"), "left")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer left.Close()
+	right, err := store.Open(ctx, filepath.Join(t.TempDir(), "right.db"), "right")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer right.Close()
+	if err := left.ImportTasks(ctx, []store.TaskDefinition{{ID: "SHARED-001", Title: "Left platform check", Role: "backend", Kind: "rehearsal", Profile: "platform", Tags: []string{"airgap"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.ImportTasks(ctx, []store.TaskDefinition{{ID: "SHARED-001", Title: "Right docs check", Role: "ui", Kind: "docs", Profile: "portal", Tags: []string{"docs"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := left.SetStatus(ctx, "SHARED-001", "done", "left done", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.SetStatus(ctx, "SHARED-001", "done", "right done", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := left.RecordEvidence(ctx, "SHARED-001", store.Evidence{CommandText: "airgap rehearsal", Result: "fail", ArtifactType: "preflight", ArtifactPath: "left/preflight.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.RecordEvidence(ctx, "SHARED-001", store.Evidence{CommandText: "docs uat", Result: "pass", ArtifactType: "uat", ArtifactPath: "right/uat.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := right.UpsertSession(ctx, store.Session{ID: "right-session", Role: "ui", Lane: "ops-lane", Provider: "codex", TaskID: "SHARED-001", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewMulti([]ProjectStore{
+		{Name: "platform", Path: "/tmp/platform", Store: left},
+		{Name: "docs", Path: "/tmp/docs", Store: right},
+		{Name: "missing", Path: "/tmp/missing", DBPath: "/tmp/missing/.fairway/state.db", Error: "open project missing: unable to open database file"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/reports?range=today", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Daily Report",
+		"Cross-Project Activity",
+		"platform",
+		"docs",
+		"missing",
+		"unavailable",
+		"open project missing",
+		"Left platform check",
+		"Right docs check",
+		"preflight",
+		"uat",
+		"1 sessions",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("multi reports body missing %q:\n%s", want, body)
+		}
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/reports?range=today&project=docs&evidence_type=uat&status=done", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{"Right docs check", "docs", "uat", "SHARED-001"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("filtered multi reports missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Left platform check") || strings.Contains(body, "left/preflight.md") {
+		t.Fatalf("filtered multi reports included other project/evidence rows:\n%s", body)
+	}
+	if strings.Contains(body, "<b>ops-lane</b>") {
+		t.Fatalf("multi reports attributed session lane as fake project:\n%s", body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/reports?range=today&format=csv", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	csvBody := rec.Body.String()
+	for _, want := range []string{"project,id,title", "platform,SHARED-001", "docs,SHARED-001"} {
+		if !strings.Contains(csvBody, want) {
+			t.Fatalf("multi reports csv missing %q:\n%s", want, csvBody)
+		}
+	}
+}
+
 func TestDashboardAssetsServeTokens(t *testing.T) {
 	handler := dashboardAssetHandler()
 	req := httptest.NewRequest(http.MethodGet, "/assets/css/tokens.css", nil)

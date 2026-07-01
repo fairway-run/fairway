@@ -180,6 +180,15 @@ The first implementation uses `format=md`, `format=json`, or `format=csv` on
 `/reports`; all other query parameters are preserved so exports match the
 browser scope exactly.
 
+In multi-project dashboard mode, `/reports` uses the local project registry as
+the aggregation boundary. The report shows a Cross-Project Activity section
+with project, task, session, evidence, review, status movement, and activity
+counts for the selected window. Drill-down rows and CSV/JSON/Markdown exports
+include a project label so duplicate task ids from different Fairway DBs remain
+distinguishable. Filters include project, profile, role, tag, date range,
+status, and evidence type. The report is read-only; mutations still happen by
+running Fairway commands in the source project worktree.
+
 ## Design Requirements
 
 Reports should use the same dashboard shell and visual language as Wall, Board,
