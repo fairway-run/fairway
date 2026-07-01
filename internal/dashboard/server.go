@@ -308,6 +308,7 @@ type DashboardViewData struct {
 	Coordination         CoordinationIntelligence
 	CloseoutReports      []reconcile.CloseoutReport
 	Audit                AuditDiagnostics
+	DiagnosticsDeferred  bool
 	ReadOnly             bool
 	CSRFToken            string
 	MutableStates        []string
@@ -384,6 +385,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", dashboardAssetHandler())
 	mux.HandleFunc("/board", s.board)
+	mux.HandleFunc("/board/panels/diagnostics", s.boardDiagnosticsPanel)
 	mux.HandleFunc("/board/export", s.boardExport)
 	mux.HandleFunc("/reports", s.reports)
 	mux.HandleFunc("/wall", s.wallRedirect)
@@ -416,6 +418,32 @@ func (s *Server) board(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	_ = boardTemplate.ExecuteTemplate(w, "layout", data)
 	timing.add("template.board", time.Since(start), "")
+}
+
+func (s *Server) boardDiagnosticsPanel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	timing := newDashboardTiming("board-diagnostics-panel", r)
+	defer timing.logIfSlow()
+	panelRequest := r.Clone(r.Context())
+	u := *r.URL
+	query := u.Query()
+	query.Set("tab", "diagnostics")
+	u.RawQuery = query.Encode()
+	panelRequest.URL = &u
+	data, err := s.dashboardViewData(panelRequest, "board", timing)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	start := time.Now()
+	if err := boardTemplate.ExecuteTemplate(w, "diagnostics-panels", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	timing.add("template.diagnostics_panel", time.Since(start), "")
 }
 
 func (s *MultiServer) board(w http.ResponseWriter, r *http.Request) {
@@ -577,7 +605,8 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		return DashboardViewData{}, err
 	}
 	filters := taskFiltersFromRequest(r)
-	boardFastPath := view == "board" && filters.Tab != "diagnostics"
+	diagnosticsDeferred := view == "board" && filters.Tab == "diagnostics" && !dashboardDiagnosticsPanelRequest(r)
+	boardFastPath := view == "board" && (filters.Tab != "diagnostics" || diagnosticsDeferred)
 	var activity []store.Activity
 	if err := timing.step("dashboard.activity", func() error {
 		var err error
@@ -679,7 +708,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		}
 	}
 	var auditDiagnostics AuditDiagnostics
-	if view == "board" && filters.Tab == "diagnostics" {
+	if view == "board" && filters.Tab == "diagnostics" && !diagnosticsDeferred {
 		_ = timing.step("dashboard.audit_diagnostics", func() error {
 			auditDiagnostics = s.auditDiagnostics(r.Context(), "")
 			return nil
@@ -730,6 +759,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		Coordination:         dashboardCoordinationIntelligence(coordinatorPlan, memories, time.Now().UTC(), 24*time.Hour),
 		CloseoutReports:      closeoutReports,
 		Audit:                auditDiagnostics,
+		DiagnosticsDeferred:  diagnosticsDeferred,
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 		CSRFToken:            s.csrfToken,
 		MutableStates:        dashboardMutableStates(s.cfg),
@@ -746,6 +776,10 @@ func dashboardSnapshotKey(prefix string, r *http.Request) string {
 		return prefix
 	}
 	return prefix + ":" + r.URL.RequestURI()
+}
+
+func dashboardDiagnosticsPanelRequest(r *http.Request) bool {
+	return r != nil && r.URL != nil && r.URL.Path == "/board/panels/diagnostics"
 }
 
 func (s *Server) dashboardCloseoutReports(ctx context.Context, tasks []store.Task, limit int, timing *dashboardTiming) ([]reconcile.CloseoutReport, error) {
@@ -1108,6 +1142,14 @@ func boardTabHref(filters TaskFilters, tab string) string {
 func boardWorkstreamsHref(filters TaskFilters, mode string) string {
 	filters.Workstreams = dashboardWorkstreamsMode(mode)
 	return boardTabHref(filters, filters.Tab)
+}
+
+func boardDiagnosticsPanelHref(filters TaskFilters) string {
+	href := boardTabHref(filters, "diagnostics")
+	if strings.HasPrefix(href, "/board?") {
+		return "/board/panels/diagnostics?" + strings.TrimPrefix(href, "/board?")
+	}
+	return "/board/panels/diagnostics?tab=diagnostics"
 }
 
 func boardPageHref(filters TaskFilters, page int) string {
@@ -3254,6 +3296,7 @@ var wallTemplate = mustEmbeddedTemplateSet("wall", []string{
 var boardTemplate = mustEmbeddedTemplateSet("board", []string{
 	"assets/templates/layout.html",
 	"assets/templates/board.html",
+	"assets/templates/partials/diagnostics-panels.html",
 	"assets/templates/partials/gate-gauge.html",
 	"assets/templates/partials/provider-chip.html",
 }, dashboardTemplateFuncs())
@@ -3316,40 +3359,41 @@ func dashboardTemplateFuncs() template.FuncMap {
 			}
 			return len(tasks) - limit
 		},
-		"wallLaneTasks":            wallLaneTasks,
-		"wallMissingReviewDomains": wallMissingReviewDomains,
-		"wallProviderClass":        wallProviderClass,
-		"wallActiveSessions":       wallActiveSessions,
-		"wallRoleActiveSession":    wallRoleActiveSession,
-		"wallSessionCheckpoint":    wallSessionCheckpoint,
-		"wallSessionTaskRole":      wallSessionTaskRole,
-		"wallTasksMoving":          wallTasksMoving,
-		"wallHandoffCount":         wallHandoffCount,
-		"wallDoneToday":            wallDoneToday,
-		"wallTaskHasProvider":      wallTaskHasProvider,
-		"wallRoleHref":             wallRoleHref,
-		"wallProjectRoleHref":      wallProjectRoleHref,
-		"wallLaneHref":             wallLaneHref,
-		"wallRoleActivity":         wallRoleActivity,
-		"boardRows":                boardRows,
-		"boardTabHref":             boardTabHref,
-		"boardPageHref":            boardPageHref,
-		"boardExportHref":          boardExportHref,
-		"boardSortHref":            boardSortHref,
-		"boardSortState":           boardSortState,
-		"boardSortAria":            boardSortAria,
-		"boardColumns":             boardColumns,
-		"boardColumnsParam":        boardColumnsParam,
-		"boardVisibleColumns":      boardVisibleColumns,
-		"boardColumnCount":         boardColumnCount,
-		"boardTaskCell":            boardTaskCell,
-		"statusFilterValues":       statusFilterValues,
-		"statusSelected":           statusSelected,
-		"contains":                 containsString,
-		"statusClass":              safeDashboardClass,
-		"safeClass":                safeDashboardClass,
-		"dashboardReadOnly":        dashboardReadOnly,
-		"dict":                     templateDict,
+		"wallLaneTasks":             wallLaneTasks,
+		"wallMissingReviewDomains":  wallMissingReviewDomains,
+		"wallProviderClass":         wallProviderClass,
+		"wallActiveSessions":        wallActiveSessions,
+		"wallRoleActiveSession":     wallRoleActiveSession,
+		"wallSessionCheckpoint":     wallSessionCheckpoint,
+		"wallSessionTaskRole":       wallSessionTaskRole,
+		"wallTasksMoving":           wallTasksMoving,
+		"wallHandoffCount":          wallHandoffCount,
+		"wallDoneToday":             wallDoneToday,
+		"wallTaskHasProvider":       wallTaskHasProvider,
+		"wallRoleHref":              wallRoleHref,
+		"wallProjectRoleHref":       wallProjectRoleHref,
+		"wallLaneHref":              wallLaneHref,
+		"wallRoleActivity":          wallRoleActivity,
+		"boardRows":                 boardRows,
+		"boardTabHref":              boardTabHref,
+		"boardDiagnosticsPanelHref": boardDiagnosticsPanelHref,
+		"boardPageHref":             boardPageHref,
+		"boardExportHref":           boardExportHref,
+		"boardSortHref":             boardSortHref,
+		"boardSortState":            boardSortState,
+		"boardSortAria":             boardSortAria,
+		"boardColumns":              boardColumns,
+		"boardColumnsParam":         boardColumnsParam,
+		"boardVisibleColumns":       boardVisibleColumns,
+		"boardColumnCount":          boardColumnCount,
+		"boardTaskCell":             boardTaskCell,
+		"statusFilterValues":        statusFilterValues,
+		"statusSelected":            statusSelected,
+		"contains":                  containsString,
+		"statusClass":               safeDashboardClass,
+		"safeClass":                 safeDashboardClass,
+		"dashboardReadOnly":         dashboardReadOnly,
+		"dict":                      templateDict,
 	}
 	return funcs
 }

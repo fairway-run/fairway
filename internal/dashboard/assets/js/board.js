@@ -13,16 +13,40 @@
     rows.forEach((row) => tbody.appendChild(row));
   }
 
-  document.querySelectorAll("table[data-sortable]").forEach((table) => {
-    table.querySelectorAll("thead button[data-sort]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const index = button.closest("th").cellIndex;
-        const next = button.getAttribute("aria-sort") !== "ascending" ? "ascending" : "descending";
-        table.querySelectorAll("thead button[data-sort]").forEach((other) => other.removeAttribute("aria-sort"));
-        button.setAttribute("aria-sort", next);
-        sortTable(table, index, next === "descending");
+  function initSortableTables(root = document) {
+    root.querySelectorAll("table[data-sortable]").forEach((table) => {
+      if (table.dataset.sortableReady === "true") return;
+      table.dataset.sortableReady = "true";
+      table.querySelectorAll("thead button[data-sort]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = button.closest("th").cellIndex;
+          const next = button.getAttribute("aria-sort") !== "ascending" ? "ascending" : "descending";
+          table.querySelectorAll("thead button[data-sort]").forEach((other) => other.removeAttribute("aria-sort"));
+          button.setAttribute("aria-sort", next);
+          sortTable(table, index, next === "descending");
+        });
       });
     });
+  }
+
+  initSortableTables();
+
+  document.querySelectorAll("[data-lazy-panel]").forEach((panel) => {
+    const src = panel.getAttribute("data-src");
+    if (!src) return;
+    fetch(src, { headers: { "Accept": "text/html" } })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then((html) => {
+        panel.innerHTML = html;
+        initSortableTables(panel);
+      })
+      .catch((error) => {
+        const status = panel.querySelector(".lazy-panel-status");
+        if (status) status.textContent = `Diagnostics unavailable: ${error.message}`;
+      });
   });
 
   document.querySelectorAll(".board-table thead a[data-sort-key]").forEach((link) => {

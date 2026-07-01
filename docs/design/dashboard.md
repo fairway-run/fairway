@@ -150,6 +150,13 @@ clear the cache before redirecting. The cache never stores POST bodies, never
 adds dashboard write authority, and does not change the underlying Fairway DB as
 the source of truth.
 
+Heavy board diagnostics are lazy-loaded. `/board?tab=diagnostics` renders the
+normal board shell and a loading panel first, then fetches
+`/board/panels/diagnostics` for coordinator plan, active reconciliation,
+closeout, coverage, session, worktree, watcher, and checkpoint diagnostics. The
+panel endpoint is read-only, uses the same request filters, and exists only to
+move expensive diagnostic rendering out of the first page response.
+
 It includes:
 
 - a control-room header with total filtered scope,

@@ -1,0 +1,90 @@
+{{define "diagnostics-panels"}}
+<section class="diagnostics-grid">
+<article class="diagnostic-panel wide">
+<h2>Diagnostic Counters</h2>
+<section class="summary-strip" aria-label="Diagnostic counter summary">
+<div><b>{{.ActiveReport.Summary.MonitorSessionsNoProof}}</b><span>monitor proof</span></div>
+<div><b>{{.ActiveReport.Summary.MonitorResumeNeeded}}</b><span>monitor resume</span></div>
+<div><b>{{.ActiveReport.Summary.ProviderLifecycleMissing}}</b><span>provider lifecycle</span></div>
+<div><b>{{len .CloseoutReports}}</b><span>closeout debt</span></div>
+<div><b>{{.CoordinatorPlan.Summary.TopClassification}}</b><span>orchestration</span></div>
+</section>
+</article>
+<article class="diagnostic-panel wide">
+<h2>Coordination Intelligence</h2>
+<section class="summary-strip" aria-label="Coordination intelligence summary">
+<div><b>{{.Coordination.OpenWaits}}</b><span>Open waits</span></div>
+<div><b>{{.Coordination.StaleWaits}}</b><span>Stale waits</span></div>
+<div><b>{{.Coordination.NotificationFailures}}</b><span>Mapping gaps</span></div>
+<div><b>{{.Coordination.MemoryTotal}}</b><span>Memory tracks</span></div>
+<div><b>{{.Coordination.MemoryStale}}</b><span>Stale memory</span></div>
+</section>
+<h3>Waits and wake targets</h3>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Source</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Owner</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Wake target</button></th><th><button type="button" data-sort="text">Last wake</button></th><th><button type="button" data-sort="text">Next</button></th></tr></thead><tbody>
+{{range .Coordination.Waits}}<tr><td>{{.Source}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.Owner}}</td><td>{{.State}}</td><td>{{if .TargetProvider}}{{.TargetProvider}} {{end}}{{if .Target}}{{.Target}}{{else}}none{{end}}</td><td>{{if .LastWakeAttempt}}{{.LastWakeAttempt}}{{else}}none{{end}}</td><td>{{if .SuggestedCommand}}<code>{{.SuggestedCommand}}</code>{{else}}{{.Action}}{{end}}</td></tr>{{else}}<tr><td colspan="7">no open coordination waits</td></tr>{{end}}
+</tbody></table>
+<h3>Track memory</h3>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Track</button></th><th><button type="button" data-sort="text">Updated</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Next action</button></th><th><button type="button" data-sort="text">Blocker</button></th></tr></thead><tbody>
+{{range .Coordination.Memories}}<tr><td>{{.TrackID}} {{if .Title}}<span class="muted">{{.Title}}</span>{{end}}</td><td>{{.UpdatedAt}}</td><td>{{if .Stale}}stale{{else}}fresh{{end}}</td><td>{{.NextAction}}</td><td>{{.OpenBlocker}}</td></tr>{{else}}<tr><td colspan="5">no track memory rows</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Active Reconciliation</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Session</button></th><th><button type="button" data-sort="text">Action</button></th><th><button type="button" data-sort="text">Reason</button></th></tr></thead><tbody>
+{{range .ActiveReport.Findings}}<tr><td>{{.Kind}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionID}}</td><td>{{.Action}}</td><td>{{.Reason}}</td></tr>{{else}}<tr><td colspan="5">no active reconciliation findings</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Lane Closeout</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="number">Blockers</button></th><th><button type="button" data-sort="number">Warnings</button></th><th><button type="button" data-sort="text">Findings</button></th></tr></thead><tbody>
+{{range .CloseoutReports}}<tr><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td>{{.Branch}}</td><td>{{.Summary.Blockers}}</td><td>{{.Summary.Warnings}}</td><td>{{range .Findings}}<span class="chip">{{.Kind}}</span> {{end}}</td></tr>{{else}}<tr><td colspan="5">no lane closeout debt</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel wide">
+<h2>Coverage Diagnostics</h2>
+<section class="summary-strip" aria-label="Coverage summary">
+<div><b>{{.Audit.WorkCoverage.Summary.CommitsWithoutTaskID}}</b><span>Uncovered commits</span></div>
+<div><b>{{.Audit.WorkCoverage.Summary.ChangedFilesUncovered}}</b><span>Uncovered changed files</span></div>
+<div><b>{{.Audit.WorkCoverage.Summary.OrphanEvidence}}</b><span>Orphan evidence</span></div>
+<div><b>{{.Audit.WorkCoverage.Summary.DoneWithoutRequiredEvidence}}</b><span>Done without evidence</span></div>
+<div><b>{{.Audit.WorkCoverage.Summary.MissingRequiredReviews}}</b><span>Missing review</span></div>
+<div><b>{{.Audit.WorkCoverage.Summary.WorkBatchCandidates}}</b><span>Batch candidates</span></div>
+<div><b>{{.Audit.CILearning.Summary.MissingFollowUps}}</b><span>Failed CI follow-ups</span></div>
+</section>
+{{if .Audit.WorkCoverageError}}<p class="muted">work coverage audit unavailable: {{.Audit.WorkCoverageError}}</p>{{end}}
+{{if .Audit.CILearningError}}<p class="muted">CI learning audit unavailable: {{.Audit.CILearningError}}</p>{{end}}
+<h3>Work Coverage Findings</h3>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Commit</button></th><th><button type="button" data-sort="text">Files</button></th><th><button type="button" data-sort="text">Next</button></th></tr></thead><tbody>
+{{range takeWorkCoverageFindings .Audit.WorkCoverage.Findings 8}}<tr><td>{{.Kind}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{else}}-{{end}}</td><td>{{if .Commit}}<code>{{.Commit}}</code>{{end}}</td><td>{{range .Files}}<code>{{.}}</code> {{end}}{{range .RelatedTasks}}<code>{{.}}</code> {{end}}</td><td>{{.Recommended}}</td></tr>{{else}}<tr><td colspan="5">no work coverage findings</td></tr>{{end}}
+</tbody></table>
+<h3>CI Learning Findings</h3>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Class</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Evidence</button></th><th><button type="button" data-sort="text">Follow-up</button></th><th><button type="button" data-sort="text">Reproduce</button></th></tr></thead><tbody>
+{{range takeCILearningFindings .Audit.CILearning.Findings 8}}<tr><td>{{.FailureClass}}</td><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td>{{.EvidenceType}} {{if .ArtifactPath}}<code>{{.ArtifactPath}}</code>{{end}}</td><td>{{if .FollowUpTask}}<a href="/tasks/{{.FollowUpTask}}">{{.FollowUpTask}}</a>{{else}}<code>fairway add {{.RecommendedFollowUpTaskID}}</code>{{end}}</td><td>{{.ExpectedLocalReproduction}}</td></tr>{{else}}<tr><td colspan="5">no CI/deploy learning findings</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Sessions</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Backend</button></th><th><button type="button" data-sort="text">Monitor proof</button></th></tr></thead><tbody>
+{{range .Sessions}}<tr><td>{{.ID}}</td><td>{{.Role}}</td><td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td><td>{{.Branch}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionBackend}} {{.Provider}}</td><td>{{if .MonitorKind}}{{.MonitorKind}} {{end}}{{if .AutomationID}}automation {{.AutomationID}} {{end}}{{if .ExternalRunID}}run {{.ExternalRunID}} {{end}}{{if .PollCommand}}poll <code>{{.PollCommand}}</code> {{end}}{{if .ManualUntil}}manual until {{.ManualUntil}}{{end}}</td></tr>{{else}}<tr><td colspan="7">no live sessions</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Worktrees</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Commit</button></th><th><button type="button" data-sort="text">Path</button></th></tr></thead><tbody>
+{{range .Worktrees}}<tr><td>{{.Role}}</td><td>{{.Branch}}</td><td>{{if .Dirty}}dirty{{else}}clean{{end}} {{if not .Exists}}missing{{else if not .Registered}}unregistered{{end}}</td><td>{{.LastCommit}}</td><td>{{.Path}}</td></tr>{{else}}<tr><td colspan="5">no configured worktrees</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Watchers</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Owner</button></th><th><button type="button" data-sort="text">Process</button></th><th><button type="button" data-sort="text">Command</button></th></tr></thead><tbody>
+{{range .Watchers}}<tr><td>{{.ID}}</td><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td><span class="status-pill {{statusClass .Status}}">{{.Status}}</span></td><td>{{.Owner}}</td><td>{{.Process}}</td><td>{{.Command}}</td></tr>{{else}}<tr><td colspan="6">none</td></tr>{{end}}
+</tbody></table>
+</article>
+<article class="diagnostic-panel">
+<h2>Checkpoints</h2>
+<table data-sortable><thead><tr><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Owner</button></th><th><button type="button" data-sort="text">Target close</button></th><th><button type="button" data-sort="text">Summary</button></th></tr></thead><tbody>
+{{range .Checkpoints}}<tr><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td><span class="status-pill {{statusClass .State}}">{{.State}}</span></td><td>{{.Owner}}</td><td>{{.TargetCloseBy}}</td><td>{{.Summary}}</td></tr>{{else}}<tr><td colspan="5">none</td></tr>{{end}}
+</tbody></table>
+</article>
+</section>
+{{end}}

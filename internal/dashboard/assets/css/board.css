@@ -749,6 +749,10 @@ a {
   font-size: 13px;
 }
 
+.lazy-panel-status {
+  padding: var(--space-4);
+}
+
 .diagnostic-panel th,
 .diagnostic-panel td {
   padding: 10px var(--space-3);

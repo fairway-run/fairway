@@ -75,9 +75,18 @@ func TestIndexRendersDashboardVisibility(t *testing.T) {
 	rec = httptest.NewRecorder()
 	server.board(rec, req)
 	body = rec.Body.String()
-	for _, want := range []string{"Sessions", "Worktrees", "Watchers", "Checkpoints", "Workstreams", "E-001", "W-001"} {
+	for _, want := range []string{"Loading coordinator, reconciliation, closeout, and coverage diagnostics", "Workstreams", "E-001"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("diagnostics body missing %q:\n%s", want, body)
+		}
+	}
+	req = httptest.NewRequest(http.MethodGet, "/board/panels/diagnostics?tab=diagnostics", nil)
+	rec = httptest.NewRecorder()
+	server.boardDiagnosticsPanel(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{"Sessions", "Worktrees", "Watchers", "Checkpoints", "W-001"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("diagnostics panel missing %q:\n%s", want, body)
 		}
 	}
 }
@@ -131,12 +140,26 @@ func TestDashboardRoutes(t *testing.T) {
 	diagnosticsRec := httptest.NewRecorder()
 	server.board(diagnosticsRec, diagnosticsReq)
 	diagnosticsBody := diagnosticsRec.Body.String()
-	if !strings.Contains(diagnosticsBody, "Active Reconciliation") || !strings.Contains(diagnosticsBody, "Lane Closeout") {
-		t.Fatalf("/board diagnostics did not render heavy diagnostic panels:\n%s", diagnosticsBody)
+	if !strings.Contains(diagnosticsBody, "Loading coordinator, reconciliation, closeout, and coverage diagnostics") {
+		t.Fatalf("/board diagnostics did not render lazy diagnostics placeholder:\n%s", diagnosticsBody)
 	}
-	for _, want := range []string{"monitor proof:", "monitor resume:", "provider lifecycle:", "closeout debt:"} {
-		if !strings.Contains(diagnosticsBody, want) {
-			t.Fatalf("/board diagnostics missing numeric diagnostic counter %q:\n%s", want, diagnosticsBody)
+	if strings.Contains(diagnosticsBody, "Active Reconciliation") || strings.Contains(diagnosticsBody, "Lane Closeout") {
+		t.Fatalf("/board diagnostics initial render included heavy panels:\n%s", diagnosticsBody)
+	}
+	if strings.Contains(diagnosticsBody, "monitor proof: 0") || strings.Contains(diagnosticsBody, "closeout debt: 0") {
+		t.Fatalf("/board diagnostics initial render included skipped diagnostic false zeroes:\n%s", diagnosticsBody)
+	}
+
+	panelReq := httptest.NewRequest(http.MethodGet, "/board/panels/diagnostics?tab=diagnostics", nil)
+	panelRec := httptest.NewRecorder()
+	server.boardDiagnosticsPanel(panelRec, panelReq)
+	panelBody := panelRec.Body.String()
+	if !strings.Contains(panelBody, "Active Reconciliation") || !strings.Contains(panelBody, "Lane Closeout") {
+		t.Fatalf("diagnostics panel did not render heavy diagnostic panels:\n%s", panelBody)
+	}
+	for _, want := range []string{"monitor proof", "monitor resume", "provider lifecycle", "closeout debt"} {
+		if !strings.Contains(panelBody, want) {
+			t.Fatalf("diagnostics panel missing numeric diagnostic counter %q:\n%s", want, panelBody)
 		}
 	}
 
@@ -1135,9 +1158,9 @@ func TestBoardDiagnosticsRendersCleanCoverageAndLearningCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewWithRoot(s, config.Defaults(root), []string{"backend"}, nil, root)
-	req := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board/panels/diagnostics?tab=diagnostics", nil)
 	rec := httptest.NewRecorder()
-	server.board(rec, req)
+	server.boardDiagnosticsPanel(rec, req)
 	body := rec.Body.String()
 	for _, want := range []string{
 		"Coverage Diagnostics",
@@ -1172,9 +1195,9 @@ func TestBoardDiagnosticsRendersUncoveredCommitAndChangedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewWithRoot(s, config.Defaults(root), []string{"backend"}, nil, root)
-	req := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board/panels/diagnostics?tab=diagnostics", nil)
 	rec := httptest.NewRecorder()
-	server.board(rec, req)
+	server.boardDiagnosticsPanel(rec, req)
 	body := rec.Body.String()
 	for _, want := range []string{
 		"commit_without_task_coverage",
@@ -1205,9 +1228,9 @@ func TestBoardDiagnosticsRendersFailedCILearningWithoutFollowUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewWithRoot(s, config.Defaults(root), []string{"backend"}, nil, root)
-	req := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/board/panels/diagnostics?tab=diagnostics", nil)
 	rec := httptest.NewRecorder()
-	server.board(rec, req)
+	server.boardDiagnosticsPanel(rec, req)
 	body := rec.Body.String()
 	for _, want := range []string{
 		"CI Learning Findings",

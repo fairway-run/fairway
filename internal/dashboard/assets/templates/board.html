@@ -52,7 +52,7 @@
 <span>stale checkpoints: {{len .StaleCheckpoints}}</span>
 <span>active watchers: {{len .Watchers}}</span>
 <span>sessions: {{len .Sessions}}</span>
-{{if eq .Filters.Tab "diagnostics"}}
+{{if and (eq .Filters.Tab "diagnostics") (not .DiagnosticsDeferred)}}
 <span>monitor proof: {{.ActiveReport.Summary.MonitorSessionsNoProof}}</span>
 <span>monitor resume: {{.ActiveReport.Summary.MonitorResumeNeeded}}</span>
 <span>provider lifecycle: {{.ActiveReport.Summary.ProviderLifecycleMissing}}</span>
@@ -66,6 +66,15 @@
 {{end}}
 </section>
 {{if eq .Filters.Tab "diagnostics"}}
+{{if .DiagnosticsDeferred}}
+<section class="diagnostics-grid" data-lazy-panel data-src="{{boardDiagnosticsPanelHref .Filters}}" aria-live="polite">
+<article class="diagnostic-panel wide">
+<h2>Diagnostics</h2>
+<p class="muted lazy-panel-status">Loading coordinator, reconciliation, closeout, and coverage diagnostics...</p>
+<noscript><p class="muted">JavaScript is required for lazy diagnostics. Open <a href="{{boardDiagnosticsPanelHref .Filters}}">the diagnostics panel endpoint</a> directly.</p></noscript>
+</article>
+</section>
+{{else}}
 <section class="diagnostics-grid">
 <article class="diagnostic-panel wide">
 <h2>Coordination Intelligence</h2>
@@ -144,6 +153,7 @@
 </tbody></table>
 </article>
 </section>
+{{end}}
 {{else}}
 <section class="control-section gate-overview" aria-label="Gate readiness">
 <header class="section-head">
