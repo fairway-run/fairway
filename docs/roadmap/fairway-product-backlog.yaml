@@ -4084,3 +4084,34 @@ tasks:
       - "Cover identity, audit, tenancy/project scoping, offline/local fallback, and no hidden approval/send/merge/deploy authority."
       - "State that shared-team Fairway is not just a Postgres backend; server API, concurrency, deployment, and operations require separate reviewed designs."
       - "Preserve local-first defaults and dashboard read-only trust boundaries."
+
+  - id: FW-257
+    title: Design shared-team Fairway server API and identity boundary
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: server
+    source_paths:
+      - docs/design
+      - cmd/fairway
+      - internal/dashboard
+      - internal/store
+    target_paths:
+      - docs/design/shared-team-server-api.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - security
+      - ops
+    risk_level: high
+    migration_type: shared-team-server-api
+    dependencies:
+      - FW-256
+    acceptance_checks:
+      - "Define whether a Fairway server process is needed, which APIs it exposes, and which CLI/dashboard flows remain local-only."
+      - "Specify authn/authz, read-only versus write-capable roles, audit requirements, CSRF/API token boundaries, and Cloudflare/Pomerium/no-edge deployment profiles."
+      - "No implementation or public exposure is authorized by the design task."
+      - "Separate dashboard routes, command-shaped write APIs, provider adapter APIs, and local-only release/git/live-operation flows."
+      - "Preserve privacy boundaries for prompts, transcripts, raw tool bodies, tokens, cookies, credentials, and artifact content."
