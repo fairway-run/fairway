@@ -80,6 +80,12 @@ Render a chronological timeline for deploy-run and monitor-related activity:
 
 This section is the main tool for learning why CI and deploy consumed time.
 
+For environment rehearsal packets, delivery reports group failed, blocked, or
+partial evidence by `packet=<id>` and `check=<id>` values from evidence notes.
+This lets repeated route-readback, worker-access, smoke, rollback, or
+evidence-contract failures show up as deterministic automation candidates
+without adding a second rehearsal store.
+
 ### Reviews And Evidence
 
 Show:

@@ -3387,6 +3387,12 @@ func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) e
 				fmt.Printf("- task=%s signal=%s count=%d next=%s\n", loop.TaskID, loop.Signal, loop.Count, loop.Recommended)
 			}
 		}
+		if len(report.Rehearsals) > 0 {
+			fmt.Println("rehearsal_failures:")
+			for _, rehearsal := range report.Rehearsals {
+				fmt.Printf("- packet=%s check=%s count=%d tasks=%s\n", rehearsal.PacketID, rehearsal.CheckID, rehearsal.Count, strings.Join(rehearsal.TaskIDs, ","))
+			}
+		}
 		if len(report.Batches) > 0 {
 			fmt.Println("batches:")
 			for _, batch := range report.Batches {
@@ -9551,6 +9557,9 @@ func cmdPacketTemplate(ctx context.Context, opts globalOptions, args []string) e
 	fs := flag.NewFlagSet("packet template", flag.ContinueOnError)
 	var fields multiFlag
 	fs.Var(&fields, "field", "template field as key=value; may repeat")
+	instantiateWaits := fs.Bool("instantiate-waits", false, "record rehearsal waits for packet checks that need follow-up")
+	var childTasks multiFlag
+	fs.Var(&childTasks, "child-task", "instantiate child task as id=field; may repeat")
 	if err := fs.Parse(args[2:]); err != nil {
 		return err
 	}
@@ -9573,13 +9582,20 @@ func cmdPacketTemplate(ctx context.Context, opts globalOptions, args []string) e
 		if err != nil {
 			return err
 		}
+		instantiatedWaits, instantiatedTasks, err := instantiatePacketTemplate(ctx, s, template, task, values, *instantiateWaits, childTasks)
+		if err != nil {
+			return err
+		}
 		packet := struct {
-			Template config.PacketTemplate `json:"template"`
-			Task     store.Task            `json:"task"`
-			Fields   map[string][]string   `json:"fields"`
-			Evidence []store.Evidence      `json:"evidence"`
-			Reviews  []store.Review        `json:"reviews"`
-		}{template, task, values, evidence, reviews}
+			Template          config.PacketTemplate  `json:"template"`
+			Task              store.Task             `json:"task"`
+			Fields            map[string][]string    `json:"fields"`
+			Evidence          []store.Evidence       `json:"evidence"`
+			Reviews           []store.Review         `json:"reviews"`
+			Authorization     string                 `json:"authorization"`
+			InstantiatedWaits []waitRow              `json:"instantiated_waits,omitempty"`
+			InstantiatedTasks []store.TaskDefinition `json:"instantiated_tasks,omitempty"`
+		}{template, task, values, evidence, reviews, packetTemplateAuthorization(template.Name), instantiatedWaits, instantiatedTasks}
 		if opts.JSON {
 			return printJSON(packet)
 		}
@@ -9591,6 +9607,20 @@ func cmdPacketTemplate(ctx context.Context, opts globalOptions, args []string) e
 		fmt.Println("\n## Fields")
 		for _, field := range packetTemplateFieldOrder(template) {
 			printPacketTemplateField(field, values[field])
+		}
+		fmt.Println("\n## Authorization Boundary")
+		fmt.Println(packet.Authorization)
+		if len(packet.InstantiatedWaits) > 0 {
+			fmt.Println("\n## Instantiated Waits")
+			for _, wait := range packet.InstantiatedWaits {
+				fmt.Printf("- %s kind=%s owner=%s condition=%s action=%s\n", wait.WaitID, wait.Kind, firstNonEmpty(wait.Owner, "none"), wait.Condition, wait.Action)
+			}
+		}
+		if len(packet.InstantiatedTasks) > 0 {
+			fmt.Println("\n## Instantiated Child Tasks")
+			for _, child := range packet.InstantiatedTasks {
+				fmt.Printf("- %s %s\n", child.ID, child.Title)
+			}
 		}
 		printEvidenceSummary(evidence)
 		fmt.Println("\n## Reviews")
@@ -11342,7 +11372,33 @@ func packetTemplateByName(templates []config.PacketTemplate, name string) (confi
 			return template, true
 		}
 	}
+	for _, template := range builtinPacketTemplates() {
+		if template.Name == name {
+			return template, true
+		}
+	}
 	return config.PacketTemplate{}, false
+}
+
+func builtinPacketTemplates() []config.PacketTemplate {
+	return []config.PacketTemplate{{
+		Name: "environment-deploy-preflight",
+		RequiredFields: []string{
+			"environment",
+			"deploy_kind",
+			"source_sha",
+			"operator_surface",
+			"route_readback",
+			"worker_access",
+			"smoke_scope",
+			"rollback_plan",
+			"evidence_contract",
+			"next_owner",
+			"next_action",
+			"handoff_deadline",
+		},
+		OptionalFields: []string{"known_limits", "manual_checks", "forbidden_actions", "approval_boundary", "related_batch", "release_url"},
+	}}
 }
 
 func parsePacketTemplateFields(fields []string) (map[string][]string, error) {
@@ -11414,6 +11470,172 @@ func printPacketTemplateField(field string, values []string) {
 	for _, value := range values {
 		fmt.Printf("- %s\n", value)
 	}
+}
+
+func packetTemplateAuthorization(name string) string {
+	switch name {
+	case "environment-deploy-preflight":
+		return "Packet rendering and instantiation are readiness/handoff context only. They do not authorize live execution, deploy, rollback, production mutation, credential use, approval acceptance, merge, release, DNS/proxy mutation, public exposure, or dashboard write/send authority."
+	default:
+		return "Packet rendering is advisory context only. It does not authorize approval, merge, deploy, release, live execution, provider wake, or dashboard mutation."
+	}
+}
+
+func instantiatePacketTemplate(ctx context.Context, s *store.Store, template config.PacketTemplate, task store.Task, values map[string][]string, instantiateWaits bool, childTaskSpecs []string) ([]waitRow, []store.TaskDefinition, error) {
+	var waits []waitRow
+	var children []store.TaskDefinition
+	if instantiateWaits {
+		if template.Name != "environment-deploy-preflight" {
+			return nil, nil, fmt.Errorf("--instantiate-waits is only supported for environment-deploy-preflight packets")
+		}
+		var err error
+		waits, err = instantiateEnvironmentRehearsalWaits(ctx, s, task, values)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if len(childTaskSpecs) > 0 {
+		if template.Name != "environment-deploy-preflight" {
+			return nil, nil, fmt.Errorf("--child-task is only supported for environment-deploy-preflight packets")
+		}
+		var err error
+		children, err = instantiateEnvironmentRehearsalChildTasks(ctx, s, task, values, childTaskSpecs)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return waits, children, nil
+}
+
+func instantiateEnvironmentRehearsalWaits(ctx context.Context, s *store.Store, task store.Task, values map[string][]string) ([]waitRow, error) {
+	owner := firstTemplateValue(values, "next_owner")
+	if owner == "" {
+		owner = task.Definition.Role
+	}
+	deadline := firstTemplateValue(values, "handoff_deadline")
+	nextAction := firstTemplateValue(values, "next_action")
+	if deadline != "" {
+		if _, err := parseFlexibleTime(deadline); err != nil {
+			return nil, fmt.Errorf("environment-deploy-preflight handoff_deadline %q is invalid: %w", deadline, err)
+		}
+	}
+	var rows []waitRow
+	for _, field := range environmentRehearsalCheckFields() {
+		for _, value := range values[field] {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			condition := "environment-deploy-preflight/" + field
+			waitID := manualWaitID(task.Definition.ID, "environment-rehearsal", owner, condition)
+			payload := manualWaitPayload{
+				Event:            "add",
+				WaitID:           waitID,
+				Kind:             "environment-rehearsal",
+				TaskID:           task.Definition.ID,
+				TrackID:          owner,
+				Condition:        condition,
+				Target:           firstTemplateValue(values, "operator_surface"),
+				Action:           firstNonEmpty(nextAction, "record_"+field+"_evidence"),
+				Reason:           fmt.Sprintf("packet=environment-deploy-preflight check=%s value=%s", field, value),
+				DeadlineSource:   "environment-deploy-preflight.handoff_deadline",
+				SuggestedCommand: fmt.Sprintf("fairway wait list --task %s --kind environment-rehearsal", task.Definition.ID),
+			}
+			summary, err := encodeManualWaitSummary(payload)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+				TaskID:        payload.TaskID,
+				State:         "awaiting_input",
+				Owner:         payload.TrackID,
+				TargetCloseBy: deadline,
+				Summary:       summary,
+			}); err != nil {
+				return nil, err
+			}
+			rows = append(rows, waitRow{
+				WaitID:           waitID,
+				Kind:             payload.Kind,
+				TaskID:           payload.TaskID,
+				TrackID:          payload.TrackID,
+				Owner:            payload.TrackID,
+				Condition:        payload.Condition,
+				Target:           payload.Target,
+				State:            "open",
+				Action:           payload.Action,
+				Reason:           payload.Reason,
+				Deadline:         deadline,
+				DeadlineSource:   payload.DeadlineSource,
+				Source:           "manual_wait",
+				SuggestedCommand: payload.SuggestedCommand,
+			})
+		}
+	}
+	return rows, nil
+}
+
+func instantiateEnvironmentRehearsalChildTasks(ctx context.Context, s *store.Store, parent store.Task, values map[string][]string, specs []string) ([]store.TaskDefinition, error) {
+	owner := firstTemplateValue(values, "next_owner")
+	if owner == "" {
+		owner = parent.Definition.Role
+	}
+	var children []store.TaskDefinition
+	for _, raw := range specs {
+		childID, field, ok := strings.Cut(raw, "=")
+		if !ok {
+			return nil, fmt.Errorf("--child-task %q must use id=field", raw)
+		}
+		childID = strings.TrimSpace(childID)
+		field = strings.TrimSpace(field)
+		if childID == "" || field == "" {
+			return nil, fmt.Errorf("--child-task %q must use non-empty id=field", raw)
+		}
+		if !containsString(environmentRehearsalCheckFields(), field) {
+			return nil, fmt.Errorf("--child-task field %q is not an environment-deploy-preflight check field", field)
+		}
+		value := strings.Join(cleanRepeatedValues(values[field]), "; ")
+		if value == "" {
+			return nil, fmt.Errorf("--child-task field %q has no packet value", field)
+		}
+		children = append(children, store.TaskDefinition{
+			ID:               childID,
+			ParentID:         parent.Definition.ID,
+			Kind:             "workflow-guard",
+			Title:            fmt.Sprintf("Rehearse %s for %s", strings.ReplaceAll(field, "_", " "), parent.Definition.ID),
+			Role:             owner,
+			Notes:            fmt.Sprintf("packet=environment-deploy-preflight check=%s value=%s\n%s", field, value, packetTemplateAuthorization("environment-deploy-preflight")),
+			AcceptanceChecks: []string{fmt.Sprintf("Record evidence for %s: %s", field, value), "Do not treat this child task as deploy/live execution authority."},
+			Dependencies:     []string{parent.Definition.ID},
+			Profile:          parent.Definition.Profile,
+			OwningDomain:     parent.Definition.OwningDomain,
+			OwningLayer:      "environment-rehearsal",
+			Tags:             []string{"environment-rehearsal", "packet:environment-deploy-preflight", "check:" + field},
+			RiskLevel:        "medium",
+			MigrationType:    "rehearsal-packet-child",
+		})
+	}
+	if len(children) > 0 {
+		for _, child := range children {
+			if err := s.AddTask(ctx, child); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return children, nil
+}
+
+func environmentRehearsalCheckFields() []string {
+	return []string{"route_readback", "worker_access", "smoke_scope", "rollback_plan", "evidence_contract"}
+}
+
+func firstTemplateValue(values map[string][]string, field string) string {
+	for _, value := range values[field] {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 type taskMetadataFlags struct {

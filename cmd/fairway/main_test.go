@@ -3939,6 +3939,10 @@ func TestCLI_DeliveryReport(t *testing.T) {
 	runOK(t, "claim", "T-006")
 	runOK(t, "record", "evidence", "T-006", "--command-text", "owner UAT pass", "--result", "pass", "--artifact-type", "uat-proof")
 
+	runOK(t, "add", "T-007", "--title", "Blocked rehearsal", "--role", "ops", "--profile", "fairway-adoption")
+	runOK(t, "claim", "T-007")
+	runOK(t, "record", "evidence", "T-007", "--command-text", "route preflight blocked", "--result", "blocked", "--artifact-type", "environment-blocker", "--notes", "packet=environment-deploy-preflight check=route_readback owner=ops")
+
 	runOK(t, "batch", "create", "BATCH-001", "--title", "Fairway adoption batch", "--task", "T-001")
 	runOK(t, "batch", "add", "BATCH-001", "T-002", "T-003", "T-004", "T-005", "T-006")
 
@@ -3967,6 +3971,8 @@ func TestCLI_DeliveryReport(t *testing.T) {
 		"outcome=preflight defect_source=preflight",
 		"task=T-006 status=in_progress",
 		"outcome=uat defect_source=none",
+		"rehearsal_failures:",
+		"packet=environment-deploy-preflight check=route_readback count=1 tasks=T-007",
 	} {
 		assertContains(t, report, want)
 	}
@@ -3980,6 +3986,8 @@ func TestCLI_DeliveryReport(t *testing.T) {
 	assertContains(t, jsonReport, `"defect_source": "preflight"`)
 	assertContains(t, jsonReport, `"batch_id": "BATCH-001"`)
 	assertContains(t, jsonReport, `"signal": "repeated_failures_after_review"`)
+	assertContains(t, jsonReport, `"packet_id": "environment-deploy-preflight"`)
+	assertContains(t, jsonReport, `"check_id": "route_readback"`)
 	var parsed struct {
 		Rows []struct {
 			TaskID        string `json:"task_id"`
@@ -5107,6 +5115,77 @@ optional_fields = ["owner", "proof_command"]
 	if err := run(context.Background(), []string{"packet", "template", "release-risk", "T-001", "--field", "risk=deploy may fail", "--field", "mitigation=rollback", "--field", "extra=nope"}); err == nil {
 		t.Fatal("expected unknown template field error")
 	}
+}
+
+func TestCLI_EnvironmentDeployPreflightPacketTemplate(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Staging rehearsal", "--role", "ops", "--profile", "fairway-adoption")
+	args := []string{
+		"packet", "template", "environment-deploy-preflight", "T-001",
+		"--field", "environment=staging",
+		"--field", "deploy_kind=redeploy",
+		"--field", "source_sha=abc123",
+		"--field", "operator_surface=release lane",
+		"--field", "route_readback=curl published /healthz",
+		"--field", "worker_access=runner reads worker health",
+		"--field", "smoke_scope=API and browser smoke",
+		"--field", "rollback_plan=restore previous artifact",
+		"--field", "evidence_contract=.fairway/artifacts/T-001/preflight.md",
+		"--field", "next_owner=ops",
+		"--field", "next_action=fix blocker before handoff",
+		"--field", "handoff_deadline=2026-07-01T20:00:00Z",
+	}
+	packet := runCapture(t, args...)
+	assertContains(t, packet, "# Environment Deploy Preflight Packet: T-001")
+	assertContains(t, packet, "curl published /healthz")
+	assertContains(t, packet, "do not authorize live execution, deploy, rollback")
+
+	instantiateArgs := append([]string{}, args...)
+	instantiateArgs = append(instantiateArgs, "--instantiate-waits", "--child-task", "CHILD-001=route_readback")
+	instantiated := runCapture(t, instantiateArgs...)
+	assertContains(t, instantiated, "Instantiated Waits")
+	assertContains(t, instantiated, "environment-deploy-preflight/route_readback")
+	assertContains(t, instantiated, "Instantiated Child Tasks")
+	assertContains(t, instantiated, "CHILD-001")
+
+	waits := runCapture(t, "wait", "list", "--task", "T-001", "--kind", "environment-rehearsal")
+	assertContains(t, waits, "kind=environment-rehearsal")
+	assertContains(t, waits, "check=route_readback")
+	child := runCapture(t, "task-detail", "CHILD-001")
+	assertContains(t, child, "Rehearse route readback for T-001")
+	assertContains(t, child, "packet=environment-deploy-preflight check=route_readback")
+
+	jsonPacket := runCapture(t, "--json", "packet", "template", "environment-deploy-preflight", "T-001",
+		"--field", "environment=staging",
+		"--field", "deploy_kind=redeploy",
+		"--field", "source_sha=abc123",
+		"--field", "operator_surface=release lane",
+		"--field", "route_readback=curl published /healthz",
+		"--field", "worker_access=runner reads worker health",
+		"--field", "smoke_scope=API and browser smoke",
+		"--field", "rollback_plan=restore previous artifact",
+		"--field", "evidence_contract=.fairway/artifacts/T-001/preflight.md",
+		"--field", "next_owner=ops",
+		"--field", "next_action=fix blocker before handoff",
+		"--field", "handoff_deadline=2026-07-01T20:00:00Z")
+	assertContains(t, jsonPacket, `"Name": "environment-deploy-preflight"`)
+	assertContains(t, jsonPacket, `"authorization"`)
+
+	err = run(context.Background(), []string{"packet", "template", "environment-deploy-preflight", "T-001", "--field", "environment=staging"})
+	if err == nil {
+		t.Fatal("expected missing required environment packet fields")
+	}
+	assertContains(t, err.Error(), `requires field "deploy_kind"`)
 }
 
 func TestCLI_PacketRules(t *testing.T) {

@@ -65,6 +65,35 @@ fairway packet template environment-deploy-preflight DEPLOY-123 \
 Packet rendering is advisory. It does not run deploy commands, accept approval,
 mutate environments, or satisfy readiness by itself.
 
+Fairway includes `environment-deploy-preflight` as a built-in packet template,
+so consumers can render the packet before adding project-local TOML. The same
+command can optionally instantiate coordination state:
+
+```bash
+fairway packet template environment-deploy-preflight DEPLOY-123 \
+  --field environment=staging \
+  --field deploy_kind=redeploy \
+  --field source_sha="$(git rev-parse HEAD)" \
+  --field operator_surface="release lane" \
+  --field route_readback="curl /healthz through the published route" \
+  --field worker_access="runner can read job logs and worker health" \
+  --field smoke_scope="API smoke, browser smoke, background worker smoke" \
+  --field rollback_plan="previous artifact can be restored and read back" \
+  --field evidence_contract=".fairway/artifacts/DEPLOY-123/preflight.md" \
+  --field next_owner=ops \
+  --field next_action="fix route readback before user handoff" \
+  --field handoff_deadline=2026-06-25T22:00:00Z \
+  --instantiate-waits \
+  --child-task DEPLOY-ROUTE-001=route_readback
+```
+
+`--instantiate-waits` records generic `environment-rehearsal` waits for
+route-readback, worker-access, smoke, rollback, and evidence-contract checks.
+`--child-task <id=field>` creates an explicit child workflow-guard task for a
+named check field. Both modes are coordination-only. They do not run commands,
+grant approval, mutate environments, satisfy release readiness, or authorize
+live/deploy work.
+
 ## Evidence Contract
 
 Preflight and rehearsal outcomes should be attached to the deploy or release
@@ -155,7 +184,10 @@ optional_fields = ["known_limits", "manual_checks", "forbidden_actions", "approv
 the required evidence exists. Dashboard task detail and reports already display
 task tags, evidence, checkpoints, review waits, handoffs, and completion
 handbacks, so unresolved environment blockers are visible as long as they are
-recorded with the stable artifact types above.
+recorded with the stable artifact types above. `fairway delivery report` also
+groups failed, blocked, or partial rehearsal evidence by `packet=<id>` and
+`check=<id>` values in evidence notes, so repeated route, worker, smoke,
+rollback, or evidence-contract failures can be seen as automation candidates.
 
 ## Boundaries
 

@@ -72,7 +72,7 @@ fairway packet bugfix <task-id> --bug-summary <text> --root-cause <text> [--owni
 fairway packet retry <task-id> --kind <preflight|live-operation> --source-sha <sha> --operator-surface <surface> --artifact-dir <path> --evidence-contract <text>... --allowed-action <text>... --forbidden-action <text>... --expires-at <time-or-window> --prior-failure-closure <text> [--next-action <text>]
 fairway packet watcher <watch-id> --owner <role-or-lane> --process <text> --command <cmd> --success <text> --failure <text>
 fairway packet release-run <task-id> --version <vX.Y.Z> --tag <vX.Y.Z> --source-sha <sha> --release-notes <path-or-status> --changelog-state <text> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-url <url> --homebrew-tap-commit <sha> [--verification-command <cmd>]...
-fairway packet template <name> <task-id> --field <key=value>...
+fairway packet template <name> <task-id> --field <key=value>... [--instantiate-waits] [--child-task <id=field>]...
 fairway packet rules <task-id>
 fairway packet architecture-map <task-id> --scope <text> --current-owner <role> --target-owner <role> --migration-risk <text> [--source-doc <path>]... --acceptance <text>
 fairway packet boundary-guard <task-id> --guard-intent <text> [--finding <text>]... [--false-positive <text>]... --graduation-criteria <text> [--proof-command <cmd>]...
@@ -528,10 +528,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   selected and non-applicable rule-pack context, required evidence, recommended
   commands, review domains, rationale, and residual-risk/stop-condition fields;
   record that packet as evidence explicitly when it is used for review or
-  handoff. Use configured `packet template` entries for reusable deploy
-  rehearsal packets such as
-  [environment-deploy-preflight.md](environment-deploy-preflight.md); those
-  packets remain readiness/handoff context and do not authorize execution.
+  handoff. `packet template environment-deploy-preflight` is available as a
+  built-in reusable deploy rehearsal packet even when a project has not added a
+  local template. `--instantiate-waits` records generic
+  `environment-rehearsal` waits for route readback, worker access, smoke,
+  rollback, and evidence-contract checks. `--child-task <id=field>` creates an
+  explicit child workflow-guard task for a named check field. These
+  instantiation modes record coordination state only; they do not run deploy
+  commands, approve work, accept live authorization, mutate environments, or
+  grant dashboard send/write authority. Projects may still configure their own
+  `packet template` entries for reusable deploy rehearsal packets such as
+  [environment-deploy-preflight.md](environment-deploy-preflight.md).
 - `db compat --backend postgres` is a planned adapter harness, not the default
   v1 runtime.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that

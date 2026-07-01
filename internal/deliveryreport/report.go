@@ -25,6 +25,7 @@ type Report struct {
 	Overhead       Overhead           `json:"overhead"`
 	OutcomeSources []OutcomeSource    `json:"outcome_sources,omitempty"`
 	Loops          []LoopSummary      `json:"loops,omitempty"`
+	Rehearsals     []RehearsalFailure `json:"rehearsals,omitempty"`
 	Batches        []BatchDeliveryRow `json:"batches,omitempty"`
 	Rows           []TaskDeliveryRow  `json:"rows,omitempty"`
 }
@@ -68,6 +69,13 @@ type LoopSummary struct {
 	Signal      string `json:"signal"`
 	Count       int    `json:"count"`
 	Recommended string `json:"recommended_action"`
+}
+
+type RehearsalFailure struct {
+	PacketID string   `json:"packet_id"`
+	CheckID  string   `json:"check_id"`
+	Count    int      `json:"count"`
+	TaskIDs  []string `json:"task_ids"`
 }
 
 type TaskDeliveryRow struct {
@@ -123,6 +131,7 @@ func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options)
 	ackTimeout, _ := time.ParseDuration(strings.TrimSpace(cfg.Coordinator.NotificationAckTimeout))
 	report := Report{OK: true, Since: opts.Since.String(), Profile: opts.Profile}
 	outcomes := map[string]int{}
+	rehearsals := map[string]RehearsalFailure{}
 	for _, task := range tasks {
 		if opts.Profile != "" && task.Definition.Profile != opts.Profile {
 			continue
@@ -154,8 +163,10 @@ func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options)
 				Recommended: row.RecommendedAction,
 			})
 		}
+		addRehearsalFailures(rehearsals, detail.Definition.ID, evidence)
 	}
 	report.OutcomeSources = outcomeSources(outcomes)
+	report.Rehearsals = rehearsalFailures(rehearsals)
 	batches, err := s.WorkBatches(ctx)
 	if err != nil {
 		return Report{}, err
@@ -171,6 +182,78 @@ func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options)
 		report.Overhead.ReviewUsefulnessRatio = float64(report.Overhead.ReviewChangesRequested) / float64(report.Overhead.ReviewRecords)
 	}
 	return report, nil
+}
+
+func addRehearsalFailures(rows map[string]RehearsalFailure, taskID string, evidence []store.Evidence) {
+	for _, ev := range evidence {
+		if ev.Result != "fail" && ev.Result != "blocked" && ev.Result != "partial" {
+			continue
+		}
+		packetID, checkID := rehearsalPacketCheck(ev)
+		if packetID == "" || checkID == "" {
+			continue
+		}
+		key := packetID + "\x00" + checkID
+		row := rows[key]
+		if row.PacketID == "" {
+			row.PacketID = packetID
+			row.CheckID = checkID
+		}
+		row.Count++
+		if !stringSliceContains(row.TaskIDs, taskID) {
+			row.TaskIDs = append(row.TaskIDs, taskID)
+			sort.Strings(row.TaskIDs)
+		}
+		rows[key] = row
+	}
+}
+
+func rehearsalPacketCheck(ev store.Evidence) (string, string) {
+	packetID := noteValue(ev.Notes, "packet")
+	checkID := noteValue(ev.Notes, "check")
+	if packetID == "" && strings.HasPrefix(ev.ArtifactType, "environment-") {
+		packetID = "environment-deploy-preflight"
+	}
+	if checkID == "" {
+		checkID = strings.TrimPrefix(ev.ArtifactType, "environment-")
+	}
+	if checkID == "" {
+		checkID = noteValue(ev.CommandText, "check")
+	}
+	return packetID, checkID
+}
+
+func noteValue(text, key string) string {
+	for _, field := range strings.Fields(text) {
+		rawKey, value, ok := strings.Cut(field, "=")
+		if ok && strings.TrimSpace(rawKey) == key {
+			return strings.Trim(strings.TrimSpace(value), ",;")
+		}
+	}
+	return ""
+}
+
+func rehearsalFailures(rows map[string]RehearsalFailure) []RehearsalFailure {
+	out := make([]RehearsalFailure, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].PacketID != out[j].PacketID {
+			return out[i].PacketID < out[j].PacketID
+		}
+		return out[i].CheckID < out[j].CheckID
+	})
+	return out
+}
+
+func stringSliceContains(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func taskRow(cfg config.Config, task store.Task, transitions []store.Transition, evidence []store.Evidence, handoffs []store.Handoff, reviews []store.Review, notifications []store.Notification, ackTimeout time.Duration, start, now time.Time) TaskDeliveryRow {
