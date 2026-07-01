@@ -135,6 +135,13 @@ projections are actually computed. This keeps routine board refreshes focused on
 current task navigation without changing the dashboard trust boundary or hiding
 the complete diagnostic surface.
 
+Gate readiness and visible-table missing-review status use batch projections
+over existing evidence and review rows. They must not call full task-detail
+hydration once per rendered task. Slow-route timing logs should show
+`dashboard.gates.batch_evidence` and
+`dashboard.missing_review_domains.batch_reviews` so regressions back to
+per-task `TaskDetail` loops are visible.
+
 It includes:
 
 - a control-room header with total filtered scope,

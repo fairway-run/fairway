@@ -1143,10 +1143,69 @@ func (s *Store) EvidenceTypes(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) EvidenceByTaskIDs(ctx context.Context, taskIDs []string) (map[string][]Evidence, error) {
+	ids := uniqueNonEmptyStrings(taskIDs)
+	out := make(map[string][]Evidence, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, s.projectID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT task_id, COALESCE(command_text, ''), COALESCE(result, ''), COALESCE(artifact_path, ''), COALESCE(artifact_type, ''), duration_seconds, COALESCE(notes, ''), created_at FROM task_evidence WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY task_id, created_at`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var taskID string
+		var ev Evidence
+		var dur sql.NullInt64
+		if err := rows.Scan(&taskID, &ev.CommandText, &ev.Result, &ev.ArtifactPath, &ev.ArtifactType, &dur, &ev.Notes, &ev.CreatedAt); err != nil {
+			return nil, err
+		}
+		if dur.Valid {
+			v := int(dur.Int64)
+			ev.DurationSeconds = &v
+		}
+		out[taskID] = append(out[taskID], ev)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) HasApprovedReview(ctx context.Context, taskID string) (bool, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_reviews WHERE project_id=? AND task_id=? AND verdict='approve'`, s.projectID, taskID).Scan(&count)
 	return count > 0, err
+}
+
+func (s *Store) ReviewsByTaskIDs(ctx context.Context, taskIDs []string) (map[string][]Review, error) {
+	ids := uniqueNonEmptyStrings(taskIDs)
+	out := make(map[string][]Review, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, s.projectID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT task_id, reviewer, COALESCE(review_domain, ''), verdict, notes, reviewed_commit_sha, created_at FROM task_reviews WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY task_id, created_at`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var taskID string
+		var r Review
+		if err := rows.Scan(&taskID, &r.Reviewer, &r.Domain, &r.Verdict, &r.Reason, &r.Commit, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		out[taskID] = append(out[taskID], r)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) HasHandoff(ctx context.Context, taskID string) (bool, error) {
@@ -2968,6 +3027,27 @@ func nullableIntPtr(value sql.NullInt64) *int {
 	}
 	v := int(value.Int64)
 	return &v
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func sqlPlaceholders(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	return strings.TrimRight(strings.Repeat("?,", count), ",")
 }
 
 func (s *Store) evidence(ctx context.Context, taskID string) ([]Evidence, error) {

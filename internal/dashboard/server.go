@@ -610,7 +610,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string, timing *dashboa
 	var missingReviewDomains map[string][]string
 	if err := timing.step("dashboard.missing_review_domains", func() error {
 		var err error
-		missingReviewDomains, err = s.dashboardMissingReviewDomainsByTask(r.Context(), reviewDomainScope, timing)
+		missingReviewDomains, err = s.dashboardMissingReviewDomainsByTask(r.Context(), reviewDomainScope, tasks, timing)
 		return err
 	}); err != nil {
 		return DashboardViewData{}, err
@@ -2094,13 +2094,18 @@ func paginateBoardRows(rows []store.Task, filters TaskFilters) ([]store.Task, Ta
 func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, gapLimit int, timing *dashboardTiming) ([]GateStatus, error) {
 	var statuses []GateStatus
 	now := time.Now().UTC()
-	taskDetailCalls := 0
+	var taskIDs []string
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.Definition.ID)
+	}
 	start := time.Now()
-	defer func() {
-		if timing != nil {
-			timing.add("dashboard.gates.task_detail_loop", time.Since(start), fmt.Sprintf("task_detail_calls=%d", taskDetailCalls))
-		}
-	}()
+	evidenceByTask, err := s.store.EvidenceByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return nil, err
+	}
+	if timing != nil {
+		timing.add("dashboard.gates.batch_evidence", time.Since(start), fmt.Sprintf("tasks=%d", len(taskIDs)))
+	}
 	for _, profile := range s.cfg.WorkstreamProfiles {
 		if len(profile.Gates) == 0 {
 			continue
@@ -2123,11 +2128,7 @@ func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, 
 				continue
 			}
 			for _, task := range profileTasks {
-				taskDetailCalls++
-				_, _, evidence, _, _, err := s.store.TaskDetail(ctx, task.Definition.ID)
-				if err != nil {
-					return nil, err
-				}
+				evidence := evidenceByTask[task.Definition.ID]
 				ok, matching, reasons := evaluateGateForTask(gate, evidence, now)
 				if ok {
 					status.SatisfiedCount++
@@ -2683,22 +2684,29 @@ func optionalDashboardReviewHandback(handback coord.ReviewCompletionHandback, ok
 	return &handback
 }
 
-func (s *Server) dashboardMissingReviewDomainsByTask(ctx context.Context, tasks []store.Task, timing *dashboardTiming) (map[string][]string, error) {
+func (s *Server) dashboardMissingReviewDomainsByTask(ctx context.Context, tasks []store.Task, allTasks []store.Task, timing *dashboardTiming) (map[string][]string, error) {
 	missingByTask := map[string][]string{}
 	start := time.Now()
-	taskDetailCalls := 0
-	defer func() {
-		if timing != nil {
-			timing.add("dashboard.missing_review_domains.task_detail_loop", time.Since(start), fmt.Sprintf("task_detail_calls=%d", taskDetailCalls))
-		}
-	}()
+	byID := make(map[string]store.Task, len(allTasks))
+	for _, task := range allTasks {
+		byID[task.Definition.ID] = task
+	}
+	var reviewTaskIDs []string
 	for _, task := range tasks {
-		taskDetailCalls++
-		detailTask, _, _, _, reviews, err := s.store.TaskDetail(ctx, task.Definition.ID)
-		if err != nil {
-			return nil, err
+		reviewTaskIDs = append(reviewTaskIDs, task.Definition.ID)
+		if parentID := strings.TrimSpace(task.Definition.ParentID); parentID != "" {
+			reviewTaskIDs = append(reviewTaskIDs, parentID)
 		}
-		eval, err := s.dashboardReviewPolicyEvaluation(ctx, detailTask, reviews)
+	}
+	reviewsByTask, err := s.store.ReviewsByTaskIDs(ctx, reviewTaskIDs)
+	if err != nil {
+		return nil, err
+	}
+	if timing != nil {
+		timing.add("dashboard.missing_review_domains.batch_reviews", time.Since(start), fmt.Sprintf("tasks=%d", len(reviewTaskIDs)))
+	}
+	for _, task := range tasks {
+		eval, err := s.dashboardReviewPolicyEvaluationFromMaps(task, byID, reviewsByTask)
 		if err != nil {
 			return nil, err
 		}
@@ -2725,6 +2733,21 @@ func (s *Server) dashboardReviewPolicyEvaluation(ctx context.Context, task store
 		Parent:        parent,
 		Reviews:       reviews,
 		ParentReviews: parentReviews,
+	}), nil
+}
+
+func (s *Server) dashboardReviewPolicyEvaluationFromMaps(task store.Task, tasksByID map[string]store.Task, reviewsByTask map[string][]store.Review) (reviewpolicy.Evaluation, error) {
+	var parent *store.Task
+	if parentID := strings.TrimSpace(task.Definition.ParentID); parentID != "" {
+		if parentTask, ok := tasksByID[parentID]; ok {
+			parent = &parentTask
+		}
+	}
+	return reviewpolicy.Evaluate(s.cfg, reviewpolicy.Options{
+		Task:          task,
+		Parent:        parent,
+		Reviews:       reviewsByTask[task.Definition.ID],
+		ParentReviews: reviewsByTask[task.Definition.ParentID],
 	}), nil
 }
 

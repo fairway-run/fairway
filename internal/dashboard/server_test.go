@@ -1258,7 +1258,7 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	missing, err := server.dashboardMissingReviewDomainsByTask(ctx, tasks, nil)
+	missing, err := server.dashboardMissingReviewDomainsByTask(ctx, tasks, tasks, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

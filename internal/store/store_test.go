@@ -125,6 +125,67 @@ func TestTaskDetail_AllowsEvidenceWithoutArtifact(t *testing.T) {
 	}
 }
 
+func TestBatchEvidenceAndReviewsByTaskIDs(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{
+		{ID: "T-001", Title: "One", Role: "backend"},
+		{ID: "T-002", Title: "Two", Role: "backend"},
+		{ID: "T-003", Title: "Three", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", Evidence{CommandText: "first", Result: "pass", ArtifactType: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", Evidence{CommandText: "second", Result: "fail", ArtifactType: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-003", Evidence{CommandText: "not requested", Result: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-001", Review{Reviewer: "alice", Domain: "backend", Verdict: "approve", Reason: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-002", Review{Reviewer: "bob", Domain: "ops", Verdict: "changes", Reason: "fix"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-003", Review{Reviewer: "carol", Domain: "ui", Verdict: "approve", Reason: "not requested"}); err != nil {
+		t.Fatal(err)
+	}
+
+	evidence, err := s.EvidenceByTaskIDs(ctx, []string{"T-001", "T-001", "", "T-002"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(evidence["T-001"]); got != 2 {
+		t.Fatalf("T-001 evidence count=%d, want 2", got)
+	}
+	if evidence["T-001"][0].CommandText != "first" || evidence["T-001"][1].CommandText != "second" {
+		t.Fatalf("T-001 evidence order=%+v, want created order", evidence["T-001"])
+	}
+	if got := len(evidence["T-002"]); got != 0 {
+		t.Fatalf("T-002 evidence count=%d, want 0", got)
+	}
+	if _, ok := evidence["T-003"]; ok {
+		t.Fatalf("unexpected evidence for unrequested T-003: %+v", evidence["T-003"])
+	}
+
+	reviews, err := s.ReviewsByTaskIDs(ctx, []string{"T-002", "T-001", "T-002"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reviews["T-001"]; len(got) != 1 || got[0].Domain != "backend" || got[0].Verdict != "approve" {
+		t.Fatalf("T-001 reviews=%+v, want backend approve", got)
+	}
+	if got := reviews["T-002"]; len(got) != 1 || got[0].Domain != "ops" || got[0].Verdict != "changes" {
+		t.Fatalf("T-002 reviews=%+v, want ops changes", got)
+	}
+	if _, ok := reviews["T-003"]; ok {
+		t.Fatalf("unexpected reviews for unrequested T-003: %+v", reviews["T-003"])
+	}
+}
+
 func TestSQLiteBusyTimeoutAllowsBurstEvidenceWrite(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "state.db")
