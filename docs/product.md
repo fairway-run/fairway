@@ -18,6 +18,10 @@ Traffic-control lanes were the first useful primitive: one lane, one role, one
 worktree, one visible task state. The product direction is broader but still
 bounded: Fairway coordinates the facts around multi-agent engineering work
 without becoming the system that performs or approves that work.
+For teams that outgrow one local coordination host, the
+[Shared-team operating model](design/shared-team-operating-model.md) defines
+when a shared Fairway control plane is justified and what authority boundaries
+must stay intact.
 
 The benchmark: a solo developer with three Claude lanes and one Codex lane open
 should never lose track of which agent is doing what, why a task is stuck, which

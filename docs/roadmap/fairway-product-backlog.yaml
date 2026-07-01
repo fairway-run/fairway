@@ -4026,7 +4026,7 @@ tasks:
 
   - id: FW-255
     title: Assess Postgres or server-backed Fairway store for team deployments
-    kind: architecture
+    kind: task
     role: arch
     profile: fairway-adoption
     owning_domain: fairway
@@ -4057,3 +4057,30 @@ tasks:
       - "Assessment preserves Fairway DB as source of truth and rejects a second wait store, dashboard cache store, review store, or notification truth source."
       - "Postgres compatibility command status is documented, including that generated DDL is review output and apply/cutover is not yet implemented."
       - "Follow-on implementation slices are bounded so no high-risk storage migration is implied by the assessment task."
+
+  - id: FW-256
+    title: Define shared-team Fairway operating model beyond the store backend
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: coordination
+    source_paths:
+      - docs/design
+      - docs/product.md
+    target_paths:
+      - docs/design/shared-team-operating-model.md
+      - docs/product.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - governance
+      - ops
+    risk_level: high
+    migration_type: shared-team-operating-model
+    acceptance_checks:
+      - "Document when Fairway remains local-first versus when a shared team control plane is justified."
+      - "Define authority boundaries for dashboard, CLI, provider sessions, reviewers, coordinators, and automation in shared-team mode."
+      - "Cover identity, audit, tenancy/project scoping, offline/local fallback, and no hidden approval/send/merge/deploy authority."
+      - "State that shared-team Fairway is not just a Postgres backend; server API, concurrency, deployment, and operations require separate reviewed designs."
+      - "Preserve local-first defaults and dashboard read-only trust boundaries."
