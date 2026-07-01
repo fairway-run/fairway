@@ -4020,7 +4020,8 @@ func TestCLI_RoughEdgeAddList(t *testing.T) {
 	if _, err := captureRun("rough-edge", "add", "--task", "T-001", "--owner", "ui", "--severity", "high", "--decision", "fix-now", "--summary", "Invalid expiry", "--expires", "next sprint"); err == nil || !strings.Contains(err.Error(), "--expires must be RFC3339Nano, RFC3339, or YYYY-MM-DD") {
 		t.Fatalf("invalid expiry error=%v, want clear expiry validation error", err)
 	}
-	out := runCapture(t, "rough-edge", "add", "--task", "T-001", "--owner", "ui", "--severity", "high", "--decision", "fix-now", "--summary", "Owner could not find release status", "--expires", "2026-07-01", "--artifact", "artifacts/walkthrough.png")
+	futureExpiry := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	out := runCapture(t, "rough-edge", "add", "--task", "T-001", "--owner", "ui", "--severity", "high", "--decision", "fix-now", "--summary", "Owner could not find release status", "--expires", futureExpiry, "--artifact", "artifacts/walkthrough.png")
 	assertContains(t, out, "rough_edge recorded task=T-001 owner=ui severity=high decision=fix-now")
 	runOK(t, "rough-edge", "add", "--task", "T-001", "--owner", "backend", "--severity", "medium", "--decision", "defer", "--summary", "Old rough edge should expire", "--expires", "2000-01-01")
 

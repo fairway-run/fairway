@@ -343,7 +343,21 @@ shows:
   rationale,
 - notes, dependencies, and acceptance checks,
 - transition history,
-- evidence, including a UX media evidence panel for `screenshot`, `video`,
+- evidence, with raw artifact path readback and a redacted `view` link only
+  when the artifact path is recorded evidence for that task and resolves inside
+  `[fairway].local_artifact_paths`. The safe viewer renders Markdown, JSON,
+  text, and HTML as escaped/redacted HTML, labels evidence as `local-only`,
+  `internal-only`, or `publishable`, rejects path traversal, rejects symlink
+  escapes outside allowed roots, and never serves remote URLs or arbitrary
+  filesystem paths. Redaction is applied to the full artifact before display
+  truncation. Supported redaction classes include bearer tokens,
+  authorization/cookie/set-cookie headers, token/secret/password/API key
+  fields, common OAuth/client credential fields such as `access_token`,
+  `refresh_token`, `id_token`, `client_secret`, and `ssh_private_key`, and
+  internal URLs for localhost, RFC1918, Tailscale/CGNAT `100.64.0.0/10`,
+  `.local`, and `.internal` hosts. The viewer is a defense-in-depth
+  convenience for local operators, not a publishing sanitizer,
+- a UX media evidence panel for `screenshot`, `video`,
   `browser-trace`, and `uat` artifact types so operators can see whether
   user-visible work was exercised. The panel displays artifact references and a
   redaction-required boundary only; it must not display raw secrets, auth

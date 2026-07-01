@@ -315,6 +315,7 @@ type TaskDetailViewData struct {
 	Evidence             []store.Evidence
 	UXMediaEvidence      []evidencemodel.UXMediaEvidence
 	UXMediaSummary       evidencemodel.UXMediaSummary
+	EvidenceViews        []EvidenceViewRow
 	Handoffs             []store.Handoff
 	Reviews              []store.Review
 	MissingReviewDomains []string
@@ -377,6 +378,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux.HandleFunc("/reports", s.reports)
 	mux.HandleFunc("/wall", s.wallRedirect)
 	mux.HandleFunc("/tasks/", s.task)
+	mux.HandleFunc("/evidence/artifact", s.artifact)
 	mux.HandleFunc("/actions/claim", s.claim)
 	mux.HandleFunc("/actions/set-status", s.setStatus)
 	mux.HandleFunc("/actions/bulk/claim", s.bulkClaim)
@@ -2342,6 +2344,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Task:                 task,
 		Transitions:          transitions,
 		Evidence:             evidence,
+		EvidenceViews:        evidenceViewRows(task.Definition.ID, evidence, s.cfg.Fairway.LocalArtifactPaths),
 		UXMediaEvidence:      uxMediaEvidence,
 		UXMediaSummary:       uxMediaSummary,
 		Handoffs:             handoffs,

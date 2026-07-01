@@ -92,6 +92,27 @@ Show:
 This should use the same review-domain and gate logic as the board and
 `merge-ready` checks.
 
+Evidence artifact links in task detail and report drill-downs must go through
+the safe artifact viewer rather than raw downloads. The viewer is enabled only
+for recorded evidence paths inside configured `[fairway].local_artifact_paths`.
+It renders Markdown, JSON, text, and HTML as escaped/redacted HTML, rejects path
+traversal and symlink escapes, redacts secret-looking values and internal
+URLs, and labels the evidence boundary as local-only, internal-only, or
+publishable. The dashboard remains read-only; viewing an artifact does not
+acknowledge, approve, create evidence, mutate task state, merge, deploy, or
+publish artifact contents.
+
+The viewer must redact the full artifact before applying any display truncation
+so an oversized secret cannot leak a prefix at the cutoff. Supported redaction
+classes include bearer tokens, authorization/cookie/set-cookie headers,
+token/secret/password/API key fields, common OAuth/client credential fields
+such as `access_token`, `refresh_token`, `id_token`, `client_secret`, and
+`ssh_private_key`, and internal URLs for localhost, RFC1918,
+Tailscale/CGNAT `100.64.0.0/10`, `.local`, and `.internal` hosts. The redactor
+is intentionally conservative and does not make local-only evidence
+publishable; publish decisions still require explicit review and evidence
+classification.
+
 ### Supply-Chain Provenance
 
 Reports may include a provenance section for task, day, release, or commit

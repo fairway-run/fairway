@@ -226,6 +226,129 @@ func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	}
 }
 
+func TestEvidenceArtifactViewerRendersRedactsAndRejectsUnsafePaths(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	artifacts := filepath.Join(root, "artifacts")
+	if err := os.MkdirAll(artifacts, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(artifacts, "proof.md"), []byte("# Proof\ninternal http://127.0.0.1:9999/callback?token=secret Bearer abc.def"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(artifacts, "proof.json"), []byte(`{"ok":true,"api_key":"supersecret"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(artifacts, "credentials.json"), []byte(`{"access_token":"access-secret","refresh_token":"refresh-secret","id_token":"id-secret","client_secret":"client-secret","ssh_private_key":"ssh-secret","cookie":"cookie-secret"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(artifacts, "proof.html"), []byte(`<script>alert("x")</script><p>token=secret</p>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(artifacts, "headers.txt"), []byte("Authorization: Basic abc123\nCookie: session=secret\nSet-Cookie: session=secret\ncallback http://100.90.157.34:8929/status\naccess_token=text-secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	largeSecret := "LEAKPREFIX-" + strings.Repeat("x", maxArtifactViewBytes+64)
+	if err := os.WriteFile(filepath.Join(artifacts, "large.json"), []byte(`{"access_token":"`+largeSecret+`","ok":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "secret.md"), []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(artifacts, "escape.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.Open(ctx, filepath.Join(root, "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Artifact viewer", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []store.Evidence{
+		{CommandText: "markdown proof", Result: "pass", ArtifactType: "markdown", ArtifactPath: "artifacts/proof.md"},
+		{CommandText: "json proof", Result: "pass", ArtifactType: "json", ArtifactPath: "artifacts/proof.json"},
+		{CommandText: "credential json proof", Result: "pass", ArtifactType: "json", ArtifactPath: "artifacts/credentials.json"},
+		{CommandText: "html proof", Result: "pass", ArtifactType: "html", ArtifactPath: "artifacts/proof.html"},
+		{CommandText: "header proof", Result: "pass", ArtifactType: "text", ArtifactPath: "artifacts/headers.txt"},
+		{CommandText: "large proof", Result: "pass", ArtifactType: "json", ArtifactPath: "artifacts/large.json"},
+		{CommandText: "traversal proof", Result: "fail", ArtifactType: "markdown", ArtifactPath: "../outside/secret.md"},
+		{CommandText: "symlink proof", Result: "fail", ArtifactType: "markdown", ArtifactPath: "artifacts/escape.md"},
+		{CommandText: "remote proof", Result: "pass", ArtifactType: "ci", ArtifactPath: "https://ci.internal/job/1"},
+	} {
+		if err := s.RecordEvidence(ctx, "T-001", ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Defaults(root)
+	cfg.Fairway.LocalArtifactPaths = []string{"artifacts"}
+	cfg.Dashboard.ReadOnly = true
+	server := NewWithRoot(s, cfg, []string{"backend"}, nil, root)
+
+	pageReq := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	pageRec := httptest.NewRecorder()
+	server.task(pageRec, pageReq)
+	page := pageRec.Body.String()
+	if !strings.Contains(page, "view redacted") || !strings.Contains(page, "artifacts/proof.md") || !strings.Contains(page, "https://ci.internal/job/1") {
+		t.Fatalf("task detail did not retain raw path/readback and viewer link:\n%s", page)
+	}
+	if strings.Contains(page, "Claim") {
+		t.Fatalf("read-only task detail exposed mutation control:\n%s", page)
+	}
+
+	for _, artifact := range []string{"artifacts/proof.md", "artifacts/proof.json", "artifacts/credentials.json", "artifacts/proof.html", "artifacts/headers.txt", "artifacts/large.json"} {
+		req := httptest.NewRequest(http.MethodGet, "/evidence/artifact?task=T-001&path="+url.QueryEscape(artifact), nil)
+		rec := httptest.NewRecorder()
+		server.artifact(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", artifact, rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		for _, leaked := range []string{
+			"supersecret",
+			"Bearer abc.def",
+			"token=secret",
+			"access-secret",
+			"refresh-secret",
+			"id-secret",
+			"client-secret",
+			"ssh-secret",
+			"cookie-secret",
+			"Basic abc123",
+			"session=secret",
+			"text-secret",
+			"LEAKPREFIX",
+			"127.0.0.1",
+			"100.90.157.34",
+		} {
+			if strings.Contains(body, leaked) {
+				t.Fatalf("%s body leaked %q:\n%s", artifact, leaked, body)
+			}
+		}
+		if artifact == "artifacts/proof.html" && strings.Contains(body, "<script>alert") {
+			t.Fatalf("html artifact was not escaped:\n%s", body)
+		}
+		if !strings.Contains(body, "redacted viewer") {
+			t.Fatalf("%s body missing redacted viewer label:\n%s", artifact, body)
+		}
+	}
+
+	for _, artifact := range []string{"../outside/secret.md", "artifacts/escape.md", "not-recorded.md"} {
+		req := httptest.NewRequest(http.MethodGet, "/evidence/artifact?task=T-001&path="+url.QueryEscape(artifact), nil)
+		rec := httptest.NewRecorder()
+		server.artifact(rec, req)
+		if rec.Code == http.StatusOK {
+			t.Fatalf("%s unexpectedly served body=%s", artifact, rec.Body.String())
+		}
+	}
+}
+
 func TestReportsRendersRulePackSignals(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

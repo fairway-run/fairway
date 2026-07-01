@@ -146,7 +146,7 @@
 </article>
 <article class="detail-panel">
 <h2>Evidence</h2>
-<div class="detail-stack">{{range .Evidence}}<p><code>{{.Result}}</code> {{.CommandText}} {{.ArtifactPath}}</p>{{else}}<p>none</p>{{end}}</div>
+<div class="detail-stack">{{range .EvidenceViews}}<p><code>{{.Result}}</code> {{.CommandText}} {{if .ArtifactPath}}<code>{{.ArtifactPath}}</code> <span class="muted">{{.Label}}</span>{{if .Viewable}} <a href="{{.ViewHref}}">view redacted</a>{{end}}{{end}}</p>{{else}}<p>none</p>{{end}}</div>
 </article>
 <article class="detail-panel wide">
 <h2>UX Media Evidence</h2>
