@@ -16,6 +16,13 @@ PKs and FKs that include `project_id` are explicit per table below. The store la
 
 Multi-project visibility on a single user's machine is still provided at the dashboard layer via `ATTACH DATABASE` over a registry; see [multi-project.md](multi-project.md).
 
+SQLite remains the default Fairway store. A future Postgres/server-backed store
+is for shared team write coordination, not for dashboard caching or a second
+read-model truth source. The Postgres path must preserve the same schema
+ownership boundaries, command semantics, and `project_id` scoping described
+here; see [postgres-adapter.md](postgres-adapter.md) for the assessed deployment
+model, cutover requirements, and compatibility harness.
+
 ## Tables
 
 ### `task_definitions`

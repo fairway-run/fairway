@@ -4023,3 +4023,37 @@ tasks:
       - "CLI can render a recipe into a new task prompt packet with task-specific substitutions and privacy checks."
       - "Dashboard exposes recipes as prompt/runbook library entries linked to completed source tasks."
       - "Tests cover recipe extraction, substitution, privacy rejection, missing source facts, and recipe-to-task instantiation."
+
+  - id: FW-255
+    title: Assess Postgres or server-backed Fairway store for team deployments
+    kind: architecture
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: storage
+    source_paths:
+      - docs/design/postgres-adapter.md
+      - docs/design/schema.md
+      - internal/store
+      - cmd/fairway
+    target_paths:
+      - docs/design/postgres-adapter.md
+      - docs/design/schema.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - governance
+      - ops
+    risk_level: high
+    migration_type: postgres-team-store-assessment
+    tags:
+      - storage
+      - postgres
+      - team-deployment
+    acceptance_checks:
+      - "Assessment states when SQLite remains the default local/single-user store and when a Postgres/server-backed store is justified for shared team deployments."
+      - "Design covers migration/cutover, rollback, locking/concurrency, backup/restore, deployment topology, and compatibility harness requirements."
+      - "Assessment preserves Fairway DB as source of truth and rejects a second wait store, dashboard cache store, review store, or notification truth source."
+      - "Postgres compatibility command status is documented, including that generated DDL is review output and apply/cutover is not yet implemented."
+      - "Follow-on implementation slices are bounded so no high-risk storage migration is implied by the assessment task."
