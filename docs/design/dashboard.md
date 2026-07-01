@@ -123,6 +123,18 @@ work.
 
 The board is the working surface for operators.
 
+`/board` uses a fast-path projection for the default task-table view. It builds
+task, health, session, checkpoint, watcher, activity, gate, workstream, saved
+view, and visible-table review status data, but defers heavy coordinator plan,
+active reconciliation, track-memory, closeout, and audit projections to
+`/board?tab=diagnostics`. The default rail labels that deferred state as
+`board fast path` and points operators to Diagnostics for the full coordinator
+and closeout readout. The health strip must not render skipped diagnostic
+counters as zero; it labels them `deferred` or links to Diagnostics until those
+projections are actually computed. This keeps routine board refreshes focused on
+current task navigation without changing the dashboard trust boundary or hiding
+the complete diagnostic surface.
+
 It includes:
 
 - a control-room header with total filtered scope,

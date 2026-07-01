@@ -52,6 +52,7 @@
 <span>stale checkpoints: {{len .StaleCheckpoints}}</span>
 <span>active watchers: {{len .Watchers}}</span>
 <span>sessions: {{len .Sessions}}</span>
+{{if eq .Filters.Tab "diagnostics"}}
 <span>monitor proof: {{.ActiveReport.Summary.MonitorSessionsNoProof}}</span>
 <span>monitor resume: {{.ActiveReport.Summary.MonitorResumeNeeded}}</span>
 <span>provider lifecycle: {{.ActiveReport.Summary.ProviderLifecycleMissing}}</span>
@@ -59,6 +60,10 @@
 <span>orchestration: {{.CoordinatorPlan.Summary.TopClassification}}</span>
 <span>coord waits: {{.Coordination.OpenWaits}}</span>
 <span>stale memory: {{.Coordination.MemoryStale}}</span>
+{{else}}
+<span>diagnostics: <a href="{{boardTabHref .Filters "diagnostics"}}">deferred</a></span>
+<span>orchestration: <a href="{{boardTabHref .Filters "diagnostics"}}">Diagnostics</a></span>
+{{end}}
 </section>
 {{if eq .Filters.Tab "diagnostics"}}
 <section class="diagnostics-grid">

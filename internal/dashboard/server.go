@@ -564,6 +564,7 @@ func (s *Server) dashboardViewData(r *http.Request, view string, timing *dashboa
 		return DashboardViewData{}, err
 	}
 	filters := taskFiltersFromRequest(r)
+	boardFastPath := view == "board" && filters.Tab != "diagnostics"
 	var activity []store.Activity
 	if err := timing.step("dashboard.activity", func() error {
 		var err error
@@ -615,42 +616,54 @@ func (s *Server) dashboardViewData(r *http.Request, view string, timing *dashboa
 		return DashboardViewData{}, err
 	}
 	var activeReport reconcile.ActiveReport
-	if err := timing.step("dashboard.active_reconcile", func() error {
-		var err error
-		activeReport, err = reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
-		return err
-	}); err != nil {
-		return DashboardViewData{}, err
+	if !boardFastPath {
+		if err := timing.step("dashboard.active_reconcile", func() error {
+			var err error
+			activeReport, err = reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
+			return err
+		}); err != nil {
+			return DashboardViewData{}, err
+		}
 	}
 	var coordinatorPlan coord.Plan
-	if err := timing.step("dashboard.coordinator_plan", func() error {
-		var err error
-		coordinatorPlan, err = coord.BuildPlan(r.Context(), s.cfg, s.store, coord.PlanOptions{
-			Worktrees:            dashboardWorktreeFacts(s.worktrees),
-			StaleCheckpointAfter: 2 * time.Hour,
-			MonitorHandbackAfter: 2 * time.Hour,
-			ReadyLimit:           5,
-			RecommendationLimit:  5,
-		})
-		return err
-	}); err != nil {
-		return DashboardViewData{}, err
+	if boardFastPath {
+		coordinatorPlan.Summary.TopClassification = "board fast path"
+		coordinatorPlan.Summary.TopReason = "Open Diagnostics for coordinator plan, waits, active reconcile, and closeout detail."
+		timing.add("dashboard.board_fast_path", 0, "skipped=active_reconcile,coordinator_plan,track_memories,closeout_reports,audit_diagnostics")
+	} else {
+		if err := timing.step("dashboard.coordinator_plan", func() error {
+			var err error
+			coordinatorPlan, err = coord.BuildPlan(r.Context(), s.cfg, s.store, coord.PlanOptions{
+				Worktrees:            dashboardWorktreeFacts(s.worktrees),
+				StaleCheckpointAfter: 2 * time.Hour,
+				MonitorHandbackAfter: 2 * time.Hour,
+				ReadyLimit:           5,
+				RecommendationLimit:  5,
+			})
+			return err
+		}); err != nil {
+			return DashboardViewData{}, err
+		}
 	}
 	var memories []store.TrackMemory
-	if err := timing.step("dashboard.track_memories", func() error {
-		var err error
-		memories, err = s.store.TrackMemories(r.Context())
-		return err
-	}); err != nil {
-		return DashboardViewData{}, err
+	if !boardFastPath {
+		if err := timing.step("dashboard.track_memories", func() error {
+			var err error
+			memories, err = s.store.TrackMemories(r.Context())
+			return err
+		}); err != nil {
+			return DashboardViewData{}, err
+		}
 	}
 	var closeoutReports []reconcile.CloseoutReport
-	if err := timing.step("dashboard.closeout_reports", func() error {
-		var err error
-		closeoutReports, err = s.dashboardCloseoutReports(r.Context(), tasks, 8, timing)
-		return err
-	}); err != nil {
-		return DashboardViewData{}, err
+	if !boardFastPath {
+		if err := timing.step("dashboard.closeout_reports", func() error {
+			var err error
+			closeoutReports, err = s.dashboardCloseoutReports(r.Context(), tasks, 8, timing)
+			return err
+		}); err != nil {
+			return DashboardViewData{}, err
+		}
 	}
 	var auditDiagnostics AuditDiagnostics
 	if view == "board" && filters.Tab == "diagnostics" {

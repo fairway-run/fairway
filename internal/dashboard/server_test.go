@@ -112,6 +112,33 @@ func TestDashboardRoutes(t *testing.T) {
 	if !strings.Contains(boardBody, "board-layout") || !strings.Contains(boardBody, `class="active" href="/board"`) {
 		t.Fatalf("/board did not render board surface:\n%s", boardBody)
 	}
+	if !strings.Contains(boardBody, "board fast path") || !strings.Contains(boardBody, "Open Diagnostics for coordinator plan") {
+		t.Fatalf("/board did not use the lightweight board fast path:\n%s", boardBody)
+	}
+	if strings.Contains(boardBody, "Active Reconciliation") || strings.Contains(boardBody, "Lane Closeout") {
+		t.Fatalf("/board rendered diagnostics-only heavy panels:\n%s", boardBody)
+	}
+	for _, falseZero := range []string{"monitor proof: 0", "monitor resume: 0", "provider lifecycle: 0", "closeout debt: 0"} {
+		if strings.Contains(boardBody, falseZero) {
+			t.Fatalf("/board rendered skipped diagnostic counter as false zero %q:\n%s", falseZero, boardBody)
+		}
+	}
+	if !strings.Contains(boardBody, "diagnostics:") || !strings.Contains(boardBody, "deferred") {
+		t.Fatalf("/board did not label skipped diagnostic counters as deferred:\n%s", boardBody)
+	}
+
+	diagnosticsReq := httptest.NewRequest(http.MethodGet, "/board?tab=diagnostics", nil)
+	diagnosticsRec := httptest.NewRecorder()
+	server.board(diagnosticsRec, diagnosticsReq)
+	diagnosticsBody := diagnosticsRec.Body.String()
+	if !strings.Contains(diagnosticsBody, "Active Reconciliation") || !strings.Contains(diagnosticsBody, "Lane Closeout") {
+		t.Fatalf("/board diagnostics did not render heavy diagnostic panels:\n%s", diagnosticsBody)
+	}
+	for _, want := range []string{"monitor proof:", "monitor resume:", "provider lifecycle:", "closeout debt:"} {
+		if !strings.Contains(diagnosticsBody, want) {
+			t.Fatalf("/board diagnostics missing numeric diagnostic counter %q:\n%s", want, diagnosticsBody)
+		}
+	}
 
 	reportsReq := httptest.NewRequest(http.MethodGet, "/reports", nil)
 	reportsRec := httptest.NewRecorder()
