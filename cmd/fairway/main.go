@@ -14157,13 +14157,16 @@ func cmdDashboardMulti(ctx context.Context, opts globalOptions, listen string, n
 }
 
 type dashboardLifecycleStatus struct {
-	PIDFile    string `json:"pid_file"`
-	LogFile    string `json:"log_file"`
-	PID        int    `json:"pid,omitempty"`
-	Running    bool   `json:"running"`
-	URL        string `json:"url,omitempty"`
-	Version    string `json:"version"`
-	BinaryPath string `json:"binary_path,omitempty"`
+	PIDFile          string `json:"pid_file"`
+	LogFile          string `json:"log_file"`
+	PID              int    `json:"pid,omitempty"`
+	Running          bool   `json:"running"`
+	State            string `json:"state"`
+	URL              string `json:"url,omitempty"`
+	Version          string `json:"version"`
+	BinaryPath       string `json:"binary_path,omitempty"`
+	ListenerDetected bool   `json:"listener_detected,omitempty"`
+	Warning          string `json:"warning,omitempty"`
 }
 
 func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action string, args []string) error {
@@ -14247,19 +14250,21 @@ func dashboardLifecycleFiles(root, pidFile, logFile string, multi bool) (string,
 }
 
 func readDashboardLifecycleStatus(pidFile, logFile, addr string) (dashboardLifecycleStatus, error) {
-	status := dashboardLifecycleStatus{PIDFile: pidFile, LogFile: logFile, URL: dashboard.URL(addr), Version: version}
+	status := dashboardLifecycleStatus{PIDFile: pidFile, LogFile: logFile, State: "stopped", URL: dashboard.URL(addr), Version: version}
 	if exe, err := os.Executable(); err == nil {
 		status.BinaryPath = exe
 	}
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			status.markUnknownIfListenerDetected(addr)
 			return status, nil
 		}
 		return status, err
 	}
 	raw := strings.TrimSpace(string(data))
 	if raw == "" {
+		status.markUnknownIfListenerDetected(addr)
 		return status, nil
 	}
 	var pid int
@@ -14268,20 +14273,45 @@ func readDashboardLifecycleStatus(pidFile, logFile, addr string) (dashboardLifec
 	}
 	status.PID = pid
 	status.Running = processAlive(pid)
+	if status.Running {
+		status.State = "running"
+	}
 	if !status.Running {
 		_ = os.Remove(pidFile)
 		status.PID = 0
+		status.markUnknownIfListenerDetected(addr)
 	}
 	return status, nil
+}
+
+func (status *dashboardLifecycleStatus) markUnknownIfListenerDetected(addr string) {
+	if dashboardAddressListening(addr) {
+		status.State = "unknown"
+		status.ListenerDetected = true
+		status.Warning = "requested address is listening but the configured pid file does not identify the process; pass the matching --pid-file for managed multi-instance dashboards"
+	}
+}
+
+func dashboardAddressListening(addr string) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return false
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err == nil {
+		_ = ln.Close()
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "address already in use")
 }
 
 func printDashboardLifecycleStatus(status dashboardLifecycleStatus, asJSON bool) error {
 	if asJSON {
 		return printJSON(status)
 	}
-	state := "stopped"
-	if status.Running {
-		state = "running"
+	state := status.State
+	if state == "" {
+		state = "stopped"
 	}
 	fmt.Printf("dashboard %s", state)
 	if status.PID > 0 {
@@ -14295,6 +14325,12 @@ func printDashboardLifecycleStatus(status dashboardLifecycleStatus, asJSON bool)
 	}
 	if status.BinaryPath != "" {
 		fmt.Printf("\tbinary=%s", status.BinaryPath)
+	}
+	if status.ListenerDetected {
+		fmt.Print("\tlistener=detected")
+	}
+	if status.Warning != "" {
+		fmt.Printf("\twarning=%s", status.Warning)
 	}
 	fmt.Printf("\tpid_file=%s\tlog_file=%s\n", status.PIDFile, status.LogFile)
 	return nil

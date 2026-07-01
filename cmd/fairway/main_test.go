@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -5733,6 +5734,63 @@ func TestDashboardLifecycleStatusRemovesStalePIDFile(t *testing.T) {
 	}
 	if status.PID != 0 {
 		t.Fatalf("pid = %d, want 0", status.PID)
+	}
+	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("pid file still exists or unexpected error: %v", err)
+	}
+}
+
+func TestDashboardLifecycleStatusReportsUnknownWhenAddressIsListeningWithoutPID(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "dashboard.pid")
+	logFile := filepath.Join(dir, "dashboard.log")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	status, err := readDashboardLifecycleStatus(pidFile, logFile, ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "unknown" {
+		t.Fatalf("state = %q, want unknown", status.State)
+	}
+	if status.Running {
+		t.Fatalf("running = true, want false")
+	}
+	if !status.ListenerDetected {
+		t.Fatal("listener_detected = false, want true")
+	}
+	if !strings.Contains(status.Warning, "--pid-file") {
+		t.Fatalf("warning = %q, want pid-file guidance", status.Warning)
+	}
+}
+
+func TestDashboardLifecycleStatusReportsUnknownForStalePIDWhenAddressIsListening(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "dashboard.pid")
+	logFile := filepath.Join(dir, "dashboard.log")
+	writeFile(t, pidFile, "999999\n")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	status, err := readDashboardLifecycleStatus(pidFile, logFile, ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "unknown" {
+		t.Fatalf("state = %q, want unknown", status.State)
+	}
+	if status.PID != 0 {
+		t.Fatalf("pid = %d, want 0", status.PID)
+	}
+	if !status.ListenerDetected {
+		t.Fatal("listener_detected = false, want true")
 	}
 	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("pid file still exists or unexpected error: %v", err)

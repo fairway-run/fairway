@@ -435,6 +435,26 @@ fairway dashboard status
 fairway version
 ```
 
+When running more than one dashboard from the same config, such as a shared
+read-only instance on `127.0.0.1:7878` and a local full-access instance on
+`127.0.0.1:7879`, give each instance its own pid and log files:
+
+```bash
+fairway dashboard start --listen 127.0.0.1:7878 --read-only \
+  --pid-file .fairway/fairway-dashboard-7878.pid \
+  --log-file .fairway/fairway-dashboard-7878.log
+fairway dashboard start --listen 127.0.0.1:7879 \
+  --pid-file .fairway/fairway-dashboard-7879.pid \
+  --log-file .fairway/fairway-dashboard-7879.log
+```
+
+`dashboard status` reports `unknown` instead of `stopped` when the requested
+listen address is already occupied but the selected pid file is missing, empty,
+or stale. That state means a dashboard-like process is listening, but the
+current lifecycle command cannot prove which process or binary owns it. Pass the
+matching `--pid-file` for managed multi-instance dashboards, or stop/restart the
+listener from the operator lane and record fresh status evidence.
+
 The version from `dashboard status` should match the release binary intended for
 the dashboard restart. For shared read-only dashboards, also probe the local
 origin and the identity-aware proxy boundary after restart. If the local
