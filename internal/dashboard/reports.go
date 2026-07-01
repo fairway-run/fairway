@@ -214,76 +214,124 @@ type reportTaskFacts struct {
 	LastActivityAt   string
 }
 
-func (s *Server) reportViewData(r *http.Request) (ReportViewData, error) {
+func (s *Server) reportViewData(r *http.Request, timing *dashboardTiming) (ReportViewData, error) {
 	now := time.Now()
 	window, start, end := reportWindowFromQuery(r.URL.Query(), now, time.Local)
 	filters := reportFiltersFromRequest(r)
-	tasks, err := s.store.AllTasks(r.Context())
-	if err != nil {
+	var tasks []store.Task
+	if err := timing.step("reports.tasks", func() error {
+		var err error
+		tasks, err = s.store.AllTasks(r.Context())
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
 	tasks = tagTasksProject(tasks, s.cfg.Fairway.ProjectName)
-	sessions, err := s.store.Sessions(r.Context(), false)
-	if err != nil {
+	var sessions []store.Session
+	if err := timing.step("reports.sessions", func() error {
+		var err error
+		sessions, err = s.store.Sessions(r.Context(), false)
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
 	sessions = tagSessionsProject(sessions, s.cfg.Fairway.ProjectName)
-	activity, err := s.store.ActivityFiltered(r.Context(), store.ActivityOptions{
-		Limit:       maxActivityFetchLimit,
-		CreatedFrom: start.Format(time.RFC3339Nano),
-		CreatedTo:   end.Format(time.RFC3339Nano),
-	})
-	if err != nil {
+	var activity []store.Activity
+	if err := timing.step("reports.activity", func() error {
+		var err error
+		activity, err = s.store.ActivityFiltered(r.Context(), store.ActivityOptions{
+			Limit:       maxActivityFetchLimit,
+			CreatedFrom: start.Format(time.RFC3339Nano),
+			CreatedTo:   end.Format(time.RFC3339Nano),
+		})
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
 	activity = tagActivityProject(activity, s.cfg.Fairway.ProjectName)
-	watchers, err := s.store.Watchers(r.Context(), true)
-	if err != nil {
+	var watchers []store.Watcher
+	if err := timing.step("reports.watchers", func() error {
+		var err error
+		watchers, err = s.store.Watchers(r.Context(), true)
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
-	batches, err := s.store.WorkBatches(r.Context())
-	if err != nil {
+	var batches []store.WorkBatch
+	if err := timing.step("reports.batches", func() error {
+		var err error
+		batches, err = s.store.WorkBatches(r.Context())
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
-	usage, err := s.reportUsage(r.Context(), start, end)
-	if err != nil {
+	var usage ReportUsage
+	if err := timing.step("reports.usage", func() error {
+		var err error
+		usage, err = s.reportUsage(r.Context(), start, end)
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
-	delivery, err := deliveryreport.Build(r.Context(), s.cfg, s.store, deliveryreport.Options{Since: end.Sub(start), Profile: filters.Profile, Now: end.UTC()})
-	if err != nil {
+	var delivery deliveryreport.Report
+	if err := timing.step("reports.delivery", func() error {
+		var err error
+		delivery, err = deliveryreport.Build(r.Context(), s.cfg, s.store, deliveryreport.Options{Since: end.Sub(start), Profile: filters.Profile, Now: end.UTC()})
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
-	roughEdges, err := roughedge.Rows(r.Context(), s.store, end.UTC())
-	if err != nil {
+	var roughEdges []roughedge.Row
+	if err := timing.step("reports.rough_edges", func() error {
+		var err error
+		roughEdges, err = roughedge.Rows(r.Context(), s.store, end.UTC())
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
-	recipes, err := recipeLibraryRows(s.root)
-	if err != nil {
+	var recipes []RecipeLibraryRow
+	if err := timing.step("reports.recipes", func() error {
+		var err error
+		recipes, err = recipeLibraryRows(s.root)
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
-	facts, err := reportFactsForStore(r.Context(), s.store, tasks, activity)
-	if err != nil {
+	var facts []reportTaskFacts
+	if err := timing.step("reports.facts", func() error {
+		var err error
+		facts, err = reportFactsForStore(r.Context(), s.store, tasks, activity, timing)
+		return err
+	}); err != nil {
 		return ReportViewData{}, err
 	}
-	return buildReportViewData(r, reportBuildInput{
-		Window:     window,
-		Start:      start,
-		End:        end,
-		Filters:    filters,
-		Config:     s.cfg,
-		Root:       s.root,
-		Tasks:      tasks,
-		Sessions:   sessions,
-		Activity:   activity,
-		Watchers:   watchers,
-		Batches:    batches,
-		Usage:      usage,
-		Delivery:   delivery,
-		RoughEdges: roughEdges,
-		Recipes:    recipes,
-		Facts:      facts,
-		Roles:      s.roles,
-	})
+	var data ReportViewData
+	if err := timing.step("reports.build_view", func() error {
+		var err error
+		data, err = buildReportViewData(r, reportBuildInput{
+			Window:     window,
+			Start:      start,
+			End:        end,
+			Filters:    filters,
+			Config:     s.cfg,
+			Root:       s.root,
+			Tasks:      tasks,
+			Sessions:   sessions,
+			Activity:   activity,
+			Watchers:   watchers,
+			Batches:    batches,
+			Usage:      usage,
+			Delivery:   delivery,
+			RoughEdges: roughEdges,
+			Recipes:    recipes,
+			Facts:      facts,
+			Roles:      s.roles,
+		})
+		return err
+	}); err != nil {
+		return ReportViewData{}, err
+	}
+	return data, nil
 }
 
 func (s *MultiServer) reportViewData(r *http.Request) (ReportViewData, error) {
@@ -330,7 +378,7 @@ func (s *MultiServer) reportViewData(r *http.Request) (ReportViewData, error) {
 		if projectBatches, err := project.Store.WorkBatches(r.Context()); err == nil {
 			batches = append(batches, projectBatches...)
 		}
-		projectFacts, err := reportFactsForStore(r.Context(), project.Store, projectTasks, tagActivityProject(projectActivity, project.Name))
+		projectFacts, err := reportFactsForStore(r.Context(), project.Store, projectTasks, tagActivityProject(projectActivity, project.Name), nil)
 		if err != nil {
 			return ReportViewData{}, fmt.Errorf("%s facts: %w", project.Name, err)
 		}
@@ -439,10 +487,18 @@ func buildReportViewData(r *http.Request, input reportBuildInput) (ReportViewDat
 	}, nil
 }
 
-func reportFactsForStore(ctx context.Context, s *store.Store, tasks []store.Task, activity []store.Activity) ([]reportTaskFacts, error) {
+func reportFactsForStore(ctx context.Context, s *store.Store, tasks []store.Task, activity []store.Activity, timing *dashboardTiming) ([]reportTaskFacts, error) {
 	reviewActivityByTask := reportReviewActivityByTask(activity, time.Time{}, time.Now().AddDate(100, 0, 0))
 	facts := make([]reportTaskFacts, 0, len(tasks))
+	start := time.Now()
+	taskDetailCalls := 0
+	defer func() {
+		if timing != nil {
+			timing.add("reports.facts.task_detail_loop", time.Since(start), fmt.Sprintf("task_detail_calls=%d", taskDetailCalls))
+		}
+	}()
 	for _, task := range tasks {
+		taskDetailCalls++
 		detailTask, transitions, evidence, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
 		if err != nil {
 			return nil, err

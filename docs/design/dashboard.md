@@ -455,6 +455,16 @@ current lifecycle command cannot prove which process or binary owns it. Pass the
 matching `--pid-file` for managed multi-instance dashboards, or stop/restart the
 listener from the operator lane and record fresh status evidence.
 
+Dashboard routes emit `dashboard_timing` log lines when a request takes longer
+than the built-in slow-route threshold. The line includes the route, path, total
+duration, and named projection blocks such as `dashboard.tasks`,
+`dashboard.gates`, `dashboard.gates.task_detail_loop`,
+`dashboard.missing_review_domains`, `dashboard.coordinator_plan`,
+`dashboard.closeout_reports`, `reports.facts`, and template rendering. Loop
+blocks include counts, for example `task_detail_calls=50`, so operators can see
+whether a slow route is dominated by broad read models, N+1 task detail loops,
+or template rendering before changing dashboard behavior.
+
 The version from `dashboard status` should match the release binary intended for
 the dashboard restart. For shared read-only dashboards, also probe the local
 origin and the identity-aware proxy boundary after restart. If the local

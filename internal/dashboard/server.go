@@ -405,48 +405,67 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) board(w http.ResponseWriter, r *http.Request) {
-	data, err := s.dashboardViewData(r, "board")
+	timing := newDashboardTiming("board", r)
+	defer timing.logIfSlow()
+	data, err := s.dashboardViewData(r, "board", timing)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start := time.Now()
 	_ = boardTemplate.ExecuteTemplate(w, "layout", data)
+	timing.add("template.board", time.Since(start), "")
 }
 
 func (s *MultiServer) board(w http.ResponseWriter, r *http.Request) {
+	timing := newDashboardTiming("multi-board", r)
+	defer timing.logIfSlow()
 	data, err := s.dashboardViewData(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start := time.Now()
 	_ = boardTemplate.ExecuteTemplate(w, "layout", data)
+	timing.add("template.board", time.Since(start), "")
 }
 
 func (s *MultiServer) wall(w http.ResponseWriter, r *http.Request) {
+	timing := newDashboardTiming("multi-wall", r)
+	defer timing.logIfSlow()
 	data, err := s.dashboardViewData(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	data.View = "wall"
+	start := time.Now()
 	_ = wallTemplate.ExecuteTemplate(w, "layout", data)
+	timing.add("template.wall", time.Since(start), "")
 }
 
 func (s *Server) wall(w http.ResponseWriter, r *http.Request) {
-	data, err := s.dashboardViewData(r, "wall")
+	timing := newDashboardTiming("wall", r)
+	defer timing.logIfSlow()
+	data, err := s.dashboardViewData(r, "wall", timing)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start := time.Now()
 	_ = wallTemplate.ExecuteTemplate(w, "layout", data)
+	timing.add("template.wall", time.Since(start), "")
 }
 
 func (s *Server) reports(w http.ResponseWriter, r *http.Request) {
-	data, err := s.reportViewData(r)
+	timing := newDashboardTiming("reports", r)
+	defer timing.logIfSlow()
+	data, err := s.reportViewData(r, timing)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start := time.Now()
 	switch strings.TrimSpace(r.URL.Query().Get("format")) {
 	case "json":
 		writeReportJSON(w, data)
@@ -459,14 +478,18 @@ func (s *Server) reports(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}
+	timing.add("template.reports", time.Since(start), "format="+strings.TrimSpace(r.URL.Query().Get("format")))
 }
 
 func (s *MultiServer) reports(w http.ResponseWriter, r *http.Request) {
+	timing := newDashboardTiming("multi-reports", r)
+	defer timing.logIfSlow()
 	data, err := s.reportViewData(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start := time.Now()
 	switch strings.TrimSpace(r.URL.Query().Get("format")) {
 	case "json":
 		writeReportJSON(w, data)
@@ -479,6 +502,7 @@ func (s *MultiServer) reports(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}
+	timing.add("template.reports", time.Since(start), "format="+strings.TrimSpace(r.URL.Query().Get("format")))
 }
 
 func (s *Server) wallRedirect(w http.ResponseWriter, r *http.Request) {
@@ -489,47 +513,83 @@ func (s *MultiServer) wallRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 
-func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewData, error) {
-	tasks, err := s.store.AllTasks(r.Context())
-	if err != nil {
+func (s *Server) dashboardViewData(r *http.Request, view string, timing *dashboardTiming) (DashboardViewData, error) {
+	var tasks []store.Task
+	if err := timing.step("dashboard.tasks", func() error {
+		var err error
+		tasks, err = s.store.AllTasks(r.Context())
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
 	tasks = tagTasksProject(tasks, s.cfg.Fairway.ProjectName)
-	health, err := s.store.Health(r.Context())
-	if err != nil {
+	var health store.Health
+	if err := timing.step("dashboard.health", func() error {
+		var err error
+		health, err = s.store.Health(r.Context())
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	sessions, err := s.store.Sessions(r.Context(), false)
-	if err != nil {
+	var sessions []store.Session
+	if err := timing.step("dashboard.sessions", func() error {
+		var err error
+		sessions, err = s.store.Sessions(r.Context(), false)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	checkpoints, err := s.store.Checkpoints(r.Context(), "", false)
-	if err != nil {
+	var checkpoints []store.Checkpoint
+	if err := timing.step("dashboard.checkpoints", func() error {
+		var err error
+		checkpoints, err = s.store.Checkpoints(r.Context(), "", false)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	staleCheckpoints, err := s.store.Checkpoints(r.Context(), time.Now().UTC().Format("2006-01-02"), false)
-	if err != nil {
+	var staleCheckpoints []store.Checkpoint
+	if err := timing.step("dashboard.stale_checkpoints", func() error {
+		var err error
+		staleCheckpoints, err = s.store.Checkpoints(r.Context(), time.Now().UTC().Format("2006-01-02"), false)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	watchers, err := s.store.Watchers(r.Context(), false)
-	if err != nil {
+	var watchers []store.Watcher
+	if err := timing.step("dashboard.watchers", func() error {
+		var err error
+		watchers, err = s.store.Watchers(r.Context(), false)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
 	filters := taskFiltersFromRequest(r)
-	activity, err := s.store.ActivityFiltered(r.Context(), store.ActivityOptions{
-		Limit: maxActivityFetchLimit,
-		Kind:  filters.ActivityKind,
-	})
-	if err != nil {
+	var activity []store.Activity
+	if err := timing.step("dashboard.activity", func() error {
+		var err error
+		activity, err = s.store.ActivityFiltered(r.Context(), store.ActivityOptions{
+			Limit: maxActivityFetchLimit,
+			Kind:  filters.ActivityKind,
+		})
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
 	filteredActivity, activityTotal := filterActivity(activity, filters.ActivityKind, filters.ActivityLimit)
-	gates, err := s.dashboardGateStatuses(r.Context(), tasks, 8)
-	if err != nil {
+	var gates []GateStatus
+	if err := timing.step("dashboard.gates", func() error {
+		var err error
+		gates, err = s.dashboardGateStatuses(r.Context(), tasks, 8, timing)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	readyTasks, err := s.store.Ready(r.Context(), "", s.cfg.States.Terminal)
-	if err != nil {
+	var readyTasks []store.Task
+	if err := timing.step("dashboard.ready", func() error {
+		var err error
+		readyTasks, err = s.store.Ready(r.Context(), "", s.cfg.States.Terminal)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
 	readySet := taskIDSet(readyTasks)
@@ -546,38 +606,65 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	if view == "board" {
 		reviewDomainScope = tableRows
 	}
-	missingReviewDomains, err := s.dashboardMissingReviewDomainsByTask(r.Context(), reviewDomainScope)
-	if err != nil {
+	var missingReviewDomains map[string][]string
+	if err := timing.step("dashboard.missing_review_domains", func() error {
+		var err error
+		missingReviewDomains, err = s.dashboardMissingReviewDomainsByTask(r.Context(), reviewDomainScope, timing)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	activeReport, err := reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
-	if err != nil {
+	var activeReport reconcile.ActiveReport
+	if err := timing.step("dashboard.active_reconcile", func() error {
+		var err error
+		activeReport, err = reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	coordinatorPlan, err := coord.BuildPlan(r.Context(), s.cfg, s.store, coord.PlanOptions{
-		Worktrees:            dashboardWorktreeFacts(s.worktrees),
-		StaleCheckpointAfter: 2 * time.Hour,
-		MonitorHandbackAfter: 2 * time.Hour,
-		ReadyLimit:           5,
-		RecommendationLimit:  5,
-	})
-	if err != nil {
+	var coordinatorPlan coord.Plan
+	if err := timing.step("dashboard.coordinator_plan", func() error {
+		var err error
+		coordinatorPlan, err = coord.BuildPlan(r.Context(), s.cfg, s.store, coord.PlanOptions{
+			Worktrees:            dashboardWorktreeFacts(s.worktrees),
+			StaleCheckpointAfter: 2 * time.Hour,
+			MonitorHandbackAfter: 2 * time.Hour,
+			ReadyLimit:           5,
+			RecommendationLimit:  5,
+		})
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	memories, err := s.store.TrackMemories(r.Context())
-	if err != nil {
+	var memories []store.TrackMemory
+	if err := timing.step("dashboard.track_memories", func() error {
+		var err error
+		memories, err = s.store.TrackMemories(r.Context())
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
-	closeoutReports, err := s.dashboardCloseoutReports(r.Context(), tasks, 8)
-	if err != nil {
+	var closeoutReports []reconcile.CloseoutReport
+	if err := timing.step("dashboard.closeout_reports", func() error {
+		var err error
+		closeoutReports, err = s.dashboardCloseoutReports(r.Context(), tasks, 8, timing)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
 	var auditDiagnostics AuditDiagnostics
 	if view == "board" && filters.Tab == "diagnostics" {
-		auditDiagnostics = s.auditDiagnostics(r.Context(), "")
+		_ = timing.step("dashboard.audit_diagnostics", func() error {
+			auditDiagnostics = s.auditDiagnostics(r.Context(), "")
+			return nil
+		})
 	}
-	personalViews, teamViews, err := loadDashboardSavedViews(s.root)
-	if err != nil {
+	var personalViews, teamViews []SavedView
+	if err := timing.step("dashboard.saved_views", func() error {
+		var err error
+		personalViews, teamViews, err = loadDashboardSavedViews(s.root)
+		return err
+	}); err != nil {
 		return DashboardViewData{}, err
 	}
 	return DashboardViewData{
@@ -624,16 +711,24 @@ func (s *Server) dashboardViewData(r *http.Request, view string) (DashboardViewD
 	}, nil
 }
 
-func (s *Server) dashboardCloseoutReports(ctx context.Context, tasks []store.Task, limit int) ([]reconcile.CloseoutReport, error) {
+func (s *Server) dashboardCloseoutReports(ctx context.Context, tasks []store.Task, limit int, timing *dashboardTiming) ([]reconcile.CloseoutReport, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
 	var reports []reconcile.CloseoutReport
+	checked := 0
 	stateCfg := state.Config{Allowed: s.cfg.States.Allowed, Terminal: s.cfg.States.Terminal, Transitions: s.cfg.States.Transitions}
+	start := time.Now()
+	defer func() {
+		if timing != nil {
+			timing.add("dashboard.closeout_reports.loop", time.Since(start), fmt.Sprintf("checked=%d reports=%d", checked, len(reports)))
+		}
+	}()
 	for _, task := range tasks {
 		if !state.IsTerminal(stateCfg, task.Status) {
 			continue
 		}
+		checked++
 		gitInfo := s.closeoutGitForTask(task)
 		report, err := reconcile.Closeout(ctx, s.store, reconcile.CloseoutOptions{
 			TaskID:   task.Definition.ID,
@@ -1983,9 +2078,16 @@ func paginateBoardRows(rows []store.Task, filters TaskFilters) ([]store.Task, Ta
 	return rows[startIndex:endIndex], pagination
 }
 
-func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, gapLimit int) ([]GateStatus, error) {
+func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, gapLimit int, timing *dashboardTiming) ([]GateStatus, error) {
 	var statuses []GateStatus
 	now := time.Now().UTC()
+	taskDetailCalls := 0
+	start := time.Now()
+	defer func() {
+		if timing != nil {
+			timing.add("dashboard.gates.task_detail_loop", time.Since(start), fmt.Sprintf("task_detail_calls=%d", taskDetailCalls))
+		}
+	}()
 	for _, profile := range s.cfg.WorkstreamProfiles {
 		if len(profile.Gates) == 0 {
 			continue
@@ -2008,6 +2110,7 @@ func (s *Server) dashboardGateStatuses(ctx context.Context, tasks []store.Task, 
 				continue
 			}
 			for _, task := range profileTasks {
+				taskDetailCalls++
 				_, _, evidence, _, _, err := s.store.TaskDetail(ctx, task.Definition.ID)
 				if err != nil {
 					return nil, err
@@ -2567,9 +2670,17 @@ func optionalDashboardReviewHandback(handback coord.ReviewCompletionHandback, ok
 	return &handback
 }
 
-func (s *Server) dashboardMissingReviewDomainsByTask(ctx context.Context, tasks []store.Task) (map[string][]string, error) {
+func (s *Server) dashboardMissingReviewDomainsByTask(ctx context.Context, tasks []store.Task, timing *dashboardTiming) (map[string][]string, error) {
 	missingByTask := map[string][]string{}
+	start := time.Now()
+	taskDetailCalls := 0
+	defer func() {
+		if timing != nil {
+			timing.add("dashboard.missing_review_domains.task_detail_loop", time.Since(start), fmt.Sprintf("task_detail_calls=%d", taskDetailCalls))
+		}
+	}()
 	for _, task := range tasks {
+		taskDetailCalls++
 		detailTask, _, _, _, reviews, err := s.store.TaskDetail(ctx, task.Definition.ID)
 		if err != nil {
 			return nil, err

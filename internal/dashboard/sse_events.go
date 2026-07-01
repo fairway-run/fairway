@@ -123,7 +123,7 @@ func (s *Server) gateChangeEvents(ctx context.Context, sourceID, at string) ([]s
 	if err != nil {
 		return nil, err
 	}
-	gates, err := s.dashboardGateStatuses(ctx, tasks, 0)
+	gates, err := s.dashboardGateStatuses(ctx, tasks, 0, nil)
 	if err != nil {
 		return nil, err
 	}
