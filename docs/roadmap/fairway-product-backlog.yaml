@@ -4177,3 +4177,42 @@ tasks:
       - "Define release gates before any shared-team runtime is advertised as supported."
       - "Keep shared read-only dashboard and shared write API as independent switches."
       - "State that this design does not authorize runtime deployment, public exposure, release tag, dashboard restart, or write-capable dashboard behavior."
+
+  - id: FW-260
+    title: Prepare Fairway dashboard performance and shared-team docs release
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - docs/design/dashboard.md
+      - docs/design/shared-team-operating-model.md
+      - docs/design/shared-team-server-api.md
+      - docs/design/shared-team-concurrency-and-sync.md
+      - docs/design/shared-team-deployment-operations.md
+      - CHANGELOG.md
+      - docs/release-notes.md
+      - docs/release-highlights.md
+    target_paths:
+      - CHANGELOG.md
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - docs/assessment
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - governance
+      - ops
+      - security
+    risk_level: medium
+    migration_type: release-prep
+    dependencies:
+      - FW-256
+      - FW-257
+      - FW-258
+      - FW-259
+    acceptance_checks:
+      - "Prepare release notes, highlights, changelog, and verification packet for the post-v0.1.9 dashboard performance fixes and shared-team design documents."
+      - "Run release-prep gates including tests, vet, diff check, config validation, workflow check, active reconciliation, GoReleaser check, and release verification where applicable."
+      - "State whether the release should include dashboard restart/version-readback work as a separate follow-up task."
+      - "Do not tag, publish, restart dashboards, change public exposure, or declare a release complete under this preparation task."
