@@ -4216,3 +4216,303 @@ tasks:
       - "Run release-prep gates including tests, vet, diff check, config validation, workflow check, active reconciliation, GoReleaser check, and release verification where applicable."
       - "State whether the release should include dashboard restart/version-readback work as a separate follow-up task."
       - "Do not tag, publish, restart dashboards, change public exposure, or declare a release complete under this preparation task."
+
+  - id: FW-269
+    title: Implement shared-team server API skeleton and read-only mode
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: server
+    source_paths:
+      - docs/design/shared-team-server-api.md
+      - docs/design/shared-team-deployment-operations.md
+      - cmd/fairway
+      - internal/config
+      - internal/dashboard
+      - internal/store
+    target_paths:
+      - cmd/fairway
+      - internal/config
+      - internal/dashboard
+      - internal/store
+      - docs/config-reference.md
+      - docs/design/cli.md
+      - docs/design/shared-team-server-api.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - ops
+      - security
+    risk_level: high
+    migration_type: shared-team-read-only-server
+    dependencies:
+      - FW-257
+      - FW-259
+    acceptance_checks:
+      - "Server/API entrypoint or mode is documented and runnable in read-only mode."
+      - "Read endpoints expose task/detail/report/status data through existing store read models without creating a second store."
+      - "Dashboard remains read-only; no review/approval/merge/deploy/live authority is added."
+      - "Config validation covers disabled/read-only modes and fails closed for write-capable settings."
+      - "Focused tests and full go test ./... pass."
+
+  - id: FW-270
+    title: Implement shared-team identity and command authorization guard
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: server
+    source_paths:
+      - docs/design/shared-team-server-api.md
+      - docs/design/trusted-proxy-identity-verification.md
+      - cmd/fairway
+      - internal/config
+      - internal/dashboard
+      - internal/store
+    target_paths:
+      - cmd/fairway
+      - internal/config
+      - internal/dashboard
+      - internal/store
+      - docs/config-reference.md
+      - docs/design/shared-team-server-api.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - ops
+      - security
+    risk_level: high
+    migration_type: shared-team-identity-authz
+    dependencies:
+      - FW-257
+      - FW-269
+    acceptance_checks:
+      - "Identity model supports local/no-edge, trusted proxy read-only, API token, and service-account or mTLS placeholders as configured modes."
+      - "Unverified trusted proxy headers are advisory only and cannot grant write authority."
+      - "Authorization checks are command-scoped: viewer, operator, reviewer:<domain>, coordinator, adapter:<name>, admin."
+      - "Audit output avoids raw JWT/header/cookie/token/prompt/transcript/provider-private data."
+      - "Security-focused tests cover missing identity, bad issuer/audience or equivalent failed proof, insufficient role, and read-only allow cases."
+
+  - id: FW-271
+    title: Implement shared-team write API pilot for append-only evidence and checkpoints
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: server
+    source_paths:
+      - docs/design/shared-team-server-api.md
+      - docs/design/shared-team-concurrency-and-sync.md
+      - cmd/fairway
+      - internal/store
+      - internal/dashboard
+    target_paths:
+      - cmd/fairway
+      - internal/store
+      - internal/dashboard
+      - docs/config-reference.md
+      - docs/design/shared-team-server-api.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - ops
+      - security
+    risk_level: high
+    migration_type: shared-team-append-only-write-api
+    dependencies:
+      - FW-258
+      - FW-269
+      - FW-270
+    acceptance_checks:
+      - "Write API accepts append-only evidence/checkpoint commands with idempotency keys."
+      - "Duplicate idempotency key with identical payload returns existing result; mismatch fails closed."
+      - "No arbitrary prompt/transcript/tool body persistence is introduced."
+      - "Local CLI remains the reference mutation path; server API command semantics match CLI evidence/checkpoint behavior."
+      - "Tests cover retry, mismatch, authz denial, project scoping, and audit rows."
+
+  - id: FW-272
+    title: Implement shared-team guarded task status and review write pilot
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: server
+    source_paths:
+      - docs/design/shared-team-server-api.md
+      - docs/design/shared-team-concurrency-and-sync.md
+      - internal/store
+      - internal/reviewpolicy
+      - cmd/fairway
+    target_paths:
+      - cmd/fairway
+      - internal/store
+      - internal/reviewpolicy
+      - internal/dashboard
+      - docs/design/shared-team-server-api.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: shared-team-guarded-write-api
+    dependencies:
+      - FW-258
+      - FW-270
+      - FW-271
+    acceptance_checks:
+      - "Status changes require expected current status or equivalent conflict guard."
+      - "Review writes require reviewer domain authority and preserve existing review-policy boundaries."
+      - "Conflicts return structured safe errors without private payloads."
+      - "Task state history and review rows are updated transactionally with denormalized read state where applicable."
+      - "Tests cover stale status, missing review authority, grouped review boundary preservation, and concurrent write conflicts."
+
+  - id: FW-273
+    title: Build disposable Postgres/shared-store rehearsal harness
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: storage
+    source_paths:
+      - docs/design/postgres-adapter.md
+      - docs/design/shared-team-concurrency-and-sync.md
+      - internal/store
+      - cmd/fairway
+    target_paths:
+      - cmd/fairway
+      - internal/store
+      - docs/design/postgres-adapter.md
+      - docs/design/shared-team-concurrency-and-sync.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - governance
+      - ops
+    risk_level: high
+    migration_type: postgres-rehearsal-harness
+    dependencies:
+      - FW-255
+      - FW-258
+    acceptance_checks:
+      - "Disposable Postgres or server-backed store rehearsal applies reviewed DDL or documented compatibility output."
+      - "Imports a SQLite Fairway backup/export and verifies task/evidence/review/session/report read-model equivalence."
+      - "Records backup/provenance manifest and rollback instructions."
+      - "No production/shared dashboard store is switched under this task."
+      - "CI/local harness can be rerun from documented commands."
+
+  - id: FW-274
+    title: Package local small-team Fairway deployment for Mac mini GitLab lab
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: deployment
+    source_paths:
+      - docs/design/shared-team-deployment-operations.md
+      - docs/config-reference.md
+      - docs/quickstart.md
+      - cmd/fairway
+    target_paths:
+      - docs/operations
+      - docs/config-reference.md
+      - docs/quickstart.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: small-team-lab-packaging
+    dependencies:
+      - FW-259
+      - FW-269
+      - FW-270
+    acceptance_checks:
+      - "Runbook covers install, config, secrets, dashboard/server start, pid/log files, backup/restore, and version readback."
+      - "No root-owned application data under root filesystem; data paths are configurable."
+      - "Local GitLab/Mac mini or equivalent lab can start the read-only shared dashboard/server from scratch."
+      - "Smoke checks verify status, board, reports, API readback, Cloudflare/Pomerium/no-edge boundary as applicable."
+      - "Evidence records exact binary/version/config and cleanup/rollback."
+
+  - id: FW-275
+    title: Run small-team shared Fairway pilot and capture operator feedback
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: adoption
+    source_paths:
+      - docs/design/shared-team-operating-model.md
+      - docs/design/shared-team-deployment-operations.md
+      - docs/design/small-team-autonomy-operating-model.md
+      - docs/release-notes.md
+    target_paths:
+      - docs/assessment
+      - docs/design/small-team-autonomy-operating-model.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: shared-team-pilot
+    dependencies:
+      - FW-269
+      - FW-270
+      - FW-274
+    acceptance_checks:
+      - "Pilot defines participating roles, allowed commands, forbidden actions, and fallback to local CLI."
+      - "Operators use the shared surface for at least one review/wait/evidence workflow without hidden authority."
+      - "Rough edges are recorded with owner/severity/fix-now-or-defer decisions."
+      - "Delivery/process metrics compare shared-team pilot against local-only workflow."
+      - "Closeout recommends promote, repeat pilot, or block shared-team support with exact reasons."
+
+  - id: FW-276
+    title: Prepare Fairway shared-team implementation release packet
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - CHANGELOG.md
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - docs/assessment
+      - docs/design/shared-team-operating-model.md
+      - docs/design/shared-team-server-api.md
+      - docs/design/shared-team-concurrency-and-sync.md
+      - docs/design/shared-team-deployment-operations.md
+    target_paths:
+      - CHANGELOG.md
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - docs/assessment
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: shared-team-release-prep
+    dependencies:
+      - FW-269
+      - FW-270
+      - FW-271
+      - FW-272
+      - FW-273
+      - FW-274
+      - FW-275
+    acceptance_checks:
+      - "Release notes/changelog/highlights summarize implemented shared-team capabilities and explicit non-claims."
+      - "Validation packet includes tests, deployment smoke, backup/restore, identity/authz, and pilot evidence."
+      - "Release boundary reviews are complete before tag/publish."
+      - "Dashboard restart/version readback is a separate tracked closeout step if release is published."
