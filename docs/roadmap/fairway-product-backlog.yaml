@@ -4408,6 +4408,41 @@ tasks:
       - "No production/shared dashboard store is switched under this task."
       - "CI/local harness can be rerun from documented commands."
 
+  - id: FW-277
+    title: Prove disposable Postgres apply import readback
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: storage
+    source_paths:
+      - docs/design/postgres-adapter.md
+      - docs/design/shared-team-concurrency-and-sync.md
+      - internal/store
+      - cmd/fairway
+    target_paths:
+      - cmd/fairway
+      - internal/store
+      - docs/design/postgres-adapter.md
+      - docs/design/shared-team-concurrency-and-sync.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: disposable-postgres-apply-import-proof
+    dependencies:
+      - FW-273
+    acceptance_checks:
+      - "A disposable isolated Postgres environment applies reviewed DDL or records exact unsupported DDL gaps without switching the runtime store."
+      - "A SQLite Fairway backup/export is imported or replayed into the disposable target, or the missing import capability is reported with exact follow-up acceptance."
+      - "Readback proves task/evidence/review/session/report equivalence against the source rehearsal packet, or records deterministic mismatches and rollback/disposal evidence."
+      - "Harness output includes provenance manifest, cleanup/disposal proof, and rollback notes."
+      - "SQLite remains the default store; no production migration, public/shared API exposure, dashboard restart, release, or cutover readiness claim is made."
+
   - id: FW-274
     title: Package local small-team Fairway deployment for Mac mini GitLab lab
     kind: task
