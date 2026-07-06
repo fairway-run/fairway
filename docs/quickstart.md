@@ -184,10 +184,19 @@ fairway dashboard
 
 Opens `http://127.0.0.1:7878`. Leave it open on a second monitor.
 
+![Fairway read-only dashboard wall](/img/dashboard/fairway-dashboard-wall.png)
+
+The screenshot above is from a synthetic release-safe fixture. It shows the
+shared read-only coordination wall without exposing customer, production, or AI
+Cloud operational data. Read-only dashboard sharing is for visibility; task
+mutation remains a CLI/local-worktree action.
+
 Open `/reports` when the question is retrospective rather than live: what
 finished today, what was only monitor/deploy bookkeeping, which lanes moved
 work, which CI/deploy/UAT runs need follow-up, and what export should go into a
 handoff.
+
+![Fairway reports with delivery resources](/img/dashboard/fairway-dashboard-reports.png)
 
 For an operator dashboard that should survive the launching terminal or agent
 thread, use the detached lifecycle commands:

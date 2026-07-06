@@ -103,6 +103,12 @@ emit a `started` provider event so the wall can show who is actually attached.
 The right rail shows gate readiness and recent activity for quick situational
 awareness.
 
+![Fairway dashboard wall view](/img/dashboard/fairway-dashboard-wall.png)
+
+This release-safe wall capture uses a synthetic Fairway fixture. It illustrates
+the shared read-only coordination posture without exposing customer,
+production, or AI Cloud operational data.
+
 Accessibility expectations:
 
 - interactive wall and board controls carry labels or visible text,
@@ -210,6 +216,12 @@ It links to task detail. The board preserves role/status/project/profile/kind/
 domain/risk/review/search/sort/column state when switching between task and
 diagnostics tabs.
 
+![Fairway operator board view](/img/dashboard/fairway-dashboard-board.png)
+
+This board capture uses the same synthetic fixture. It shows the operator
+workstream and task-table surface; it is not evidence of dashboard mutation
+authority.
+
 The reports view includes the same delivery/process-overhead read model as
 `fairway delivery report`. It shows completed tasks, blocked and review-wait
 time, review records, changes requested, approval loops, reopen/retry count,
@@ -234,6 +246,8 @@ portal publication evidence visible without adding a second resource store. The
 panel is display-only; it does not deploy, restart dashboards, publish docs,
 cut releases, approve reviews, merge, or perform live operations. The model is
 defined in [delivery-resources.md](delivery-resources.md).
+
+![Fairway reports and delivery resources](/img/dashboard/fairway-dashboard-reports.png)
 
 The reports view also includes an Owner Rough-Edge Queue projected from
 structured `rough-edge` evidence rows recorded by `fairway rough-edge add`.
@@ -385,6 +399,8 @@ intended for audit, analysis, and external planning tools.
 
 Task detail uses the same dashboard shell with a compact detail header. It
 shows:
+
+![Fairway task detail view](/img/dashboard/fairway-dashboard-task-detail.png)
 
 - flow breadcrumbs back to Wall and Board,
 - direct actions back to Board and Board Diagnostics,
