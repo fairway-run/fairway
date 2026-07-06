@@ -140,6 +140,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdGitCheck(opts, args[1:])
 	case "preflight":
 		return cmdPreflight(opts, args[1:])
+	case "doctor":
+		return cmdDoctor(ctx, opts, args[1:])
 	case "workflow":
 		return cmdWorkflow(ctx, opts, args[1:])
 	case "batch":
@@ -1132,6 +1134,30 @@ type worktreeCleanliness struct {
 	AllowedArtifactPaths []string
 }
 
+type doctorReport struct {
+	OK       bool            `json:"ok"`
+	Root     string          `json:"root,omitempty"`
+	Config   string          `json:"config,omitempty"`
+	DBPath   string          `json:"db_path,omitempty"`
+	Findings []doctorFinding `json:"findings"`
+}
+
+type doctorFinding struct {
+	ID               string   `json:"id"`
+	Category         string   `json:"category"`
+	Status           string   `json:"status"`
+	Owner            string   `json:"owner,omitempty"`
+	Detail           string   `json:"detail,omitempty"`
+	SuggestedCommand string   `json:"suggested_command,omitempty"`
+	EvidencePath     string   `json:"evidence_path,omitempty"`
+	Blocks           []string `json:"blocks,omitempty"`
+}
+
+var (
+	doctorLookPath    = exec.LookPath
+	doctorDialTimeout = net.DialTimeout
+)
+
 func cmdPreflight(opts globalOptions, args []string) error {
 	fs := flag.NewFlagSet("preflight", flag.ContinueOnError)
 	roleFlag := fs.String("role", "", "role name")
@@ -1204,6 +1230,224 @@ func cmdPreflight(opts globalOptions, args []string) error {
 		return errors.New("preflight failed")
 	}
 	return nil
+}
+
+func cmdDoctor(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	format := fs.String("format", "text", "text or json")
+	readOnlyDashboard := fs.String("dashboard-read-only", "127.0.0.1:7878", "read-only dashboard address to probe, or empty to skip")
+	fullDashboard := fs.String("dashboard-full", "127.0.0.1:7879", "local full-access dashboard address to probe, or empty to skip")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected doctor arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	report := buildDoctorReport(ctx, opts, *readOnlyDashboard, *fullDashboard)
+	if opts.JSON || *format == "json" {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		printDoctorReport(report)
+	}
+	if !report.OK {
+		return errors.New("doctor found failing diagnostics")
+	}
+	return nil
+}
+
+func buildDoctorReport(ctx context.Context, opts globalOptions, readOnlyDashboard, fullDashboard string) doctorReport {
+	report := doctorReport{OK: true}
+	add := func(finding doctorFinding) {
+		report.Findings = append(report.Findings, finding)
+		if finding.Status == "fail" {
+			report.OK = false
+		}
+	}
+	cfg, root, configPath, err := loadConfig(opts)
+	if err != nil {
+		add(doctorFinding{
+			ID:               "config-load",
+			Category:         "config",
+			Status:           "fail",
+			Owner:            "ops",
+			Detail:           err.Error(),
+			SuggestedCommand: "fairway init && fairway config validate",
+			Blocks:           []string{"task work", "release", "dashboard restart", "shared-team pilot"},
+		})
+		return report
+	}
+	report.Root = root
+	report.Config = configPath
+	report.DBPath = resolveDBPath(root, cfg, opts)
+	add(doctorPathFinding("config-file", "config", configPath, "ops", "fairway config validate", []string{"task work", "release"}))
+	add(doctorPathFinding("fairway-db", "config", report.DBPath, "backend", "fairway db backup", []string{"task work", "shared-team pilot"}))
+	add(doctorGitFinding(root, cfg.Fairway.MainBranch))
+	add(doctorGitLockFinding(root))
+	add(doctorGoCacheFinding())
+	for _, tool := range []struct {
+		name      string
+		owner     string
+		blocks    []string
+		suggested string
+	}{
+		{name: "go", owner: "backend", blocks: []string{"task work"}, suggested: "go version"},
+		{name: "git", owner: "backend", blocks: []string{"task work"}, suggested: "git --version"},
+		{name: "tmux", owner: "ops", blocks: []string{"git boundary", "lane runtime"}, suggested: "tmux -V"},
+		{name: "docker", owner: "ops", blocks: []string{"postgres rehearsal proof"}, suggested: "docker info"},
+		{name: "psql", owner: "backend", blocks: []string{"postgres rehearsal proof"}, suggested: "psql --version"},
+	} {
+		add(doctorToolFinding(tool.name, tool.owner, tool.suggested, tool.blocks))
+	}
+	add(doctorDashboardFinding("dashboard-read-only", readOnlyDashboard, "fairway dashboard status --listen "+readOnlyDashboard+" --read-only"))
+	add(doctorDashboardFinding("dashboard-full", fullDashboard, "fairway dashboard status --listen "+fullDashboard))
+	add(doctorSessionReadbackFinding(ctx, cfg, report.DBPath))
+	sort.SliceStable(report.Findings, func(i, j int) bool { return report.Findings[i].ID < report.Findings[j].ID })
+	return report
+}
+
+func printDoctorReport(report doctorReport) {
+	fmt.Printf("doctor_ok: %t\n", report.OK)
+	if report.Root != "" {
+		fmt.Printf("root: %s\n", report.Root)
+	}
+	if report.Config != "" {
+		fmt.Printf("config: %s\n", report.Config)
+	}
+	if report.DBPath != "" {
+		fmt.Printf("db_path: %s\n", report.DBPath)
+	}
+	fmt.Println("findings:")
+	for _, finding := range report.Findings {
+		fmt.Printf("- %s status=%s category=%s owner=%s", finding.ID, finding.Status, finding.Category, firstNonEmpty(finding.Owner, "unknown"))
+		if finding.Detail != "" {
+			fmt.Printf(" detail=%q", finding.Detail)
+		}
+		fmt.Println()
+		if finding.SuggestedCommand != "" {
+			fmt.Printf("  suggested_command: %s\n", finding.SuggestedCommand)
+		}
+		if finding.EvidencePath != "" {
+			fmt.Printf("  evidence_path: %s\n", finding.EvidencePath)
+		}
+		if len(finding.Blocks) > 0 {
+			fmt.Printf("  blocks: %s\n", strings.Join(finding.Blocks, ", "))
+		}
+	}
+}
+
+func doctorPathFinding(id, category, pathValue, owner, suggested string, blocks []string) doctorFinding {
+	if strings.TrimSpace(pathValue) == "" {
+		return doctorFinding{ID: id, Category: category, Status: "fail", Owner: owner, Detail: "path is empty", SuggestedCommand: suggested, Blocks: blocks}
+	}
+	info, err := os.Stat(pathValue)
+	if err != nil {
+		return doctorFinding{ID: id, Category: category, Status: "fail", Owner: owner, Detail: err.Error(), SuggestedCommand: suggested, Blocks: blocks}
+	}
+	if info.IsDir() {
+		return doctorFinding{ID: id, Category: category, Status: "fail", Owner: owner, Detail: "path is a directory: " + pathValue, SuggestedCommand: suggested, Blocks: blocks}
+	}
+	return doctorFinding{ID: id, Category: category, Status: "pass", Owner: owner, Detail: pathValue, SuggestedCommand: suggested, EvidencePath: pathValue}
+}
+
+func doctorGitFinding(root, base string) doctorFinding {
+	status, err := fairwaygit.Check(root, base)
+	if err != nil {
+		return doctorFinding{ID: "git-worktree", Category: "git", Status: "fail", Owner: "backend", Detail: err.Error(), SuggestedCommand: "git status --short --branch", Blocks: []string{"task work", "release"}}
+	}
+	finding := doctorFinding{
+		ID:               "git-worktree",
+		Category:         "git",
+		Status:           "pass",
+		Owner:            "backend",
+		Detail:           fmt.Sprintf("branch=%s base=%s ahead=%d behind=%d dirty=%t", status.Branch, status.Base, status.Ahead, status.Behind, status.Dirty),
+		SuggestedCommand: "git status --short --branch",
+	}
+	if status.Dirty || status.Behind > 0 {
+		finding.Status = "warn"
+		finding.Blocks = []string{"release"}
+	}
+	return finding
+}
+
+func doctorGitLockFinding(root string) doctorFinding {
+	lockPath := filepath.Join(root, ".git", "index.lock")
+	if _, err := os.Stat(lockPath); err == nil {
+		return doctorFinding{
+			ID:               "git-index-lock",
+			Category:         "git",
+			Status:           "warn",
+			Owner:            "backend",
+			Detail:           lockPath,
+			SuggestedCommand: "use tmux/CLI git lane; remove stale .git/index.lock only after verifying no git process is active",
+			EvidencePath:     lockPath,
+			Blocks:           []string{"git boundary", "release"},
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return doctorFinding{ID: "git-index-lock", Category: "git", Status: "warn", Owner: "backend", Detail: err.Error(), SuggestedCommand: "git status --short --branch", Blocks: []string{"git boundary"}}
+	}
+	return doctorFinding{ID: "git-index-lock", Category: "git", Status: "pass", Owner: "backend", Detail: "no .git/index.lock", SuggestedCommand: "git status --short --branch"}
+}
+
+func doctorToolFinding(name, owner, suggested string, blocks []string) doctorFinding {
+	pathValue, err := doctorLookPath(name)
+	if err != nil {
+		status := "warn"
+		if containsString(blocks, "task work") {
+			status = "fail"
+		}
+		return doctorFinding{ID: "tool-" + name, Category: "tool", Status: status, Owner: owner, Detail: err.Error(), SuggestedCommand: suggested, Blocks: blocks}
+	}
+	return doctorFinding{ID: "tool-" + name, Category: "tool", Status: "pass", Owner: owner, Detail: pathValue, SuggestedCommand: suggested, EvidencePath: pathValue}
+}
+
+func doctorGoCacheFinding() doctorFinding {
+	cache := strings.TrimSpace(os.Getenv("GOCACHE"))
+	if cache == "" {
+		cache = strings.TrimSpace(os.Getenv("GOMODCACHE"))
+	}
+	if cache == "" {
+		return doctorFinding{ID: "go-cache", Category: "tool", Status: "warn", Owner: "backend", Detail: "GOCACHE is not set", SuggestedCommand: "GOCACHE=/tmp/fairway-go-cache go test ./...", Blocks: []string{"sandboxed Go commands"}}
+	}
+	finding := doctorFinding{ID: "go-cache", Category: "tool", Status: "pass", Owner: "backend", Detail: cache, SuggestedCommand: "GOCACHE=/tmp/fairway-go-cache go test ./...", EvidencePath: cache}
+	if strings.Contains(cache, "/Library/Caches/go-build") || strings.HasPrefix(cache, filepath.Join(os.Getenv("HOME"), "Library")) {
+		finding.Status = "warn"
+		finding.Detail += " (Desktop sandbox may need /tmp override)"
+		finding.Blocks = []string{"sandboxed Go commands"}
+	}
+	return finding
+}
+
+func doctorDashboardFinding(id, address, suggested string) doctorFinding {
+	if strings.TrimSpace(address) == "" {
+		return doctorFinding{ID: id, Category: "dashboard", Status: "warn", Owner: "ops", Detail: "dashboard probe disabled"}
+	}
+	conn, err := doctorDialTimeout("tcp", address, 300*time.Millisecond)
+	if err != nil {
+		return doctorFinding{ID: id, Category: "dashboard", Status: "warn", Owner: "ops", Detail: err.Error(), SuggestedCommand: suggested, Blocks: []string{"dashboard restart"}}
+	}
+	_ = conn.Close()
+	return doctorFinding{ID: id, Category: "dashboard", Status: "pass", Owner: "ops", Detail: address, SuggestedCommand: suggested}
+}
+
+func doctorSessionReadbackFinding(ctx context.Context, cfg config.Config, dbPath string) doctorFinding {
+	s, err := store.Open(ctx, dbPath, cfg.Fairway.ProjectName)
+	if err != nil {
+		return doctorFinding{ID: "session-readback", Category: "provider", Status: "fail", Owner: "backend", Detail: err.Error(), SuggestedCommand: "fairway session status", Blocks: []string{"provider capability probes"}}
+	}
+	defer s.Close()
+	if err := s.SetTaskIDPattern(cfg.Fairway.TaskIDPattern); err != nil {
+		return doctorFinding{ID: "session-readback", Category: "provider", Status: "fail", Owner: "backend", Detail: err.Error(), SuggestedCommand: "fairway session status", Blocks: []string{"provider capability probes"}}
+	}
+	sessions, err := s.Sessions(ctx, true)
+	if err != nil {
+		return doctorFinding{ID: "session-readback", Category: "provider", Status: "fail", Owner: "backend", Detail: err.Error(), SuggestedCommand: "fairway session status", Blocks: []string{"provider capability probes"}}
+	}
+	return doctorFinding{ID: "session-readback", Category: "provider", Status: "pass", Owner: "backend", Detail: fmt.Sprintf("session_rows=%d", len(sessions)), SuggestedCommand: "fairway session status"}
 }
 
 func cmdWorkflow(ctx context.Context, opts globalOptions, args []string) error {
@@ -16181,7 +16425,7 @@ func usage() {
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
-	fmt.Println("  coordinator plan|tick|status|preflight, readiness report, adoption artifact, parity artifact")
+	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
 	fmt.Println("  rules, packet, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
@@ -16211,6 +16455,7 @@ func printCommandHelp(command string) bool {
 		"dispatch-plan":              "fairway dispatch-plan [--role <role>] [--limit <n>]\n  Print a ready-work dispatch plan for a role.",
 		"git-check":                  "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
+		"doctor":                     "fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json]\n  Run read-only local capability diagnostics for agent, git, dashboard, provider, and rehearsal surfaces.",
 		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",

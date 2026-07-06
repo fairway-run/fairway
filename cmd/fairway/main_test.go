@@ -307,6 +307,7 @@ func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
 		want    string
 	}{
 		{"preflight", "fairway preflight [--role <role>]"},
+		{"doctor", "fairway doctor [--dashboard-read-only <addr>]"},
 		{"git-check", "fairway git-check [--base <ref>]"},
 		{"status-report", "fairway status-report"},
 		{"health-report", "fairway health-report"},
@@ -1215,6 +1216,64 @@ func TestCLI_Preflight(t *testing.T) {
 	runOK(t, "add", "T-001", "--title", "Merge", "--role", "backend")
 	runOK(t, "merge-ready", "T-001")
 	runOK(t, "--json", "merge-ready", "T-001")
+}
+
+func TestCLI_DoctorReportsCapabilityDiagnostics(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	t.Setenv("GOCACHE", filepath.Join(t.TempDir(), "go-cache"))
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+
+	originalLookPath := doctorLookPath
+	doctorLookPath = func(file string) (string, error) {
+		switch file {
+		case "go", "git":
+			return "/usr/bin/" + file, nil
+		case "tmux":
+			return "", exec.ErrNotFound
+		default:
+			return "/usr/local/bin/" + file, nil
+		}
+	}
+	t.Cleanup(func() { doctorLookPath = originalLookPath })
+
+	text := runCapture(t, "doctor", "--dashboard-read-only", "", "--dashboard-full", "")
+	assertContains(t, text, "doctor_ok: true")
+	assertContains(t, text, "tool-tmux status=warn category=tool owner=ops")
+	assertContains(t, text, "blocks: git boundary, lane runtime")
+	assertContains(t, text, "git-index-lock status=pass")
+
+	if err := os.WriteFile(filepath.Join(repo, ".git", "index.lock"), []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	jsonOut := runCapture(t, "--json", "doctor", "--dashboard-read-only", "", "--dashboard-full", "")
+	assertContains(t, jsonOut, `"id": "git-index-lock"`)
+	assertContains(t, jsonOut, `"status": "warn"`)
+	assertContains(t, jsonOut, `"suggested_command": "use tmux/CLI git lane; remove stale .git/index.lock only after verifying no git process is active"`)
+
+	originalLookPath = doctorLookPath
+	doctorLookPath = func(file string) (string, error) {
+		if file == "go" {
+			return "", exec.ErrNotFound
+		}
+		return "/usr/bin/" + file, nil
+	}
+	failed := runCaptureAllowError(t, "doctor", "--dashboard-read-only", "", "--dashboard-full", "")
+	assertContains(t, failed, "doctor_ok: false")
+	assertContains(t, failed, "tool-go status=fail")
 }
 
 func TestCLI_WorkflowCheckWarnsOnDirtyDocsAndUnpushedCommits(t *testing.T) {

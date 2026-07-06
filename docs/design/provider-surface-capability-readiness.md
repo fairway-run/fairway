@@ -49,6 +49,22 @@ Artifacts must be sanitized. They must not persist credentials, tokens,
 cookies, OTP material, private keys, bearer material, raw page bodies, or raw
 response headers.
 
+## Doctor Diagnostics
+
+`fairway doctor` is the local read-only capability diagnostic surface for common
+agent execution blockers. It checks Fairway config and DB paths, git worktree
+state, stale `.git/index.lock` guidance for tmux/CLI fallback, Go cache posture,
+required CLI tools, dashboard reachability, and Fairway session readback. Each
+row reports `pass`, `warn`, or `fail`, an owner, a suggested command, an
+optional evidence path, and the boundary it blocks, such as task work, release,
+dashboard restart, provider capability probes, git boundary, or shared-team
+pilot.
+
+Doctor output is evidence and triage only. It must not approve reviews, start
+providers, push, deploy, restart dashboards, mutate environments, run live
+operations, or expose credentials. Use JSON output when a coordinator or agent
+needs compact structured diagnostics.
+
 ## Coordinator And Dashboard Projection
 
 Coordinator plan and dashboard task detail should project provider-surface
@@ -93,4 +109,3 @@ credential submission, no Keycloak mutation, and sanitized artifacts.
 
 That distinction must live in Fairway state and review packets, not only in
 provider chat.
-

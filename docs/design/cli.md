@@ -51,6 +51,7 @@ fairway batch list
 fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
+fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json] # read-only local capability diagnostics
 fairway workflow check [--mode <task|close|deploy>] [--task-id <id>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
 fairway workflow closeout <task-id> [--dry-run] [--apply] [--preserve-branch-reason <reason>] # report lane branch/worktree/session closeout debt
 fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
@@ -512,6 +513,16 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   workstream profile `route_samples` when no `--route` flags are provided and
   reports named profile gates plus evidence-backed gate evaluation. `parity
   artifact` remains a compatibility alias for GPUaaS-style comparisons.
+- `doctor` runs read-only local capability diagnostics before or during agent
+  work. It reports config and DB path checks, git worktree state, stale
+  `.git/index.lock` guidance, Go cache posture, required CLI tools, dashboard
+  reachability, and Fairway session readback as structured pass/warn/fail rows.
+  Rows include owner, suggested command, evidence path where applicable, and
+  boundary labels such as task work, release, dashboard restart, git boundary,
+  provider capability probes, or shared-team pilot. The command does not mutate
+  task state, start providers, approve work, push, deploy, restart dashboards,
+  run live operations, or expose secrets. Use `--json` or `--format json` for
+  agent-consumed output.
 - `merge-ready` evaluates profile gates and selected rule-pack requirements for
   the target task. Missing `blocking` profile gates or blocking rule evidence
   fail readiness; missing `advisory` and `report_only` gates or advisory rule
