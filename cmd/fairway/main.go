@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -14638,8 +14639,15 @@ type dbRehearsalReport struct {
 	ManifestPath          string                `json:"manifest_path"`
 	CompatOK              bool                  `json:"compat_ok"`
 	EquivalenceOK         bool                  `json:"equivalence_ok"`
+	PostgresProofOK       bool                  `json:"postgres_proof_ok,omitempty"`
+	PostgresSchema        string                `json:"postgres_schema,omitempty"`
+	PostgresApplyPath     string                `json:"postgres_apply_path,omitempty"`
+	PostgresImportPath    string                `json:"postgres_import_path,omitempty"`
+	PostgresReadbackPath  string                `json:"postgres_readback_path,omitempty"`
+	PostgresProofError    string                `json:"postgres_proof_error,omitempty"`
 	SourceCounts          dbRehearsalCounts     `json:"source_counts"`
 	RehearsalCounts       dbRehearsalCounts     `json:"rehearsal_counts"`
+	PostgresCounts        dbRehearsalCounts     `json:"postgres_counts,omitempty"`
 	EquivalenceMismatches []dbRehearsalMismatch `json:"equivalence_mismatches,omitempty"`
 	Artifacts             map[string]string     `json:"artifacts"`
 	Boundaries            []string              `json:"boundaries"`
@@ -14651,6 +14659,7 @@ type dbRehearsalCounts struct {
 	Evidence    int            `json:"evidence"`
 	Handoffs    int            `json:"handoffs"`
 	Reviews     int            `json:"reviews"`
+	Sessions    int            `json:"sessions"`
 	ByStatus    map[string]int `json:"by_status"`
 }
 
@@ -14681,6 +14690,8 @@ func cmdDBRehearsal(ctx context.Context, opts globalOptions, args []string) erro
 	fs := flag.NewFlagSet("db rehearsal", flag.ContinueOnError)
 	backend := fs.String("backend", "", "backend")
 	outDir := fs.String("out", "", "output directory")
+	applyDSNEnv := fs.String("apply-dsn-env", "", "environment variable containing a disposable Postgres DSN for apply/import/readback proof")
+	postgresSchema := fs.String("postgres-schema", "fairway_rehearsal", "disposable Postgres schema for apply/import/readback proof")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -14725,6 +14736,10 @@ func cmdDBRehearsal(ctx context.Context, opts globalOptions, args []string) erro
 	if err != nil {
 		return err
 	}
+	sourceSessions, err := s.Sessions(ctx, true)
+	if err != nil {
+		return err
+	}
 	if err := writeJSONFile(sourceExportPath, sourceSnapshot); err != nil {
 		return err
 	}
@@ -14741,6 +14756,17 @@ func cmdDBRehearsal(ctx context.Context, opts globalOptions, args []string) erro
 		return err
 	}
 	rehearsalSnapshot, err := rehearsalStore.Snapshot(ctx)
+	if closeErr := rehearsalStore.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	rehearsalStore, err = store.Open(ctx, backupPath, cfg.Fairway.ProjectName)
+	if err != nil {
+		return err
+	}
+	rehearsalSessions, err := rehearsalStore.Sessions(ctx, true)
 	if closeErr := rehearsalStore.Close(); err == nil {
 		err = closeErr
 	}
@@ -14766,7 +14792,7 @@ func cmdDBRehearsal(ctx context.Context, opts globalOptions, args []string) erro
 		return err
 	}
 
-	equivalence := compareRehearsalSnapshots(sourceSnapshot, rehearsalSnapshot)
+	equivalence := compareRehearsalSnapshots(sourceSnapshot, rehearsalSnapshot, sourceSessions, rehearsalSessions)
 	if err := writeJSONFile(equivalencePath, equivalence); err != nil {
 		return err
 	}
@@ -14810,8 +14836,32 @@ func cmdDBRehearsal(ctx context.Context, opts globalOptions, args []string) erro
 			"no shared dashboard restart",
 			"no public exposure",
 			"no release tag or publish",
-			"postgres DDL is review output, not applied by this command",
 		},
+	}
+	if strings.TrimSpace(*applyDSNEnv) != "" {
+		report.Boundaries = append(report.Boundaries, "postgres DDL applied only to the disposable schema named by --postgres-schema")
+		proof, err := runPostgresRehearsalProof(ctx, *applyDSNEnv, *postgresSchema, ddl, sourceSnapshot, sourceSessions, *outDir)
+		if err != nil {
+			report.OK = false
+			report.PostgresProofOK = false
+			report.PostgresProofError = err.Error()
+		} else {
+			report.PostgresProofOK = proof.OK
+			report.PostgresSchema = proof.Schema
+			report.PostgresApplyPath = proof.ApplyPath
+			report.PostgresImportPath = proof.ImportPath
+			report.PostgresReadbackPath = proof.ReadbackPath
+			report.PostgresCounts = proof.Counts
+			report.Artifacts["postgres_apply"] = proof.ApplyPath
+			report.Artifacts["postgres_import"] = proof.ImportPath
+			report.Artifacts["postgres_readback"] = proof.ReadbackPath
+			if !proof.OK {
+				report.OK = false
+				report.EquivalenceMismatches = append(report.EquivalenceMismatches, proof.Mismatches...)
+			}
+		}
+	} else {
+		report.Boundaries = append(report.Boundaries, "postgres DDL is review output, not applied by this command")
 	}
 	if err := writeJSONFile(manifestPath, report); err != nil {
 		return err
@@ -14821,6 +14871,9 @@ func cmdDBRehearsal(ctx context.Context, opts globalOptions, args []string) erro
 	}
 	fmt.Printf("db_rehearsal: ok=%t backend=postgres project=%s out=%s\n", report.OK, report.ProjectID, report.OutputDir)
 	fmt.Printf("compat_ok=%t equivalence_ok=%t tasks=%d evidence=%d reviews=%d\n", report.CompatOK, report.EquivalenceOK, report.SourceCounts.Tasks, report.SourceCounts.Evidence, report.SourceCounts.Reviews)
+	if strings.TrimSpace(*applyDSNEnv) != "" {
+		fmt.Printf("postgres_proof_ok=%t schema=%s sessions=%d\n", report.PostgresProofOK, report.PostgresSchema, report.PostgresCounts.Sessions)
+	}
 	fmt.Printf("manifest=%s\nbackup=%s\nrollback=%s\n", report.ManifestPath, report.BackupPath, report.RollbackPath)
 	if !report.OK {
 		return errors.New("db rehearsal failed")
@@ -14837,9 +14890,461 @@ func writeJSONFile(path string, value any) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-func compareRehearsalSnapshots(source, rehearsal store.Snapshot) dbRehearsalEquivalence {
+type dbPostgresProof struct {
+	OK           bool
+	Schema       string
+	ApplyPath    string
+	ImportPath   string
+	ReadbackPath string
+	Counts       dbRehearsalCounts
+	Mismatches   []dbRehearsalMismatch
+}
+
+func runPostgresRehearsalProof(ctx context.Context, dsnEnv, schema, ddl string, snapshot store.Snapshot, sessions []store.Session, outDir string) (dbPostgresProof, error) {
+	dsnEnv = strings.TrimSpace(dsnEnv)
+	if dsnEnv == "" {
+		return dbPostgresProof{}, errors.New("postgres rehearsal proof requires --apply-dsn-env")
+	}
+	dsn := strings.TrimSpace(os.Getenv(dsnEnv))
+	if dsn == "" {
+		return dbPostgresProof{}, fmt.Errorf("postgres rehearsal proof DSN environment variable %s is empty", dsnEnv)
+	}
+	if !validPostgresSchemaName(schema) {
+		return dbPostgresProof{}, fmt.Errorf("invalid postgres schema %q", schema)
+	}
+	if _, err := exec.LookPath("psql"); err != nil {
+		return dbPostgresProof{}, fmt.Errorf("psql is required for postgres rehearsal proof: %w", err)
+	}
+	applyPath := filepath.Join(outDir, "postgres-apply.sql")
+	importPath := filepath.Join(outDir, "postgres-import.sql")
+	readbackPath := filepath.Join(outDir, "postgres-readback.json")
+	importSQL := renderPostgresImportSQL(snapshot, sessions)
+	if err := os.WriteFile(importPath, []byte(importSQL), 0o644); err != nil {
+		return dbPostgresProof{}, err
+	}
+	applySQL := strings.Join([]string{
+		"-- Fairway disposable Postgres rehearsal proof.",
+		"-- Applies only to the validated isolated schema in the DSN named by --apply-dsn-env.",
+		fmt.Sprintf("DROP SCHEMA IF EXISTS %s CASCADE;", schema),
+		fmt.Sprintf("CREATE SCHEMA %s;", schema),
+		fmt.Sprintf("SET search_path TO %s;", schema),
+		postgresApplyDDL(ddl),
+		importSQL,
+	}, "\n\n")
+	if err := os.WriteFile(applyPath, []byte(applySQL), 0o644); err != nil {
+		return dbPostgresProof{}, err
+	}
+	if err := runPSQL(ctx, dsn, "-v", "ON_ERROR_STOP=1", "-f", applyPath); err != nil {
+		return dbPostgresProof{}, err
+	}
+	counts, err := postgresReadbackCounts(ctx, dsn, schema)
+	if err != nil {
+		return dbPostgresProof{}, err
+	}
+	if err := writeJSONFile(readbackPath, counts); err != nil {
+		return dbPostgresProof{}, err
+	}
+	sourceCounts := rehearsalCounts(snapshot)
+	sourceCounts.Sessions = len(sessions)
+	proof := dbPostgresProof{
+		OK:           true,
+		Schema:       schema,
+		ApplyPath:    applyPath,
+		ImportPath:   importPath,
+		ReadbackPath: readbackPath,
+		Counts:       counts,
+	}
+	compareInt := func(field string, want, got int) {
+		if want != got {
+			proof.OK = false
+			proof.Mismatches = append(proof.Mismatches, dbRehearsalMismatch{Scope: "postgres", Field: field, Want: strconv.Itoa(want), Got: strconv.Itoa(got)})
+		}
+	}
+	compareInt("tasks", sourceCounts.Tasks, counts.Tasks)
+	compareInt("transitions", sourceCounts.Transitions, counts.Transitions)
+	compareInt("evidence", sourceCounts.Evidence, counts.Evidence)
+	compareInt("handoffs", sourceCounts.Handoffs, counts.Handoffs)
+	compareInt("reviews", sourceCounts.Reviews, counts.Reviews)
+	compareInt("sessions", sourceCounts.Sessions, counts.Sessions)
+	for status, want := range sourceCounts.ByStatus {
+		compareInt("status:"+status, want, counts.ByStatus[status])
+	}
+	return proof, nil
+}
+
+func validPostgresSchemaName(schema string) bool {
+	if schema == "" {
+		return false
+	}
+	lower := strings.ToLower(schema)
+	if !strings.HasPrefix(lower, "fairway_") {
+		return false
+	}
+	switch lower {
+	case "public", "pg_catalog", "information_schema", "pg_toast":
+		return false
+	}
+	if strings.HasPrefix(lower, "pg_") {
+		return false
+	}
+	for i, r := range schema {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_':
+			continue
+		case i > 0 && r >= '0' && r <= '9':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func postgresApplyDDL(ddl string) string {
+	return strings.ReplaceAll(ddl, "id INTEGER PRIMARY KEY", "id BIGSERIAL PRIMARY KEY")
+}
+
+func runPSQL(ctx context.Context, dsn string, args ...string) error {
+	cmd, err := postgresPSQLCommand(ctx, dsn, args...)
+	if err != nil {
+		return err
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		out := strings.TrimSpace(string(output))
+		if out == "" {
+			return fmt.Errorf("psql failed: %w", err)
+		}
+		return fmt.Errorf("psql failed: %w: %s", err, out)
+	}
+	return nil
+}
+
+func postgresPSQLCommand(ctx context.Context, dsn string, args ...string) (*exec.Cmd, error) {
+	env, err := postgresPSQLEnv(os.Environ(), dsn)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd.Env = env
+	return cmd, nil
+}
+
+func postgresPSQLEnv(base []string, dsn string) ([]string, error) {
+	conn, err := parsePostgresURLDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	env := make([]string, 0, len(base)+2)
+	for _, item := range base {
+		if strings.HasPrefix(item, "PGDATABASE=") ||
+			strings.HasPrefix(item, "PGCONNECT_TIMEOUT=") ||
+			strings.HasPrefix(item, "PGHOST=") ||
+			strings.HasPrefix(item, "PGPORT=") ||
+			strings.HasPrefix(item, "PGUSER=") ||
+			strings.HasPrefix(item, "PGPASSWORD=") ||
+			strings.HasPrefix(item, "PGSSLMODE=") {
+			continue
+		}
+		env = append(env, item)
+	}
+	env = append(env,
+		"PGCONNECT_TIMEOUT=10",
+		"PGHOST="+conn.Host,
+		"PGPORT="+conn.Port,
+		"PGUSER="+conn.User,
+		"PGDATABASE="+conn.Database,
+	)
+	if conn.Password != "" {
+		env = append(env, "PGPASSWORD="+conn.Password)
+	}
+	if conn.SSLMode != "" {
+		env = append(env, "PGSSLMODE="+conn.SSLMode)
+	}
+	return env, nil
+}
+
+type postgresURLDSN struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	Database string
+	SSLMode  string
+}
+
+func parsePostgresURLDSN(dsn string) (postgresURLDSN, error) {
+	parsed, err := url.Parse(strings.TrimSpace(dsn))
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") {
+		return postgresURLDSN{}, errors.New("postgres rehearsal proof DSN must be a postgres:// or postgresql:// URL")
+	}
+	if parsed.Hostname() == "" {
+		return postgresURLDSN{}, errors.New("postgres rehearsal proof DSN is missing host")
+	}
+	database := strings.TrimPrefix(parsed.EscapedPath(), "/")
+	if database == "" {
+		return postgresURLDSN{}, errors.New("postgres rehearsal proof DSN is missing database")
+	}
+	dbName, err := url.PathUnescape(database)
+	if err != nil || dbName == "" {
+		return postgresURLDSN{}, errors.New("postgres rehearsal proof DSN database is invalid")
+	}
+	user := ""
+	password := ""
+	if parsed.User != nil {
+		user = parsed.User.Username()
+		password, _ = parsed.User.Password()
+	}
+	if user == "" {
+		return postgresURLDSN{}, errors.New("postgres rehearsal proof DSN is missing user")
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = "5432"
+	}
+	return postgresURLDSN{
+		Host:     parsed.Hostname(),
+		Port:     port,
+		User:     user,
+		Password: password,
+		Database: dbName,
+		SSLMode:  parsed.Query().Get("sslmode"),
+	}, nil
+}
+
+func postgresReadbackCounts(ctx context.Context, dsn, schema string) (dbRehearsalCounts, error) {
+	query := fmt.Sprintf(`SET search_path TO %s;
+SELECT 'tasks', count(*) FROM task_state
+UNION ALL SELECT 'transitions', count(*) FROM task_state_history
+UNION ALL SELECT 'evidence', count(*) FROM task_evidence
+UNION ALL SELECT 'handoffs', count(*) FROM task_handoffs
+UNION ALL SELECT 'reviews', count(*) FROM task_reviews
+UNION ALL SELECT 'sessions', count(*) FROM agent_sessions
+UNION ALL SELECT 'status:' || status, count(*) FROM task_state GROUP BY status
+ORDER BY 1;`, schema)
+	cmd, err := postgresPSQLCommand(ctx, dsn, "-At", "-F", "\t", "-v", "ON_ERROR_STOP=1", "-c", query)
+	if err != nil {
+		return dbRehearsalCounts{}, err
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		out := strings.TrimSpace(string(output))
+		if out == "" {
+			return dbRehearsalCounts{}, fmt.Errorf("postgres readback failed: %w", err)
+		}
+		return dbRehearsalCounts{}, fmt.Errorf("postgres readback failed: %w: %s", err, out)
+	}
+	counts := dbRehearsalCounts{ByStatus: map[string]int{}}
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "SET" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) != 2 {
+			return dbRehearsalCounts{}, fmt.Errorf("unexpected postgres readback row %q", line)
+		}
+		value, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			return dbRehearsalCounts{}, fmt.Errorf("unexpected postgres readback count %q: %w", parts[1], err)
+		}
+		key := strings.TrimSpace(parts[0])
+		switch {
+		case key == "tasks":
+			counts.Tasks = value
+		case key == "transitions":
+			counts.Transitions = value
+		case key == "evidence":
+			counts.Evidence = value
+		case key == "handoffs":
+			counts.Handoffs = value
+		case key == "reviews":
+			counts.Reviews = value
+		case key == "sessions":
+			counts.Sessions = value
+		case strings.HasPrefix(key, "status:"):
+			counts.ByStatus[strings.TrimPrefix(key, "status:")] = value
+		}
+	}
+	return counts, nil
+}
+
+func renderPostgresImportSQL(snapshot store.Snapshot, sessions []store.Session) string {
+	taskIDs := map[string]bool{}
+	for _, row := range snapshot.Tasks {
+		taskIDs[row.Task.Definition.ID] = true
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "-- Fairway rehearsal import for project %s exported at %s.\n", sqlQuote(snapshot.ProjectID), sqlQuote(snapshot.ExportedAt))
+	for _, row := range snapshot.Tasks {
+		def := row.Task.Definition
+		task := row.Task
+		fmt.Fprintf(&b, "INSERT INTO task_definitions (project_id, id, parent_id, kind, title, role, notes, acceptance_checks, dependencies, priority, sequence, profile, owning_domain, owning_layer, source_paths, target_paths, review_domains, tags, risk_level, migration_type, created_at, created_by, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);\n",
+			sqlQuote(snapshot.ProjectID),
+			sqlQuote(def.ID),
+			sqlNullString(parentIDForImport(def.ParentID, taskIDs)),
+			sqlQuote(def.Kind),
+			sqlQuote(def.Title),
+			sqlQuote(def.Role),
+			sqlNullString(def.Notes),
+			sqlJSON(def.AcceptanceChecks),
+			sqlJSON(def.Dependencies),
+			sqlIntPtr(def.Priority),
+			sqlIntPtr(def.Sequence),
+			sqlNullString(def.Profile),
+			sqlNullString(def.OwningDomain),
+			sqlNullString(def.OwningLayer),
+			sqlJSON(def.SourcePaths),
+			sqlJSON(def.TargetPaths),
+			sqlJSON(def.ReviewDomains),
+			sqlJSON(def.Tags),
+			sqlNullString(def.RiskLevel),
+			sqlNullString(def.MigrationType),
+			sqlQuote(firstNonEmpty(task.UpdatedAt, snapshot.ExportedAt)),
+			sqlQuote("db-rehearsal"),
+			sqlQuote(firstNonEmpty(task.UpdatedAt, snapshot.ExportedAt)),
+		)
+		reviewRequired := "0"
+		if task.ReviewStatus != "" || len(row.Reviews) > 0 || len(def.ReviewDomains) > 0 {
+			reviewRequired = "1"
+		}
+		fmt.Fprintf(&b, "INSERT INTO task_state (project_id, task_id, status, owner, claimant, branch, claimed_at, completed_at, commit_sha, review_required, review_status, reviewer, reviewed_at, review_note, updated_at) VALUES (%s, %s, %s, %s, %s, %s, NULL, %s, %s, %s, %s, NULL, NULL, NULL, %s);\n",
+			sqlQuote(snapshot.ProjectID),
+			sqlQuote(def.ID),
+			sqlQuote(task.Status),
+			sqlNullString(task.Owner),
+			sqlNullString(task.Claimant),
+			sqlNullString(task.Branch),
+			sqlNullString(task.CompletedAt),
+			sqlNullString(task.CommitSHA),
+			reviewRequired,
+			sqlNullString(task.ReviewStatus),
+			sqlQuote(firstNonEmpty(task.UpdatedAt, snapshot.ExportedAt)),
+		)
+		for _, transition := range row.Transitions {
+			fmt.Fprintf(&b, "INSERT INTO task_state_history (project_id, task_id, from_status, to_status, actor, reason, at) VALUES (%s, %s, %s, %s, %s, %s, %s);\n",
+				sqlQuote(snapshot.ProjectID),
+				sqlQuote(def.ID),
+				sqlNullString(transition.FromStatus),
+				sqlQuote(transition.ToStatus),
+				sqlQuote(transition.Actor),
+				sqlNullString(transition.Reason),
+				sqlQuote(transition.At),
+			)
+		}
+		for _, handoff := range row.Handoffs {
+			fmt.Fprintf(&b, "INSERT INTO task_handoffs (project_id, task_id, from_role, to_role, payload, acknowledged_at, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s);\n",
+				sqlQuote(snapshot.ProjectID),
+				sqlQuote(def.ID),
+				sqlQuote(firstNonEmpty(handoff.FromRole, "unknown")),
+				sqlQuote(handoff.ToRole),
+				sqlNullString(handoff.Payload),
+				sqlNullString(handoff.AcknowledgedAt),
+				sqlQuote(handoff.CreatedAt),
+			)
+		}
+		for _, evidence := range row.Evidence {
+			fmt.Fprintf(&b, "INSERT INTO task_evidence (project_id, task_id, command_text, result, artifact_path, artifact_type, duration_seconds, notes, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);\n",
+				sqlQuote(snapshot.ProjectID),
+				sqlQuote(def.ID),
+				sqlNullString(evidence.CommandText),
+				sqlNullString(evidence.Result),
+				sqlNullString(evidence.ArtifactPath),
+				sqlNullString(evidence.ArtifactType),
+				sqlIntPtr(evidence.DurationSeconds),
+				sqlNullString(evidence.Notes),
+				sqlQuote(evidence.CreatedAt),
+			)
+		}
+		for _, review := range row.Reviews {
+			fmt.Fprintf(&b, "INSERT INTO task_reviews (project_id, task_id, reviewer, review_domain, verdict, reviewed_commit_sha, route_reason, notes, created_at) VALUES (%s, %s, %s, %s, %s, %s, NULL, %s, %s);\n",
+				sqlQuote(snapshot.ProjectID),
+				sqlQuote(def.ID),
+				sqlQuote(review.Reviewer),
+				sqlNullString(review.Domain),
+				sqlQuote(review.Verdict),
+				sqlNullString(review.Commit),
+				sqlNullString(review.Reason),
+				sqlQuote(review.CreatedAt),
+			)
+		}
+	}
+	for _, session := range sessions {
+		taskID := session.TaskID
+		if !taskIDs[taskID] {
+			taskID = ""
+		}
+		fmt.Fprintf(&b, "INSERT INTO agent_sessions (project_id, id, role, lane, worktree_path, branch, session_backend, provider, session_name, task_id, pid, tmux_pane, transcript_path, monitor_kind, automation_id, external_run_id, poll_command, manual_until, status, started_at, last_heartbeat_at, ended_at, exit_code, end_reason) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);\n",
+			sqlQuote(snapshot.ProjectID),
+			sqlQuote(session.ID),
+			sqlQuote(session.Role),
+			sqlNullString(session.Lane),
+			sqlNullString(session.WorktreePath),
+			sqlNullString(session.Branch),
+			sqlNullString(session.SessionBackend),
+			sqlNullString(session.Provider),
+			sqlNullString(session.SessionName),
+			sqlNullString(taskID),
+			sqlIntPtr(session.PID),
+			sqlNullString(session.TmuxPane),
+			sqlNullString(session.TranscriptPath),
+			sqlNullString(session.MonitorKind),
+			sqlNullString(session.AutomationID),
+			sqlNullString(session.ExternalRunID),
+			sqlNullString(session.PollCommand),
+			sqlNullString(session.ManualUntil),
+			sqlQuote(session.Status),
+			sqlQuote(session.StartedAt),
+			sqlNullString(session.LastHeartbeatAt),
+			sqlNullString(session.EndedAt),
+			sqlIntPtr(session.ExitCode),
+			sqlNullString(session.EndReason),
+		)
+	}
+	return b.String()
+}
+
+func parentIDForImport(parentID string, taskIDs map[string]bool) string {
+	if parentID == "" || !taskIDs[parentID] {
+		return ""
+	}
+	return parentID
+}
+
+func sqlJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "NULL"
+	}
+	if string(data) == "null" {
+		return "NULL"
+	}
+	return sqlQuote(string(data))
+}
+
+func sqlIntPtr(value *int) string {
+	if value == nil {
+		return "NULL"
+	}
+	return strconv.Itoa(*value)
+}
+
+func sqlNullString(value string) string {
+	if value == "" {
+		return "NULL"
+	}
+	return sqlQuote(value)
+}
+
+func sqlQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func compareRehearsalSnapshots(source, rehearsal store.Snapshot, sourceSessions, rehearsalSessions []store.Session) dbRehearsalEquivalence {
 	sourceCounts := rehearsalCounts(source)
+	sourceCounts.Sessions = len(sourceSessions)
 	rehearsalCounts := rehearsalCounts(rehearsal)
+	rehearsalCounts.Sessions = len(rehearsalSessions)
 	eq := dbRehearsalEquivalence{
 		OK:        true,
 		Source:    sourceCounts,
@@ -14857,6 +15362,7 @@ func compareRehearsalSnapshots(source, rehearsal store.Snapshot) dbRehearsalEqui
 	compareInt("summary", "evidence", sourceCounts.Evidence, rehearsalCounts.Evidence)
 	compareInt("summary", "handoffs", sourceCounts.Handoffs, rehearsalCounts.Handoffs)
 	compareInt("summary", "reviews", sourceCounts.Reviews, rehearsalCounts.Reviews)
+	compareInt("summary", "sessions", sourceCounts.Sessions, rehearsalCounts.Sessions)
 	for status, want := range sourceCounts.ByStatus {
 		compareInt("status", status, want, rehearsalCounts.ByStatus[status])
 	}

@@ -63,14 +63,30 @@ The current compatibility commands are:
 ```bash
 fairway db compat --backend postgres [--print-ddl]
 fairway db rehearsal --backend postgres --out .fairway/rehearsals/postgres-<timestamp>
+fairway db rehearsal --backend postgres --out .fairway/rehearsals/postgres-<timestamp> --apply-dsn-env FAIRWAY_DISPOSABLE_POSTGRES_DSN
 ```
 
 `--print-ddl` is a review artifact, not an applyable migration. `--apply-ddl`
 is intentionally not implemented until the migration and cutover contract below
-exists. `db rehearsal` is also non-mutating: it creates a SQLite backup,
+exists. By default, `db rehearsal` is non-mutating: it creates a SQLite backup,
 exports source and backup read models, writes the Postgres compatibility
-report/DDL, compares read-model counts, and records rollback instructions. It
-does not apply Postgres DDL or switch any runtime store.
+report/DDL, compares read-model counts, and records rollback instructions. The
+default run does not apply Postgres DDL or switch any runtime store.
+
+When `--apply-dsn-env` is supplied, `db rehearsal` runs an explicit disposable
+proof instead of changing Fairway's runtime store. The command reads the DSN
+from the named environment variable as a `postgres://` or `postgresql://` URL,
+splits it into libpq environment variables, uses `psql`, drops and recreates
+only the validated `--postgres-schema` inside that disposable database, applies
+the compatibility DDL sketch, imports bounded task/state/history/evidence/
+handoff/review/session rows from the SQLite snapshot, and records readback
+counts. The schema must be a simple `fairway_`-prefixed name; reserved or common
+schemas such as `public`, `pg_catalog`, `information_schema`, `pg_toast`, and
+all `pg_` schemas are rejected before any drop statement is generated. The DSN
+value is not passed in `psql` argv and is not written to the manifest. This is
+still compatibility evidence: it does not prove a Postgres store adapter,
+command parity, production migration, public/shared API exposure, dashboard
+restart, release readiness, or cutover readiness.
 
 ## Transactions
 
@@ -114,7 +130,7 @@ store, or notification truth source.
 
 ```bash
 fairway db compat --backend postgres [--print-ddl | --apply-ddl]
-fairway db rehearsal --backend postgres --out <artifact-dir>
+fairway db rehearsal --backend postgres --out <artifact-dir> [--apply-dsn-env <env>] [--postgres-schema <schema>]
 ```
 
 The harness is for adapter development and disposable experiments. DDL printed
@@ -127,7 +143,13 @@ exist. Rehearsal output is a provenance packet, not a production cutover:
 - `postgres-compat-report.json` and `postgres-compat-ddl.sql` are review
   artifacts;
 - `readmodel-equivalence.json` compares deterministic task, transition,
-  evidence, handoff, and review counts;
+  evidence, handoff, review, and session counts;
+- `postgres-apply.sql`, `postgres-import.sql`, and `postgres-readback.json`
+  are written only when `--apply-dsn-env` is supplied; they prove disposable
+  schema apply/import/readback against the DSN named by the environment
+  variable and must not be treated as a runtime backend switch. The apply file
+  contains `DROP SCHEMA IF EXISTS <schema> CASCADE`, so the command rejects
+  reserved schemas and requires a `fairway_`-prefixed rehearsal schema;
 - `manifest.json` records paths, counts, compatibility/equivalence status, and
   boundaries;
 - `rollback.md` states the manual rollback/readback steps.

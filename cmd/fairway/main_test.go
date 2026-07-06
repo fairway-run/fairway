@@ -152,6 +152,127 @@ func TestCLI_DBRehearsal(t *testing.T) {
 	assertContains(t, jsonOut, `"backend": "postgres"`)
 }
 
+func TestDBRehearsalPostgresProofHelpers(t *testing.T) {
+	if !validPostgresSchemaName("fairway_rehearsal_1") {
+		t.Fatal("schema name should be valid")
+	}
+	for _, schema := range []string{"", "1bad", "bad-name", "bad.schema", "bad;drop", "public", "pg_catalog", "information_schema", "pg_toast", "pg_fairway", "rehearsal"} {
+		if validPostgresSchemaName(schema) {
+			t.Fatalf("schema %q should be invalid", schema)
+		}
+	}
+	dsn := "postgres://postgres:SHOULD_NOT_BE_IN_ARGV@127.0.0.1:55433/fairway?sslmode=disable"
+	cmd, err := postgresPSQLCommand(context.Background(), dsn, "-v", "ON_ERROR_STOP=1", "-c", "select 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, arg := range cmd.Args {
+		if strings.Contains(arg, dsn) || strings.Contains(arg, "SHOULD_NOT_BE_IN_ARGV") {
+			t.Fatalf("psql argv contains DSN or password-bearing value: %+v", cmd.Args)
+		}
+	}
+	if strings.Contains(strings.Join(cmd.Args, " "), "postgres://") {
+		t.Fatalf("psql argv contains connection string: %+v", cmd.Args)
+	}
+	for _, want := range []string{"PGHOST=127.0.0.1", "PGPORT=55433", "PGUSER=postgres", "PGPASSWORD=SHOULD_NOT_BE_IN_ARGV", "PGDATABASE=fairway", "PGSSLMODE=disable"} {
+		if !containsString(cmd.Env, want) {
+			t.Fatalf("psql env missing %s", want)
+		}
+	}
+
+	ddl := postgresApplyDDL("CREATE TABLE task_state_history (id INTEGER PRIMARY KEY, task_id TEXT);")
+	assertContains(t, ddl, "id BIGSERIAL PRIMARY KEY")
+
+	priority := 7
+	duration := 3
+	pid := 123
+	exitCode := 0
+	snapshot := store.Snapshot{
+		ProjectID:  "demo",
+		ExportedAt: "2026-07-06T00:00:00Z",
+		Tasks: []store.SnapshotTask{{
+			Task: store.Task{
+				Definition: store.TaskDefinition{
+					ID:               "T-001",
+					Kind:             "task",
+					Title:            "Postgres import",
+					Role:             "backend",
+					AcceptanceChecks: []string{"prove import"},
+					Dependencies:     []string{"T-000"},
+					Priority:         &priority,
+					ReviewDomains:    []string{"backend"},
+					Tags:             []string{"postgres"},
+				},
+				Status:       "in_progress",
+				Owner:        "backend",
+				Claimant:     "codex",
+				Branch:       "main",
+				ReviewStatus: "approved",
+				UpdatedAt:    "2026-07-06T00:01:00Z",
+			},
+			Transitions: []store.Transition{{
+				FromStatus: "todo",
+				ToStatus:   "in_progress",
+				Actor:      "backend",
+				Reason:     "start",
+				At:         "2026-07-06T00:01:00Z",
+			}},
+			Evidence: []store.Evidence{{
+				CommandText:     "go test ./...",
+				Result:          "pass",
+				ArtifactPath:    "/tmp/report.txt",
+				ArtifactType:    "test",
+				DurationSeconds: &duration,
+				Notes:           "ok",
+				CreatedAt:       "2026-07-06T00:02:00Z",
+			}},
+			Handoffs: []store.Handoff{{
+				FromRole:  "backend",
+				ToRole:    "ops",
+				Payload:   "review",
+				CreatedAt: "2026-07-06T00:03:00Z",
+			}},
+			Reviews: []store.Review{{
+				Reviewer:  "ops",
+				Domain:    "ops",
+				Verdict:   "approve",
+				Reason:    "ok",
+				Commit:    "abc123",
+				CreatedAt: "2026-07-06T00:04:00Z",
+			}},
+		}},
+	}
+	sql := renderPostgresImportSQL(snapshot, []store.Session{{
+		ID:             "session-1",
+		Role:           "backend",
+		Lane:           "backend",
+		WorktreePath:   "/tmp/worktree",
+		Branch:         "main",
+		SessionBackend: "codex",
+		Provider:       "codex",
+		SessionName:    "run",
+		TaskID:         "T-001",
+		PID:            &pid,
+		Status:         "ended",
+		StartedAt:      "2026-07-06T00:01:00Z",
+		EndedAt:        "2026-07-06T00:05:00Z",
+		ExitCode:       &exitCode,
+		EndReason:      "done",
+	}})
+	for _, want := range []string{
+		"INSERT INTO task_definitions",
+		"INSERT INTO task_state",
+		"INSERT INTO task_state_history",
+		"INSERT INTO task_evidence",
+		"INSERT INTO task_handoffs",
+		"INSERT INTO task_reviews",
+		"INSERT INTO agent_sessions",
+		"'[\"prove import\"]'",
+	} {
+		assertContains(t, sql, want)
+	}
+}
+
 func TestCLI_HelpAliases(t *testing.T) {
 	for _, args := range [][]string{
 		{"help"},

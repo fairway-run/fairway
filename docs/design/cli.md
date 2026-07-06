@@ -111,7 +111,7 @@ fairway prune-stale                                     # remove state rows for 
 fairway db backup | export
 fairway db migrate [--dry-run]
 fairway db compat --backend postgres [--print-ddl | --apply-ddl]
-fairway db rehearsal --backend postgres [--out <dir>]
+fairway db rehearsal --backend postgres [--out <dir>] [--apply-dsn-env <env>] [--postgres-schema <schema>]
 fairway import <yaml-or-json-path> [--state-once]        # accepts a task list or {tasks: [...]} envelope; state-once seeds legacy status once
 fairway config validate
 fairway dashboard [--no-open] [--listen <addr>] [--multi] # foreground server
@@ -597,8 +597,21 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   Postgres compatibility report/DDL, read-model equivalence report, manifest,
   and rollback instructions. It opens the SQLite backup as the rehearsal source
   and compares deterministic task/evidence/review/handoff/history counts. It
-  does not apply Postgres DDL, switch the runtime store, restart dashboards,
-  publish a release, or authorize public/shared write exposure.
+  does not switch the runtime store, restart dashboards, publish a release, or
+  authorize public/shared write exposure. With `--apply-dsn-env <env>`, the
+  command also uses `psql` to drop and recreate only the named
+  `--postgres-schema` inside the disposable Postgres database named by that
+  environment variable, applies the compatibility DDL, imports a bounded
+  snapshot of tasks/state/history/evidence/handoffs/reviews/sessions, and writes
+  `postgres-apply.sql`, `postgres-import.sql`, and `postgres-readback.json`.
+  The schema must be a simple `fairway_`-prefixed name; reserved or common
+  schemas such as `public`, `pg_catalog`, `information_schema`, `pg_toast`, and
+  all `pg_` schemas are rejected before any drop statement is generated. The
+  DSN value must be a `postgres://` or `postgresql://` URL. It is read from the
+  environment, split into libpq environment variables, not passed in `psql`
+  argv, and not written to the manifest. This proof remains a disposable
+  compatibility rehearsal, not adapter parity, production migration, cutover
+  readiness, or shared-team store enablement.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that
   ships in each release.
 
