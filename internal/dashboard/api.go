@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -116,6 +117,23 @@ type apiCheckpointWriteRequest struct {
 	ArtifactPath  string `json:"artifact_path,omitempty"`
 }
 
+type apiStatusWriteRequest struct {
+	ProjectID      string `json:"project_id,omitempty"`
+	Status         string `json:"status"`
+	Reason         string `json:"reason,omitempty"`
+	CommitSHA      string `json:"commit_sha,omitempty"`
+	ExpectedStatus string `json:"expected_status"`
+}
+
+type apiReviewWriteRequest struct {
+	ProjectID string `json:"project_id,omitempty"`
+	Domain    string `json:"domain"`
+	Verdict   string `json:"verdict"`
+	Reason    string `json:"reason,omitempty"`
+	Commit    string `json:"commit,omitempty"`
+	Reviewer  string `json:"reviewer,omitempty"`
+}
+
 type apiWriteResponse struct {
 	Project        string `json:"project"`
 	TaskID         string `json:"task_id"`
@@ -204,6 +222,14 @@ func (s *Server) apiTaskDetail(w http.ResponseWriter, r *http.Request) {
 		s.apiTaskCheckpointWrite(w, r)
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, "/status") {
+		s.apiTaskStatusWrite(w, r)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/reviews") {
+		s.apiTaskReviewWrite(w, r)
+		return
+	}
 	if !apiRequireGET(w, r) {
 		return
 	}
@@ -282,7 +308,7 @@ func (s *Server) apiTaskEvidenceWrite(w http.ResponseWriter, r *http.Request) {
 		PayloadDigest:  digest,
 	})
 	if err != nil {
-		apiWriteError(w, err)
+		s.apiWriteError(w, err)
 		return
 	}
 	status := http.StatusCreated
@@ -340,7 +366,7 @@ func (s *Server) apiTaskCheckpointWrite(w http.ResponseWriter, r *http.Request) 
 		PayloadDigest:  digest,
 	})
 	if err != nil {
-		apiWriteError(w, err)
+		s.apiWriteError(w, err)
 		return
 	}
 	status := http.StatusCreated
@@ -348,6 +374,163 @@ func (s *Server) apiTaskCheckpointWrite(w http.ResponseWriter, r *http.Request) 
 		status = http.StatusOK
 	}
 	apiWriteJSON(w, status, apiWriteResponse{Project: s.cfg.Fairway.ProjectName, TaskID: taskID, Kind: "checkpoint", ID: result.RowID, Replayed: result.Replayed, IdempotencyKey: key})
+}
+
+func (s *Server) apiTaskStatusWrite(w http.ResponseWriter, r *http.Request) {
+	taskID, ok := apiTaskSubresourceID(w, r, "status")
+	if !ok {
+		return
+	}
+	if !apiRequirePOSTJSON(w, r) {
+		return
+	}
+	actor, ok := s.apiAuthorizeCommand(w, r, "set:status")
+	if !ok {
+		return
+	}
+	key, ok := apiIdempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	var payload apiStatusWriteRequest
+	if !apiDecodeJSON(w, r, &payload) {
+		return
+	}
+	if !s.apiProjectScopeOK(w, payload.ProjectID) {
+		return
+	}
+	if strings.TrimSpace(payload.ExpectedStatus) == "" {
+		apiError(w, http.StatusBadRequest, errors.New("expected_status is required"))
+		return
+	}
+	if err := apiValidateWriteText(payload.Status, payload.Reason, payload.CommitSHA, payload.ExpectedStatus); err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	digest, err := apiPayloadDigest(payload)
+	if err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeReq := store.ServerWriteRequest{
+		Actor:          actor.Subject,
+		Role:           actor.Role,
+		AuthSource:     actor.Source,
+		CommandFamily:  "set:status",
+		IdempotencyKey: key,
+		PayloadDigest:  digest,
+	}
+	if result, ok, err := s.store.ServerWriteReplay(r.Context(), taskID, "status", writeReq); err != nil {
+		s.apiWriteError(w, err)
+		return
+	} else if ok {
+		apiWriteJSON(w, http.StatusOK, apiWriteResponse{Project: s.cfg.Fairway.ProjectName, TaskID: taskID, Kind: "status", ID: result.RowID, Replayed: true, IdempotencyKey: key})
+		return
+	}
+	current, _, _, _, _, err := s.store.TaskDetail(r.Context(), taskID)
+	if err != nil {
+		s.apiWriteError(w, err)
+		return
+	}
+	if current.Status != payload.ExpectedStatus {
+		s.apiTaskStateConflict(w, store.TaskStateConflict{TaskID: taskID, ExpectedStatus: payload.ExpectedStatus, ActualStatus: current.Status, ActualOwner: current.Owner, ActualUpdatedAt: current.UpdatedAt})
+		return
+	}
+	stateCfg := state.Config{Allowed: s.cfg.States.Allowed, Terminal: s.cfg.States.Terminal, Transitions: s.cfg.States.Transitions}
+	if err := state.ValidateTransition(stateCfg, current.Status, payload.Status, false); err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := s.store.SetStatusWithIdempotency(r.Context(), taskID, store.GuardedStatusWrite{
+		Status:               payload.Status,
+		Reason:               payload.Reason,
+		CommitSHA:            payload.CommitSHA,
+		ExpectedStatus:       payload.ExpectedStatus,
+		RequireBlockedReason: s.cfg.Gates.RequireBlockedReason,
+	}, writeReq)
+	if err != nil {
+		s.apiWriteError(w, err)
+		return
+	}
+	statusCode := http.StatusCreated
+	if result.Replayed {
+		statusCode = http.StatusOK
+	}
+	apiWriteJSON(w, statusCode, apiWriteResponse{Project: s.cfg.Fairway.ProjectName, TaskID: taskID, Kind: "status", ID: result.RowID, Replayed: result.Replayed, IdempotencyKey: key})
+}
+
+func (s *Server) apiTaskReviewWrite(w http.ResponseWriter, r *http.Request) {
+	taskID, ok := apiTaskSubresourceID(w, r, "reviews")
+	if !ok {
+		return
+	}
+	if !apiRequirePOSTJSON(w, r) {
+		return
+	}
+	actor, ok := s.apiAuthorizeCommand(w, r, "record:review")
+	if !ok {
+		return
+	}
+	key, ok := apiIdempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	var payload apiReviewWriteRequest
+	if !apiDecodeJSON(w, r, &payload) {
+		return
+	}
+	if !s.apiProjectScopeOK(w, payload.ProjectID) {
+		return
+	}
+	domain := strings.TrimSpace(payload.Domain)
+	if domain == "" {
+		apiError(w, http.StatusBadRequest, errors.New("domain is required"))
+		return
+	}
+	if !apiRoleCanReviewDomain(actor.Role, domain) {
+		apiError(w, http.StatusForbidden, fmt.Errorf("forbidden: role %q cannot record review domain %q", actor.Role, domain))
+		return
+	}
+	reviewer := actor.Subject
+	if override := strings.TrimSpace(payload.Reviewer); override != "" {
+		if actor.Role != "admin" {
+			apiError(w, http.StatusForbidden, errors.New("forbidden: reviewer override requires admin role"))
+			return
+		}
+		reviewer = override
+	}
+	if err := apiValidateWriteText(domain, payload.Verdict, payload.Reason, payload.Commit, reviewer); err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	digest, err := apiPayloadDigest(payload)
+	if err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := s.store.RecordReviewWithIdempotency(r.Context(), taskID, store.Review{
+		Reviewer: reviewer,
+		Domain:   domain,
+		Verdict:  payload.Verdict,
+		Reason:   payload.Reason,
+		Commit:   payload.Commit,
+	}, store.ServerWriteRequest{
+		Actor:          actor.Subject,
+		Role:           actor.Role,
+		AuthSource:     actor.Source,
+		CommandFamily:  "record:review",
+		IdempotencyKey: key,
+		PayloadDigest:  digest,
+	})
+	if err != nil {
+		s.apiWriteError(w, err)
+		return
+	}
+	statusCode := http.StatusCreated
+	if result.Replayed {
+		statusCode = http.StatusOK
+	}
+	apiWriteJSON(w, statusCode, apiWriteResponse{Project: s.cfg.Fairway.ProjectName, TaskID: taskID, Kind: "review", ID: result.RowID, Replayed: result.Replayed, IdempotencyKey: key})
 }
 
 func (s *Server) apiSummary(w http.ResponseWriter, r *http.Request) {
@@ -503,7 +686,7 @@ func (s *Server) apiAuthorizeCommand(w http.ResponseWriter, r *http.Request, com
 		apiError(w, http.StatusNotImplemented, errors.New("unimplemented: server write pilot is not enabled"))
 		return apiActor{}, false
 	}
-	if !apiRoleCanWriteAppendOnly(actor.Role) {
+	if !apiRoleCanExecuteCommand(actor.Role, command) {
 		apiError(w, http.StatusForbidden, fmt.Errorf("forbidden: role %q cannot execute %s", actor.Role, command))
 		return apiActor{}, false
 	}
@@ -608,7 +791,12 @@ func (s *Server) apiWritePilotEnabled() bool {
 func (s *Server) apiAvailablePaths() []string {
 	paths := []string{"/api/v1/status", "/api/v1/tasks", "/api/v1/tasks/{task_id}", "/api/v1/reports/summary"}
 	if s.apiWritePilotEnabled() {
-		paths = append(paths, "POST /api/v1/tasks/{task_id}/evidence", "POST /api/v1/tasks/{task_id}/checkpoints")
+		paths = append(paths,
+			"POST /api/v1/tasks/{task_id}/evidence",
+			"POST /api/v1/tasks/{task_id}/checkpoints",
+			"POST /api/v1/tasks/{task_id}/status",
+			"POST /api/v1/tasks/{task_id}/reviews",
+		)
 	}
 	return paths
 }
@@ -622,8 +810,21 @@ func (s *Server) apiRoleAllowed(role string) bool {
 	return false
 }
 
-func apiRoleCanWriteAppendOnly(role string) bool {
-	return role == "operator" || role == "coordinator" || role == "admin" || strings.HasPrefix(role, "adapter:")
+func apiRoleCanExecuteCommand(role, command string) bool {
+	switch command {
+	case "record:evidence", "record:checkpoint":
+		return role == "operator" || role == "coordinator" || role == "admin" || strings.HasPrefix(role, "adapter:")
+	case "set:status":
+		return role == "operator" || role == "coordinator" || role == "admin"
+	case "record:review":
+		return role == "admin" || strings.HasPrefix(role, "reviewer:")
+	default:
+		return false
+	}
+}
+
+func apiRoleCanReviewDomain(role, domain string) bool {
+	return role == "admin" || role == "reviewer:"+domain
 }
 
 func apiTaskSubresourceID(w http.ResponseWriter, r *http.Request, subresource string) (string, bool) {
@@ -709,14 +910,19 @@ func apiValidateWriteText(values ...string) error {
 		lower := strings.ToLower(value)
 		for _, marker := range markers {
 			if strings.Contains(lower, marker) {
-				return errors.New("invalid_payload: append-only API payload contains an unsafe private-data marker")
+				return errors.New("invalid_payload: server write API payload contains an unsafe private-data marker")
 			}
 		}
 	}
 	return nil
 }
 
-func apiWriteError(w http.ResponseWriter, err error) {
+func (s *Server) apiWriteError(w http.ResponseWriter, err error) {
+	var conflict store.TaskStateConflict
+	if errors.As(err, &conflict) {
+		s.apiTaskStateConflict(w, conflict)
+		return
+	}
 	switch {
 	case errors.Is(err, store.ErrIdempotencyConflict):
 		apiError(w, http.StatusConflict, errors.New("idempotency_key_conflict: key was already used with a different actor, scope, command, or payload"))
@@ -725,6 +931,19 @@ func apiWriteError(w http.ResponseWriter, err error) {
 	default:
 		apiError(w, http.StatusBadRequest, err)
 	}
+}
+
+func (s *Server) apiTaskStateConflict(w http.ResponseWriter, conflict store.TaskStateConflict) {
+	apiWriteJSON(w, http.StatusConflict, map[string]string{
+		"error":             "task_state_conflict",
+		"project_id":        s.cfg.Fairway.ProjectName,
+		"task_id":           conflict.TaskID,
+		"expected_status":   conflict.ExpectedStatus,
+		"actual_status":     conflict.ActualStatus,
+		"actual_owner":      conflict.ActualOwner,
+		"actual_updated_at": conflict.ActualUpdatedAt,
+		"suggested_command": "fairway task-detail " + conflict.TaskID,
+	})
 }
 
 func tokenFingerprint(token string) string {

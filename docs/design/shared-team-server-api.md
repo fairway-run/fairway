@@ -100,8 +100,10 @@ FW-271 adds the first append-only write pilot. It is enabled only with
 |---|---|
 | `POST /api/v1/tasks/<task-id>/evidence` | Append one evidence row using the same fields as `fairway record evidence`. |
 | `POST /api/v1/tasks/<task-id>/checkpoints` | Append one checkpoint row using the same fields as `fairway checkpoint record`. |
+| `POST /api/v1/tasks/<task-id>/status` | FW-272 guarded task-status write with `expected_status`; allowed for `operator`, `coordinator`, or `admin`. |
+| `POST /api/v1/tasks/<task-id>/reviews` | FW-272 guarded review write; allowed for `admin` or `reviewer:<domain>` matching the requested review domain. Reviewer identity is derived from the authenticated actor unless an `admin` explicitly records an override. |
 
-Both endpoints require `Content-Type: application/json` and an
+All write endpoints require `Content-Type: application/json` and an
 `Idempotency-Key` header. Replaying the same key with the same actor, role,
 auth source, command family, task, and payload digest returns the original row.
 Reusing the key with a different payload or scope fails closed with
@@ -109,13 +111,26 @@ Reusing the key with a different payload or scope fails closed with
 idempotency key, payload digest, and resulting row IDs; they do not store raw
 request bodies.
 
+FW-272 extends the same pilot with two guarded mutable writes. Status changes
+must include the caller's `expected_status`; stale callers receive a structured
+`task_state_conflict` response with the actual status and a suggested
+`fairway task-detail <task-id>` readback command. Review writes require
+domain-scoped authority (`reviewer:<domain>`) or `admin`, preserve the existing
+self-review guard, and update the normal review materialization in the Fairway
+store. `reviewer:<domain>` tokens cannot choose the stored reviewer identity;
+the authenticated token fingerprint is used. `admin` may explicitly supply a
+reviewer override for coordinator-recorded external review evidence, while the
+audit row still records the authenticated admin actor. Both write families use
+the same idempotency/audit ledger as FW-271.
+
 The write pilot rejects project-scope mismatches and payload text containing
 unsafe private-data markers such as raw prompt, transcript, raw tool body,
 generated content, bearer token, API key, access token, refresh token,
-client_secret, password, or secret markers. It does not add task status writes,
-review writes, dashboard-originated mutation, provider sends, merge, deploy,
-release, public exposure, live-operation authority, arbitrary artifact upload,
-generic SQL, or arbitrary row patching.
+client_secret, password, or secret markers. It does not add unguarded task
+status writes, review approval authority beyond domain-scoped review recording,
+dashboard-originated mutation, provider sends, merge, deploy, release, public
+exposure, live-operation authority, arbitrary artifact upload, generic SQL, or
+arbitrary row patching.
 
 ## API Families
 

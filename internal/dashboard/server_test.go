@@ -2175,6 +2175,201 @@ func TestWriteAPIPilotRejectsAuthzProjectScopeAndUnsafePayload(t *testing.T) {
 	}
 }
 
+func TestWriteAPIPilotGuardsTaskStatusWithExpectedCurrentState(t *testing.T) {
+	ctx := context.Background()
+	server := newReadOnlyAPITestServer(t)
+	server.cfg.Server.Mode = "api-write-pilot"
+	server.cfg.Server.ReadOnly = false
+	server.cfg.Server.WriteEnabled = true
+	server.cfg.Server.IdentityMode = "api_token"
+	server.cfg.Server.APITokenEnv = "FAIRWAY_TEST_ADMIN_TOKEN"
+	server.cfg.Server.AllowedRoles = []string{"admin"}
+	server.cfg.Server.APITokenRole = "admin"
+	t.Setenv("FAIRWAY_TEST_ADMIN_TOKEN", "admin-token")
+	handler := server.ReadOnlyAPIHandler()
+
+	body := `{"project_id":"fairway-test","status":"in_progress","expected_status":"todo","reason":"api guarded status"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/status", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header.Set("Idempotency-Key", "status-1")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated || strings.Contains(rec.Body.String(), "admin-token") {
+		t.Fatalf("status write code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	task, _, _, _, _, err := server.store.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != "in_progress" {
+		t.Fatalf("task status=%q, want in_progress", task.Status)
+	}
+
+	replayReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/status", strings.NewReader(body))
+	replayReq.Header.Set("Content-Type", "application/json")
+	replayReq.Header.Set("Authorization", "Bearer admin-token")
+	replayReq.Header.Set("Idempotency-Key", "status-1")
+	replayRec := httptest.NewRecorder()
+	handler.ServeHTTP(replayRec, replayReq)
+	if replayRec.Code != http.StatusOK || !strings.Contains(replayRec.Body.String(), `"replayed":true`) {
+		t.Fatalf("status replay code=%d body=%s", replayRec.Code, replayRec.Body.String())
+	}
+
+	staleReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/status", strings.NewReader(`{"project_id":"fairway-test","status":"blocked","expected_status":"todo","reason":"stale local state"}`))
+	staleReq.Header.Set("Content-Type", "application/json")
+	staleReq.Header.Set("Authorization", "Bearer admin-token")
+	staleReq.Header.Set("Idempotency-Key", "status-stale")
+	staleRec := httptest.NewRecorder()
+	handler.ServeHTTP(staleRec, staleReq)
+	bodyText := staleRec.Body.String()
+	if staleRec.Code != http.StatusConflict ||
+		!strings.Contains(bodyText, "task_state_conflict") ||
+		!strings.Contains(bodyText, `"actual_status":"in_progress"`) ||
+		!strings.Contains(bodyText, "fairway task-detail T-001") ||
+		strings.Contains(bodyText, "stale local state") ||
+		strings.Contains(bodyText, "admin-token") {
+		t.Fatalf("stale status code=%d body=%s", staleRec.Code, bodyText)
+	}
+}
+
+func TestWriteAPIPilotReviewRequiresDomainAuthority(t *testing.T) {
+	ctx := context.Background()
+	server := newReadOnlyAPITestServer(t)
+	server.cfg.Server.Mode = "api-write-pilot"
+	server.cfg.Server.ReadOnly = false
+	server.cfg.Server.WriteEnabled = true
+	server.cfg.Server.IdentityMode = "api_token"
+	server.cfg.Server.APITokenEnv = "FAIRWAY_TEST_REVIEW_TOKEN"
+	server.cfg.Server.AllowedRoles = []string{"reviewer:security"}
+	server.cfg.Server.APITokenRole = "reviewer:security"
+	t.Setenv("FAIRWAY_TEST_REVIEW_TOKEN", "review-token")
+	handler := server.ReadOnlyAPIHandler()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/reviews", strings.NewReader(`{"project_id":"fairway-test","domain":"security","verdict":"approve","reason":"api security review"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer review-token")
+	req.Header.Set("Idempotency-Key", "review-1")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated || strings.Contains(rec.Body.String(), "review-token") {
+		t.Fatalf("review code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	task, _, _, _, reviews, err := server.store.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.ReviewStatus != "approved" || len(reviews) != 1 || reviews[0].Domain != "security" || reviews[0].Verdict != "approve" {
+		t.Fatalf("task review_status=%q reviews=%+v, want approved security review", task.ReviewStatus, reviews)
+	}
+	expectedReviewer := "api-token:" + tokenFingerprint("review-token")
+	if reviews[0].Reviewer != expectedReviewer {
+		t.Fatalf("reviewer=%q, want authenticated actor %q", reviews[0].Reviewer, expectedReviewer)
+	}
+	if count, err := server.store.AuditCount(ctx, "server.api.review"); err != nil || count != 1 {
+		t.Fatalf("review audit count=%d err=%v, want 1", count, err)
+	}
+	audits, err := server.store.AuditEvents(ctx, "server.api.review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(audits) != 1 || audits[0].Actor != expectedReviewer {
+		t.Fatalf("review audits=%+v, want authenticated actor %q", audits, expectedReviewer)
+	}
+
+	spoofReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/reviews", strings.NewReader(`{"project_id":"fairway-test","domain":"security","verdict":"approve","reviewer":"spoofed-reviewer","reason":"spoof attempt"}`))
+	spoofReq.Header.Set("Content-Type", "application/json")
+	spoofReq.Header.Set("Authorization", "Bearer review-token")
+	spoofReq.Header.Set("Idempotency-Key", "review-spoof")
+	spoofRec := httptest.NewRecorder()
+	handler.ServeHTTP(spoofRec, spoofReq)
+	if spoofRec.Code != http.StatusForbidden || strings.Contains(spoofRec.Body.String(), "spoofed-reviewer") || strings.Contains(spoofRec.Body.String(), "spoof attempt") || strings.Contains(spoofRec.Body.String(), "review-token") {
+		t.Fatalf("spoof review code=%d body=%s", spoofRec.Code, spoofRec.Body.String())
+	}
+
+	badReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/reviews", strings.NewReader(`{"project_id":"fairway-test","domain":"governance","verdict":"approve","reason":"wrong domain"}`))
+	badReq.Header.Set("Content-Type", "application/json")
+	badReq.Header.Set("Authorization", "Bearer review-token")
+	badReq.Header.Set("Idempotency-Key", "review-wrong-domain")
+	badRec := httptest.NewRecorder()
+	handler.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusForbidden || strings.Contains(badRec.Body.String(), "wrong domain") || strings.Contains(badRec.Body.String(), "review-token") {
+		t.Fatalf("wrong-domain review code=%d body=%s", badRec.Code, badRec.Body.String())
+	}
+}
+
+func TestWriteAPIPilotReviewBindsReviewerIdentityAndAdminOverride(t *testing.T) {
+	ctx := context.Background()
+	reviewerSubject := "api-token:" + tokenFingerprint("review-token")
+
+	selfReviewServer := newReadOnlyAPITestServer(t)
+	selfReviewServer.cfg.Server.Mode = "api-write-pilot"
+	selfReviewServer.cfg.Server.ReadOnly = false
+	selfReviewServer.cfg.Server.WriteEnabled = true
+	selfReviewServer.cfg.Server.IdentityMode = "api_token"
+	selfReviewServer.cfg.Server.APITokenEnv = "FAIRWAY_TEST_REVIEW_TOKEN_SELF"
+	selfReviewServer.cfg.Server.AllowedRoles = []string{"reviewer:security"}
+	selfReviewServer.cfg.Server.APITokenRole = "reviewer:security"
+	t.Setenv("FAIRWAY_TEST_REVIEW_TOKEN_SELF", "review-token")
+	if err := selfReviewServer.store.Claim(ctx, "T-001", reviewerSubject, "self-review-branch"); err != nil {
+		t.Fatal(err)
+	}
+	selfHandler := selfReviewServer.ReadOnlyAPIHandler()
+	selfReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/reviews", strings.NewReader(`{"project_id":"fairway-test","domain":"security","verdict":"approve","reviewer":"another-reviewer","reason":"self review bypass attempt"}`))
+	selfReq.Header.Set("Content-Type", "application/json")
+	selfReq.Header.Set("Authorization", "Bearer review-token")
+	selfReq.Header.Set("Idempotency-Key", "review-self-bypass")
+	selfRec := httptest.NewRecorder()
+	selfHandler.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusForbidden || strings.Contains(selfRec.Body.String(), "another-reviewer") || strings.Contains(selfRec.Body.String(), "self review bypass attempt") || strings.Contains(selfRec.Body.String(), "review-token") {
+		t.Fatalf("self-review spoof code=%d body=%s", selfRec.Code, selfRec.Body.String())
+	}
+	selfReq = httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/reviews", strings.NewReader(`{"project_id":"fairway-test","domain":"security","verdict":"approve","reason":"self review attempt"}`))
+	selfReq.Header.Set("Content-Type", "application/json")
+	selfReq.Header.Set("Authorization", "Bearer review-token")
+	selfReq.Header.Set("Idempotency-Key", "review-self")
+	selfRec = httptest.NewRecorder()
+	selfHandler.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusBadRequest || !strings.Contains(selfRec.Body.String(), "reviewer cannot review their own task") || strings.Contains(selfRec.Body.String(), "self review attempt") || strings.Contains(selfRec.Body.String(), "review-token") {
+		t.Fatalf("self-review code=%d body=%s", selfRec.Code, selfRec.Body.String())
+	}
+
+	adminServer := newReadOnlyAPITestServer(t)
+	adminServer.cfg.Server.Mode = "api-write-pilot"
+	adminServer.cfg.Server.ReadOnly = false
+	adminServer.cfg.Server.WriteEnabled = true
+	adminServer.cfg.Server.IdentityMode = "api_token"
+	adminServer.cfg.Server.APITokenEnv = "FAIRWAY_TEST_ADMIN_REVIEW_TOKEN"
+	adminServer.cfg.Server.AllowedRoles = []string{"admin"}
+	adminServer.cfg.Server.APITokenRole = "admin"
+	t.Setenv("FAIRWAY_TEST_ADMIN_REVIEW_TOKEN", "admin-token")
+	adminHandler := adminServer.ReadOnlyAPIHandler()
+	adminReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/reviews", strings.NewReader(`{"project_id":"fairway-test","domain":"security","verdict":"approve","reviewer":"human-security-reviewer","reason":"admin recorded external review"}`))
+	adminReq.Header.Set("Content-Type", "application/json")
+	adminReq.Header.Set("Authorization", "Bearer admin-token")
+	adminReq.Header.Set("Idempotency-Key", "review-admin-override")
+	adminRec := httptest.NewRecorder()
+	adminHandler.ServeHTTP(adminRec, adminReq)
+	if adminRec.Code != http.StatusCreated || strings.Contains(adminRec.Body.String(), "admin-token") {
+		t.Fatalf("admin override code=%d body=%s", adminRec.Code, adminRec.Body.String())
+	}
+	_, _, _, _, adminReviews, err := adminServer.store.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(adminReviews) != 1 || adminReviews[0].Reviewer != "human-security-reviewer" {
+		t.Fatalf("admin reviews=%+v, want explicit reviewer override", adminReviews)
+	}
+	adminAudits, err := adminServer.store.AuditEvents(ctx, "server.api.review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminSubject := "api-token:" + tokenFingerprint("admin-token")
+	if len(adminAudits) != 1 || adminAudits[0].Actor != adminSubject {
+		t.Fatalf("admin audits=%+v, want authenticated actor %q", adminAudits, adminSubject)
+	}
+}
+
 func TestReadOnlyAPITrustedProxyProofAndIssuer(t *testing.T) {
 	server := newReadOnlyAPITestServer(t)
 	server.cfg.Server.IdentityMode = "trusted_proxy_read_only"

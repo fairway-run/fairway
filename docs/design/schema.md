@@ -264,14 +264,15 @@ Index: `(project_id, state, target_close_by)`.
 
 ### `server_write_idempotency`
 
-FW-271 adds a small idempotency ledger for the shared-team append-only write API
-pilot. It is not a second evidence/checkpoint store; it records retry metadata
-for accepted API writes so network clients can safely replay the same request.
+FW-271 adds a small idempotency ledger for the shared-team write API pilot.
+FW-272 extends that ledger to guarded status/review writes. It is not a second
+evidence, checkpoint, status, or review store; it records retry metadata for
+accepted API writes so network clients can safely replay the same request.
 
 | Column | Type | Notes |
 |---|---|---|
 | `project_id` | TEXT NOT NULL | |
-| `command_family` | TEXT NOT NULL | `record:evidence` or `record:checkpoint` in FW-271. |
+| `command_family` | TEXT NOT NULL | `record:evidence`, `record:checkpoint`, `set:status`, or `record:review`. |
 | `idempotency_key` | TEXT NOT NULL | Client-supplied retry key. |
 | `actor` | TEXT NOT NULL | Redacted actor/fingerprint, never a raw token. |
 | `role` | TEXT NOT NULL | Command-scoped role used for authorization. |

@@ -28,6 +28,18 @@ var (
 	ErrIdempotencyConflict = errors.New("idempotency key conflict")
 )
 
+type TaskStateConflict struct {
+	TaskID          string
+	ExpectedStatus  string
+	ActualStatus    string
+	ActualOwner     string
+	ActualUpdatedAt string
+}
+
+func (c TaskStateConflict) Error() string {
+	return "task state conflict"
+}
+
 var defaultTaskIDPattern = regexp.MustCompile(`^[A-Z]+-[0-9]+$`)
 
 //go:embed migrations/*.sql
@@ -296,10 +308,11 @@ type WorkBatchEvidence struct {
 }
 
 type AuditEvent struct {
-	Actor  string
-	Action string
-	TaskID string
-	Detail string
+	Actor     string
+	Action    string
+	TaskID    string
+	Detail    string
+	CreatedAt string
 }
 
 type ServerWriteRequest struct {
@@ -314,6 +327,14 @@ type ServerWriteRequest struct {
 type ServerWriteResult struct {
 	RowID    int64
 	Replayed bool
+}
+
+type GuardedStatusWrite struct {
+	Status               string
+	Reason               string
+	CommitSHA            string
+	ExpectedStatus       string
+	RequireBlockedReason bool
 }
 
 type Activity struct {
@@ -1856,6 +1877,13 @@ WHERE project_id=? AND command_family=? AND idempotency_key=?`,
 	return ServerWriteResult{RowID: resultID, Replayed: true}, true, nil
 }
 
+func (s *Store) ServerWriteReplay(ctx context.Context, taskID, resultKind string, req ServerWriteRequest) (ServerWriteResult, bool, error) {
+	if err := validateServerWriteRequest(req); err != nil {
+		return ServerWriteResult{}, false, err
+	}
+	return s.serverWriteReplay(ctx, s.db, taskID, resultKind, req)
+}
+
 func (s *Store) insertServerWriteIdempotency(ctx context.Context, ex execer, taskID, resultKind string, resultID int64, createdAt string, req ServerWriteRequest) error {
 	_, err := ex.ExecContext(ctx, `
 INSERT INTO server_write_idempotency
@@ -1896,6 +1924,27 @@ func (s *Store) AuditCount(ctx context.Context, action string) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_events WHERE project_id=? AND action=?`, s.projectID, action).Scan(&count)
 	return count, err
+}
+
+func (s *Store) AuditEvents(ctx context.Context, action string) ([]AuditEvent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT actor, action, COALESCE(task_id, ''), COALESCE(detail, ''), created_at
+FROM audit_events
+WHERE project_id=? AND action=?
+ORDER BY id`, s.projectID, action)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []AuditEvent
+	for rows.Next() {
+		var ev AuditEvent
+		if err := rows.Scan(&ev.Actor, &ev.Action, &ev.TaskID, &ev.Detail, &ev.CreatedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, ev)
+	}
+	return events, rows.Err()
 }
 
 func (s *Store) TrackerLinks(ctx context.Context) ([]TrackerLink, error) {
@@ -1957,6 +2006,71 @@ func (s *Store) SetStatusWithCommit(ctx context.Context, taskID, status, reason,
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Store) SetStatusWithIdempotency(ctx context.Context, taskID string, write GuardedStatusWrite, req ServerWriteRequest) (ServerWriteResult, error) {
+	if write.Status == "" {
+		return ServerWriteResult{}, errors.New("status is required")
+	}
+	if write.ExpectedStatus == "" {
+		return ServerWriteResult{}, errors.New("expected_status is required")
+	}
+	if write.Status == "blocked" && write.RequireBlockedReason && strings.TrimSpace(write.Reason) == "" {
+		return ServerWriteResult{}, errors.New("reason is required when blocking a task")
+	}
+	if err := validateServerWriteRequest(req); err != nil {
+		return ServerWriteResult{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	defer tx.Rollback()
+	if result, ok, err := s.serverWriteReplay(ctx, tx, taskID, "status", req); err != nil || ok {
+		return result, err
+	}
+	var fromStatus, owner, branch, updatedAt string
+	err = tx.QueryRowContext(ctx, `SELECT status, COALESCE(owner,''), COALESCE(branch,''), updated_at FROM task_state WHERE project_id=? AND task_id=?`, s.projectID, taskID).Scan(&fromStatus, &owner, &branch, &updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ServerWriteResult{}, ErrNotFound
+	}
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	if fromStatus != write.ExpectedStatus {
+		return ServerWriteResult{}, TaskStateConflict{TaskID: taskID, ExpectedStatus: write.ExpectedStatus, ActualStatus: fromStatus, ActualOwner: owner, ActualUpdatedAt: updatedAt}
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	completed := any(nil)
+	if write.Status == "done" {
+		completed = now
+	}
+	claimantSQL := "claimant"
+	if write.Status != "in_progress" {
+		claimantSQL = "NULL"
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE task_state SET status=?, claimant=`+claimantSQL+`, completed_at=?, commit_sha=COALESCE(nullif(?, ''), commit_sha), updated_at=? WHERE project_id=? AND task_id=?`, write.Status, completed, write.CommitSHA, now, s.projectID, taskID)
+	if err := checkWriteResult(res, err); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := insertHistory(ctx, tx, s.projectID, taskID, fromStatus, write.Status, owner, owner, branch, req.Actor, write.Reason); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := s.insertServerWriteIdempotency(ctx, tx, taskID, "status", 0, now, req); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := insertAudit(ctx, tx, s.projectID, AuditEvent{
+		Actor:  req.Actor,
+		Action: "server.api.status",
+		TaskID: taskID,
+		Detail: serverWriteAuditDetail(req, "status", 0, false),
+	}); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ServerWriteResult{}, err
+	}
+	return ServerWriteResult{}, nil
 }
 
 func (s *Store) RecordEvidence(ctx context.Context, taskID string, ev Evidence) error {
@@ -2252,29 +2366,34 @@ func terminalNotificationGapStillRelevant(reviewRequired bool, reviewStatus, las
 }
 
 func (s *Store) RecordReview(ctx context.Context, taskID string, r Review) error {
+	_, err := s.RecordReviewWithID(ctx, taskID, r)
+	return err
+}
+
+func (s *Store) RecordReviewWithID(ctx context.Context, taskID string, r Review) (int64, error) {
 	if r.Reviewer == "" {
-		return errors.New("reviewer is required")
+		return 0, errors.New("reviewer is required")
 	}
 	switch r.Verdict {
 	case "approve", "changes", "reject":
 	default:
-		return fmt.Errorf("invalid review verdict %q", r.Verdict)
+		return 0, fmt.Errorf("invalid review verdict %q", r.Verdict)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
 	var owner, claimant string
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(owner, ''), COALESCE(claimant, '') FROM task_state WHERE project_id=? AND task_id=?`, s.projectID, taskID).Scan(&owner, &claimant)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return 0, ErrNotFound
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if r.Reviewer == owner || (claimant != "" && r.Reviewer == claimant) {
-		return errors.New("reviewer cannot review their own task")
+		return 0, errors.New("reviewer cannot review their own task")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	domain := strings.TrimSpace(r.Domain)
@@ -2282,7 +2401,11 @@ func (s *Store) RecordReview(ctx context.Context, taskID string, r Review) error
 INSERT INTO task_reviews (project_id, task_id, reviewer, review_domain, verdict, reviewed_commit_sha, route_reason, notes, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, s.projectID, taskID, r.Reviewer, domain, r.Verdict, r.Commit, r.Reason, r.Reason, now)
 	if err := checkWriteResult(res, err); err != nil {
-		return err
+		return 0, err
+	}
+	rowID, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
 	}
 	status := "changes_requested"
 	if r.Verdict == "approve" {
@@ -2293,9 +2416,83 @@ UPDATE task_state
 SET review_required=1, review_status=?, reviewer=?, reviewed_at=?, review_note=?, updated_at=?
 WHERE project_id=? AND task_id=?`, status, r.Reviewer, now, r.Reason, now, s.projectID, taskID)
 	if err := checkWriteResult(res, err); err != nil {
-		return err
+		return 0, err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return rowID, nil
+}
+
+func (s *Store) RecordReviewWithIdempotency(ctx context.Context, taskID string, r Review, req ServerWriteRequest) (ServerWriteResult, error) {
+	if r.Reviewer == "" {
+		return ServerWriteResult{}, errors.New("reviewer is required")
+	}
+	switch r.Verdict {
+	case "approve", "changes", "reject":
+	default:
+		return ServerWriteResult{}, fmt.Errorf("invalid review verdict %q", r.Verdict)
+	}
+	if err := validateServerWriteRequest(req); err != nil {
+		return ServerWriteResult{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	defer tx.Rollback()
+	if result, ok, err := s.serverWriteReplay(ctx, tx, taskID, "review", req); err != nil || ok {
+		return result, err
+	}
+	var owner, claimant string
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(owner, ''), COALESCE(claimant, '') FROM task_state WHERE project_id=? AND task_id=?`, s.projectID, taskID).Scan(&owner, &claimant)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ServerWriteResult{}, ErrNotFound
+	}
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	if r.Reviewer == owner || (claimant != "" && r.Reviewer == claimant) {
+		return ServerWriteResult{}, errors.New("reviewer cannot review their own task")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	domain := strings.TrimSpace(r.Domain)
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO task_reviews (project_id, task_id, reviewer, review_domain, verdict, reviewed_commit_sha, route_reason, notes, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, s.projectID, taskID, r.Reviewer, domain, r.Verdict, r.Commit, r.Reason, r.Reason, now)
+	if err := checkWriteResult(res, err); err != nil {
+		return ServerWriteResult{}, err
+	}
+	rowID, err := res.LastInsertId()
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	status := "changes_requested"
+	if r.Verdict == "approve" {
+		status = "approved"
+	}
+	res, err = tx.ExecContext(ctx, `
+UPDATE task_state
+SET review_required=1, review_status=?, reviewer=?, reviewed_at=?, review_note=?, updated_at=?
+WHERE project_id=? AND task_id=?`, status, r.Reviewer, now, r.Reason, now, s.projectID, taskID)
+	if err := checkWriteResult(res, err); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := s.insertServerWriteIdempotency(ctx, tx, taskID, "review", rowID, now, req); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := insertAudit(ctx, tx, s.projectID, AuditEvent{
+		Actor:  req.Actor,
+		Action: "server.api.review",
+		TaskID: taskID,
+		Detail: serverWriteAuditDetail(req, "review", rowID, false),
+	}); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ServerWriteResult{}, err
+	}
+	return ServerWriteResult{RowID: rowID}, nil
 }
 
 func (s *Store) TaskDetail(ctx context.Context, taskID string) (Task, []Transition, []Evidence, []Handoff, []Review, error) {

@@ -119,7 +119,7 @@ fairway dashboard stop [--pid-file <path>] [--log-file <path>]
 fairway dashboard restart [--listen <addr>] [--multi] [--open] [--pid-file <path>] [--log-file <path>]
 fairway dashboard status [--listen <addr>] [--multi] [--pid-file <path>] [--log-file <path>]
 fairway server --read-only [--listen <addr>]              # shared-team read-only API skeleton
-fairway server --mode api-write-pilot --write             # append-only evidence/checkpoint API pilot
+fairway server --mode api-write-pilot --write             # guarded shared-team write API pilot
 fairway tui [--once]                                    # interactive ready/claim/status/detail/status-update/evidence/readiness loop
 fairway tracker providers
 fairway tracker configure <plane|jira|linear> [--url <url>] [--workspace <slug>] [--project <id-or-slug>] [--team <key>] [--dry-run]
@@ -546,15 +546,21 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   roles and included in `[server].allowed_roles`; bearer token failures return
   bounded errors and do not echo submitted or configured token values. This
   still does not add any shared write API.
-- `server --mode api-write-pilot --write` runs the FW-271 append-only write API
-  pilot when `[server]` is configured for `api-write-pilot`, API-token identity,
-  and an append-only write role. The only write endpoints are
+- `server --mode api-write-pilot --write` runs the shared-team write API pilot
+  when `[server]` is configured for `api-write-pilot`, API-token identity, and a
+  command-scoped write role. FW-271 added
   `POST /api/v1/tasks/<task-id>/evidence` and
-  `POST /api/v1/tasks/<task-id>/checkpoints`; both require JSON,
+  `POST /api/v1/tasks/<task-id>/checkpoints`; FW-272 adds guarded
+  `POST /api/v1/tasks/<task-id>/status` and
+  `POST /api/v1/tasks/<task-id>/reviews`. All writes require JSON,
   `Idempotency-Key`, project-scope matching, command-scoped authorization, and
-  unsafe private-data marker rejection. This still does not add task status
-  writes, review writes, dashboard mutation, provider sends, merge, deploy,
-  release, public exposure, or live-operation authority.
+  unsafe private-data marker rejection. Status writes require
+  `expected_status`; review writes require `admin` or matching
+  `reviewer:<domain>`. Reviewer-domain tokens cannot override the stored
+  reviewer identity; `admin` may explicitly record a reviewer override while
+  audit remains bound to the authenticated admin actor. This still does not add
+  dashboard-originated mutation, provider sends, merge, deploy, release, public
+  exposure, or live-operation authority.
 - `packet bugfix`, `packet retry`, platform-foundation packets,
   `packet template`, `packet rules`, and `regression-pack` are quality
   surfaces. They render and validate review context; they do not execute
