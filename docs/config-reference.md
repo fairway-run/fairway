@@ -211,6 +211,9 @@ contract.
 For shared read-only viewing, keep `listen = "127.0.0.1:7878"`, set
 `read_only = true`, and expose the origin only through a trusted tunnel/proxy.
 See [dashboard-sharing.md](design/dashboard-sharing.md).
+For a single-host small-team lab with explicit binary, DB, pid, log, backup,
+restore, dashboard, and read-only API paths, use the
+[small-team lab deployment runbook](operations/small-team-lab-deployment.md).
 
 ### `[server]`
 

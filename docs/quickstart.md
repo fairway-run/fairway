@@ -228,6 +228,11 @@ If a sandboxed desktop surface cannot stop the old listener, perform the
 stop/restart from the approved tmux or SSH operator lane and record the status
 readback as Fairway evidence.
 
+For a Mac mini, GitLab lab host, or similar small-team control-room machine,
+use the [small-team lab deployment runbook](operations/small-team-lab-deployment.md)
+to set explicit binary, config, DB, pid, log, backup, restore, dashboard, and
+read-only API paths before sharing the dashboard with a team.
+
 ## A typical loop
 
 In the backend worktree:
