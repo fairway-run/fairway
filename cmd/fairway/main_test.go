@@ -327,7 +327,22 @@ func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
 }
 
 func TestCLI_ServerWriteModeFailsClosed(t *testing.T) {
-	_, err := captureRun("server", "--write")
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+
+	_, err = captureRun("server", "--write")
 	if err == nil || !strings.Contains(err.Error(), "api-write-pilot requires identity_mode = \"api_token\"") {
 		t.Fatalf("server --write err=%v, want fail-closed api-token identity error", err)
 	}

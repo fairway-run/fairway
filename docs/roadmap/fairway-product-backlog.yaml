@@ -4691,3 +4691,27 @@ tasks:
       - "Dashboard/report projections remain read-only and do not grant deploy, restart, publish, public-exposure, approval, merge, or live-operation authority."
       - "Privacy and security boundaries exclude secrets, credentials, raw logs with sensitive data, and arbitrary artifact-content serving."
       - "Design/tests cover duplicate resource names across projects, stale verification, failed preflight/deploy evidence, and handoff-ready resource packets."
+
+  - id: FW-282
+    title: Fix CI server write mode test isolation
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: ci
+    source_paths:
+      - cmd/fairway/main_test.go
+      - .github/workflows
+    target_paths:
+      - cmd/fairway/main_test.go
+      - docs/roadmap/fairway-product-backlog.yaml
+    risk_level: low
+    migration_type: ci-test-fixture-isolation
+    dependencies:
+      - FW-277
+    acceptance_checks:
+      - "CI failure run/job URL, failing command, runner, commit SHA, and log excerpt are recorded as Fairway evidence."
+      - "The failing server write-mode test creates its own isolated Fairway repo/config fixture before asserting write-mode fail-closed behavior."
+      - "Focused `go test ./cmd/fairway -run TestCLI_ServerWriteModeFailsClosed -count=1` passes locally."
+      - "`go test ./...`, `go vet ./...`, `git diff --check`, `fairway config validate`, and active reconciliation pass before closeout."
+      - "No release, dashboard restart, public exposure, or server write authority change is introduced."
