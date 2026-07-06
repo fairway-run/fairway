@@ -10,6 +10,64 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.1.10
+
+### What Changed
+
+- Dashboard performance is materially improved for larger Fairway stores. Route
+  timing logs expose slow projections, `/board` now has a fast default path,
+  review/evidence gate projections use batch reads, repeated GETs use a short
+  snapshot cache with singleflight, and heavy diagnostics are lazy-loaded from a
+  read-only panel endpoint.
+- Shared-team Fairway moved from design into bounded pilot surfaces. The
+  release includes a loopback-only read-only server/API skeleton, API-token
+  identity and command authorization guards, append-only evidence/checkpoint
+  write-pilot endpoints, and guarded status/review write-pilot endpoints with
+  idempotency, audit rows, expected-state checks, and reviewer identity
+  accountability.
+- Postgres and team-store work remains rehearsal-grade, not a runtime switch.
+  The release adds a disposable rehearsal packet plus optional disposable
+  Postgres apply/import/readback proof using `psql`, DSN environment variables,
+  Fairway-prefixed schemas, and read-model equivalence checks.
+- Small-team operation is better packaged: Mac mini GitLab lab deployment
+  guidance, Fairway doctor diagnostics, lane runtime lifecycle commands, and
+  agent-optimized output contracts make local/shared operation easier to start,
+  inspect, hand off, and automate.
+- A small-team shared Fairway pilot was recorded. It proves loopback read-only
+  status/task/report readback without hidden write authority and recommends a
+  repeat pilot with a non-authoring operator before shared-team mode is
+  promoted as supported.
+
+### Known Limits
+
+- Shared-team server write surfaces are still pilot-only and loopback-only.
+  They do not authorize public exposure, dashboard-originated mutation,
+  provider-send, merge, deploy, release, or live-operation authority.
+- Trusted proxy and non-loopback deployments require separate reviewed
+  deployment/identity work. Cloudflare, Pomerium, VPN, or mTLS deployment
+  posture is not enabled by this release-prep task.
+- Postgres rehearsal proves disposable compatibility/import/readback only. It
+  does not implement the production runtime adapter, switch Fairway's active
+  store, prove full command parity, or claim migration/cutover readiness.
+- Dashboard diagnostics can still be expensive on large stores; the default
+  board path is fast, while full diagnostics remain intentionally explicit.
+- The small-team pilot was an architecture-control dry run. Promotion requires
+  a repeat pilot by a non-authoring operator on the lab host.
+
+### Release Checklist
+
+- `go test ./...` passes.
+- `go vet ./...` passes.
+- `git diff --check` passes.
+- `fairway config validate` passes.
+- `fairway workflow check --mode deploy --require-clean --require-pushed`
+  passes before tagging.
+- `goreleaser check` passes.
+- `fairway release verify` confirms the public GitHub release, asset URLs,
+  Homebrew cask version, tap commit, and `brew fetch` result.
+- Dashboard restart/version readback is handled by a separate tracked task if
+  this candidate is published.
+
 ## v0.1.9
 
 ### What Changed

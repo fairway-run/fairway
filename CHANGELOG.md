@@ -9,6 +9,32 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
+## v0.1.10
+
+### Added
+
+- Dashboard route/projection timing instrumentation, board fast path, batched
+  review/evidence projections, short snapshot cache with singleflight, and
+  lazy-loaded diagnostics panels for larger Fairway stores.
+- Shared-team read-only server/API skeleton, identity/authz guard, append-only
+  evidence/checkpoint write pilot, and guarded status/review write pilot with
+  idempotency, audit, expected-state, and reviewer-accountability controls.
+- Disposable Postgres rehearsal packets and optional disposable
+  apply/import/readback proof using environment-sourced DSNs and
+  Fairway-prefixed schemas.
+- Mac mini GitLab lab deployment runbook, Fairway doctor diagnostics, lane
+  runtime lifecycle commands, agent-output contracts, and small-team shared
+  pilot assessment.
+
+### Changed
+
+- Shared-team support remains explicitly pilot/readiness scoped. This release
+  does not promote public exposure, trusted proxy deployment, dashboard writes,
+  provider-send, deploy, release, live-operation authority, or a production
+  Postgres runtime switch.
+- Dashboard performance work keeps heavyweight diagnostics available while
+  making the default board path suitable for routine operator use.
+
 ## v0.1.9
 
 ### Added
