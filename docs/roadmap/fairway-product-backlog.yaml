@@ -4551,3 +4551,143 @@ tasks:
       - "Validation packet includes tests, deployment smoke, backup/restore, identity/authz, and pilot evidence."
       - "Release boundary reviews are complete before tag/publish."
       - "Dashboard restart/version readback is a separate tracked closeout step if release is published."
+
+  - id: FW-278
+    title: Add Fairway doctor and capability preflight diagnostics
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: diagnostics
+    source_paths:
+      - docs/design/cli.md
+      - docs/design/provider-surface-capability-readiness.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway
+      - internal/config
+    target_paths:
+      - cmd/fairway
+      - internal/config
+      - docs/design/cli.md
+      - docs/design/provider-surface-capability-readiness.md
+      - docs/design/coordinator-loop.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - backend
+      - governance
+      - ops
+    risk_level: medium
+    migration_type: doctor-preflight-diagnostics
+    dependencies:
+      - FW-277
+    acceptance_checks:
+      - "Fairway exposes a read-only doctor/preflight diagnostic surface for local execution dependencies such as Go cache, git write lane, tmux, Docker/Postgres proof tools, browser/dashboard reachability, config paths, and provider capability probes."
+      - "Diagnostics report structured pass/warn/fail rows with owner, suggested command, evidence path, and whether the finding blocks task work, release, dashboard restart, or shared-team pilot."
+      - "The surface does not mutate task state, run live operations, start providers, approve work, push, deploy, restart dashboards, or expose secrets."
+      - "Tests cover missing tool, sandbox/git lock guidance, configured path checks, and JSON/human output."
+
+  - id: FW-279
+    title: Add lane runtime lifecycle start status logs stop model
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: runtime
+    source_paths:
+      - docs/design/shared-team-operating-model.md
+      - docs/design/shared-team-deployment-operations.md
+      - docs/design/coordinator-loop.md
+      - cmd/fairway
+      - internal/store
+    target_paths:
+      - cmd/fairway
+      - internal/store
+      - docs/design/cli.md
+      - docs/design/shared-team-operating-model.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - governance
+      - ops
+    risk_level: high
+    migration_type: lane-runtime-lifecycle
+    dependencies:
+      - FW-270
+    acceptance_checks:
+      - "Fairway defines lane runtime records and CLI/read-model surfaces for start, status, logs, and stop/readback of provider or helper lanes without storing raw transcripts, prompts, tool bodies, or secrets."
+      - "Lifecycle commands record durable session/checkpoint/evidence state and distinguish advisory observation from authority to run provider prompts or mutate project state."
+      - "Stop/status/logs behavior is bounded for local/tmux lanes first and fails closed for unknown remote runtimes."
+      - "Dashboard remains read-only; no provider-send, approval, merge, deploy, release, public exposure, or live-operation authority is added."
+      - "Tests cover start/status/log/stop records, stale or missing process readback, log redaction/path safety, and no raw private content persistence."
+
+  - id: FW-280
+    title: Add agent optimized structured output contracts
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: integration
+    source_paths:
+      - docs/design/cli.md
+      - docs/design/context-packets.md
+      - docs/design/provider-notifications.md
+      - docs/design/shared-team-server-api.md
+      - cmd/fairway
+    target_paths:
+      - cmd/fairway
+      - docs/design/cli.md
+      - docs/design/context-packets.md
+      - docs/design/shared-team-server-api.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - governance
+    risk_level: medium
+    migration_type: agent-structured-output-contracts
+    dependencies:
+      - FW-270
+    acceptance_checks:
+      - "Fairway defines stable agent-oriented JSON contracts for task packets, ready queues, waits, reviews, evidence requirements, lane status, and closeout handbacks so providers do not scrape human text."
+      - "Contracts include schema/version fields, allowed enum values, privacy exclusions, and compatibility notes for future changes."
+      - "CLI surfaces expose the contracts through explicit JSON modes or packet export commands without storing raw prompts, transcripts, generated content, tool bodies, auth tokens, or provider-private payloads."
+      - "Tests cover schema stability, unknown-field tolerance where intended, and no authority expansion through structured output."
+
+  - id: FW-281
+    title: Add typed delivery resource model
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: delivery
+    source_paths:
+      - docs/design/environment-deploy-preflight.md
+      - docs/design/delivery-velocity-and-overhead.md
+      - docs/design/shared-team-deployment-operations.md
+      - internal/store
+      - cmd/fairway
+    target_paths:
+      - docs/design/delivery-resources.md
+      - docs/design/environment-deploy-preflight.md
+      - docs/design/dashboard.md
+      - cmd/fairway
+      - internal/store
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - arch
+      - backend
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: typed-delivery-resource-model
+    dependencies:
+      - FW-237
+      - FW-280
+    acceptance_checks:
+      - "Fairway models delivery resources such as environments, dashboards, docs portals, binaries, release artifacts, CI pipelines, preflight packets, and rehearsal targets as typed read-model records derived from existing tasks/evidence/config before adding any new store."
+      - "Resources expose owner, current state, provenance, last verified version/commit, required evidence, open blockers, and next safe action."
+      - "Dashboard/report projections remain read-only and do not grant deploy, restart, publish, public-exposure, approval, merge, or live-operation authority."
+      - "Privacy and security boundaries exclude secrets, credentials, raw logs with sensitive data, and arbitrary artifact-content serving."
+      - "Design/tests cover duplicate resource names across projects, stale verification, failed preflight/deploy evidence, and handoff-ready resource packets."
