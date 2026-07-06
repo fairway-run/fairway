@@ -29,6 +29,10 @@ fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <nam
 fairway session status [--all]
 fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]
 fairway session reconcile [--dry-run]
+fairway lane start --role <role> [--session-id <id>] [--task-id <id>] [--backend <local|shell|tmux>] [--pid <pid>] [--tmux-pane <pane>] [--transcript <path>]
+fairway lane status [--session-id <id>] [--all]
+fairway lane logs --session-id <id> [--tail <n>]
+fairway lane stop --session-id <id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]
 fairway reconcile active [--dry-run]                    # report stale/unattended active work across sessions, tasks, evidence, and checkpoints
 fairway session launch --role <role> [--backend <shell|tmux|zellij>] [--provider <name>] [--task-id <id>] [--prompt-file <path>|--prompt <text>] [--transcript <path>] [--command <provider-command>] [--dry-run] # adapter; optional
 fairway worktree setup | status | prune [--force]
@@ -213,6 +217,19 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   Provider sessions attached to tasks must also have a matching lifecycle
   checkpoint: `active` for started/running, `awaiting_input` for waiting,
   failed, stale, or no-progress, and `done` for completed.
+- `lane start|status|logs|stop` is a bounded lifecycle surface for local or
+  tmux provider/helper lanes. `lane start` upserts an existing session record
+  and records an `active` checkpoint when `--task-id` is supplied; it does not
+  launch a provider, send a prompt, claim review authority, or mutate project
+  state beyond session/checkpoint facts. `lane status` projects process/pane
+  readback such as `running`, `missing_process`, `missing_tmux_pane`,
+  `unsupported_remote`, or terminal session state. `lane logs` reads a local
+  transcript path from the session, requires the file to stay under the session
+  worktree after symlink resolution, redacts common credential markers before
+  display, and does not store log content. `lane stop` records session closeout
+  and a `done` checkpoint; it does not kill remote runtimes. Unknown remote
+  backends fail closed until a later reviewed runtime adapter defines their
+  trust boundary.
 - `reconcile active` permits bounded active evidence capture for approved live
   operations only while the task has a running session and a fresh `active`
   checkpoint with `--target-close-by` still open. This allows gate/runtime

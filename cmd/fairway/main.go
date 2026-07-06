@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -176,6 +177,8 @@ func run(ctx context.Context, args []string) error {
 		return errors.New("review requires subcommand: checkout")
 	case "worktree":
 		return cmdWorktree(opts, args[1:])
+	case "lane":
+		return cmdLane(ctx, opts, args[1:])
 	case "session":
 		return cmdSession(ctx, opts, args[1:])
 	case "reconcile":
@@ -6647,6 +6650,419 @@ func cmdSessionEnd(ctx context.Context, opts globalOptions, args []string) error
 		return nil
 	})
 }
+
+func cmdLane(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("lane requires subcommand: start, status, logs, stop")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("lane", "start|status|logs|stop")
+		return nil
+	}
+	switch args[0] {
+	case "start":
+		return cmdLaneStart(ctx, opts, args[1:])
+	case "status":
+		return cmdLaneStatus(ctx, opts, args[1:])
+	case "logs":
+		return cmdLaneLogs(ctx, opts, args[1:])
+	case "stop":
+		return cmdLaneStop(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown lane subcommand %q", args[0])
+	}
+}
+
+type laneStatusRow struct {
+	SessionID      string `json:"session_id"`
+	Role           string `json:"role"`
+	Lane           string `json:"lane,omitempty"`
+	Backend        string `json:"backend"`
+	Provider       string `json:"provider,omitempty"`
+	TaskID         string `json:"task_id,omitempty"`
+	Status         string `json:"status"`
+	RuntimeState   string `json:"runtime_state"`
+	RuntimeMessage string `json:"runtime_message,omitempty"`
+	PID            *int   `json:"pid,omitempty"`
+	TmuxPane       string `json:"tmux_pane,omitempty"`
+	TranscriptPath string `json:"transcript_path,omitempty"`
+	StartedAt      string `json:"started_at,omitempty"`
+	EndedAt        string `json:"ended_at,omitempty"`
+}
+
+func cmdLaneStart(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("lane start", flag.ContinueOnError)
+	id := fs.String("session-id", "", "session id")
+	role := fs.String("role", "", "role")
+	lane := fs.String("lane", "", "lane")
+	backend := fs.String("backend", "local", "local runtime backend: local, shell, or tmux")
+	provider := fs.String("provider", "", "provider")
+	name := fs.String("name", "", "session name")
+	taskID := fs.String("task-id", "", "task id")
+	pid := fs.Int("pid", -1, "process id")
+	worktreePath := fs.String("worktree", "", "worktree path")
+	branch := fs.String("branch", "", "branch")
+	tmuxPane := fs.String("tmux-pane", "", "tmux pane")
+	transcript := fs.String("transcript", "", "local transcript/log path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected lane start arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		sessionRole := strings.TrimSpace(*role)
+		if sessionRole == "" {
+			sessionRole = resolveRole(opts)
+		}
+		if sessionRole == "" {
+			return errors.New("lane start requires --role or FAIRWAY_ROLE")
+		}
+		runtimeBackend := strings.TrimSpace(*backend)
+		if runtimeBackend == "" {
+			runtimeBackend = "local"
+		}
+		if !laneBackendAllowed(runtimeBackend) {
+			return fmt.Errorf("lane start supports local runtimes only; unsupported backend %q", runtimeBackend)
+		}
+		roleCfg, ok := findRole(cfg, sessionRole)
+		if ok {
+			if *provider == "" {
+				*provider = roleCfg.Provider
+			}
+			if *branch == "" {
+				*branch = config.RoleBranch(roleCfg)
+			}
+			if *worktreePath == "" {
+				*worktreePath = config.WorktreePath(cfg, root, roleCfg)
+			}
+		}
+		if *branch == "" {
+			*branch = fairwaygit.CurrentBranch(root)
+		}
+		if *worktreePath == "" {
+			*worktreePath = root
+		}
+		sessionID := strings.TrimSpace(*id)
+		if sessionID == "" {
+			sessionID = generatedSessionID(sessionRole, *pid)
+		}
+		session := store.Session{
+			ID:             sessionID,
+			Role:           sessionRole,
+			Lane:           strings.TrimSpace(*lane),
+			WorktreePath:   *worktreePath,
+			Branch:         *branch,
+			SessionBackend: runtimeBackend,
+			Provider:       strings.TrimSpace(*provider),
+			SessionName:    strings.TrimSpace(*name),
+			TaskID:         strings.TrimSpace(*taskID),
+			TmuxPane:       strings.TrimSpace(*tmuxPane),
+			TranscriptPath: strings.TrimSpace(*transcript),
+			Status:         "running",
+		}
+		if *pid >= 0 {
+			session.PID = pid
+		}
+		if runtimeBackend == "tmux" && session.TmuxPane == "" {
+			return errors.New("lane start --backend tmux requires --tmux-pane")
+		}
+		if err := s.UpsertSession(ctx, session); err != nil {
+			return err
+		}
+		if session.TaskID != "" {
+			summary := fmt.Sprintf("lane runtime started session %s backend=%s provider=%s; advisory lifecycle record only, no provider prompt or project mutation was run", session.ID, session.SessionBackend, session.Provider)
+			cp := store.Checkpoint{TaskID: session.TaskID, State: "active", Owner: session.Role, Summary: summary}
+			if err := s.RecordCheckpoint(ctx, cp); err != nil {
+				return err
+			}
+		}
+		row := laneStatusFromSession(session)
+		if opts.JSON {
+			return printJSON(row)
+		}
+		fmt.Printf("lane_started session=%s role=%s backend=%s runtime=%s\n", row.SessionID, row.Role, row.Backend, row.RuntimeState)
+		return nil
+	})
+}
+
+func cmdLaneStatus(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("lane status", flag.ContinueOnError)
+	id := fs.String("session-id", "", "session id")
+	all := fs.Bool("all", false, "include ended sessions")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected lane status arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		sessions, err := s.Sessions(ctx, *all)
+		if err != nil {
+			return err
+		}
+		var rows []laneStatusRow
+		for _, session := range sessions {
+			if *id != "" && session.ID != *id {
+				continue
+			}
+			rows = append(rows, laneStatusFromSession(session))
+		}
+		if *id != "" && len(rows) == 0 {
+			return store.ErrNotFound
+		}
+		if opts.JSON {
+			return printJSON(rows)
+		}
+		for _, row := range rows {
+			fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n", row.SessionID, row.Role, row.Backend, row.Status, row.RuntimeState, row.TaskID)
+		}
+		return nil
+	})
+}
+
+func cmdLaneLogs(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("lane logs", flag.ContinueOnError)
+	id := fs.String("session-id", "", "session id")
+	tail := fs.Int("tail", 80, "number of trailing lines")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected lane logs arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*id) == "" {
+		return errors.New("lane logs requires --session-id")
+	}
+	if *tail <= 0 {
+		return errors.New("lane logs --tail must be positive")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, root string, s *store.Store) error {
+		session, err := sessionByID(ctx, s, *id, true)
+		if err != nil {
+			return err
+		}
+		if !laneBackendAllowed(session.SessionBackend) {
+			return fmt.Errorf("lane logs supports local runtimes only; unsupported backend %q", session.SessionBackend)
+		}
+		if strings.TrimSpace(session.TranscriptPath) == "" {
+			return errors.New("lane logs requires a transcript_path on the session")
+		}
+		base := session.WorktreePath
+		if base == "" {
+			base = root
+		}
+		content, path, err := readLaneLog(session.TranscriptPath, base, *tail)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(map[string]string{"session_id": session.ID, "path": path, "content": content})
+		}
+		fmt.Print(content)
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			fmt.Println()
+		}
+		return nil
+	})
+}
+
+func cmdLaneStop(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("lane stop", flag.ContinueOnError)
+	id := fs.String("session-id", "", "session id")
+	status := fs.String("status", "ended", "terminal status")
+	reason := fs.String("reason", "lane runtime stopped", "end reason")
+	exitCode := fs.Int("exit-code", -1, "exit code")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected lane stop arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*id) == "" {
+		return errors.New("lane stop requires --session-id")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		session, err := sessionByID(ctx, s, *id, false)
+		if err != nil {
+			return err
+		}
+		if !laneBackendAllowed(session.SessionBackend) {
+			return fmt.Errorf("lane stop supports local runtimes only; unsupported backend %q", session.SessionBackend)
+		}
+		var code *int
+		if *exitCode >= 0 {
+			code = exitCode
+		}
+		if err := s.EndSession(ctx, session.ID, *status, *reason, code); err != nil {
+			return err
+		}
+		if session.TaskID != "" {
+			checkpointState := "done"
+			if *status != "ended" {
+				checkpointState = "awaiting_input"
+			}
+			cp := store.Checkpoint{TaskID: session.TaskID, State: checkpointState, Owner: session.Role, Summary: fmt.Sprintf("lane runtime stopped session %s status=%s reason=%s", session.ID, *status, *reason)}
+			if err := s.RecordCheckpoint(ctx, cp); err != nil {
+				return err
+			}
+		}
+		if opts.JSON {
+			return printJSON(map[string]string{"session_id": session.ID, "status": *status})
+		}
+		fmt.Println("lane_stopped", session.ID)
+		return nil
+	})
+}
+
+func laneBackendAllowed(backend string) bool {
+	switch strings.TrimSpace(backend) {
+	case "", "local", "shell", "tmux":
+		return true
+	default:
+		return false
+	}
+}
+
+func laneStatusFromSession(session store.Session) laneStatusRow {
+	row := laneStatusRow{
+		SessionID:      session.ID,
+		Role:           session.Role,
+		Lane:           session.Lane,
+		Backend:        session.SessionBackend,
+		Provider:       session.Provider,
+		TaskID:         session.TaskID,
+		Status:         session.Status,
+		RuntimeState:   "unverified",
+		PID:            session.PID,
+		TmuxPane:       session.TmuxPane,
+		TranscriptPath: session.TranscriptPath,
+		StartedAt:      session.StartedAt,
+		EndedAt:        session.EndedAt,
+	}
+	if row.Backend == "" {
+		row.Backend = "local"
+	}
+	if !laneBackendAllowed(row.Backend) {
+		row.RuntimeState = "unsupported_remote"
+		row.RuntimeMessage = "local/tmux lane lifecycle commands fail closed for this backend"
+		return row
+	}
+	if session.Status == "ended" || session.Status == "failed" || session.Status == "stale" || session.EndedAt != "" {
+		row.RuntimeState = session.Status
+		if row.RuntimeState == "" {
+			row.RuntimeState = "ended"
+		}
+		return row
+	}
+	if session.PID != nil {
+		if processAlive(*session.PID) {
+			row.RuntimeState = "running"
+		} else {
+			row.RuntimeState = "missing_process"
+			row.RuntimeMessage = "pid is not running"
+		}
+		return row
+	}
+	if row.Backend == "tmux" && session.TmuxPane != "" {
+		if tmuxPaneAlive(session.TmuxPane) {
+			row.RuntimeState = "running"
+		} else {
+			row.RuntimeState = "missing_tmux_pane"
+			row.RuntimeMessage = "tmux pane not found"
+		}
+		return row
+	}
+	return row
+}
+
+func sessionByID(ctx context.Context, s *store.Store, id string, includeEnded bool) (store.Session, error) {
+	sessions, err := s.Sessions(ctx, includeEnded)
+	if err != nil {
+		return store.Session{}, err
+	}
+	for _, session := range sessions {
+		if session.ID == id {
+			return session, nil
+		}
+	}
+	return store.Session{}, store.ErrNotFound
+}
+
+func readLaneLog(rawPath, base string, tail int) (string, string, error) {
+	cleanPath, err := safeLaneLogPath(rawPath, base)
+	if err != nil {
+		return "", "", err
+	}
+	info, err := os.Stat(cleanPath)
+	if err != nil {
+		return "", "", err
+	}
+	if info.IsDir() {
+		return "", "", errors.New("lane logs path must be a file")
+	}
+	data, err := os.ReadFile(cleanPath)
+	if err != nil {
+		return "", "", err
+	}
+	text := redactLaneLog(string(data))
+	lines := strings.SplitAfter(text, "\n")
+	if len(lines) > tail {
+		lines = lines[len(lines)-tail:]
+	}
+	return strings.Join(lines, ""), cleanPath, nil
+}
+
+func safeLaneLogPath(rawPath, base string) (string, error) {
+	rawPath = strings.TrimSpace(rawPath)
+	if rawPath == "" {
+		return "", errors.New("lane logs path is required")
+	}
+	if strings.Contains(rawPath, "://") {
+		return "", errors.New("lane logs reads local files only")
+	}
+	baseAbs, err := filepath.Abs(filepath.Clean(base))
+	if err != nil {
+		return "", err
+	}
+	baseEval, err := filepath.EvalSymlinks(baseAbs)
+	if err != nil {
+		return "", err
+	}
+	candidate := rawPath
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(baseEval, candidate)
+	}
+	candidateAbs, err := filepath.Abs(filepath.Clean(candidate))
+	if err != nil {
+		return "", err
+	}
+	candidateEval, err := filepath.EvalSymlinks(candidateAbs)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(baseEval, candidateEval)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", errors.New("lane logs path must stay under the session worktree")
+	}
+	return candidateEval, nil
+}
+
+func redactLaneLog(text string) string {
+	text = laneLogHeaderSecretPattern.ReplaceAllString(text, "$1: [REDACTED]")
+	text = laneLogAssignmentSecretPattern.ReplaceAllString(text, "${1}[REDACTED]")
+	text = laneLogBearerSecretPattern.ReplaceAllString(text, "Bearer [REDACTED]")
+	return text
+}
+
+var (
+	laneLogHeaderSecretPattern     = regexp.MustCompile(`(?i)\b(authorization|cookie|set-cookie):[^\r\n]*`)
+	laneLogAssignmentSecretPattern = regexp.MustCompile(`(?i)\b((?:password|token|secret|api_key|client_secret|access_token|refresh_token|id_token|ssh_private_key)\s*[:=]\s*)[^\s,&"']+`)
+	laneLogBearerSecretPattern     = regexp.MustCompile(`(?i)\bbearer\s+[^\s,"']+`)
+)
 
 type releaseVerifyReport struct {
 	OK                 bool                 `json:"ok"`
@@ -16423,7 +16839,7 @@ func usage() {
 	fmt.Println("Evidence and review:")
 	fmt.Println("  record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
-	fmt.Println("  session, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
+	fmt.Println("  session, lane, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
@@ -16463,6 +16879,7 @@ func printCommandHelp(command string) bool {
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
 		"wait":                       "fairway wait add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, acknowledge them, project wait state, and emit bounded wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
+		"lane":                       "fairway lane start|status|logs|stop ...\n  Record and inspect local/tmux lane runtime lifecycle without launching providers or storing transcript content.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",
 		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",

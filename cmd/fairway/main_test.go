@@ -319,6 +319,7 @@ func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
 		{"projects", "fairway projects"},
 		{"tui", "fairway tui [--once]"},
 		{"server", "fairway server --read-only [--listen <addr>]"},
+		{"lane", "fairway lane start|status|logs|stop"},
 	} {
 		out := runCapture(t, tc.command, "--help")
 		assertContains(t, out, tc.want)
@@ -370,6 +371,79 @@ func TestCLI_ServerReadOnlyRejectsNonLoopbackListen(t *testing.T) {
 	}
 }
 
+func TestCLI_LaneRuntimeLifecycle(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Lane runtime", "--role", "backend")
+	logPath := filepath.Join(repo, "lane.log")
+	writeFile(t, logPath, "ok line\nAuthorization: Bearer SHOULD_NOT_RENDER\npassword=ALSO_SECRET\n")
+
+	out := runCapture(t, "lane", "start",
+		"--session-id", "lane-1",
+		"--role", "backend",
+		"--task-id", "T-001",
+		"--backend", "local",
+		"--pid", "999999",
+		"--transcript", logPath,
+	)
+	assertContains(t, out, "lane_started session=lane-1")
+	assertContains(t, out, "runtime=missing_process")
+
+	status := runCapture(t, "lane", "status", "--session-id", "lane-1")
+	assertContains(t, status, "lane-1")
+	assertContains(t, status, "missing_process")
+
+	logs := runCapture(t, "lane", "logs", "--session-id", "lane-1", "--tail", "5")
+	assertContains(t, logs, "ok line")
+	assertContains(t, logs, "Authorization: [REDACTED]")
+	assertContains(t, logs, "password=[REDACTED]")
+	assertNotContains(t, logs, "SHOULD_NOT_RENDER")
+	assertNotContains(t, logs, "ALSO_SECRET")
+
+	if _, err := captureRun("lane", "logs", "--session-id", "lane-1", "--tail", "5", "--bogus"); err == nil {
+		t.Fatal("lane logs with unexpected arg succeeded")
+	}
+	if _, err := captureRun("lane", "start", "--session-id", "remote-1", "--role", "backend", "--backend", "ssh"); err == nil || !strings.Contains(err.Error(), "local runtimes only") {
+		t.Fatalf("lane start remote err=%v, want fail-closed local runtime error", err)
+	}
+	runOK(t, "session", "upsert", "--id", "remote-1", "--role", "backend", "--backend", "ssh", "--transcript", logPath)
+	if _, err := captureRun("lane", "stop", "--session-id", "remote-1"); err == nil || !strings.Contains(err.Error(), "local runtimes only") {
+		t.Fatalf("lane stop remote err=%v, want fail-closed local runtime error", err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.log")
+	if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runOK(t, "session", "upsert", "--id", "outside-1", "--role", "backend", "--backend", "local", "--transcript", outside, "--worktree", repo)
+	if _, err := captureRun("lane", "logs", "--session-id", "outside-1"); err == nil || !strings.Contains(err.Error(), "must stay under the session worktree") {
+		t.Fatalf("lane logs outside err=%v, want path safety error", err)
+	}
+
+	out = runCapture(t, "lane", "stop", "--session-id", "lane-1", "--reason", "done")
+	assertContains(t, out, "lane_stopped lane-1")
+	status = runCapture(t, "lane", "status", "--all")
+	assertContains(t, status, "lane-1")
+	assertContains(t, status, "ended")
+	checkpoints := runCapture(t, "checkpoint", "status", "--all")
+	assertContains(t, checkpoints, "lane runtime started session lane-1")
+	assertContains(t, checkpoints, "lane runtime stopped session lane-1")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertNotContains(t, detail, "SHOULD_NOT_RENDER")
+	assertNotContains(t, detail, "ALSO_SECRET")
+}
+
 func TestCLI_UnknownCommandStillErrors(t *testing.T) {
 	out, err := captureRun("does-not-exist")
 	if err == nil {
@@ -385,6 +459,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 	}{
 		{[]string{"session", "--help"}, "fairway session upsert|status|end|reconcile|launch"},
 		{[]string{"session", "help"}, "fairway session upsert|status|end|reconcile|launch"},
+		{[]string{"lane", "--help"}, "fairway lane start|status|logs|stop"},
+		{[]string{"lane", "help"}, "fairway lane start|status|logs|stop"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
 		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},

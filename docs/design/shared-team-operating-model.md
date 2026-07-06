@@ -143,6 +143,10 @@ Allowed fallback patterns:
 - evidence artifacts stored locally with references recorded when the team
   store is reachable again;
 - read-only dashboard snapshots for observation.
+- local or tmux lane lifecycle readback through `fairway lane
+  start|status|logs|stop`, where the command records session/checkpoint facts
+  and redacted local log views without launching providers, sending prompts, or
+  storing transcript content.
 
 Forbidden fallback patterns:
 
@@ -150,6 +154,8 @@ Forbidden fallback patterns:
 - treating offline provider chat as authoritative state;
 - bypassing review or live-operation gates because the team store is offline;
 - backdating approvals or status changes without clear actor/time evidence.
+- treating lane lifecycle status or logs as authority to approve, merge, deploy,
+  run a live operation, or expose a public endpoint.
 
 When offline work is promoted back to a shared store, Fairway should require a
 visible reconciliation packet that names changed tasks, evidence, conflicts,
