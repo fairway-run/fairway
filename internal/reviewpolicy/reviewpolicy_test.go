@@ -120,6 +120,26 @@ func TestEvaluateDefaultBoundaryProfiles(t *testing.T) {
 	}
 }
 
+func TestEvaluateTerminalNotRequiredCancelsReviewDomains(t *testing.T) {
+	task := store.Task{
+		Definition:   store.TaskDefinition{ID: "DONE-001", ReviewDomains: []string{"backend", "governance"}},
+		Status:       "done",
+		ReviewStatus: "not_required",
+	}
+	eval := Evaluate(config.Config{}, Options{Task: task})
+	if len(eval.EffectiveDomains) != 0 || len(eval.MissingReviewDomains) != 0 {
+		t.Fatalf("eval=%+v, terminal not_required task should not have effective missing domains", eval)
+	}
+	if len(eval.Requirements) != 2 {
+		t.Fatalf("requirements=%+v, want cancelled rows for raw domains", eval.Requirements)
+	}
+	for _, req := range eval.Requirements {
+		if req.Status != "cancelled" || req.Reason != "task is terminal or review domain is no longer required" {
+			t.Fatalf("requirement=%+v, want cancelled terminal review-domain row", req)
+		}
+	}
+}
+
 func TestEvaluateConfiguredProfileOverridesDefaultName(t *testing.T) {
 	cfg := config.Config{ReviewProfiles: []config.ReviewProfile{{
 		Name:                  "reversible",

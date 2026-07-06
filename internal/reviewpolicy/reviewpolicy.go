@@ -96,6 +96,14 @@ func DetectLoop(task store.Task, eval Evaluation, evidence []store.Evidence, rev
 
 func Evaluate(cfg config.Config, opts Options) Evaluation {
 	task := opts.Task
+	if terminalReviewNotRequired(cfg, task) {
+		domains := normalizedUnique(task.Definition.ReviewDomains)
+		return Evaluation{
+			Profile:      "task-review-domains",
+			Mode:         "blocking",
+			Requirements: cancelledRequirements(domains, "task is terminal or review domain is no longer required"),
+		}
+	}
 	profile, hasProfile := selectProfile(cfg.ReviewProfiles, task, opts.ChangedPaths)
 	if !hasProfile {
 		profile, hasProfile = selectDefaultProfile(cfg.ReviewProfiles, task, opts.ChangedPaths)
@@ -465,6 +473,34 @@ func requiredRequirements(domains []string, reason string) []Requirement {
 		out = append(out, Requirement{Domain: domain, Status: "required", Reason: reason})
 	}
 	return out
+}
+
+func cancelledRequirements(domains []string, reason string) []Requirement {
+	out := make([]Requirement, 0, len(domains))
+	for _, domain := range domains {
+		out = append(out, Requirement{Domain: domain, Status: "cancelled", Reason: reason})
+	}
+	return out
+}
+
+func terminalReviewNotRequired(cfg config.Config, task store.Task) bool {
+	if strings.TrimSpace(task.ReviewStatus) != "not_required" {
+		return false
+	}
+	status := strings.TrimSpace(task.Status)
+	if status == "" {
+		return false
+	}
+	terminal := cfg.States.Terminal
+	if len(terminal) == 0 {
+		terminal = []string{"done"}
+	}
+	for _, value := range terminal {
+		if status == strings.TrimSpace(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func approvedDomains(reviews []store.Review) map[string]bool {

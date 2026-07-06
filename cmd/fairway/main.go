@@ -5181,7 +5181,7 @@ func reviewPolicyWaitRows(task store.Task, policy reviewpolicy.Evaluation) []rev
 	var rows []reviewstate.ReviewWait
 	for _, req := range policy.Requirements {
 		switch req.Status {
-		case "inherited", "waived", "deferred":
+		case "inherited", "waived", "deferred", "cancelled":
 		default:
 			continue
 		}
@@ -5191,6 +5191,8 @@ func reviewPolicyWaitRows(task store.Task, policy reviewpolicy.Evaluation) []rev
 		if req.Status == "deferred" {
 			state = "cancelled"
 			action = "deferred_review"
+		} else if req.Status == "cancelled" {
+			state = "cancelled"
 		}
 		rows = append(rows, reviewstate.ReviewWait{
 			WaitID:        task.Definition.ID + "/" + req.Domain,

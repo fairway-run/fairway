@@ -1631,6 +1631,41 @@ func TestCLI_MergeReadyRequiresReviewDomains(t *testing.T) {
 	runOK(t, "merge-ready", "T-002")
 }
 
+func TestCLI_TerminalNotRequiredReviewDomainsDoNotBlockMergeReady(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init")
+	runOK(t, "add", "T-003", "--title", "Closed no-review task", "--role", "backend", "--review-domains", "architecture,backend,frontend,product")
+	runOK(t, "set-status", "T-003", "done", "--reason", "closed without required review")
+
+	detail := runCapture(t, "task-detail", "T-003")
+	assertContains(t, detail, "review: not_required")
+	assertNotContains(t, detail, "missing review domains:")
+
+	waits := runCapture(t, "review-waits", "list", "--task", "T-003")
+	assertContains(t, waits, "domain=architecture state=cancelled blocking=false action=none policy=cancelled profile=task-review-domains")
+	assertContains(t, waits, "reason=task is terminal or review domain is no longer required")
+
+	mergeReady := runCapture(t, "merge-ready", "T-003")
+	assertContains(t, mergeReady, "merge_ready: true")
+	assertNotContains(t, mergeReady, "missing approved review for domain")
+	jsonMergeReady := runCapture(t, "--json", "merge-ready", "T-003")
+	assertNotContains(t, jsonMergeReady, `"missing_review_domains"`)
+}
+
 func TestCLI_WorktreeSetupStatus(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

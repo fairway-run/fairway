@@ -55,12 +55,16 @@ required
 inherited
 waived
 deferred
+cancelled
 ```
 
-Only `required` domains block `merge-ready` when missing. Inherited, waived, and
-deferred domains remain visible in review-wait/task detail and dashboard task
-detail output so operators can see why a full matrix was not requested for that
-slice.
+Only `required` domains block `merge-ready` when missing. Inherited, waived,
+deferred, and cancelled domains remain visible in review-wait/task detail and
+dashboard task detail output so operators can see why a full matrix was not
+requested for that slice. Terminal tasks whose stored review status is
+`not_required` treat stale raw `review_domains` as cancelled policy rows:
+`merge-ready` and task detail do not block on them, while `review-waits` shows
+non-blocking cancelled rows with the terminal/no-longer-required reason.
 
 If a profile runs in `advisory` mode, missing required domains are reported as
 warnings rather than blockers. This lets teams measure process value before

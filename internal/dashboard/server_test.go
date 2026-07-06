@@ -1259,7 +1259,11 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 		{ID: "CHILD-002", Title: "Uncovered child", Role: "backend", Kind: "task", Tags: []string{"review:grouped"}},
 		{ID: "CHILD-003", ParentID: "EPIC-001", Title: "Live child", Role: "backend", Kind: "task", RiskLevel: "live-boundary", Tags: []string{"review:grouped"}},
 		{ID: "CHILD-004", ParentID: "EPIC-001", Title: "Release child", Role: "backend", Kind: "task", RiskLevel: "release-boundary", Tags: []string{"review:grouped"}},
+		{ID: "DONE-001", Title: "Closed no-review task", Role: "backend", Kind: "task", ReviewDomains: []string{"architecture", "backend"}},
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "DONE-001", "done", "closed without required review", false); err != nil {
 		t.Fatal(err)
 	}
 	for _, domain := range []string{"backend", "governance", "ops", "security"} {
@@ -1298,6 +1302,9 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 	if got := strings.Join(missing["CHILD-004"], ","); got != "backend,governance,ops,security" {
 		t.Fatalf("release child missing reviews=%q, want backend,governance,ops,security", got)
 	}
+	if got := missing["DONE-001"]; len(got) != 0 {
+		t.Fatalf("terminal not_required task missing reviews=%v, want none", got)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/tasks/CHILD-001", nil)
 	rec := httptest.NewRecorder()
@@ -1316,6 +1323,23 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 	}
 	if strings.Contains(body, "Missing required domains") {
 		t.Fatalf("covered grouped child rendered missing review domains:\n%s", body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/tasks/DONE-001", nil)
+	rec = httptest.NewRecorder()
+	server.task(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{
+		"Review Policy",
+		"cancelled",
+		"task is terminal or review domain is no longer required",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("terminal no-review task detail missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Missing required domains") {
+		t.Fatalf("terminal no-review task rendered missing review domains:\n%s", body)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/tasks/CHILD-002", nil)
