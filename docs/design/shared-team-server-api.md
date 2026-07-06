@@ -90,6 +90,33 @@ private data. This still does not add shared writes, review approval, dashboard
 mutation, provider sends, merge, deploy, release, public exposure, or live
 operation authority.
 
+FW-271 adds the first append-only write pilot. It is enabled only with
+`[server] mode = "api-write-pilot"`, `write_enabled = true`, and
+`identity_mode = "api_token"` using an append-only write role (`operator`,
+`coordinator`, `admin`, or `adapter:<name>`) that also appears in
+`allowed_roles`.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/tasks/<task-id>/evidence` | Append one evidence row using the same fields as `fairway record evidence`. |
+| `POST /api/v1/tasks/<task-id>/checkpoints` | Append one checkpoint row using the same fields as `fairway checkpoint record`. |
+
+Both endpoints require `Content-Type: application/json` and an
+`Idempotency-Key` header. Replaying the same key with the same actor, role,
+auth source, command family, task, and payload digest returns the original row.
+Reusing the key with a different payload or scope fails closed with
+`idempotency_key_conflict`. Audit rows store actor/source/scope, command family,
+idempotency key, payload digest, and resulting row IDs; they do not store raw
+request bodies.
+
+The write pilot rejects project-scope mismatches and payload text containing
+unsafe private-data markers such as raw prompt, transcript, raw tool body,
+generated content, bearer token, API key, access token, refresh token,
+client_secret, password, or secret markers. It does not add task status writes,
+review writes, dashboard-originated mutation, provider sends, merge, deploy,
+release, public exposure, live-operation authority, arbitrary artifact upload,
+generic SQL, or arbitrary row patching.
+
 ## API Families
 
 Read APIs may expose the same information already available through CLI and

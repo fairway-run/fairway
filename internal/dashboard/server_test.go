@@ -2009,6 +2009,172 @@ func TestReadOnlyAPIRejectsInsufficientCommandRole(t *testing.T) {
 	}
 }
 
+func TestWriteAPIPilotRecordsAppendOnlyEvidenceAndCheckpointWithIdempotency(t *testing.T) {
+	ctx := context.Background()
+	server := newReadOnlyAPITestServer(t)
+	server.cfg.Server.Mode = "api-write-pilot"
+	server.cfg.Server.ReadOnly = false
+	server.cfg.Server.WriteEnabled = true
+	server.cfg.Server.IdentityMode = "api_token"
+	server.cfg.Server.APITokenEnv = "FAIRWAY_TEST_ADMIN_TOKEN"
+	server.cfg.Server.AllowedRoles = []string{"admin"}
+	server.cfg.Server.APITokenRole = "admin"
+	t.Setenv("FAIRWAY_TEST_ADMIN_TOKEN", "admin-token")
+	handler := server.ReadOnlyAPIHandler()
+
+	indexReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	indexReq.Header.Set("Authorization", "Bearer admin-token")
+	indexRec := httptest.NewRecorder()
+	handler.ServeHTTP(indexRec, indexReq)
+	if indexRec.Code != http.StatusOK {
+		t.Fatalf("index status=%d body=%s", indexRec.Code, indexRec.Body.String())
+	}
+	var index map[string]any
+	if err := json.Unmarshal(indexRec.Body.Bytes(), &index); err != nil {
+		t.Fatalf("index json: %v\n%s", err, indexRec.Body.String())
+	}
+	if index["mode"] != "api-write-pilot" || index["read_only"] != false || index["writes_enabled"] != true {
+		t.Fatalf("index=%+v, want api-write-pilot readback", index)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	statusReq.Header.Set("Authorization", "Bearer admin-token")
+	statusRec := httptest.NewRecorder()
+	handler.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("status code=%d body=%s", statusRec.Code, statusRec.Body.String())
+	}
+	var status apiStatusResponse
+	if err := json.Unmarshal(statusRec.Body.Bytes(), &status); err != nil {
+		t.Fatalf("status json: %v\n%s", err, statusRec.Body.String())
+	}
+	if status.Mode != "api-write-pilot" || status.ReadOnly || !status.WritesEnabled {
+		t.Fatalf("status=%+v, want api-write-pilot readback", status)
+	}
+
+	body := `{"project_id":"fairway-test","command_text":"go test ./...","result":"pass","artifact_type":"test","notes":"api append-only evidence"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/evidence", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header.Set("Idempotency-Key", "ev-1")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated || strings.Contains(rec.Body.String(), "admin-token") {
+		t.Fatalf("record evidence status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var evidenceResponse apiWriteResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &evidenceResponse); err != nil {
+		t.Fatalf("evidence response json: %v\n%s", err, rec.Body.String())
+	}
+	if evidenceResponse.Kind != "evidence" || evidenceResponse.ID == 0 || evidenceResponse.Replayed {
+		t.Fatalf("evidence response=%+v, want new evidence row", evidenceResponse)
+	}
+
+	replayReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/evidence", strings.NewReader(body))
+	replayReq.Header.Set("Content-Type", "application/json")
+	replayReq.Header.Set("Authorization", "Bearer admin-token")
+	replayReq.Header.Set("Idempotency-Key", "ev-1")
+	replayRec := httptest.NewRecorder()
+	handler.ServeHTTP(replayRec, replayReq)
+	if replayRec.Code != http.StatusOK {
+		t.Fatalf("replay evidence status=%d body=%s", replayRec.Code, replayRec.Body.String())
+	}
+	var replayResponse apiWriteResponse
+	if err := json.Unmarshal(replayRec.Body.Bytes(), &replayResponse); err != nil {
+		t.Fatalf("replay response json: %v\n%s", err, replayRec.Body.String())
+	}
+	if !replayResponse.Replayed || replayResponse.ID != evidenceResponse.ID {
+		t.Fatalf("replay response=%+v, want same id replay", replayResponse)
+	}
+	_, _, evidence, _, _, err := server.store.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence) != 1 || evidence[0].CommandText != "go test ./..." {
+		t.Fatalf("evidence=%+v, want one appended evidence row", evidence)
+	}
+
+	mismatchReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/evidence", strings.NewReader(`{"project_id":"fairway-test","command_text":"go test ./...","result":"fail"}`))
+	mismatchReq.Header.Set("Content-Type", "application/json")
+	mismatchReq.Header.Set("Authorization", "Bearer admin-token")
+	mismatchReq.Header.Set("Idempotency-Key", "ev-1")
+	mismatchRec := httptest.NewRecorder()
+	handler.ServeHTTP(mismatchRec, mismatchReq)
+	if mismatchRec.Code != http.StatusConflict || strings.Contains(mismatchRec.Body.String(), "go test") {
+		t.Fatalf("mismatch status=%d body=%s", mismatchRec.Code, mismatchRec.Body.String())
+	}
+
+	checkpointBody := `{"project_id":"fairway-test","state":"active","owner":"backend","target_close_by":"2026-07-07","summary":"api active checkpoint","artifact_path":"tmp/checkpoint.md"}`
+	checkpointReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/checkpoints", strings.NewReader(checkpointBody))
+	checkpointReq.Header.Set("Content-Type", "application/json")
+	checkpointReq.Header.Set("Authorization", "Bearer admin-token")
+	checkpointReq.Header.Set("Idempotency-Key", "cp-1")
+	checkpointRec := httptest.NewRecorder()
+	handler.ServeHTTP(checkpointRec, checkpointReq)
+	if checkpointRec.Code != http.StatusCreated {
+		t.Fatalf("record checkpoint status=%d body=%s", checkpointRec.Code, checkpointRec.Body.String())
+	}
+	checkpoints, err := server.store.Checkpoints(ctx, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checkpoints) != 1 || checkpoints[0].Summary != "api active checkpoint" {
+		t.Fatalf("checkpoints=%+v, want one appended checkpoint row", checkpoints)
+	}
+	if count, err := server.store.AuditCount(ctx, "server.api.evidence"); err != nil || count != 1 {
+		t.Fatalf("evidence audit count=%d err=%v, want 1", count, err)
+	}
+	if count, err := server.store.AuditCount(ctx, "server.api.checkpoint"); err != nil || count != 1 {
+		t.Fatalf("checkpoint audit count=%d err=%v, want 1", count, err)
+	}
+}
+
+func TestWriteAPIPilotRejectsAuthzProjectScopeAndUnsafePayload(t *testing.T) {
+	server := newReadOnlyAPITestServer(t)
+	server.cfg.Server.Mode = "api-write-pilot"
+	server.cfg.Server.ReadOnly = false
+	server.cfg.Server.WriteEnabled = true
+	server.cfg.Server.IdentityMode = "api_token"
+	server.cfg.Server.APITokenEnv = "FAIRWAY_TEST_VIEWER_TOKEN"
+	server.cfg.Server.AllowedRoles = []string{"viewer", "operator"}
+	server.cfg.Server.APITokenRole = "viewer"
+	t.Setenv("FAIRWAY_TEST_VIEWER_TOKEN", "viewer-token")
+	handler := server.ReadOnlyAPIHandler()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/evidence", strings.NewReader(`{"command_text":"go test ./...","result":"pass"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer viewer-token")
+	req.Header.Set("Idempotency-Key", "viewer-1")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || strings.Contains(rec.Body.String(), "viewer-token") {
+		t.Fatalf("viewer write status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	server.cfg.Server.APITokenEnv = "FAIRWAY_TEST_OPERATOR_TOKEN"
+	server.cfg.Server.APITokenRole = "operator"
+	t.Setenv("FAIRWAY_TEST_OPERATOR_TOKEN", "operator-token")
+	projectReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/evidence", strings.NewReader(`{"project_id":"other","command_text":"go test ./...","result":"pass"}`))
+	projectReq.Header.Set("Content-Type", "application/json")
+	projectReq.Header.Set("Authorization", "Bearer operator-token")
+	projectReq.Header.Set("Idempotency-Key", "project-1")
+	projectRec := httptest.NewRecorder()
+	handler.ServeHTTP(projectRec, projectReq)
+	if projectRec.Code != http.StatusForbidden || strings.Contains(projectRec.Body.String(), "operator-token") || strings.Contains(projectRec.Body.String(), "go test") {
+		t.Fatalf("project scope status=%d body=%s", projectRec.Code, projectRec.Body.String())
+	}
+
+	unsafeReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/T-001/evidence", strings.NewReader(`{"command_text":"go test ./...","result":"pass","notes":"Authorization: Bearer SHOULD_NOT_RENDER"}`))
+	unsafeReq.Header.Set("Content-Type", "application/json")
+	unsafeReq.Header.Set("Authorization", "Bearer operator-token")
+	unsafeReq.Header.Set("Idempotency-Key", "unsafe-1")
+	unsafeRec := httptest.NewRecorder()
+	handler.ServeHTTP(unsafeRec, unsafeReq)
+	if unsafeRec.Code != http.StatusBadRequest || strings.Contains(unsafeRec.Body.String(), "SHOULD_NOT_RENDER") || strings.Contains(unsafeRec.Body.String(), "operator-token") {
+		t.Fatalf("unsafe payload status=%d body=%s", unsafeRec.Code, unsafeRec.Body.String())
+	}
+}
+
 func TestReadOnlyAPITrustedProxyProofAndIssuer(t *testing.T) {
 	server := newReadOnlyAPITestServer(t)
 	server.cfg.Server.IdentityMode = "trusted_proxy_read_only"

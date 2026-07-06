@@ -526,11 +526,11 @@ func TestValidateSharedTeamServerReadOnlyMode(t *testing.T) {
 
 func TestValidateRejectsSharedTeamServerWriteMode(t *testing.T) {
 	cfg := Defaults(t.TempDir())
-	cfg.Server.Mode = "api-write-pilot"
+	cfg.Server.Mode = "shared_write"
 	cfg.Server.ReadOnly = false
 	cfg.Server.WriteEnabled = true
-	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "read-only server mode only") {
-		t.Fatalf("Validate write-capable server mode err=%v, want read-only-only error", err)
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "append-only api-write-pilot only") {
+		t.Fatalf("Validate broad write-capable server mode err=%v, want append-only-only error", err)
 	}
 }
 
@@ -599,6 +599,49 @@ func TestValidateRejectsAPITokenRoleOutsideAllowedRoles(t *testing.T) {
 	cfg.Server.APITokenRole = "admin"
 	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "api_token_role") || !strings.Contains(err.Error(), "allowed_roles") {
 		t.Fatalf("Validate api_token_role outside allowed_roles err=%v, want allowed_roles membership error", err)
+	}
+}
+
+func TestValidateSharedTeamServerWritePilotMode(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "api-write-pilot"
+	cfg.Server.ReadOnly = false
+	cfg.Server.WriteEnabled = true
+	cfg.Server.IdentityMode = "api_token"
+	cfg.Server.APITokenEnv = "FAIRWAY_TEST_API_TOKEN"
+	cfg.Server.AllowedRoles = []string{"operator"}
+	cfg.Server.APITokenRole = "operator"
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate api-write-pilot error = %v", err)
+	}
+}
+
+func TestValidateRejectsWritePilotWithoutWriteCapableTokenRole(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "api-write-pilot"
+	cfg.Server.ReadOnly = false
+	cfg.Server.WriteEnabled = true
+	cfg.Server.IdentityMode = "api_token"
+	cfg.Server.APITokenEnv = "FAIRWAY_TEST_API_TOKEN"
+	cfg.Server.AllowedRoles = []string{"viewer"}
+	cfg.Server.APITokenRole = "viewer"
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "api_token_role") || !strings.Contains(err.Error(), "append-only") {
+		t.Fatalf("Validate write pilot viewer role err=%v, want append-only role error", err)
+	}
+}
+
+func TestValidateRejectsWritePilotWithoutAPITokenIdentity(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "api-write-pilot"
+	cfg.Server.ReadOnly = false
+	cfg.Server.WriteEnabled = true
+	cfg.Server.IdentityMode = "trusted_proxy_read_only"
+	cfg.Server.TrustedProxyVerified = true
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "identity_mode = \"api_token\"") {
+		t.Fatalf("Validate write pilot identity err=%v, want api_token identity error", err)
 	}
 }
 

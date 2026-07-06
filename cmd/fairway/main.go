@@ -243,22 +243,19 @@ func run(ctx context.Context, args []string) error {
 
 func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
-		subcommandUsage("server", "[--listen <addr>] --read-only")
+		subcommandUsage("server", "[--listen <addr>] --read-only | --mode api-write-pilot --write")
 		return nil
 	}
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	listen := fs.String("listen", "", "listen address")
 	readOnly := fs.Bool("read-only", false, "serve shared-team API in read-only mode")
 	mode := fs.String("mode", "", "server mode")
-	write := fs.Bool("write", false, "request write-capable mode (not implemented)")
+	write := fs.Bool("write", false, "enable the append-only shared-team write API pilot")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected server arguments: %s", strings.Join(fs.Args(), " "))
-	}
-	if *write {
-		return errors.New("write-capable shared-team server mode is not implemented; FW-269 supports --read-only only")
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
 		serverMode := strings.TrimSpace(cfg.Server.Mode)
@@ -271,19 +268,29 @@ func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
 		if *readOnly {
 			serverMode = "read_only"
 			cfg.Server.ReadOnly = true
+			cfg.Server.WriteEnabled = false
+		}
+		if *write {
+			serverMode = firstNonEmpty(strings.TrimSpace(*mode), "api-write-pilot")
+			cfg.Server.ReadOnly = false
+			cfg.Server.WriteEnabled = true
 		}
 		switch serverMode {
 		case "read_only", "api-read-only":
+			if cfg.Server.WriteEnabled {
+				return errors.New("server read-only mode requires write_enabled = false")
+			}
+		case "write_pilot", "api-write-pilot", "api_write_pilot":
+			if !cfg.Server.WriteEnabled {
+				return errors.New("server api-write-pilot requires --write or [server] write_enabled = true")
+			}
+			if cfg.Server.ReadOnly {
+				return errors.New("server api-write-pilot requires [server] read_only = false")
+			}
 		case "disabled":
 			return errors.New("server mode is disabled; pass --read-only or set [server] mode = \"read_only\"")
 		default:
-			return fmt.Errorf("server mode %q is not implemented; FW-269 supports read-only only", serverMode)
-		}
-		if !cfg.Server.ReadOnly {
-			return errors.New("server read-only mode requires [server] read_only = true")
-		}
-		if cfg.Server.WriteEnabled {
-			return errors.New("server write_enabled is not implemented; FW-269 supports read-only only")
+			return fmt.Errorf("server mode %q is not implemented; FW-271 supports read-only and append-only api-write-pilot only", serverMode)
 		}
 		addr := cfg.Server.Listen
 		if addr == "" {
@@ -295,9 +302,12 @@ func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
 		cfg.Server.Mode = serverMode
 		cfg.Server.Listen = addr
 		cfg.Dashboard.ReadOnly = true
+		if err := config.Validate(cfg); err != nil {
+			return err
+		}
 		url := dashboard.URL(addr)
 		if !isLoopbackAddr(addr) {
-			return fmt.Errorf("server read-only mode is loopback-only until FW-270 identity/authz is implemented; refusing listen address %q", addr)
+			return fmt.Errorf("shared-team server mode is loopback-only until a reviewed deployment/public exposure task; refusing listen address %q", addr)
 		}
 		fmt.Println("server", url)
 		worktrees, err := collectWorktreeStatus(cfg, root)
@@ -15391,7 +15401,7 @@ func printCommandHelp(command string) bool {
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
 		"rough-edge":                 "fairway rough-edge add --task <task-id> --owner <role> --severity <level> --decision <fix-now|defer> --summary <text> | fairway rough-edge list [--task <task-id>] [--owner <role>] [--expired]\n  Record and inspect owner rough edges found while using the product; list is read-only.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
-		"server":                     "fairway server --read-only [--listen <addr>]\n  Run the shared-team read-only API skeleton. Write-capable server mode is not implemented.",
+		"server":                     "fairway server --read-only [--listen <addr>] | fairway server --mode api-write-pilot --write\n  Run the shared-team API skeleton. The write pilot is append-only evidence/checkpoints only.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",

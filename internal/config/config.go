@@ -379,7 +379,7 @@ func Validate(cfg Config) error {
 	switch serverMode {
 	case "disabled":
 		if cfg.Server.Enabled {
-			return errors.New("[server] enabled requires mode = \"read_only\" for the FW-269 server skeleton")
+			return errors.New("[server] enabled requires mode = \"read_only\" or \"api-write-pilot\"")
 		}
 		if cfg.Server.WriteEnabled {
 			return errors.New("[server] write_enabled is not supported when mode is disabled")
@@ -394,8 +394,21 @@ func Validate(cfg Config) error {
 		if cfg.Server.WriteEnabled {
 			return errors.New("[server] write_enabled is not implemented; FW-269 supports read-only server mode only")
 		}
-	case "write", "write_pilot", "api-write-pilot", "api_write_pilot", "shared_write":
-		return fmt.Errorf("[server] mode %q is not implemented; FW-269 supports read-only server mode only", cfg.Server.Mode)
+	case "write_pilot", "api-write-pilot", "api_write_pilot":
+		if cfg.Server.Listen == "" {
+			return errors.New("[server] listen is required when server mode is api-write-pilot")
+		}
+		if !cfg.Server.WriteEnabled {
+			return errors.New("[server] write_enabled must be true when mode = \"api-write-pilot\"")
+		}
+		if cfg.Server.ReadOnly {
+			return errors.New("[server] read_only must be false when mode = \"api-write-pilot\"")
+		}
+		if identityMode := strings.TrimSpace(cfg.Server.IdentityMode); identityMode != "api_token" {
+			return errors.New("[server] api-write-pilot requires identity_mode = \"api_token\"")
+		}
+	case "write", "shared_write":
+		return fmt.Errorf("[server] mode %q is not implemented; FW-271 supports append-only api-write-pilot only", cfg.Server.Mode)
 	default:
 		return fmt.Errorf("[server] mode %q is unsupported", cfg.Server.Mode)
 	}
@@ -408,7 +421,7 @@ func Validate(cfg Config) error {
 	default:
 		return fmt.Errorf("[server] identity_mode %q is unsupported", cfg.Server.IdentityMode)
 	}
-	if cfg.Server.Enabled || serverMode == "read_only" || serverMode == "api-read-only" {
+	if cfg.Server.Enabled || serverMode == "read_only" || serverMode == "api-read-only" || serverMode == "api-write-pilot" || serverMode == "api_write_pilot" || serverMode == "write_pilot" {
 		if len(cfg.Server.AllowedRoles) == 0 {
 			return errors.New("[server] allowed_roles must include at least viewer for read-only server mode")
 		}
@@ -428,6 +441,9 @@ func Validate(cfg Config) error {
 			}
 			if !stringListContains(cfg.Server.AllowedRoles, apiTokenRole) {
 				return fmt.Errorf("[server] api_token_role %q must be included in allowed_roles", apiTokenRole)
+			}
+			if isServerWritePilotMode(serverMode) && !validServerAppendOnlyWriteRole(apiTokenRole) {
+				return fmt.Errorf("[server] api_token_role %q cannot authorize append-only api-write-pilot commands", apiTokenRole)
 			}
 		}
 		if identityMode == "trusted_proxy_read_only" {
@@ -1058,6 +1074,19 @@ func stringListContains(values []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func isServerWritePilotMode(mode string) bool {
+	switch mode {
+	case "write_pilot", "api-write-pilot", "api_write_pilot":
+		return true
+	default:
+		return false
+	}
+}
+
+func validServerAppendOnlyWriteRole(role string) bool {
+	return role == "operator" || role == "coordinator" || role == "admin" || strings.HasPrefix(role, "adapter:")
 }
 
 func validServerRole(role string) bool {

@@ -97,6 +97,34 @@ type apiSummaryResponse struct {
 	Done       int    `json:"done"`
 }
 
+type apiEvidenceWriteRequest struct {
+	ProjectID       string `json:"project_id,omitempty"`
+	CommandText     string `json:"command_text"`
+	Result          string `json:"result"`
+	ArtifactPath    string `json:"artifact_path,omitempty"`
+	ArtifactType    string `json:"artifact_type,omitempty"`
+	DurationSeconds *int   `json:"duration_seconds,omitempty"`
+	Notes           string `json:"notes,omitempty"`
+}
+
+type apiCheckpointWriteRequest struct {
+	ProjectID     string `json:"project_id,omitempty"`
+	State         string `json:"state"`
+	Owner         string `json:"owner,omitempty"`
+	TargetCloseBy string `json:"target_close_by,omitempty"`
+	Summary       string `json:"summary"`
+	ArtifactPath  string `json:"artifact_path,omitempty"`
+}
+
+type apiWriteResponse struct {
+	Project        string `json:"project"`
+	TaskID         string `json:"task_id"`
+	Kind           string `json:"kind"`
+	ID             int64  `json:"id"`
+	Replayed       bool   `json:"replayed"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
 func (s *Server) ReadOnlyAPIHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/status", s.apiStatus)
@@ -119,10 +147,10 @@ func (s *Server) apiIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiWriteJSON(w, http.StatusOK, map[string]any{
-		"mode":            "read_only",
-		"read_only":       true,
-		"writes_enabled":  false,
-		"available_paths": []string{"/api/v1/status", "/api/v1/tasks", "/api/v1/tasks/{task_id}", "/api/v1/reports/summary"},
+		"mode":            s.serverMode(),
+		"read_only":       !s.apiWritePilotEnabled(),
+		"writes_enabled":  s.apiWritePilotEnabled(),
+		"available_paths": s.apiAvailablePaths(),
 	})
 }
 
@@ -135,9 +163,9 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	apiWriteJSON(w, http.StatusOK, apiStatusResponse{
 		Project:           s.cfg.Fairway.ProjectName,
-		Mode:              "read_only",
-		ReadOnly:          true,
-		WritesEnabled:     false,
+		Mode:              s.serverMode(),
+		ReadOnly:          !s.apiWritePilotEnabled(),
+		WritesEnabled:     s.apiWritePilotEnabled(),
 		DashboardReadOnly: s.cfg.Dashboard.ReadOnly,
 		TrustedProxy:      s.cfg.Dashboard.TrustedProxy,
 		IdentityMode:      s.serverIdentityMode(),
@@ -168,6 +196,14 @@ func (s *Server) apiTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiTaskDetail(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/evidence") {
+		s.apiTaskEvidenceWrite(w, r)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/checkpoints") {
+		s.apiTaskCheckpointWrite(w, r)
+		return
+	}
 	if !apiRequireGET(w, r) {
 		return
 	}
@@ -196,6 +232,122 @@ func (s *Server) apiTaskDetail(w http.ResponseWriter, r *http.Request) {
 		Handoffs:    handoffs,
 		Reviews:     apiReviewRows(reviews),
 	})
+}
+
+func (s *Server) apiTaskEvidenceWrite(w http.ResponseWriter, r *http.Request) {
+	taskID, ok := apiTaskSubresourceID(w, r, "evidence")
+	if !ok {
+		return
+	}
+	if !apiRequirePOSTJSON(w, r) {
+		return
+	}
+	actor, ok := s.apiAuthorizeCommand(w, r, "record:evidence")
+	if !ok {
+		return
+	}
+	key, ok := apiIdempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	var payload apiEvidenceWriteRequest
+	if !apiDecodeJSON(w, r, &payload) {
+		return
+	}
+	if !s.apiProjectScopeOK(w, payload.ProjectID) {
+		return
+	}
+	if err := apiValidateWriteText(payload.CommandText, payload.ArtifactPath, payload.ArtifactType, payload.Notes); err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	digest, err := apiPayloadDigest(payload)
+	if err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := s.store.RecordEvidenceWithIdempotency(r.Context(), taskID, store.Evidence{
+		CommandText:     payload.CommandText,
+		Result:          payload.Result,
+		ArtifactPath:    payload.ArtifactPath,
+		ArtifactType:    payload.ArtifactType,
+		DurationSeconds: payload.DurationSeconds,
+		Notes:           payload.Notes,
+	}, store.ServerWriteRequest{
+		Actor:          actor.Subject,
+		Role:           actor.Role,
+		AuthSource:     actor.Source,
+		CommandFamily:  "record:evidence",
+		IdempotencyKey: key,
+		PayloadDigest:  digest,
+	})
+	if err != nil {
+		apiWriteError(w, err)
+		return
+	}
+	status := http.StatusCreated
+	if result.Replayed {
+		status = http.StatusOK
+	}
+	apiWriteJSON(w, status, apiWriteResponse{Project: s.cfg.Fairway.ProjectName, TaskID: taskID, Kind: "evidence", ID: result.RowID, Replayed: result.Replayed, IdempotencyKey: key})
+}
+
+func (s *Server) apiTaskCheckpointWrite(w http.ResponseWriter, r *http.Request) {
+	taskID, ok := apiTaskSubresourceID(w, r, "checkpoints")
+	if !ok {
+		return
+	}
+	if !apiRequirePOSTJSON(w, r) {
+		return
+	}
+	actor, ok := s.apiAuthorizeCommand(w, r, "record:checkpoint")
+	if !ok {
+		return
+	}
+	key, ok := apiIdempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	var payload apiCheckpointWriteRequest
+	if !apiDecodeJSON(w, r, &payload) {
+		return
+	}
+	if !s.apiProjectScopeOK(w, payload.ProjectID) {
+		return
+	}
+	if err := apiValidateWriteText(payload.State, payload.Owner, payload.TargetCloseBy, payload.Summary, payload.ArtifactPath); err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	digest, err := apiPayloadDigest(payload)
+	if err != nil {
+		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := s.store.RecordCheckpointWithIdempotency(r.Context(), store.Checkpoint{
+		TaskID:        taskID,
+		State:         payload.State,
+		Owner:         payload.Owner,
+		TargetCloseBy: payload.TargetCloseBy,
+		Summary:       payload.Summary,
+		ArtifactPath:  payload.ArtifactPath,
+	}, store.ServerWriteRequest{
+		Actor:          actor.Subject,
+		Role:           actor.Role,
+		AuthSource:     actor.Source,
+		CommandFamily:  "record:checkpoint",
+		IdempotencyKey: key,
+		PayloadDigest:  digest,
+	})
+	if err != nil {
+		apiWriteError(w, err)
+		return
+	}
+	status := http.StatusCreated
+	if result.Replayed {
+		status = http.StatusOK
+	}
+	apiWriteJSON(w, status, apiWriteResponse{Project: s.cfg.Fairway.ProjectName, TaskID: taskID, Kind: "checkpoint", ID: result.RowID, Replayed: result.Replayed, IdempotencyKey: key})
 }
 
 func (s *Server) apiSummary(w http.ResponseWriter, r *http.Request) {
@@ -330,6 +482,34 @@ func (s *Server) apiAuthorizeRead(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+func (s *Server) apiAuthorizeCommand(w http.ResponseWriter, r *http.Request, command string) (apiActor, bool) {
+	actor, err := s.apiActor(r)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if strings.HasPrefix(err.Error(), "forbidden:") {
+			status = http.StatusForbidden
+		}
+		if strings.HasPrefix(err.Error(), "unimplemented:") {
+			status = http.StatusNotImplemented
+		}
+		apiError(w, status, err)
+		return apiActor{}, false
+	}
+	if !s.apiRoleAllowed(actor.Role) {
+		apiError(w, http.StatusForbidden, fmt.Errorf("forbidden: role %q is not allowed for %s", actor.Role, command))
+		return apiActor{}, false
+	}
+	if !s.apiWritePilotEnabled() {
+		apiError(w, http.StatusNotImplemented, errors.New("unimplemented: server write pilot is not enabled"))
+		return apiActor{}, false
+	}
+	if !apiRoleCanWriteAppendOnly(actor.Role) {
+		apiError(w, http.StatusForbidden, fmt.Errorf("forbidden: role %q cannot execute %s", actor.Role, command))
+		return apiActor{}, false
+	}
+	return actor, true
+}
+
 func (s *Server) apiActor(r *http.Request) (apiActor, error) {
 	switch s.serverIdentityMode() {
 	case "no_edge_local":
@@ -408,6 +588,31 @@ func (s *Server) serverIdentityMode() string {
 	return mode
 }
 
+func (s *Server) serverMode() string {
+	mode := strings.TrimSpace(s.cfg.Server.Mode)
+	if mode == "" {
+		return "disabled"
+	}
+	return mode
+}
+
+func (s *Server) apiWritePilotEnabled() bool {
+	switch s.serverMode() {
+	case "api-write-pilot", "api_write_pilot", "write_pilot":
+		return s.cfg.Server.WriteEnabled
+	default:
+		return false
+	}
+}
+
+func (s *Server) apiAvailablePaths() []string {
+	paths := []string{"/api/v1/status", "/api/v1/tasks", "/api/v1/tasks/{task_id}", "/api/v1/reports/summary"}
+	if s.apiWritePilotEnabled() {
+		paths = append(paths, "POST /api/v1/tasks/{task_id}/evidence", "POST /api/v1/tasks/{task_id}/checkpoints")
+	}
+	return paths
+}
+
 func (s *Server) apiRoleAllowed(role string) bool {
 	for _, allowed := range s.cfg.Server.AllowedRoles {
 		if allowed == role {
@@ -415,6 +620,111 @@ func (s *Server) apiRoleAllowed(role string) bool {
 		}
 	}
 	return false
+}
+
+func apiRoleCanWriteAppendOnly(role string) bool {
+	return role == "operator" || role == "coordinator" || role == "admin" || strings.HasPrefix(role, "adapter:")
+}
+
+func apiTaskSubresourceID(w http.ResponseWriter, r *http.Request, subresource string) (string, bool) {
+	if r.URL.Path == "" {
+		http.NotFound(w, r)
+		return "", false
+	}
+	suffix := "/" + subresource
+	if !strings.HasSuffix(r.URL.Path, suffix) {
+		http.NotFound(w, r)
+		return "", false
+	}
+	taskID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/tasks/"), suffix)
+	if taskID == "" || strings.Contains(taskID, "/") {
+		http.NotFound(w, r)
+		return "", false
+	}
+	return taskID, true
+}
+
+func apiRequirePOSTJSON(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		apiError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return false
+	}
+	contentType := strings.ToLower(strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0]))
+	if contentType != "application/json" {
+		apiError(w, http.StatusUnsupportedMediaType, errors.New("unsupported_media_type: application/json is required"))
+		return false
+	}
+	return true
+}
+
+func apiDecodeJSON(w http.ResponseWriter, r *http.Request, dest any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dest); err != nil {
+		apiError(w, http.StatusBadRequest, errors.New("invalid_json: request body could not be decoded"))
+		return false
+	}
+	return true
+}
+
+func apiIdempotencyKey(w http.ResponseWriter, r *http.Request) (string, bool) {
+	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if key == "" {
+		apiError(w, http.StatusBadRequest, errors.New("missing_idempotency_key: Idempotency-Key header is required"))
+		return "", false
+	}
+	if strings.ContainsAny(key, "\r\n") || len(key) > 200 {
+		apiError(w, http.StatusBadRequest, errors.New("invalid_idempotency_key: Idempotency-Key must be a single bounded line"))
+		return "", false
+	}
+	return key, true
+}
+
+func (s *Server) apiProjectScopeOK(w http.ResponseWriter, got string) bool {
+	got = strings.TrimSpace(got)
+	if got == "" || got == s.cfg.Fairway.ProjectName {
+		return true
+	}
+	apiError(w, http.StatusForbidden, errors.New("forbidden: project scope mismatch"))
+	return false
+}
+
+func apiPayloadDigest(value any) (string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func apiValidateWriteText(values ...string) error {
+	markers := []string{
+		"raw_prompt:", "raw_prompt=", "transcript:", "tool_body:", "tool_body=",
+		"generated_content:", "generated_content=", "authorization:", "bearer ",
+		"api_key=", "access_token=", "refresh_token=", "client_secret=", "password=", "secret=",
+	}
+	for _, value := range values {
+		lower := strings.ToLower(value)
+		for _, marker := range markers {
+			if strings.Contains(lower, marker) {
+				return errors.New("invalid_payload: append-only API payload contains an unsafe private-data marker")
+			}
+		}
+	}
+	return nil
+}
+
+func apiWriteError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrIdempotencyConflict):
+		apiError(w, http.StatusConflict, errors.New("idempotency_key_conflict: key was already used with a different actor, scope, command, or payload"))
+	case errors.Is(err, store.ErrNotFound):
+		apiError(w, http.StatusNotFound, err)
+	default:
+		apiError(w, http.StatusBadRequest, err)
+	}
 }
 
 func tokenFingerprint(token string) string {

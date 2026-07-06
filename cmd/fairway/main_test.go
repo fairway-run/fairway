@@ -124,8 +124,8 @@ func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
 
 func TestCLI_ServerWriteModeFailsClosed(t *testing.T) {
 	_, err := captureRun("server", "--write")
-	if err == nil || !strings.Contains(err.Error(), "write-capable shared-team server mode is not implemented") {
-		t.Fatalf("server --write err=%v, want fail-closed write mode error", err)
+	if err == nil || !strings.Contains(err.Error(), "api-write-pilot requires identity_mode = \"api_token\"") {
+		t.Fatalf("server --write err=%v, want fail-closed api-token identity error", err)
 	}
 }
 

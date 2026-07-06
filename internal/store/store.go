@@ -21,10 +21,11 @@ import (
 )
 
 var (
-	ErrAlreadyClaimed    = errors.New("task already claimed")
-	ErrNotFound          = errors.New("task not found")
-	ErrInvalidTransition = errors.New("invalid transition")
-	ErrInvalidTaskID     = errors.New("invalid task id")
+	ErrAlreadyClaimed      = errors.New("task already claimed")
+	ErrNotFound            = errors.New("task not found")
+	ErrInvalidTransition   = errors.New("invalid transition")
+	ErrInvalidTaskID       = errors.New("invalid task id")
+	ErrIdempotencyConflict = errors.New("idempotency key conflict")
 )
 
 var defaultTaskIDPattern = regexp.MustCompile(`^[A-Z]+-[0-9]+$`)
@@ -299,6 +300,20 @@ type AuditEvent struct {
 	Action string
 	TaskID string
 	Detail string
+}
+
+type ServerWriteRequest struct {
+	Actor          string
+	Role           string
+	AuthSource     string
+	CommandFamily  string
+	IdempotencyKey string
+	PayloadDigest  string
+}
+
+type ServerWriteResult struct {
+	RowID    int64
+	Replayed bool
 }
 
 type Activity struct {
@@ -1334,22 +1349,30 @@ WHERE project_id=?`
 }
 
 func (s *Store) RecordCheckpoint(ctx context.Context, cp Checkpoint) error {
+	_, err := s.RecordCheckpointWithID(ctx, cp)
+	return err
+}
+
+func (s *Store) RecordCheckpointWithID(ctx context.Context, cp Checkpoint) (int64, error) {
 	if cp.TaskID == "" {
-		return errors.New("checkpoint task id is required")
+		return 0, errors.New("checkpoint task id is required")
 	}
 	if cp.Summary == "" {
-		return errors.New("checkpoint summary is required")
+		return 0, errors.New("checkpoint summary is required")
 	}
 	switch cp.State {
 	case "planned", "active", "awaiting_input", "review", "done", "parked", "abandoned":
 	default:
-		return fmt.Errorf("invalid checkpoint state %q", cp.State)
+		return 0, fmt.Errorf("invalid checkpoint state %q", cp.State)
 	}
 	res, err := s.db.ExecContext(ctx, `
 INSERT INTO task_checkpoints (project_id, task_id, state, owner, target_close_by, summary, artifact_path, created_at)
 VALUES (?, ?, ?, ?, nullif(?, ''), ?, ?, ?)`,
 		s.projectID, cp.TaskID, cp.State, cp.Owner, cp.TargetCloseBy, cp.Summary, cp.ArtifactPath, time.Now().UTC().Format(time.RFC3339Nano))
-	return checkWriteResult(res, err)
+	if err := checkWriteResult(res, err); err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
 }
 
 func (s *Store) Checkpoints(ctx context.Context, staleBefore string, includeClosed bool) ([]Checkpoint, error) {
@@ -1380,6 +1403,58 @@ WHERE project_id=?`
 		out = append(out, cp)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) RecordCheckpointWithIdempotency(ctx context.Context, cp Checkpoint, req ServerWriteRequest) (ServerWriteResult, error) {
+	if cp.TaskID == "" {
+		return ServerWriteResult{}, errors.New("checkpoint task id is required")
+	}
+	if cp.Summary == "" {
+		return ServerWriteResult{}, errors.New("checkpoint summary is required")
+	}
+	switch cp.State {
+	case "planned", "active", "awaiting_input", "review", "done", "parked", "abandoned":
+	default:
+		return ServerWriteResult{}, fmt.Errorf("invalid checkpoint state %q", cp.State)
+	}
+	if err := validateServerWriteRequest(req); err != nil {
+		return ServerWriteResult{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	defer tx.Rollback()
+	if result, ok, err := s.serverWriteReplay(ctx, tx, cp.TaskID, "checkpoint", req); err != nil || ok {
+		return result, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO task_checkpoints (project_id, task_id, state, owner, target_close_by, summary, artifact_path, created_at)
+VALUES (?, ?, ?, ?, nullif(?, ''), ?, ?, ?)`,
+		s.projectID, cp.TaskID, cp.State, cp.Owner, cp.TargetCloseBy, cp.Summary, cp.ArtifactPath, now)
+	if err := checkWriteResult(res, err); err != nil {
+		return ServerWriteResult{}, err
+	}
+	rowID, err := res.LastInsertId()
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := s.insertServerWriteIdempotency(ctx, tx, cp.TaskID, "checkpoint", rowID, now, req); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := insertAudit(ctx, tx, s.projectID, AuditEvent{
+		Actor:  req.Actor,
+		Action: "server.api.checkpoint",
+		TaskID: cp.TaskID,
+		Detail: serverWriteAuditDetail(req, "checkpoint", rowID, false),
+	}); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ServerWriteResult{}, err
+	}
+	return ServerWriteResult{RowID: rowID}, nil
 }
 
 func (s *Store) TrackMemory(ctx context.Context, trackID string) (TrackMemory, error) {
@@ -1715,11 +1790,106 @@ func (s *Store) RecordAudit(ctx context.Context, event AuditEvent) error {
 	if event.Action == "" {
 		return errors.New("audit action is required")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	return insertAudit(ctx, s.db, s.projectID, event)
+}
+
+func insertAudit(ctx context.Context, ex execer, projectID string, event AuditEvent) error {
+	if event.Actor == "" {
+		event.Actor = Actor()
+	}
+	if event.Action == "" {
+		return errors.New("audit action is required")
+	}
+	_, err := ex.ExecContext(ctx, `
 INSERT INTO audit_events (project_id, actor, action, task_id, detail, created_at)
 VALUES (?, ?, ?, nullif(?, ''), ?, ?)`,
-		s.projectID, event.Actor, event.Action, event.TaskID, event.Detail, time.Now().UTC().Format(time.RFC3339Nano))
+		projectID, event.Actor, event.Action, event.TaskID, event.Detail, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
+}
+
+func validateServerWriteRequest(req ServerWriteRequest) error {
+	if strings.TrimSpace(req.Actor) == "" {
+		return errors.New("server write actor is required")
+	}
+	if strings.TrimSpace(req.Role) == "" {
+		return errors.New("server write role is required")
+	}
+	if strings.TrimSpace(req.AuthSource) == "" {
+		return errors.New("server write auth source is required")
+	}
+	if strings.TrimSpace(req.CommandFamily) == "" {
+		return errors.New("server write command family is required")
+	}
+	if strings.TrimSpace(req.IdempotencyKey) == "" {
+		return errors.New("server write idempotency key is required")
+	}
+	if strings.TrimSpace(req.PayloadDigest) == "" {
+		return errors.New("server write payload digest is required")
+	}
+	return nil
+}
+
+func (s *Store) serverWriteReplay(ctx context.Context, q queryer, taskID, resultKind string, req ServerWriteRequest) (ServerWriteResult, bool, error) {
+	var existing ServerWriteRequest
+	var existingTaskID, existingResultKind string
+	var resultID int64
+	err := q.QueryRowContext(ctx, `
+SELECT actor, role, auth_source, task_id, payload_digest, result_kind, result_id
+FROM server_write_idempotency
+WHERE project_id=? AND command_family=? AND idempotency_key=?`,
+		s.projectID, req.CommandFamily, req.IdempotencyKey).Scan(
+		&existing.Actor, &existing.Role, &existing.AuthSource, &existingTaskID, &existing.PayloadDigest, &existingResultKind, &resultID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ServerWriteResult{}, false, nil
+	}
+	if err != nil {
+		return ServerWriteResult{}, false, err
+	}
+	if existing.Actor != req.Actor ||
+		existing.Role != req.Role ||
+		existing.AuthSource != req.AuthSource ||
+		existingTaskID != taskID ||
+		existing.PayloadDigest != req.PayloadDigest ||
+		existingResultKind != resultKind {
+		return ServerWriteResult{}, true, ErrIdempotencyConflict
+	}
+	return ServerWriteResult{RowID: resultID, Replayed: true}, true, nil
+}
+
+func (s *Store) insertServerWriteIdempotency(ctx context.Context, ex execer, taskID, resultKind string, resultID int64, createdAt string, req ServerWriteRequest) error {
+	_, err := ex.ExecContext(ctx, `
+INSERT INTO server_write_idempotency
+  (project_id, command_family, idempotency_key, actor, role, auth_source, task_id, payload_digest, result_kind, result_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.projectID, req.CommandFamily, req.IdempotencyKey, req.Actor, req.Role, req.AuthSource, taskID, req.PayloadDigest, resultKind, resultID, createdAt)
+	return err
+}
+
+func serverWriteAuditDetail(req ServerWriteRequest, resultKind string, resultID int64, replayed bool) string {
+	detail := struct {
+		CommandFamily  string `json:"command_family"`
+		IdempotencyKey string `json:"idempotency_key"`
+		Role           string `json:"role"`
+		AuthSource     string `json:"auth_source"`
+		PayloadDigest  string `json:"payload_digest"`
+		ResultKind     string `json:"result_kind"`
+		ResultID       int64  `json:"result_id"`
+		Replayed       bool   `json:"replayed"`
+	}{
+		CommandFamily:  req.CommandFamily,
+		IdempotencyKey: req.IdempotencyKey,
+		Role:           req.Role,
+		AuthSource:     req.AuthSource,
+		PayloadDigest:  req.PayloadDigest,
+		ResultKind:     resultKind,
+		ResultID:       resultID,
+		Replayed:       replayed,
+	}
+	data, err := json.Marshal(detail)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }
 
 func (s *Store) AuditCount(ctx context.Context, action string) (int, error) {
@@ -1790,20 +1960,78 @@ func (s *Store) SetStatusWithCommit(ctx context.Context, taskID, status, reason,
 }
 
 func (s *Store) RecordEvidence(ctx context.Context, taskID string, ev Evidence) error {
+	_, err := s.RecordEvidenceWithID(ctx, taskID, ev)
+	return err
+}
+
+func (s *Store) RecordEvidenceWithID(ctx context.Context, taskID string, ev Evidence) (int64, error) {
 	if ev.CommandText == "" {
-		return errors.New("command text is required")
+		return 0, errors.New("command text is required")
 	}
 	switch ev.Result {
 	case "pass", "fail", "partial", "skipped", "blocked":
 	default:
-		return fmt.Errorf("invalid evidence result %q", ev.Result)
+		return 0, fmt.Errorf("invalid evidence result %q", ev.Result)
 	}
 	res, err := s.db.ExecContext(ctx, `
 INSERT INTO task_evidence
   (project_id, task_id, command_text, result, artifact_path, artifact_type, duration_seconds, notes, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.projectID, taskID, ev.CommandText, ev.Result, ev.ArtifactPath, ev.ArtifactType, ev.DurationSeconds, ev.Notes, time.Now().UTC().Format(time.RFC3339Nano))
-	return checkWriteResult(res, err)
+	if err := checkWriteResult(res, err); err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) RecordEvidenceWithIdempotency(ctx context.Context, taskID string, ev Evidence, req ServerWriteRequest) (ServerWriteResult, error) {
+	if ev.CommandText == "" {
+		return ServerWriteResult{}, errors.New("command text is required")
+	}
+	switch ev.Result {
+	case "pass", "fail", "partial", "skipped", "blocked":
+	default:
+		return ServerWriteResult{}, fmt.Errorf("invalid evidence result %q", ev.Result)
+	}
+	if err := validateServerWriteRequest(req); err != nil {
+		return ServerWriteResult{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	defer tx.Rollback()
+	if result, ok, err := s.serverWriteReplay(ctx, tx, taskID, "evidence", req); err != nil || ok {
+		return result, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO task_evidence
+  (project_id, task_id, command_text, result, artifact_path, artifact_type, duration_seconds, notes, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.projectID, taskID, ev.CommandText, ev.Result, ev.ArtifactPath, ev.ArtifactType, ev.DurationSeconds, ev.Notes, now)
+	if err := checkWriteResult(res, err); err != nil {
+		return ServerWriteResult{}, err
+	}
+	rowID, err := res.LastInsertId()
+	if err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := s.insertServerWriteIdempotency(ctx, tx, taskID, "evidence", rowID, now, req); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := insertAudit(ctx, tx, s.projectID, AuditEvent{
+		Actor:  req.Actor,
+		Action: "server.api.evidence",
+		TaskID: taskID,
+		Detail: serverWriteAuditDetail(req, "evidence", rowID, false),
+	}); err != nil {
+		return ServerWriteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ServerWriteResult{}, err
+	}
+	return ServerWriteResult{RowID: rowID}, nil
 }
 
 func (s *Store) RecordHandoff(ctx context.Context, taskID string, h Handoff) error {
@@ -2832,6 +3060,10 @@ func insertHistory(ctx context.Context, tx *sql.Tx, projectID, taskID, fromStatu
 
 type execer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+type queryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 func insertHistoryExec(ctx context.Context, ex execer, projectID, taskID, fromStatus, toStatus, fromOwner, toOwner, branch, actor, reason string) error {

@@ -216,15 +216,15 @@ See [dashboard-sharing.md](design/dashboard-sharing.md).
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | bool | `false` | Advisory switch for shared-team server configuration. When `true`, `mode` must be `read_only` in the FW-269 skeleton. |
-| `listen` | string | `127.0.0.1:7880` | HTTP listen address for `fairway server --read-only`. FW-269 accepts loopback binds only. Non-loopback addresses such as `0.0.0.0`, LAN/private, Tailscale, or public interfaces fail closed until identity/proxy authorization is implemented and reviewed. |
-| `mode` | string | `disabled` | Supported values are `disabled` and `read_only`/`api-read-only`. Write-capable modes fail closed until a later reviewed task implements them. |
-| `read_only` | bool | `true` | Must be `true` for the FW-269 shared-team server skeleton. |
-| `write_enabled` | bool | `false` | Must remain `false`; setting it fails config validation because shared write authority is not implemented in FW-269. |
+| `enabled` | bool | `false` | Advisory switch for shared-team server configuration. When `true`, `mode` must be `read_only` or the FW-271 `api-write-pilot`. |
+| `listen` | string | `127.0.0.1:7880` | HTTP listen address for `fairway server --read-only` or `fairway server --mode api-write-pilot --write`. Current server modes accept loopback binds only. Non-loopback addresses such as `0.0.0.0`, LAN/private, Tailscale, or public interfaces fail closed until a reviewed deployment/public-exposure task authorizes them. |
+| `mode` | string | `disabled` | Supported values are `disabled`, `read_only`/`api-read-only`, and `api-write-pilot`. The write pilot exposes only append-only evidence/checkpoint endpoints; guarded task status/review writes remain unimplemented. |
+| `read_only` | bool | `true` | Must be `true` for read-only mode and `false` for `api-write-pilot`. The dashboard remains read-only when the server write pilot is enabled. |
+| `write_enabled` | bool | `false` | Must be `true` with `mode = "api-write-pilot"` and false otherwise. It enables only the FW-271 append-only evidence/checkpoint API pilot. |
 | `identity_mode` | string | `no_edge_local` | FW-270 identity source for the read-only API. Supported values are `no_edge_local`, `trusted_proxy_read_only`, `api_token`, `service_account`, and `mtls_service_account`. Service-account and mTLS modes are placeholders that fail closed until proof verification is implemented. |
 | `allowed_roles` | []string | `["viewer"]` | Command-scoped roles accepted by the server guard. Supported role strings are `viewer`, `operator`, `reviewer:<domain>`, `coordinator`, `adapter:<name>`, and `admin`; the FW-270 read API authorizes only `viewer` and `admin` for `read:api`. |
 | `api_token_env` | string | `""` | Environment variable containing the API token for `identity_mode = "api_token"`. Raw token values must not be committed or recorded as evidence. Runtime proof uses bounded error responses and constant-time comparison for equal-length bearer values. |
-| `api_token_role` | string | `viewer` | Role assigned to accepted API-token requests. It must be a supported server role and must also appear in `allowed_roles`, so misconfigured token roles fail closed. Use `viewer` for the FW-270 read-only API. |
+| `api_token_role` | string | `viewer` | Role assigned to accepted API-token requests. It must be a supported server role and must also appear in `allowed_roles`, so misconfigured token roles fail closed. Use `viewer` for the FW-270 read-only API. Use `operator`, `coordinator`, `admin`, or `adapter:<name>` for the FW-271 append-only write pilot. |
 | `trusted_proxy_verified` | bool | `false` | Must be `true` before trusted proxy headers can authorize read API requests. Without verified proof, proxy identity is advisory only. |
 | `trusted_proxy_identity_header` | string | `X-Fairway-User` | Header carrying proxy identity after proof verification. Error output does not echo raw header values. |
 | `trusted_proxy_proof_header` | string | `X-Fairway-Proxy-Verified` | Header that must equal `true` for the FW-270 placeholder trusted proxy guard. This is not a JWT verifier; cryptographic verification remains future work. |
@@ -244,6 +244,15 @@ FW-270 adds a read API identity and command-authorization guard. It does not
 make trusted proxy identity authoritative unless `trusted_proxy_verified = true`
 and the configured proof checks pass, and it still does not add any server write
 API.
+FW-271 adds the first write pilot only when `[server] mode = "api-write-pilot"`
+and `write_enabled = true`: `POST /api/v1/tasks/<task-id>/evidence` and
+`POST /api/v1/tasks/<task-id>/checkpoints`. Both endpoints require JSON,
+`Idempotency-Key`, API-token identity with an append-only write role, project
+scope matching, unsafe private-data marker rejection, and audit/idempotency
+metadata. They do not add task status writes, review writes, dashboard writes,
+provider sends, merge/deploy/release/live-operation authority, raw prompt or
+transcript storage, raw tool body storage, arbitrary artifact upload, or generic
+SQL/row patching.
 
 ### `[worktrees]`
 
