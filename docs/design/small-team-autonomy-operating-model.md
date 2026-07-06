@@ -198,6 +198,16 @@ end-to-end flow forward should trigger a causal reset with:
 - proof required before retry;
 - a lighter safe-boundary review plan.
 
+## Shared-Team Pilot Evidence
+
+The first shared-team pilot is recorded in
+[fairway-small-team-shared-pilot-2026-07-06.md](../assessment/fairway-small-team-shared-pilot-2026-07-06.md).
+It proves the loopback read-only shared surface can expose status, task, and
+report readback without write authority. It does not promote shared-team
+support by itself; the recommendation is to repeat the pilot with a
+non-authoring operator on the Mac mini GitLab lab host before treating the mode
+as supported.
+
 ## AI Cloud Examples
 
 MFA loop:

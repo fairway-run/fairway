@@ -14,6 +14,7 @@ fairway.exe
 .fairway/state.db-wal
 .fairway/config.toml
 .fairway/AGENTS.md
+.fairway/artifacts/
 .fairway/dashboard.pid
 .fairway/dashboard.log
 .fairway/dashboard-multi.pid
