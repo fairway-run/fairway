@@ -113,11 +113,40 @@ func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
 		{"unregister", "fairway unregister [<name>]"},
 		{"projects", "fairway projects"},
 		{"tui", "fairway tui [--once]"},
+		{"server", "fairway server --read-only [--listen <addr>]"},
 	} {
 		out := runCapture(t, tc.command, "--help")
 		assertContains(t, out, tc.want)
 		assertNotContains(t, out, "error:")
 		assertNotContains(t, out, "Usage of")
+	}
+}
+
+func TestCLI_ServerWriteModeFailsClosed(t *testing.T) {
+	_, err := captureRun("server", "--write")
+	if err == nil || !strings.Contains(err.Error(), "write-capable shared-team server mode is not implemented") {
+		t.Fatalf("server --write err=%v, want fail-closed write mode error", err)
+	}
+}
+
+func TestCLI_ServerReadOnlyRejectsNonLoopbackListen(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	_, err = captureRun("server", "--read-only", "--listen", "0.0.0.0:7880")
+	if err == nil || !strings.Contains(err.Error(), "loopback-only") {
+		t.Fatalf("server non-loopback err=%v, want loopback-only rejection", err)
 	}
 }
 

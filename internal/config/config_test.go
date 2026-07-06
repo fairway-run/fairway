@@ -514,6 +514,26 @@ func TestValidateRejectsUnsupportedDashboardTrustedProxy(t *testing.T) {
 	}
 }
 
+func TestValidateSharedTeamServerReadOnlyMode(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	cfg.Server.Listen = "127.0.0.1:7880"
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate read-only server mode error = %v", err)
+	}
+}
+
+func TestValidateRejectsSharedTeamServerWriteMode(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Mode = "api-write-pilot"
+	cfg.Server.ReadOnly = false
+	cfg.Server.WriteEnabled = true
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "read-only server mode only") {
+		t.Fatalf("Validate write-capable server mode err=%v, want read-only-only error", err)
+	}
+}
+
 func TestWorktreePathUsesTemplate(t *testing.T) {
 	cfg := Defaults("/tmp/repo")
 	got := WorktreePath(cfg, "/tmp/repo", Role{Name: "backend"})

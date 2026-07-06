@@ -44,6 +44,34 @@ modes:
 The dashboard surface and the API surface must remain separable. Enabling a
 server API must not accidentally make the shared dashboard write-capable.
 
+## Implemented Read-Only Skeleton
+
+FW-269 implements only the `api-read-only` skeleton:
+
+```bash
+fairway server --read-only [--listen 127.0.0.1:7880]
+```
+
+It serves metadata-only JSON from the existing Fairway store/read models:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/status` | Project and read-only server status. |
+| `GET /api/v1/tasks` | Task list rows. |
+| `GET /api/v1/tasks/<task-id>` | Task detail with transitions, evidence, handoffs, and reviews. |
+| `GET /api/v1/reports/summary` | Project task-status summary. |
+
+The skeleton has no write endpoints. `[server] mode = "read_only"` is the only
+enabled mode; write-capable modes and `write_enabled = true` fail config
+validation. Because FW-269 has no identity verification or authorization, the
+server refuses non-loopback bind addresses. Loopback addresses such as
+`127.0.0.1:7880`, `localhost:7880`, and IPv6 loopback are allowed; `0.0.0.0`,
+LAN/private, Tailscale, and public interfaces require FW-270 or a later
+reviewed identity/proxy/deployment boundary. This slice does not implement
+identity verification, API token authorization, shared writes, public exposure,
+dashboard write behavior, provider-send authority, review approval authority,
+merge/deploy/live-operation authority, or release behavior.
+
 ## API Families
 
 Read APIs may expose the same information already available through CLI and

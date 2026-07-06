@@ -17,6 +17,7 @@ const DefaultConfigPath = ".fairway/config.toml"
 type Config struct {
 	Fairway             FairwayConfig        `toml:"fairway"`
 	Dashboard           DashboardConfig      `toml:"dashboard"`
+	Server              ServerConfig         `toml:"server"`
 	Worktrees           WorktreesConfig      `toml:"worktrees"`
 	Sessions            SessionsConfig       `toml:"sessions"`
 	Coordinator         CoordinatorConfig    `toml:"coordinator"`
@@ -50,6 +51,14 @@ type DashboardConfig struct {
 	AutoOpen     bool   `toml:"auto_open"`
 	ReadOnly     bool   `toml:"read_only"`
 	TrustedProxy string `toml:"trusted_proxy"`
+}
+
+type ServerConfig struct {
+	Enabled      bool   `toml:"enabled"`
+	Listen       string `toml:"listen"`
+	Mode         string `toml:"mode"`
+	ReadOnly     bool   `toml:"read_only"`
+	WriteEnabled bool   `toml:"write_enabled"`
 }
 
 type WorktreesConfig struct {
@@ -239,6 +248,11 @@ func Defaults(root string) Config {
 			AutoOpen:     true,
 			TrustedProxy: "none",
 		},
+		Server: ServerConfig{
+			Listen:   "127.0.0.1:7880",
+			Mode:     "disabled",
+			ReadOnly: true,
+		},
 		Worktrees: WorktreesConfig{
 			Root:               "../worktrees",
 			Naming:             "{repo}-{role}",
@@ -339,6 +353,33 @@ func Validate(cfg Config) error {
 	case "", "none", "cloudflare_access", "identity_aware_proxy":
 	default:
 		return fmt.Errorf("[dashboard] trusted_proxy %q is unsupported", cfg.Dashboard.TrustedProxy)
+	}
+	serverMode := strings.TrimSpace(cfg.Server.Mode)
+	if serverMode == "" {
+		serverMode = "disabled"
+	}
+	switch serverMode {
+	case "disabled":
+		if cfg.Server.Enabled {
+			return errors.New("[server] enabled requires mode = \"read_only\" for the FW-269 server skeleton")
+		}
+		if cfg.Server.WriteEnabled {
+			return errors.New("[server] write_enabled is not supported when mode is disabled")
+		}
+	case "read_only", "api-read-only":
+		if cfg.Server.Listen == "" {
+			return errors.New("[server] listen is required when server mode is read_only")
+		}
+		if !cfg.Server.ReadOnly {
+			return errors.New("[server] read_only must be true for the FW-269 server skeleton")
+		}
+		if cfg.Server.WriteEnabled {
+			return errors.New("[server] write_enabled is not implemented; FW-269 supports read-only server mode only")
+		}
+	case "write", "write_pilot", "api-write-pilot", "api_write_pilot", "shared_write":
+		return fmt.Errorf("[server] mode %q is not implemented; FW-269 supports read-only server mode only", cfg.Server.Mode)
+	default:
+		return fmt.Errorf("[server] mode %q is unsupported", cfg.Server.Mode)
 	}
 	if cfg.Worktrees.Root == "" {
 		return errors.New("[worktrees] root is required")
@@ -1031,6 +1072,13 @@ listen = "127.0.0.1:7878"
 auto_open = true
 read_only = false
 trusted_proxy = "none"
+
+[server]
+enabled = false
+listen = "127.0.0.1:7880"
+mode = "disabled"
+read_only = true
+write_enabled = false
 
 [worktrees]
 root = "../worktrees"

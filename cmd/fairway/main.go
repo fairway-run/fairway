@@ -227,6 +227,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdAgentGuide(args[1:])
 	case "dashboard":
 		return cmdDashboard(ctx, opts, args[1:])
+	case "server":
+		return cmdServer(ctx, opts, args[1:])
 	case "db":
 		return cmdDB(ctx, opts, args[1:])
 	case "version":
@@ -237,6 +239,73 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown command %q", args[0])
+}
+
+func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("server", "[--listen <addr>] --read-only")
+		return nil
+	}
+	fs := flag.NewFlagSet("server", flag.ContinueOnError)
+	listen := fs.String("listen", "", "listen address")
+	readOnly := fs.Bool("read-only", false, "serve shared-team API in read-only mode")
+	mode := fs.String("mode", "", "server mode")
+	write := fs.Bool("write", false, "request write-capable mode (not implemented)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected server arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *write {
+		return errors.New("write-capable shared-team server mode is not implemented; FW-269 supports --read-only only")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		serverMode := strings.TrimSpace(cfg.Server.Mode)
+		if serverMode == "" {
+			serverMode = "disabled"
+		}
+		if *mode != "" {
+			serverMode = strings.TrimSpace(*mode)
+		}
+		if *readOnly {
+			serverMode = "read_only"
+			cfg.Server.ReadOnly = true
+		}
+		switch serverMode {
+		case "read_only", "api-read-only":
+		case "disabled":
+			return errors.New("server mode is disabled; pass --read-only or set [server] mode = \"read_only\"")
+		default:
+			return fmt.Errorf("server mode %q is not implemented; FW-269 supports read-only only", serverMode)
+		}
+		if !cfg.Server.ReadOnly {
+			return errors.New("server read-only mode requires [server] read_only = true")
+		}
+		if cfg.Server.WriteEnabled {
+			return errors.New("server write_enabled is not implemented; FW-269 supports read-only only")
+		}
+		addr := cfg.Server.Listen
+		if addr == "" {
+			addr = "127.0.0.1:7880"
+		}
+		if *listen != "" {
+			addr = *listen
+		}
+		cfg.Server.Mode = serverMode
+		cfg.Server.Listen = addr
+		cfg.Dashboard.ReadOnly = true
+		url := dashboard.URL(addr)
+		if !isLoopbackAddr(addr) {
+			return fmt.Errorf("server read-only mode is loopback-only until FW-270 identity/authz is implemented; refusing listen address %q", addr)
+		}
+		fmt.Println("server", url)
+		worktrees, err := collectWorktreeStatus(cfg, root)
+		if err != nil {
+			return err
+		}
+		return http.ListenAndServe(addr, dashboard.NewWithRoot(s, cfg, roleNames(cfg), dashboardWorktrees(worktrees), root).ReadOnlyAPIHandler())
+	})
 }
 
 func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
@@ -15276,7 +15345,7 @@ func usage() {
 	fmt.Println("Rules, packets, reports, and audits:")
 	fmt.Println("  rules, packet, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
-	fmt.Println("  dashboard, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
+	fmt.Println("  dashboard, server, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
 	fmt.Println("Run `fairway agent-guide` for the offline agent operating guide.")
 	fmt.Println("Run `fairway <command> --help` for concise command usage.")
@@ -15322,6 +15391,7 @@ func printCommandHelp(command string) bool {
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
 		"rough-edge":                 "fairway rough-edge add --task <task-id> --owner <role> --severity <level> --decision <fix-now|defer> --summary <text> | fairway rough-edge list [--task <task-id>] [--owner <role>] [--expired]\n  Record and inspect owner rough edges found while using the product; list is read-only.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
+		"server":                     "fairway server --read-only [--listen <addr>]\n  Run the shared-team read-only API skeleton. Write-capable server mode is not implemented.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",

@@ -35,6 +35,13 @@ local_artifact_paths = ["dist/fairway"] # optional local evidence artifact dirs
 listen = "127.0.0.1:7878"
 auto_open = true                       # open browser when `fairway dashboard` starts
 
+[server]
+enabled = false
+listen = "127.0.0.1:7880"
+mode = "disabled"                      # disabled | read_only
+read_only = true
+write_enabled = false                  # write-capable server mode is not implemented
+
 [worktrees]
 root = "../worktrees"
 naming = "{repo}-{role}"
@@ -193,6 +200,24 @@ contract.
 For shared read-only viewing, keep `listen = "127.0.0.1:7878"`, set
 `read_only = true`, and expose the origin only through a trusted tunnel/proxy.
 See [dashboard-sharing.md](design/dashboard-sharing.md).
+
+### `[server]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `false` | Advisory switch for shared-team server configuration. When `true`, `mode` must be `read_only` in the FW-269 skeleton. |
+| `listen` | string | `127.0.0.1:7880` | HTTP listen address for `fairway server --read-only`. FW-269 accepts loopback binds only. Non-loopback addresses such as `0.0.0.0`, LAN/private, Tailscale, or public interfaces fail closed until identity/proxy authorization is implemented and reviewed. |
+| `mode` | string | `disabled` | Supported values are `disabled` and `read_only`/`api-read-only`. Write-capable modes fail closed until a later reviewed task implements them. |
+| `read_only` | bool | `true` | Must be `true` for the FW-269 shared-team server skeleton. |
+| `write_enabled` | bool | `false` | Must remain `false`; setting it fails config validation because shared write authority is not implemented in FW-269. |
+
+`fairway server --read-only` serves a read-only JSON API skeleton at
+`/api/v1/status`, `/api/v1/tasks`, `/api/v1/tasks/<task-id>`, and
+`/api/v1/reports/summary`. It reuses the existing Fairway store and read
+models. It does not create a second store and does not add review approval,
+merge, deploy, provider-send, dashboard write, release, public exposure, or
+live-operation authority. Proxy/public/shared exposure requires FW-270 or a
+later reviewed identity/proxy/deployment task; FW-269 itself is loopback-only.
 
 ### `[worktrees]`
 

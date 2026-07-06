@@ -118,6 +118,7 @@ fairway dashboard start [--listen <addr>] [--multi] [--open] [--pid-file <path>]
 fairway dashboard stop [--pid-file <path>] [--log-file <path>]
 fairway dashboard restart [--listen <addr>] [--multi] [--open] [--pid-file <path>] [--log-file <path>]
 fairway dashboard status [--listen <addr>] [--multi] [--pid-file <path>] [--log-file <path>]
+fairway server --read-only [--listen <addr>]              # shared-team read-only API skeleton
 fairway tui [--once]                                    # interactive ready/claim/status/detail/status-update/evidence/readiness loop
 fairway tracker providers
 fairway tracker configure <plane|jira|linear> [--url <url>] [--workspace <slug>] [--project <id-or-slug>] [--team <key>] [--dry-run]
@@ -525,6 +526,16 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `--open` is passed. They write `.fairway/dashboard.pid` and
   `.fairway/dashboard.log` by default; multi-project mode uses
   `.fairway/dashboard-multi.*`.
+- `server --read-only` runs the first shared-team API skeleton. The FW-269
+  surface exposes only GET JSON endpoints:
+  `/api/v1/status`, `/api/v1/tasks`, `/api/v1/tasks/<task-id>`, and
+  `/api/v1/reports/summary`. It reuses the local Fairway store/read models and
+  does not add server writes, dashboard writes, review approval, provider-send,
+  merge, deploy, release, public exposure, or live-operation authority. Write
+  mode flags and write-capable `[server]` config fail closed. Until FW-270 or a
+  later reviewed identity/proxy boundary lands, `fairway server --read-only`
+  rejects non-loopback listen addresses such as `0.0.0.0`, LAN/private,
+  Tailscale, or public interfaces.
 - `packet bugfix`, `packet retry`, platform-foundation packets,
   `packet template`, `packet rules`, and `regression-pack` are quality
   surfaces. They render and validate review context; they do not execute

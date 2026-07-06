@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1853,6 +1854,81 @@ func TestDashboardClaimRequiresCSRFAndAudits(t *testing.T) {
 	}
 	if task.Status != "in_progress" {
 		t.Fatalf("status=%q, want in_progress", task.Status)
+	}
+}
+
+func TestReadOnlyAPIHandlerExposesReadModelsAndRejectsWrites(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend", Kind: "task"}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.Fairway.ProjectName = "fairway-test"
+	cfg.Dashboard.ReadOnly = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	server := New(s, cfg, []string{"backend"}, nil)
+	handler := server.ReadOnlyAPIHandler()
+
+	statusRec := httptest.NewRecorder()
+	handler.ServeHTTP(statusRec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("status code=%d body=%s", statusRec.Code, statusRec.Body.String())
+	}
+	var status apiStatusResponse
+	if err := json.Unmarshal(statusRec.Body.Bytes(), &status); err != nil {
+		t.Fatalf("status json: %v\n%s", err, statusRec.Body.String())
+	}
+	if status.Project != "fairway-test" || !status.ReadOnly || status.WritesEnabled {
+		t.Fatalf("status=%+v, want read-only project status", status)
+	}
+
+	tasksRec := httptest.NewRecorder()
+	handler.ServeHTTP(tasksRec, httptest.NewRequest(http.MethodGet, "/api/v1/tasks", nil))
+	var tasks apiTasksResponse
+	if err := json.Unmarshal(tasksRec.Body.Bytes(), &tasks); err != nil {
+		t.Fatalf("tasks json: %v\n%s", err, tasksRec.Body.String())
+	}
+	if tasks.Count != 1 || tasks.Tasks[0].ID != "T-001" || tasks.Tasks[0].Status != "todo" {
+		t.Fatalf("tasks=%+v, want T-001 todo row", tasks)
+	}
+
+	detailRec := httptest.NewRecorder()
+	handler.ServeHTTP(detailRec, httptest.NewRequest(http.MethodGet, "/api/v1/tasks/T-001", nil))
+	var detail apiTaskDetailResponse
+	if err := json.Unmarshal(detailRec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("detail json: %v\n%s", err, detailRec.Body.String())
+	}
+	if detail.Task.ID != "T-001" || detail.Definition.Title != "Task" {
+		t.Fatalf("detail=%+v, want task detail read model", detail)
+	}
+
+	summaryRec := httptest.NewRecorder()
+	handler.ServeHTTP(summaryRec, httptest.NewRequest(http.MethodGet, "/api/v1/reports/summary", nil))
+	var summary apiSummaryResponse
+	if err := json.Unmarshal(summaryRec.Body.Bytes(), &summary); err != nil {
+		t.Fatalf("summary json: %v\n%s", err, summaryRec.Body.String())
+	}
+	if summary.Total != 1 || summary.Todo != 1 || summary.Ready != 1 {
+		t.Fatalf("summary=%+v, want one ready todo task", summary)
+	}
+
+	postRec := httptest.NewRecorder()
+	handler.ServeHTTP(postRec, httptest.NewRequest(http.MethodPost, "/api/v1/tasks", strings.NewReader(`{}`)))
+	if postRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /api/v1/tasks code=%d body=%s", postRec.Code, postRec.Body.String())
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != "todo" {
+		t.Fatalf("read-only API mutated task status=%q", task.Status)
 	}
 }
 
