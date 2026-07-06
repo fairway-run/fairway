@@ -161,6 +161,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdReviewWaits(ctx, opts, args[1:])
 	case "review-policy":
 		return cmdReviewPolicy(ctx, opts, args[1:])
+	case "contract":
+		return cmdContract(ctx, opts, args[1:])
 	case "live-window":
 		return cmdLiveWindow(ctx, opts, args[1:])
 	case "wait":
@@ -7063,6 +7065,277 @@ var (
 	laneLogAssignmentSecretPattern = regexp.MustCompile(`(?i)\b((?:password|token|secret|api_key|client_secret|access_token|refresh_token|id_token|ssh_private_key)\s*[:=]\s*)[^\s,&"']+`)
 	laneLogBearerSecretPattern     = regexp.MustCompile(`(?i)\bbearer\s+[^\s,"']+`)
 )
+
+func cmdContract(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("contract", "agent-output")
+		return nil
+	}
+	if len(args) > 1 && args[0] == "agent-output" && isHelpOnly(args[1:]) {
+		fmt.Println("fairway contract agent-output [--schema <schema-or-name>] [--format text|json]")
+		return nil
+	}
+	switch args[0] {
+	case "agent-output":
+		return cmdContractAgentOutput(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown contract subcommand %q", args[0])
+	}
+}
+
+type agentOutputContractCatalog struct {
+	Schema            string                `json:"schema"`
+	Version           string                `json:"version"`
+	GeneratedAt       string                `json:"generated_at,omitempty"`
+	Compatibility     []string              `json:"compatibility"`
+	PrivacyExclusions []string              `json:"privacy_exclusions"`
+	AuthorityLimits   []string              `json:"authority_limits"`
+	Contracts         []agentOutputContract `json:"contracts"`
+}
+
+type agentOutputContract struct {
+	Schema        string              `json:"schema"`
+	Version       string              `json:"version"`
+	Name          string              `json:"name"`
+	Surface       string              `json:"surface"`
+	Purpose       string              `json:"purpose"`
+	SourceCommand string              `json:"source_command"`
+	Fields        []contractField     `json:"fields"`
+	Enums         map[string][]string `json:"enums,omitempty"`
+	Compatibility []string            `json:"compatibility"`
+	Privacy       []string            `json:"privacy"`
+	Authority     []string            `json:"authority"`
+	Examples      []contractExample   `json:"examples,omitempty"`
+}
+
+type contractField struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Required    bool   `json:"required"`
+	Description string `json:"description"`
+}
+
+type contractExample struct {
+	Command string `json:"command"`
+	Notes   string `json:"notes"`
+}
+
+func cmdContractAgentOutput(_ context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("contract agent-output", flag.ContinueOnError)
+	format := fs.String("format", "text", "output format: text or json")
+	schema := fs.String("schema", "", "filter to one schema")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected contract agent-output arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	catalog := buildAgentOutputContractCatalog()
+	if selected := strings.TrimSpace(*schema); selected != "" {
+		var filtered []agentOutputContract
+		for _, contract := range catalog.Contracts {
+			if contract.Schema == selected || contract.Name == selected {
+				filtered = append(filtered, contract)
+			}
+		}
+		if len(filtered) == 0 {
+			return fmt.Errorf("unknown agent output contract schema %q", selected)
+		}
+		catalog.Contracts = filtered
+	}
+	if opts.JSON || *format == "json" {
+		catalog.GeneratedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		return printJSON(catalog)
+	}
+	if *format != "text" {
+		return fmt.Errorf("unsupported contract agent-output format %q", *format)
+	}
+	fmt.Printf("agent_output_contracts schema=%s version=%s contracts=%d\n", catalog.Schema, catalog.Version, len(catalog.Contracts))
+	fmt.Println("compatibility:")
+	for _, rule := range catalog.Compatibility {
+		fmt.Printf("- %s\n", rule)
+	}
+	fmt.Println("privacy_exclusions:")
+	for _, exclusion := range catalog.PrivacyExclusions {
+		fmt.Printf("- %s\n", exclusion)
+	}
+	fmt.Println("authority_limits:")
+	for _, limit := range catalog.AuthorityLimits {
+		fmt.Printf("- %s\n", limit)
+	}
+	for _, contract := range catalog.Contracts {
+		fmt.Printf("\n%s (%s)\n", contract.Name, contract.Schema)
+		fmt.Printf("surface: %s\nsource_command: %s\npurpose: %s\n", contract.Surface, contract.SourceCommand, contract.Purpose)
+		if len(contract.Enums) > 0 {
+			keys := make([]string, 0, len(contract.Enums))
+			for key := range contract.Enums {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				fmt.Printf("enum %s: %s\n", key, strings.Join(contract.Enums[key], ", "))
+			}
+		}
+	}
+	return nil
+}
+
+func buildAgentOutputContractCatalog() agentOutputContractCatalog {
+	privacy := []string{
+		"raw prompts",
+		"private transcripts",
+		"raw tool bodies",
+		"generated-content dumps",
+		"auth tokens",
+		"provider-private payloads",
+		"secrets or credentials",
+	}
+	authority := []string{
+		"read-only contract description",
+		"does not approve reviews",
+		"does not claim, merge, push, deploy, release, send providers, or run live operations",
+		"does not mutate dashboard or task state",
+	}
+	compatibility := []string{
+		"schema fields are additive by default",
+		"agents must ignore unknown fields unless a schema states otherwise",
+		"enum removals and required-field changes require a new schema version",
+		"human text remains non-contractual; agents should consume JSON fields",
+	}
+	return agentOutputContractCatalog{
+		Schema:            "fairway.agent-output-contracts.v1",
+		Version:           "1.0",
+		Compatibility:     compatibility,
+		PrivacyExclusions: privacy,
+		AuthorityLimits:   authority,
+		Contracts: []agentOutputContract{
+			{
+				Schema:        "fairway.agent.task-packet.v1",
+				Version:       "1.0",
+				Name:          "task_packet",
+				Surface:       "packet/context/provenance",
+				Purpose:       "Compact task context for provider handoff without transcript replay.",
+				SourceCommand: "fairway provenance prompt-packet --task <task-id> --format json",
+				Fields: []contractField{
+					{Name: "schema", Type: "string", Required: true, Description: "Exact contract schema."},
+					{Name: "task_id", Type: "string", Required: true, Description: "Fairway task id."},
+					{Name: "objective", Type: "string", Required: false, Description: "Bounded objective copied from task metadata or packet input."},
+					{Name: "source_facts", Type: "array<string>", Required: true, Description: "Evidence/review/checkpoint references, not transcript bodies."},
+					{Name: "forbidden_actions", Type: "array<string>", Required: true, Description: "Actions outside task scope."},
+				},
+				Compatibility: compatibility,
+				Privacy:       privacy,
+				Authority:     authority,
+			},
+			{
+				Schema:        "fairway.agent.ready-queue.v1",
+				Version:       "1.0",
+				Name:          "ready_queue",
+				Surface:       "queue/read-model",
+				Purpose:       "Ready work rows and blocker explanations for dispatch without scraping human output.",
+				SourceCommand: "fairway --json ready",
+				Fields: []contractField{
+					{Name: "schema", Type: "string", Required: false, Description: "May be added to future ready output; consumers must tolerate absent schema on older binaries."},
+					{Name: "tasks", Type: "array<object>", Required: true, Description: "Ready task rows."},
+					{Name: "blocker_categories", Type: "array<object>", Required: false, Description: "Categorized blockers when no work is ready."},
+					{Name: "readiness_explanation", Type: "object", Required: false, Description: "Human-readable but field-addressable queue explanation."},
+				},
+				Enums:         map[string][]string{"task_status": {"todo", "in_progress", "blocked", "done"}, "readiness": {"ready", "blocked", "empty"}},
+				Compatibility: compatibility,
+				Privacy:       privacy,
+				Authority:     authority,
+			},
+			{
+				Schema:        "fairway.agent.waits.v1",
+				Version:       "1.0",
+				Name:          "waits",
+				Surface:       "wait/review-wait/read-model",
+				Purpose:       "Parked work and stale wait rows with next action and notification state.",
+				SourceCommand: "fairway --json wait list; fairway --json review-waits list",
+				Fields: []contractField{
+					{Name: "task_id", Type: "string", Required: true, Description: "Task associated with the wait."},
+					{Name: "status", Type: "string", Required: true, Description: "Current wait status."},
+					{Name: "action", Type: "string", Required: true, Description: "Next safe coordination action."},
+					{Name: "stale", Type: "boolean", Required: false, Description: "Whether the configured ack timeout has passed."},
+				},
+				Enums:         map[string][]string{"status": {"pending", "stale", "notification_failed", "resolved", "cancelled"}, "action": {"deliver_notification", "record_delivery_proof", "nudge_reviewer", "mapping_required", "acknowledge", "continue"}},
+				Compatibility: compatibility,
+				Privacy:       privacy,
+				Authority:     authority,
+			},
+			{
+				Schema:        "fairway.agent.reviews.v1",
+				Version:       "1.0",
+				Name:          "reviews",
+				Surface:       "task-detail/merge-ready/review-policy",
+				Purpose:       "Review requirement, approval, inheritance, and missing-domain state.",
+				SourceCommand: "fairway --json task-detail <task-id>; fairway --json merge-ready <task-id>",
+				Fields: []contractField{
+					{Name: "review_policy", Type: "object", Required: false, Description: "Selected review profile and inheritance decision."},
+					{Name: "missing_review_domains", Type: "array<string>", Required: false, Description: "Domains still required before merge-ready."},
+					{Name: "reviews", Type: "array<object>", Required: false, Description: "Recorded review rows."},
+				},
+				Enums:         map[string][]string{"verdict": {"approve", "changes", "reject"}, "review_status": {"not_required", "missing", "partial_approval", "approved", "changes_requested", "rejected"}},
+				Compatibility: compatibility,
+				Privacy:       privacy,
+				Authority:     authority,
+			},
+			{
+				Schema:        "fairway.agent.evidence-requirements.v1",
+				Version:       "1.0",
+				Name:          "evidence_requirements",
+				Surface:       "merge-ready/rules/readiness",
+				Purpose:       "Evidence gaps and rule/profile gate status for agent closeout.",
+				SourceCommand: "fairway --json merge-ready <task-id>; fairway --json rules evidence-types",
+				Fields: []contractField{
+					{Name: "gate_evaluations", Type: "array<object>", Required: false, Description: "Configured gate status rows."},
+					{Name: "rule_evaluations", Type: "array<object>", Required: false, Description: "Rule-pack evidence status rows."},
+					{Name: "evidence_types", Type: "array<object>", Required: false, Description: "Allowed or expected evidence type rows."},
+				},
+				Enums:         map[string][]string{"result": {"pass", "fail", "blocked", "partial", "unknown"}, "gate_status": {"satisfied", "missing", "blocked", "advisory"}},
+				Compatibility: compatibility,
+				Privacy:       privacy,
+				Authority:     authority,
+			},
+			{
+				Schema:        "fairway.agent.lane-status.v1",
+				Version:       "1.0",
+				Name:          "lane_status",
+				Surface:       "lane/runtime",
+				Purpose:       "Local/tmux lane runtime status for provider/helper lanes.",
+				SourceCommand: "fairway --json lane status [--session-id <id>] [--all]",
+				Fields: []contractField{
+					{Name: "session_id", Type: "string", Required: true, Description: "Session id."},
+					{Name: "role", Type: "string", Required: true, Description: "Lane role."},
+					{Name: "backend", Type: "string", Required: true, Description: "Runtime backend."},
+					{Name: "runtime_state", Type: "string", Required: true, Description: "Bounded local runtime readback."},
+				},
+				Enums:         map[string][]string{"runtime_state": {"running", "missing_process", "missing_tmux_pane", "unsupported_remote", "unverified", "ended", "failed", "stale"}, "backend": {"local", "shell", "tmux"}},
+				Compatibility: compatibility,
+				Privacy:       privacy,
+				Authority:     authority,
+			},
+			{
+				Schema:        "fairway.agent.closeout-handback.v1",
+				Version:       "1.0",
+				Name:          "closeout_handback",
+				Surface:       "completion-handback/workflow-closeout",
+				Purpose:       "Terminal/blocked/merge-ready handback state for coordinator continuation.",
+				SourceCommand: "fairway --json completion-handback-report; fairway workflow closeout <task-id> --dry-run",
+				Fields: []contractField{
+					{Name: "task_id", Type: "string", Required: true, Description: "Task id."},
+					{Name: "next_owner", Type: "string", Required: false, Description: "Owner expected to act next."},
+					{Name: "next_action", Type: "string", Required: true, Description: "Safe coordinator action."},
+					{Name: "notification_state", Type: "string", Required: false, Description: "Handback notification delivery state."},
+				},
+				Enums:         map[string][]string{"state": {"done", "reviewed", "merge_ready", "blocked_with_follow_up", "monitor_completed", "live_window_closeout"}, "notification_state": {"intent", "attempted", "delivered", "failed", "acknowledged"}},
+				Compatibility: compatibility,
+				Privacy:       privacy,
+				Authority:     authority,
+			},
+		},
+	}
+}
 
 type releaseVerifyReport struct {
 	OK                 bool                 `json:"ok"`
@@ -16843,7 +17116,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -16885,6 +17158,7 @@ func printCommandHelp(command string) bool {
 		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
+		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",

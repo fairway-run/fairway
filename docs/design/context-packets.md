@@ -153,3 +153,18 @@ causal goal, last blocker, allowed proof, forbidden actions, reviewed commands,
 artifact paths, and next owner/action. See
 [consumer-critical-flow-governance.md](consumer-critical-flow-governance.md) for
 the reusable Fairway template.
+
+## Agent Output Contracts
+
+Providers should consume Fairway state through explicit JSON contracts rather
+than scraping Markdown packet text. `fairway contract agent-output --format
+json` publishes the current catalog of agent-oriented schemas, including task
+packets, ready queues, waits, reviews, evidence requirements, lane status, and
+closeout handbacks.
+
+The catalog is metadata only. It names schema versions, source commands,
+required fields, enum values, compatibility rules, privacy exclusions, and
+authority limits. It does not store prompt bodies, transcripts, raw tool
+bodies, generated content, auth tokens, provider-private payloads, secrets, or
+credentials. New fields are additive by default; providers must ignore unknown
+fields unless a schema explicitly states otherwise.

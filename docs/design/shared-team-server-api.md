@@ -145,6 +145,13 @@ dashboard read models:
 - provenance, delivery, usage, rough-edge, recipe metadata, and automation
   candidate reports.
 
+Agent-facing API responses should either match an existing catalog entry from
+`fairway contract agent-output --format json` or include a new reviewed schema
+entry before providers depend on it. The contract catalog is the compatibility
+surface for task packets, ready queues, waits, reviews, evidence requirements,
+lane status, and closeout handbacks. Human dashboard text, Markdown packets,
+and log lines are not stable API contracts.
+
 Write APIs must be command-shaped. Each endpoint should map to one existing or
 planned CLI command family:
 

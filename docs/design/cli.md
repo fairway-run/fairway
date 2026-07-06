@@ -88,6 +88,7 @@ fairway regression-pack validate [<catalog-path>]
 fairway recipe extract --task <task-id> --name <name> [--output <path>] [--input <text>]... [--forbidden-action <text>]... [--closeout-rule <text>]...
 fairway recipe render --recipe <path> --task <task-id> [--field <key=value>]... [--format markdown|json]
 fairway recipe list [--dir <path>] [--format text|json]
+fairway contract agent-output [--schema <schema-or-name>] [--format text|json]
 fairway watcher start <watch-id> --task <task-id> [--owner <role-or-lane>] [--process <text>] [--command <cmd>] [--success <text>] [--failure <text>]
 fairway watcher finish <watch-id> --result <pass|fail|blocked> [--artifact <path-or-url>] [--duration-seconds <n>] [--notes <text>]
 fairway watcher status [--include-done]
@@ -640,6 +641,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   argv, and not written to the manifest. This proof remains a disposable
   compatibility rehearsal, not adapter parity, production migration, cutover
   readiness, or shared-team store enablement.
+- `contract agent-output` prints the versioned JSON contract catalog for
+  agent-consumed Fairway output. The first catalog schema is
+  `fairway.agent-output-contracts.v1` and covers task packets, ready queues,
+  waits, reviews, evidence requirements, lane status, and closeout handbacks.
+  Each contract entry names its schema/version, source command, required
+  fields, enum values, compatibility expectations, privacy exclusions, and
+  authority limits. The command is read-only and does not create tasks, record
+  evidence, approve reviews, send providers, mutate dashboard state, merge,
+  deploy, release, or run live operations. Agents should consume `--format
+  json` or global `--json`, ignore unknown fields unless a schema says
+  otherwise, and treat human-formatted text as non-contractual.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that
   ships in each release.
 

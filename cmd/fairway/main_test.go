@@ -320,6 +320,7 @@ func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
 		{"tui", "fairway tui [--once]"},
 		{"server", "fairway server --read-only [--listen <addr>]"},
 		{"lane", "fairway lane start|status|logs|stop"},
+		{"contract", "fairway contract agent-output"},
 	} {
 		out := runCapture(t, tc.command, "--help")
 		assertContains(t, out, tc.want)
@@ -444,6 +445,47 @@ func TestCLI_LaneRuntimeLifecycle(t *testing.T) {
 	assertNotContains(t, detail, "ALSO_SECRET")
 }
 
+func TestCLI_AgentOutputContracts(t *testing.T) {
+	text := runCapture(t, "contract", "agent-output")
+	for _, want := range []string{
+		"agent_output_contracts schema=fairway.agent-output-contracts.v1 version=1.0",
+		"task_packet (fairway.agent.task-packet.v1)",
+		"ready_queue (fairway.agent.ready-queue.v1)",
+		"waits (fairway.agent.waits.v1)",
+		"reviews (fairway.agent.reviews.v1)",
+		"evidence_requirements (fairway.agent.evidence-requirements.v1)",
+		"lane_status (fairway.agent.lane-status.v1)",
+		"closeout_handback (fairway.agent.closeout-handback.v1)",
+		"agents must ignore unknown fields",
+		"does not approve reviews",
+	} {
+		assertContains(t, text, want)
+	}
+	jsonOut := runCapture(t, "--json", "contract", "agent-output", "--schema", "lane_status")
+	var catalog agentOutputContractCatalog
+	if err := json.Unmarshal([]byte(jsonOut), &catalog); err != nil {
+		t.Fatalf("contract catalog json: %v\n%s", err, jsonOut)
+	}
+	if catalog.Schema != "fairway.agent-output-contracts.v1" || catalog.Version != "1.0" {
+		t.Fatalf("catalog schema/version = %s/%s", catalog.Schema, catalog.Version)
+	}
+	if len(catalog.Contracts) != 1 {
+		t.Fatalf("filtered contracts len=%d, want 1", len(catalog.Contracts))
+	}
+	contract := catalog.Contracts[0]
+	if contract.Schema != "fairway.agent.lane-status.v1" || contract.Name != "lane_status" {
+		t.Fatalf("filtered contract = %s/%s", contract.Schema, contract.Name)
+	}
+	assertStringSliceContains(t, contract.Enums["runtime_state"], "missing_process")
+	assertStringSliceContains(t, contract.Compatibility, "agents must ignore unknown fields unless a schema states otherwise")
+	assertStringSliceContains(t, contract.Privacy, "raw prompts")
+	assertStringSliceContains(t, contract.Authority, "does not mutate dashboard or task state")
+	assertNotContains(t, jsonOut, "SHOULD_NOT_RENDER")
+	if _, err := captureRun("contract", "agent-output", "--schema", "fairway.agent.unknown.v1"); err == nil || !strings.Contains(err.Error(), "unknown agent output contract schema") {
+		t.Fatalf("unknown schema err=%v, want fail-closed schema error", err)
+	}
+}
+
 func TestCLI_UnknownCommandStillErrors(t *testing.T) {
 	out, err := captureRun("does-not-exist")
 	if err == nil {
@@ -486,6 +528,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"wait", "wake", "--help"}, "fairway wait wake [--task <task-id>]"},
 		{[]string{"packet", "--help"}, "fairway packet context|bugfix|retry|watcher"},
 		{[]string{"packet", "retry", "--help"}, "fairway packet retry <task-id> --kind <preflight|live-operation>"},
+		{[]string{"contract", "--help"}, "fairway contract agent-output"},
+		{[]string{"contract", "agent-output", "--help"}, "fairway contract agent-output [--schema <schema-or-name>]"},
 		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
 		{[]string{"advisory", "--help"}, "fairway advisory adapters|validate <task-id>"},
 		{[]string{"advisory", "adapters", "--help"}, "fairway advisory adapters [--include-disabled]"},
@@ -6339,6 +6383,16 @@ func assertNotContains(t *testing.T, got, want string) {
 	if strings.Contains(got, want) {
 		t.Fatalf("expected output not to contain %q; got:\n%s", want, got)
 	}
+}
+
+func assertStringSliceContains(t *testing.T, got []string, want string) {
+	t.Helper()
+	for _, value := range got {
+		if value == want {
+			return
+		}
+	}
+	t.Fatalf("expected slice to contain %q; got %#v", want, got)
 }
 
 func extractJSONValue(body, key string) string {
