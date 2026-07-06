@@ -30,6 +30,7 @@ import (
 	coord "github.com/subashram/fairway/internal/coordinator"
 	"github.com/subashram/fairway/internal/dashboard"
 	"github.com/subashram/fairway/internal/deliveryreport"
+	"github.com/subashram/fairway/internal/deliveryresources"
 	"github.com/subashram/fairway/internal/evidencemodel"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
@@ -3635,15 +3636,81 @@ func cmdAuditCILearning(ctx context.Context, opts globalOptions, command string,
 func cmdDelivery(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
 		fmt.Println("fairway delivery report --since <duration> [--profile <name>] [--format text|json]")
+		fmt.Println("fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]")
 		fmt.Println("  Read-only delivery velocity and process overhead report from existing Fairway state.")
 		return nil
 	}
 	switch args[0] {
 	case "report":
 		return cmdDeliveryReport(ctx, opts, args[1:])
+	case "resources":
+		return cmdDeliveryResources(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown delivery subcommand %q", args[0])
 	}
+}
+
+func cmdDeliveryResources(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]")
+		fmt.Println("  Project typed delivery resources from existing tasks and evidence without mutating workflow.")
+		return nil
+	}
+	fs := flag.NewFlagSet("delivery resources", flag.ContinueOnError)
+	resourceType := fs.String("type", "", "resource type filter")
+	project := fs.String("project", "", "project filter")
+	staleOnly := fs.Bool("stale", false, "only stale resources")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected delivery resources arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		rows, err := deliveryresources.Build(ctx, s, deliveryresources.Options{
+			Type:      strings.TrimSpace(*resourceType),
+			Project:   strings.TrimSpace(*project),
+			StaleOnly: *staleOnly,
+		})
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(rows)
+		}
+		if len(rows) == 0 {
+			fmt.Println("delivery_resources: none")
+			return nil
+		}
+		fmt.Println("delivery_resources:")
+		for _, row := range rows {
+			fmt.Printf("- project=%s type=%s name=%s state=%s owner=%s task=%s next=%s\n",
+				firstNonEmpty(row.Project, "current"),
+				row.Type,
+				row.Name,
+				row.State,
+				firstNonEmpty(row.Owner, "unknown"),
+				row.SourceTaskID,
+				row.NextSafeAction)
+			if row.LastVerifiedAt != "" || row.LastVerifiedCommit != "" || row.LastVerifiedVersion != "" {
+				fmt.Printf("  verified: at=%s commit=%s version=%s\n", firstNonEmpty(row.LastVerifiedAt, "unknown"), firstNonEmpty(row.LastVerifiedCommit, "unknown"), firstNonEmpty(row.LastVerifiedVersion, "unknown"))
+			}
+			if len(row.RequiredEvidence) > 0 {
+				fmt.Printf("  required_evidence: %s\n", strings.Join(row.RequiredEvidence, ", "))
+			}
+			if len(row.OpenBlockers) > 0 {
+				fmt.Printf("  blockers: %s\n", strings.Join(row.OpenBlockers, "; "))
+			}
+			if row.Provenance != "" {
+				fmt.Printf("  provenance: %s\n", row.Provenance)
+			}
+		}
+		return nil
+	})
 }
 
 func cmdDeliveryReport(ctx context.Context, opts globalOptions, args []string) error {
@@ -17116,7 +17183,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -17164,7 +17231,7 @@ func printCommandHelp(command string) bool {
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
 		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",
-		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json]\n  Read-only delivery velocity and process overhead report.",
+		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json] | fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]\n  Read-only delivery velocity, process overhead, and typed delivery resource reports.",
 		"rough-edge":                 "fairway rough-edge add --task <task-id> --owner <role> --severity <level> --decision <fix-now|defer> --summary <text> | fairway rough-edge list [--task <task-id>] [--owner <role>] [--expired]\n  Record and inspect owner rough edges found while using the product; list is read-only.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"server":                     "fairway server --read-only [--listen <addr>] | fairway server --mode api-write-pilot --write\n  Run the shared-team API skeleton. The write pilot is append-only evidence/checkpoints only.",

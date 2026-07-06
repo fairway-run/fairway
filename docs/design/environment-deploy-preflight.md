@@ -111,7 +111,10 @@ Use `result=pass` only when the evidence proves the stated contract. Use
 `result=fail` or `result=blocked` when any blocker remains, and include
 `owner=<role>` and `next_action=<text>` in notes or the artifact body. This lets
 the dashboard and delivery report show unresolved work before handoff without a
-new persistence model.
+new persistence model. The same facts also project into
+[`fairway delivery resources`](delivery-resources.md) as environment,
+preflight-packet, or rehearsal-target rows with state, blocker, provenance, and
+next-safe-action readback.
 
 Example:
 
@@ -188,6 +191,10 @@ recorded with the stable artifact types above. `fairway delivery report` also
 groups failed, blocked, or partial rehearsal evidence by `packet=<id>` and
 `check=<id>` values in evidence notes, so repeated route, worker, smoke,
 rollback, or evidence-contract failures can be seen as automation candidates.
+`fairway delivery resources` and the dashboard Delivery Resources panel show
+the related deploy environment, preflight packet, and rehearsal target as typed
+readiness records; those records remain read-only and do not authorize deploy
+or rollback.
 
 ## Boundaries
 

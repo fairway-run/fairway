@@ -44,6 +44,7 @@ fairway coordinator tick [--completion-handback-wake] [--task <task-id>] [--send
 fairway usage report [--by <provider|task|epic|role|day|kind|phase|model>] [--task-id <id>] [--since-duration <duration>]
 fairway usage cost-report [--by <provider|task|epic|role|day|kind|phase|model>] [--task-id <id>] [--since-duration <duration>] [--forecast-days <n>] [--format human|markdown]
 fairway delivery report --since <duration> [--profile <name>] [--format text|json] # read-only delivery velocity and process overhead report
+fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json] # read-only typed delivery resource projection
 fairway automation candidates --since <duration> [--threshold <n>] [--format text|json] # read-only repeated-work automation candidate report
 fairway batch create <batch-id> --title <t> [--task <id>]... [--branch <b>] [--worktree <path>] [--validation-command <cmd>]... [--review-domain <domain>]... [--rollback-criteria <text>] [--split-criteria <text>] [--expected-ci <text>] [--deploy-run-id <id>] [--pipeline-id <id>]
 fairway batch add <batch-id> <task-id>...
@@ -429,6 +430,16 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   templates, or automation actually reduced defects or blocked time. It is
   advisory by default and does not approve reviews, mutate task status, merge,
   deploy, or gate release.
+- `delivery resources [--type <type>] [--project <project>] [--stale]
+  [--format text|json]` projects typed delivery resources from existing tasks
+  and evidence. Resource classes include environments, dashboards, docs portals,
+  binaries, release artifacts, CI pipelines, preflight packets, and rehearsal
+  targets. Rows expose owner, state, provenance, last verified commit/version
+  when evidence includes them, required evidence, blockers, and the next safe
+  action. The command is read-only and does not deploy, restart dashboards,
+  publish docs, cut releases, approve reviews, merge, or perform live
+  operations. The detailed model is in
+  [delivery-resources.md](delivery-resources.md).
 - `rough-edge add --task <task-id> --owner <role> --severity <low|medium|high|critical> --decision <fix-now|defer> --summary <text> [--expires <date>] [--artifact <path>]`
   records a rough edge found while actually using the product as structured
   `rough-edge` evidence on the task. It captures owner, severity, fix-now/defer

@@ -91,6 +91,17 @@
 </section>
 
 <section class="report-section">
+<header class="section-head"><h2>Delivery Resources</h2><span>typed readiness records from tasks and evidence</span></header>
+{{if .Resources}}
+<ul class="review-gap-list">
+{{range .Resources}}<li><a href="/tasks/{{.SourceTaskID}}">{{.SourceTaskID}}</a> {{.Type}} <b>{{.Name}}</b> <span>project={{if .Project}}{{.Project}}{{else}}current{{end}} state={{.State}} owner={{if .Owner}}{{.Owner}}{{else}}unknown{{end}} next={{.NextSafeAction}}</span>{{if .OpenBlockers}}<small>blockers: {{range .OpenBlockers}}{{.}} {{end}}</small>{{end}}</li>{{end}}
+</ul>
+{{else}}
+<p class="muted">No typed delivery resources found in this scope.</p>
+{{end}}
+</section>
+
+<section class="report-section">
 <header class="section-head"><h2>Recipe Library</h2><span>reusable packets from completed tasks</span></header>
 {{if .Recipes}}
 <ul class="review-gap-list">

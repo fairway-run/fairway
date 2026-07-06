@@ -16,6 +16,7 @@ import (
 
 	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/deliveryreport"
+	"github.com/subashram/fairway/internal/deliveryresources"
 	"github.com/subashram/fairway/internal/roughedge"
 	"github.com/subashram/fairway/internal/rules"
 	"github.com/subashram/fairway/internal/store"
@@ -27,27 +28,28 @@ const (
 )
 
 type ReportViewData struct {
-	View          string                `json:"-"`
-	Window        ReportWindow          `json:"window"`
-	Filters       ReportFilters         `json:"filters"`
-	FilterOptions FilterOptions         `json:"filter_options"`
-	Summary       ReportSummary         `json:"summary"`
-	Lanes         []ReportLane          `json:"lanes"`
-	Timeline      []ReportRun           `json:"timeline"`
-	FollowUps     []ReportBucket        `json:"follow_ups"`
-	ReviewSummary ReportReview          `json:"review_summary"`
-	RuleSummary   ReportRuleSummary     `json:"rule_summary"`
-	Usage         ReportUsage           `json:"usage"`
-	Delivery      deliveryreport.Report `json:"delivery"`
-	ProjectRollup []ProjectActivityRow  `json:"project_rollup,omitempty"`
-	RoughEdges    []roughedge.Row       `json:"rough_edges,omitempty"`
-	Recipes       []RecipeLibraryRow    `json:"recipes,omitempty"`
-	Rows          []ReportTaskRow       `json:"rows"`
-	TableRows     []ReportTaskRow       `json:"-"`
-	Pagination    TablePagination       `json:"pagination"`
-	Sessions      []store.Session       `json:"-"`
-	Activity      []store.Activity      `json:"-"`
-	Groups        []RoleGroup           `json:"-"`
+	View          string                       `json:"-"`
+	Window        ReportWindow                 `json:"window"`
+	Filters       ReportFilters                `json:"filters"`
+	FilterOptions FilterOptions                `json:"filter_options"`
+	Summary       ReportSummary                `json:"summary"`
+	Lanes         []ReportLane                 `json:"lanes"`
+	Timeline      []ReportRun                  `json:"timeline"`
+	FollowUps     []ReportBucket               `json:"follow_ups"`
+	ReviewSummary ReportReview                 `json:"review_summary"`
+	RuleSummary   ReportRuleSummary            `json:"rule_summary"`
+	Usage         ReportUsage                  `json:"usage"`
+	Delivery      deliveryreport.Report        `json:"delivery"`
+	Resources     []deliveryresources.Resource `json:"resources,omitempty"`
+	ProjectRollup []ProjectActivityRow         `json:"project_rollup,omitempty"`
+	RoughEdges    []roughedge.Row              `json:"rough_edges,omitempty"`
+	Recipes       []RecipeLibraryRow           `json:"recipes,omitempty"`
+	Rows          []ReportTaskRow              `json:"rows"`
+	TableRows     []ReportTaskRow              `json:"-"`
+	Pagination    TablePagination              `json:"pagination"`
+	Sessions      []store.Session              `json:"-"`
+	Activity      []store.Activity             `json:"-"`
+	Groups        []RoleGroup                  `json:"-"`
 	TaskRoles     map[string]string
 	ExportBase    string `json:"-"`
 }
@@ -301,6 +303,14 @@ func (s *Server) buildReportViewData(r *http.Request, timing *dashboardTiming) (
 	}); err != nil {
 		return ReportViewData{}, err
 	}
+	var resources []deliveryresources.Resource
+	if err := timing.step("reports.delivery_resources", func() error {
+		var err error
+		resources, err = deliveryresources.Build(r.Context(), s.store, deliveryresources.Options{Now: end.UTC()})
+		return err
+	}); err != nil {
+		return ReportViewData{}, err
+	}
 	var recipes []RecipeLibraryRow
 	if err := timing.step("reports.recipes", func() error {
 		var err error
@@ -334,6 +344,7 @@ func (s *Server) buildReportViewData(r *http.Request, timing *dashboardTiming) (
 			Batches:    batches,
 			Usage:      usage,
 			Delivery:   delivery,
+			Resources:  resources,
 			RoughEdges: roughEdges,
 			Recipes:    recipes,
 			Facts:      facts,
@@ -356,6 +367,7 @@ func (s *MultiServer) reportViewData(r *http.Request) (ReportViewData, error) {
 	var watchers []store.Watcher
 	var batches []store.WorkBatch
 	var facts []reportTaskFacts
+	var resources []deliveryresources.Resource
 	var projectRollup []ProjectActivityRow
 	for _, project := range s.projects {
 		if project.Store == nil || project.Error != "" {
@@ -390,6 +402,14 @@ func (s *MultiServer) reportViewData(r *http.Request) (ReportViewData, error) {
 		if projectBatches, err := project.Store.WorkBatches(r.Context()); err == nil {
 			batches = append(batches, projectBatches...)
 		}
+		projectResources, err := deliveryresources.Build(r.Context(), project.Store, deliveryresources.Options{Now: end.UTC()})
+		if err != nil {
+			return ReportViewData{}, fmt.Errorf("%s delivery resources: %w", project.Name, err)
+		}
+		for i := range projectResources {
+			projectResources[i].Project = project.Name
+		}
+		resources = append(resources, projectResources...)
 		projectFacts, err := reportFactsForStore(r.Context(), project.Store, projectTasks, tagActivityProject(projectActivity, project.Name), nil)
 		if err != nil {
 			return ReportViewData{}, fmt.Errorf("%s facts: %w", project.Name, err)
@@ -411,6 +431,7 @@ func (s *MultiServer) reportViewData(r *http.Request) (ReportViewData, error) {
 		Activity:      activity,
 		Watchers:      watchers,
 		Batches:       batches,
+		Resources:     resources,
 		Facts:         facts,
 		Roles:         rolesFromTasks(tasks),
 		ProjectRollup: projectRollup,
@@ -431,6 +452,7 @@ type reportBuildInput struct {
 	Batches       []store.WorkBatch
 	Usage         ReportUsage
 	Delivery      deliveryreport.Report
+	Resources     []deliveryresources.Resource
 	RoughEdges    []roughedge.Row
 	Recipes       []RecipeLibraryRow
 	Facts         []reportTaskFacts
@@ -485,6 +507,7 @@ func buildReportViewData(r *http.Request, input reportBuildInput) (ReportViewDat
 		RuleSummary:   reportRuleSummary(input.Config, packs, facts),
 		Usage:         input.Usage,
 		Delivery:      input.Delivery,
+		Resources:     input.Resources,
 		ProjectRollup: append(input.ProjectRollup, reportProjectActivityRollup(rows, input.Sessions, input.Activity)...),
 		RoughEdges:    input.RoughEdges,
 		Recipes:       input.Recipes,

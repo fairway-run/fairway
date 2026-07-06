@@ -540,8 +540,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"notify", "send", "--help"}, "fairway notify send --notifier <name> --task <task-id> --domain <domain>"},
 		{[]string{"automation", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
 		{[]string{"automation", "candidates", "--help"}, "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]"},
-		{[]string{"delivery", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
+		{[]string{"delivery", "--help"}, "fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]"},
 		{[]string{"delivery", "report", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
+		{[]string{"delivery", "resources", "--help"}, "fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]"},
 		{[]string{"rough-edge", "--help"}, "fairway rough-edge add --task <task-id>"},
 		{[]string{"provenance", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "report", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
@@ -4579,6 +4580,46 @@ func TestCLI_DeliveryReport(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestCLI_DeliveryResources(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "DASH-001", "--title", "Restart shared dashboard", "--role", "ops", "--target-paths", "internal/dashboard/server.go")
+	runOK(t, "claim", "DASH-001")
+	runOK(t, "record", "evidence", "DASH-001", "--command-text", "dashboard status version v0.1.10 binary /tmp/fairway commit abcdef1", "--result", "pass", "--artifact-type", "dashboard-status", "--artifact", "artifacts/dashboard-status.txt")
+
+	runOK(t, "add", "PIPE-001", "--title", "GitLab CI pipeline readback", "--role", "ops")
+	runOK(t, "claim", "PIPE-001")
+	runOK(t, "record", "evidence", "PIPE-001", "--command-text", "pipeline failed frontend_e2e", "--result", "fail", "--artifact-type", "ci", "--artifact", "artifacts/pipeline.txt")
+
+	text := runCapture(t, "delivery", "resources")
+	for _, want := range []string{
+		"delivery_resources:",
+		"type=dashboard",
+		"state=verified",
+		"version=v0.1.10",
+		"commit=abcdef1",
+		"type=ci_pipeline",
+		"state=failed_verification",
+		"blockers:",
+	} {
+		assertContains(t, text, want)
+	}
+
+	filtered := runCapture(t, "delivery", "resources", "--type", "dashboard", "--format", "json")
+	assertContains(t, filtered, `"type": "dashboard"`)
+	assertContains(t, filtered, `"last_verified_version": "v0.1.10"`)
+	assertNotContains(t, filtered, `"type": "ci_pipeline"`)
 }
 
 func TestCLI_RoughEdgeAddList(t *testing.T) {

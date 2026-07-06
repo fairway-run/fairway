@@ -223,6 +223,18 @@ evidence for reducing ceremony and investing in tests, preflight, UAT, packet
 templates, or automation; the dashboard remains read-only and the report does
 not approve reviews, mutate task status, merge, deploy, or release.
 
+The reports view includes a Delivery Resources panel backed by the same
+read-only model as `fairway delivery resources`. It projects typed operational
+resources from task and evidence facts: environments, dashboards, docs portals,
+binaries, release artifacts, CI pipelines, preflight packets, and rehearsal
+targets. Each row shows project, resource type, derived name, owner, state,
+source task, blockers, and next safe action. This makes stale dashboard
+readback, failed pipeline proof, handoff-ready environment packets, and docs
+portal publication evidence visible without adding a second resource store. The
+panel is display-only; it does not deploy, restart dashboards, publish docs,
+cut releases, approve reviews, merge, or perform live operations. The model is
+defined in [delivery-resources.md](delivery-resources.md).
+
 The reports view also includes an Owner Rough-Edge Queue projected from
 structured `rough-edge` evidence rows recorded by `fairway rough-edge add`.
 This queue is separate from the generic backlog table so product gaps found
@@ -354,6 +366,8 @@ The page layout should be scannable:
 - a rule-pack signal section showing selected task-rule matches, tasks with
   missing rule evidence, blocking gaps, advisory gaps, and non-applicable
   rules,
+- a delivery resources section showing environment, dashboard, docs portal,
+  binary, release, CI, preflight, and rehearsal resource readiness,
 - a recipe library section showing reusable prompt/runbook packets extracted
   from completed source tasks,
 - a bounded task table for drill-down, with pagination and export.
