@@ -54,11 +54,22 @@ type DashboardConfig struct {
 }
 
 type ServerConfig struct {
-	Enabled      bool   `toml:"enabled"`
-	Listen       string `toml:"listen"`
-	Mode         string `toml:"mode"`
-	ReadOnly     bool   `toml:"read_only"`
-	WriteEnabled bool   `toml:"write_enabled"`
+	Enabled                    bool     `toml:"enabled"`
+	Listen                     string   `toml:"listen"`
+	Mode                       string   `toml:"mode"`
+	ReadOnly                   bool     `toml:"read_only"`
+	WriteEnabled               bool     `toml:"write_enabled"`
+	IdentityMode               string   `toml:"identity_mode"`
+	AllowedRoles               []string `toml:"allowed_roles"`
+	APITokenEnv                string   `toml:"api_token_env"`
+	APITokenRole               string   `toml:"api_token_role"`
+	TrustedProxyVerified       bool     `toml:"trusted_proxy_verified"`
+	TrustedProxyIdentityHeader string   `toml:"trusted_proxy_identity_header"`
+	TrustedProxyProofHeader    string   `toml:"trusted_proxy_proof_header"`
+	TrustedProxyIssuer         string   `toml:"trusted_proxy_issuer"`
+	TrustedProxyIssuerHeader   string   `toml:"trusted_proxy_issuer_header"`
+	TrustedProxyAudience       string   `toml:"trusted_proxy_audience"`
+	TrustedProxyAudienceHeader string   `toml:"trusted_proxy_audience_header"`
 }
 
 type WorktreesConfig struct {
@@ -249,9 +260,16 @@ func Defaults(root string) Config {
 			TrustedProxy: "none",
 		},
 		Server: ServerConfig{
-			Listen:   "127.0.0.1:7880",
-			Mode:     "disabled",
-			ReadOnly: true,
+			Listen:                     "127.0.0.1:7880",
+			Mode:                       "disabled",
+			ReadOnly:                   true,
+			IdentityMode:               "no_edge_local",
+			AllowedRoles:               []string{"viewer"},
+			APITokenRole:               "viewer",
+			TrustedProxyIdentityHeader: "X-Fairway-User",
+			TrustedProxyProofHeader:    "X-Fairway-Proxy-Verified",
+			TrustedProxyIssuerHeader:   "X-Fairway-Proxy-Issuer",
+			TrustedProxyAudienceHeader: "X-Fairway-Proxy-Audience",
 		},
 		Worktrees: WorktreesConfig{
 			Root:               "../worktrees",
@@ -380,6 +398,46 @@ func Validate(cfg Config) error {
 		return fmt.Errorf("[server] mode %q is not implemented; FW-269 supports read-only server mode only", cfg.Server.Mode)
 	default:
 		return fmt.Errorf("[server] mode %q is unsupported", cfg.Server.Mode)
+	}
+	identityMode := strings.TrimSpace(cfg.Server.IdentityMode)
+	if identityMode == "" {
+		identityMode = "no_edge_local"
+	}
+	switch identityMode {
+	case "no_edge_local", "trusted_proxy_read_only", "api_token", "service_account", "mtls_service_account":
+	default:
+		return fmt.Errorf("[server] identity_mode %q is unsupported", cfg.Server.IdentityMode)
+	}
+	if cfg.Server.Enabled || serverMode == "read_only" || serverMode == "api-read-only" {
+		if len(cfg.Server.AllowedRoles) == 0 {
+			return errors.New("[server] allowed_roles must include at least viewer for read-only server mode")
+		}
+		if err := validateServerRoles("[server] allowed_roles", cfg.Server.AllowedRoles); err != nil {
+			return err
+		}
+		if identityMode == "api_token" {
+			if strings.TrimSpace(cfg.Server.APITokenEnv) == "" {
+				return errors.New("[server] api_token_env is required when identity_mode = \"api_token\"")
+			}
+			apiTokenRole := strings.TrimSpace(cfg.Server.APITokenRole)
+			if apiTokenRole == "" {
+				apiTokenRole = "viewer"
+			}
+			if !validServerRole(apiTokenRole) {
+				return fmt.Errorf("[server] api_token_role %q is unsupported", cfg.Server.APITokenRole)
+			}
+			if !stringListContains(cfg.Server.AllowedRoles, apiTokenRole) {
+				return fmt.Errorf("[server] api_token_role %q must be included in allowed_roles", apiTokenRole)
+			}
+		}
+		if identityMode == "trusted_proxy_read_only" {
+			if !cfg.Server.TrustedProxyVerified {
+				return errors.New("[server] trusted_proxy_verified must be true before trusted proxy identity can authorize API reads")
+			}
+			if strings.TrimSpace(cfg.Server.TrustedProxyIdentityHeader) == "" || strings.TrimSpace(cfg.Server.TrustedProxyProofHeader) == "" {
+				return errors.New("[server] trusted proxy identity and proof headers are required")
+			}
+		}
 	}
 	if cfg.Worktrees.Root == "" {
 		return errors.New("[worktrees] root is required")
@@ -981,6 +1039,34 @@ func validateStringList(label string, values []string) error {
 	return nil
 }
 
+func validateServerRoles(label string, values []string) error {
+	if err := validateStringList(label, values); err != nil {
+		return err
+	}
+	for _, value := range values {
+		if !validServerRole(value) {
+			return fmt.Errorf("%s contains unsupported role %q", label, value)
+		}
+	}
+	return nil
+}
+
+func stringListContains(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func validServerRole(role string) bool {
+	if role == "viewer" || role == "operator" || role == "coordinator" || role == "admin" {
+		return true
+	}
+	return strings.HasPrefix(role, "reviewer:") || strings.HasPrefix(role, "adapter:")
+}
+
 func RoleSet(cfg Config) map[string]bool {
 	roles := make(map[string]bool, len(cfg.Roles))
 	for _, role := range cfg.Roles {
@@ -1079,6 +1165,17 @@ listen = "127.0.0.1:7880"
 mode = "disabled"
 read_only = true
 write_enabled = false
+identity_mode = "no_edge_local"
+allowed_roles = ["viewer"]
+api_token_env = ""
+api_token_role = "viewer"
+trusted_proxy_verified = false
+trusted_proxy_identity_header = "X-Fairway-User"
+trusted_proxy_proof_header = "X-Fairway-Proxy-Verified"
+trusted_proxy_issuer = ""
+trusted_proxy_issuer_header = "X-Fairway-Proxy-Issuer"
+trusted_proxy_audience = ""
+trusted_proxy_audience_header = "X-Fairway-Proxy-Audience"
 
 [worktrees]
 root = "../worktrees"

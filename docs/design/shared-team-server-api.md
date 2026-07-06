@@ -72,6 +72,24 @@ identity verification, API token authorization, shared writes, public exposure,
 dashboard write behavior, provider-send authority, review approval authority,
 merge/deploy/live-operation authority, or release behavior.
 
+FW-270 adds the first identity and command authorization guard for the
+read-only API. The guard supports these configured identity modes:
+
+| Identity mode | FW-270 behavior |
+|---|---|
+| `no_edge_local` | Local loopback read-only use; actor role is `viewer`. |
+| `trusted_proxy_read_only` | Requires `trusted_proxy_verified = true`, a proof header, identity header, and optional issuer/audience header checks. Without verified proof, proxy identity is advisory and cannot authorize reads. |
+| `api_token` | Requires `Authorization: Bearer` to match the token in `api_token_env`; accepted token roles must also appear in `allowed_roles`, bearer proof uses constant-time comparison for equal-length values, and only a token fingerprint is used internally. |
+| `service_account` / `mtls_service_account` | Accepted config placeholders that fail closed at runtime until proof verification is implemented. |
+
+Authorization is command-scoped. FW-270 implements `read:api` for `viewer` and
+`admin` roles only, with allowed roles declared in `[server].allowed_roles`.
+Error responses are bounded reason codes/messages and do not echo raw JWTs,
+headers, cookies, bearer tokens, API tokens, prompts, transcripts, or provider
+private data. This still does not add shared writes, review approval, dashboard
+mutation, provider sends, merge, deploy, release, public exposure, or live
+operation authority.
+
 ## API Families
 
 Read APIs may expose the same information already available through CLI and

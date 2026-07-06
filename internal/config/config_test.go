@@ -534,6 +534,74 @@ func TestValidateRejectsSharedTeamServerWriteMode(t *testing.T) {
 	}
 }
 
+func TestValidateSharedTeamServerIdentityModes(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	cfg.Server.IdentityMode = "api_token"
+	cfg.Server.APITokenEnv = "FAIRWAY_TEST_API_TOKEN"
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate api_token identity mode error = %v", err)
+	}
+
+	cfg.Server.IdentityMode = "service_account"
+	cfg.Server.APITokenEnv = ""
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate service_account placeholder error = %v", err)
+	}
+}
+
+func TestValidateRejectsTrustedProxyIdentityWithoutProof(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	cfg.Server.IdentityMode = "trusted_proxy_read_only"
+	cfg.Server.TrustedProxyVerified = false
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "trusted_proxy_verified") {
+		t.Fatalf("Validate unverified trusted proxy err=%v, want trusted_proxy_verified error", err)
+	}
+}
+
+func TestValidateRejectsUnsupportedServerRole(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	cfg.Server.AllowedRoles = []string{"root"}
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "unsupported role") {
+		t.Fatalf("Validate unsupported server role err=%v, want role error", err)
+	}
+}
+
+func TestValidateRejectsUnsupportedAPITokenRole(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	cfg.Server.IdentityMode = "api_token"
+	cfg.Server.APITokenEnv = "FAIRWAY_TEST_API_TOKEN"
+	cfg.Server.APITokenRole = "root"
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "api_token_role") || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("Validate unsupported api_token_role err=%v, want api_token_role unsupported error", err)
+	}
+}
+
+func TestValidateRejectsAPITokenRoleOutsideAllowedRoles(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	cfg.Server.IdentityMode = "api_token"
+	cfg.Server.APITokenEnv = "FAIRWAY_TEST_API_TOKEN"
+	cfg.Server.AllowedRoles = []string{"viewer"}
+	cfg.Server.APITokenRole = "admin"
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "api_token_role") || !strings.Contains(err.Error(), "allowed_roles") {
+		t.Fatalf("Validate api_token_role outside allowed_roles err=%v, want allowed_roles membership error", err)
+	}
+}
+
 func TestWorktreePathUsesTemplate(t *testing.T) {
 	cfg := Defaults("/tmp/repo")
 	got := WorktreePath(cfg, "/tmp/repo", Role{Name: "backend"})

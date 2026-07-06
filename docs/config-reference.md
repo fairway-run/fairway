@@ -41,6 +41,17 @@ listen = "127.0.0.1:7880"
 mode = "disabled"                      # disabled | read_only
 read_only = true
 write_enabled = false                  # write-capable server mode is not implemented
+identity_mode = "no_edge_local"        # no_edge_local | trusted_proxy_read_only | api_token | service_account | mtls_service_account
+allowed_roles = ["viewer"]             # command-scoped roles allowed by the read-only API
+api_token_env = ""                     # env var containing token for identity_mode = "api_token"
+api_token_role = "viewer"
+trusted_proxy_verified = false         # must be true before proxy identity can authorize reads
+trusted_proxy_identity_header = "X-Fairway-User"
+trusted_proxy_proof_header = "X-Fairway-Proxy-Verified"
+trusted_proxy_issuer = ""
+trusted_proxy_issuer_header = "X-Fairway-Proxy-Issuer"
+trusted_proxy_audience = ""
+trusted_proxy_audience_header = "X-Fairway-Proxy-Audience"
 
 [worktrees]
 root = "../worktrees"
@@ -210,6 +221,17 @@ See [dashboard-sharing.md](design/dashboard-sharing.md).
 | `mode` | string | `disabled` | Supported values are `disabled` and `read_only`/`api-read-only`. Write-capable modes fail closed until a later reviewed task implements them. |
 | `read_only` | bool | `true` | Must be `true` for the FW-269 shared-team server skeleton. |
 | `write_enabled` | bool | `false` | Must remain `false`; setting it fails config validation because shared write authority is not implemented in FW-269. |
+| `identity_mode` | string | `no_edge_local` | FW-270 identity source for the read-only API. Supported values are `no_edge_local`, `trusted_proxy_read_only`, `api_token`, `service_account`, and `mtls_service_account`. Service-account and mTLS modes are placeholders that fail closed until proof verification is implemented. |
+| `allowed_roles` | []string | `["viewer"]` | Command-scoped roles accepted by the server guard. Supported role strings are `viewer`, `operator`, `reviewer:<domain>`, `coordinator`, `adapter:<name>`, and `admin`; the FW-270 read API authorizes only `viewer` and `admin` for `read:api`. |
+| `api_token_env` | string | `""` | Environment variable containing the API token for `identity_mode = "api_token"`. Raw token values must not be committed or recorded as evidence. Runtime proof uses bounded error responses and constant-time comparison for equal-length bearer values. |
+| `api_token_role` | string | `viewer` | Role assigned to accepted API-token requests. It must be a supported server role and must also appear in `allowed_roles`, so misconfigured token roles fail closed. Use `viewer` for the FW-270 read-only API. |
+| `trusted_proxy_verified` | bool | `false` | Must be `true` before trusted proxy headers can authorize read API requests. Without verified proof, proxy identity is advisory only. |
+| `trusted_proxy_identity_header` | string | `X-Fairway-User` | Header carrying proxy identity after proof verification. Error output does not echo raw header values. |
+| `trusted_proxy_proof_header` | string | `X-Fairway-Proxy-Verified` | Header that must equal `true` for the FW-270 placeholder trusted proxy guard. This is not a JWT verifier; cryptographic verification remains future work. |
+| `trusted_proxy_issuer` | string | `""` | Optional expected issuer for trusted proxy read-only mode. |
+| `trusted_proxy_issuer_header` | string | `X-Fairway-Proxy-Issuer` | Header containing the issuer value checked against `trusted_proxy_issuer`. |
+| `trusted_proxy_audience` | string | `""` | Optional expected audience for trusted proxy read-only mode. |
+| `trusted_proxy_audience_header` | string | `X-Fairway-Proxy-Audience` | Header containing the audience value checked against `trusted_proxy_audience`. |
 
 `fairway server --read-only` serves a read-only JSON API skeleton at
 `/api/v1/status`, `/api/v1/tasks`, `/api/v1/tasks/<task-id>`, and
@@ -218,6 +240,10 @@ models. It does not create a second store and does not add review approval,
 merge, deploy, provider-send, dashboard write, release, public exposure, or
 live-operation authority. Proxy/public/shared exposure requires FW-270 or a
 later reviewed identity/proxy/deployment task; FW-269 itself is loopback-only.
+FW-270 adds a read API identity and command-authorization guard. It does not
+make trusted proxy identity authoritative unless `trusted_proxy_verified = true`
+and the configured proof checks pass, and it still does not add any server write
+API.
 
 ### `[worktrees]`
 

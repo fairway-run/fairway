@@ -1,9 +1,14 @@
 package dashboard
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/subashram/fairway/internal/store"
@@ -16,6 +21,13 @@ type apiStatusResponse struct {
 	WritesEnabled     bool   `json:"writes_enabled"`
 	DashboardReadOnly bool   `json:"dashboard_read_only"`
 	TrustedProxy      string `json:"trusted_proxy,omitempty"`
+	IdentityMode      string `json:"identity_mode"`
+}
+
+type apiActor struct {
+	Subject string
+	Role    string
+	Source  string
 }
 
 type apiTaskRow struct {
@@ -103,6 +115,9 @@ func (s *Server) apiIndex(w http.ResponseWriter, r *http.Request) {
 	if !apiRequireGET(w, r) {
 		return
 	}
+	if !s.apiAuthorizeRead(w, r) {
+		return
+	}
 	apiWriteJSON(w, http.StatusOK, map[string]any{
 		"mode":            "read_only",
 		"read_only":       true,
@@ -115,6 +130,9 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 	if !apiRequireGET(w, r) {
 		return
 	}
+	if !s.apiAuthorizeRead(w, r) {
+		return
+	}
 	apiWriteJSON(w, http.StatusOK, apiStatusResponse{
 		Project:           s.cfg.Fairway.ProjectName,
 		Mode:              "read_only",
@@ -122,6 +140,7 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 		WritesEnabled:     false,
 		DashboardReadOnly: s.cfg.Dashboard.ReadOnly,
 		TrustedProxy:      s.cfg.Dashboard.TrustedProxy,
+		IdentityMode:      s.serverIdentityMode(),
 	})
 }
 
@@ -131,6 +150,9 @@ func (s *Server) apiTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !apiRequireGET(w, r) {
+		return
+	}
+	if !s.apiAuthorizeRead(w, r) {
 		return
 	}
 	tasks, err := s.store.AllTasks(r.Context())
@@ -147,6 +169,9 @@ func (s *Server) apiTasks(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiTaskDetail(w http.ResponseWriter, r *http.Request) {
 	if !apiRequireGET(w, r) {
+		return
+	}
+	if !s.apiAuthorizeRead(w, r) {
 		return
 	}
 	taskID := strings.TrimPrefix(r.URL.Path, "/api/v1/tasks/")
@@ -175,6 +200,9 @@ func (s *Server) apiTaskDetail(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiSummary(w http.ResponseWriter, r *http.Request) {
 	if !apiRequireGET(w, r) {
+		return
+	}
+	if !s.apiAuthorizeRead(w, r) {
 		return
 	}
 	tasks, err := s.store.AllTasks(r.Context())
@@ -276,6 +304,139 @@ func apiRequireGET(w http.ResponseWriter, r *http.Request) bool {
 	}
 	apiError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 	return false
+}
+
+func (s *Server) apiAuthorizeRead(w http.ResponseWriter, r *http.Request) bool {
+	actor, err := s.apiActor(r)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if strings.HasPrefix(err.Error(), "forbidden:") {
+			status = http.StatusForbidden
+		}
+		if strings.HasPrefix(err.Error(), "unimplemented:") {
+			status = http.StatusNotImplemented
+		}
+		apiError(w, status, err)
+		return false
+	}
+	if !s.apiRoleAllowed(actor.Role) {
+		apiError(w, http.StatusForbidden, fmt.Errorf("forbidden: role %q is not allowed for read:api", actor.Role))
+		return false
+	}
+	if actor.Role != "viewer" && actor.Role != "admin" {
+		apiError(w, http.StatusForbidden, fmt.Errorf("forbidden: role %q cannot execute read:api", actor.Role))
+		return false
+	}
+	return true
+}
+
+func (s *Server) apiActor(r *http.Request) (apiActor, error) {
+	switch s.serverIdentityMode() {
+	case "no_edge_local":
+		return apiActor{Subject: "local", Role: "viewer", Source: "no_edge_local"}, nil
+	case "api_token":
+		return s.apiTokenActor(r)
+	case "trusted_proxy_read_only":
+		return s.trustedProxyActor(r)
+	case "service_account", "mtls_service_account":
+		return apiActor{}, fmt.Errorf("unimplemented: identity mode %q is configured as a fail-closed placeholder", s.serverIdentityMode())
+	default:
+		return apiActor{}, fmt.Errorf("unsupported identity mode")
+	}
+}
+
+func (s *Server) apiTokenActor(r *http.Request) (apiActor, error) {
+	want := strings.TrimSpace(os.Getenv(s.cfg.Server.APITokenEnv))
+	if want == "" {
+		return apiActor{}, errors.New("missing_identity: server API token environment variable is not set")
+	}
+	const prefix = "Bearer "
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, prefix) {
+		return apiActor{}, errors.New("missing_identity: bearer token is required")
+	}
+	got := strings.TrimSpace(strings.TrimPrefix(header, prefix))
+	if got == "" {
+		return apiActor{}, errors.New("missing_identity: bearer token is required")
+	}
+	if !constantTimeTokenEqual(got, want) {
+		return apiActor{}, errors.New("invalid_identity: bearer token proof failed")
+	}
+	role := strings.TrimSpace(s.cfg.Server.APITokenRole)
+	if role == "" {
+		role = "viewer"
+	}
+	return apiActor{Subject: "api-token:" + tokenFingerprint(got), Role: role, Source: "api_token"}, nil
+}
+
+func (s *Server) trustedProxyActor(r *http.Request) (apiActor, error) {
+	if !s.cfg.Server.TrustedProxyVerified {
+		return apiActor{}, errors.New("forbidden: trusted proxy identity is advisory until verification is enabled")
+	}
+	proofHeader := strings.TrimSpace(s.cfg.Server.TrustedProxyProofHeader)
+	identityHeader := strings.TrimSpace(s.cfg.Server.TrustedProxyIdentityHeader)
+	if proofHeader == "" || identityHeader == "" {
+		return apiActor{}, errors.New("missing_identity: trusted proxy proof configuration is incomplete")
+	}
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get(proofHeader)), "true") {
+		return apiActor{}, errors.New("missing_identity: trusted proxy proof is required")
+	}
+	identity := strings.TrimSpace(r.Header.Get(identityHeader))
+	if identity == "" {
+		return apiActor{}, errors.New("missing_identity: trusted proxy identity is required")
+	}
+	if want := strings.TrimSpace(s.cfg.Server.TrustedProxyIssuer); want != "" {
+		got := strings.TrimSpace(r.Header.Get(s.cfg.Server.TrustedProxyIssuerHeader))
+		if got != want {
+			return apiActor{}, errors.New("invalid_identity: trusted proxy issuer mismatch")
+		}
+	}
+	if want := strings.TrimSpace(s.cfg.Server.TrustedProxyAudience); want != "" {
+		got := strings.TrimSpace(r.Header.Get(s.cfg.Server.TrustedProxyAudienceHeader))
+		if got != want {
+			return apiActor{}, errors.New("invalid_identity: trusted proxy audience mismatch")
+		}
+	}
+	return apiActor{Subject: redactIdentity(identity), Role: "viewer", Source: "trusted_proxy_read_only"}, nil
+}
+
+func (s *Server) serverIdentityMode() string {
+	mode := strings.TrimSpace(s.cfg.Server.IdentityMode)
+	if mode == "" {
+		return "no_edge_local"
+	}
+	return mode
+}
+
+func (s *Server) apiRoleAllowed(role string) bool {
+	for _, allowed := range s.cfg.Server.AllowedRoles {
+		if allowed == role {
+			return true
+		}
+	}
+	return false
+}
+
+func tokenFingerprint(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func constantTimeTokenEqual(got, want string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func redactIdentity(identity string) string {
+	if at := strings.LastIndex(identity, "@"); at >= 0 && at < len(identity)-1 {
+		return "redacted@" + identity[at+1:]
+	}
+	if identity == "" {
+		return ""
+	}
+	return "redacted"
 }
 
 func apiError(w http.ResponseWriter, status int, err error) {

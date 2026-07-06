@@ -1932,6 +1932,120 @@ func TestReadOnlyAPIHandlerExposesReadModelsAndRejectsWrites(t *testing.T) {
 	}
 }
 
+func newReadOnlyAPITestServer(t *testing.T) *Server {
+	t.Helper()
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend", Kind: "task"}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.Fairway.ProjectName = "fairway-test"
+	cfg.Dashboard.ReadOnly = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	return New(s, cfg, []string{"backend"}, nil)
+}
+
+func TestReadOnlyAPIRequiresConfiguredAPITokenIdentity(t *testing.T) {
+	server := newReadOnlyAPITestServer(t)
+	server.cfg.Server.IdentityMode = "api_token"
+	server.cfg.Server.APITokenEnv = "FAIRWAY_TEST_API_TOKEN"
+	server.cfg.Server.APITokenRole = "viewer"
+	t.Setenv("FAIRWAY_TEST_API_TOKEN", "secret-token-value")
+	handler := server.ReadOnlyAPIHandler()
+
+	missingRec := httptest.NewRecorder()
+	handler.ServeHTTP(missingRec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
+	if missingRec.Code != http.StatusUnauthorized || strings.Contains(missingRec.Body.String(), "secret-token-value") {
+		t.Fatalf("missing token status=%d body=%s", missingRec.Code, missingRec.Body.String())
+	}
+
+	badReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	badReq.Header.Set("Authorization", "Bearer wrong-token-value")
+	badRec := httptest.NewRecorder()
+	handler.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusUnauthorized || strings.Contains(badRec.Body.String(), "wrong-token-value") || strings.Contains(badRec.Body.String(), "secret-token-value") {
+		t.Fatalf("bad token status=%d body=%s", badRec.Code, badRec.Body.String())
+	}
+
+	equalLengthWrongToken := "secret-token-valuF"
+	equalLengthBadReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	equalLengthBadReq.Header.Set("Authorization", "Bearer "+equalLengthWrongToken)
+	equalLengthBadRec := httptest.NewRecorder()
+	handler.ServeHTTP(equalLengthBadRec, equalLengthBadReq)
+	if equalLengthBadRec.Code != http.StatusUnauthorized ||
+		strings.Contains(equalLengthBadRec.Body.String(), equalLengthWrongToken) ||
+		strings.Contains(equalLengthBadRec.Body.String(), "secret-token-value") {
+		t.Fatalf("equal-length bad token status=%d body=%s", equalLengthBadRec.Code, equalLengthBadRec.Body.String())
+	}
+
+	goodReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	goodReq.Header.Set("Authorization", "Bearer secret-token-value")
+	goodRec := httptest.NewRecorder()
+	handler.ServeHTTP(goodRec, goodReq)
+	if goodRec.Code != http.StatusOK || strings.Contains(goodRec.Body.String(), "secret-token-value") {
+		t.Fatalf("good token status=%d body=%s", goodRec.Code, goodRec.Body.String())
+	}
+}
+
+func TestReadOnlyAPIRejectsInsufficientCommandRole(t *testing.T) {
+	server := newReadOnlyAPITestServer(t)
+	server.cfg.Server.IdentityMode = "api_token"
+	server.cfg.Server.APITokenEnv = "FAIRWAY_TEST_OPERATOR_TOKEN"
+	server.cfg.Server.APITokenRole = "operator"
+	server.cfg.Server.AllowedRoles = []string{"operator"}
+	t.Setenv("FAIRWAY_TEST_OPERATOR_TOKEN", "operator-token")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	req.Header.Set("Authorization", "Bearer operator-token")
+	rec := httptest.NewRecorder()
+	server.ReadOnlyAPIHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "read:api") || strings.Contains(rec.Body.String(), "operator-token") {
+		t.Fatalf("operator token status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReadOnlyAPITrustedProxyProofAndIssuer(t *testing.T) {
+	server := newReadOnlyAPITestServer(t)
+	server.cfg.Server.IdentityMode = "trusted_proxy_read_only"
+	server.cfg.Server.TrustedProxyVerified = true
+	server.cfg.Server.TrustedProxyIdentityHeader = "X-Fairway-User"
+	server.cfg.Server.TrustedProxyProofHeader = "X-Fairway-Proxy-Verified"
+	server.cfg.Server.TrustedProxyIssuer = "https://proxy.example.test"
+	server.cfg.Server.TrustedProxyIssuerHeader = "X-Fairway-Proxy-Issuer"
+	handler := server.ReadOnlyAPIHandler()
+
+	missingRec := httptest.NewRecorder()
+	handler.ServeHTTP(missingRec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
+	if missingRec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing proxy proof status=%d body=%s", missingRec.Code, missingRec.Body.String())
+	}
+
+	badReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	badReq.Header.Set("X-Fairway-Proxy-Verified", "true")
+	badReq.Header.Set("X-Fairway-User", "operator@example.test")
+	badReq.Header.Set("X-Fairway-Proxy-Issuer", "https://evil.example.test")
+	badRec := httptest.NewRecorder()
+	handler.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusUnauthorized || strings.Contains(badRec.Body.String(), "operator@example.test") {
+		t.Fatalf("bad issuer status=%d body=%s", badRec.Code, badRec.Body.String())
+	}
+
+	goodReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	goodReq.Header.Set("X-Fairway-Proxy-Verified", "true")
+	goodReq.Header.Set("X-Fairway-User", "operator@example.test")
+	goodReq.Header.Set("X-Fairway-Proxy-Issuer", "https://proxy.example.test")
+	goodRec := httptest.NewRecorder()
+	handler.ServeHTTP(goodRec, goodReq)
+	if goodRec.Code != http.StatusOK || strings.Contains(goodRec.Body.String(), "operator@example.test") {
+		t.Fatalf("good proxy status=%d body=%s", goodRec.Code, goodRec.Body.String())
+	}
+}
+
 func TestDashboardReadOnlyBlocksMutationsAndRendersPages(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

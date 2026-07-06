@@ -536,6 +536,15 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   later reviewed identity/proxy boundary lands, `fairway server --read-only`
   rejects non-loopback listen addresses such as `0.0.0.0`, LAN/private,
   Tailscale, or public interfaces.
+  FW-270 adds a request identity and command-authorization guard for the
+  read-only API. Supported identity modes are `no_edge_local`,
+  `trusted_proxy_read_only`, `api_token`, `service_account`, and
+  `mtls_service_account`; service-account and mTLS modes are fail-closed
+  placeholders. The implemented command scope is `read:api`, authorized for
+  `viewer` or `admin` roles only. API-token roles must be supported server
+  roles and included in `[server].allowed_roles`; bearer token failures return
+  bounded errors and do not echo submitted or configured token values. This
+  still does not add any shared write API.
 - `packet bugfix`, `packet retry`, platform-foundation packets,
   `packet template`, `packet rules`, and `regression-pack` are quality
   surfaces. They render and validate review context; they do not execute
