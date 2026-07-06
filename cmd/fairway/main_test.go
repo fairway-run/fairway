@@ -69,6 +69,89 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "db", "backup", "backup.db")
 }
 
+func TestCLI_DBRehearsal(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", `- id: T-001
+  title: Rehearsal
+  role: backend
+`)
+	runOK(t, "import", "tasks.yaml")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass")
+	runOK(t, "record", "review", "T-001", "--reviewer", "arch", "--domain", "arch", "--verdict", "approve", "--reason", "ok")
+
+	outDir := filepath.Join(repo, "rehearsal")
+	out := runCapture(t, "db", "rehearsal", "--backend", "postgres", "--out", outDir)
+	assertContains(t, out, "db_rehearsal: ok=true backend=postgres")
+	assertContains(t, out, "manifest="+filepath.Join(outDir, "manifest.json"))
+	for _, name := range []string{
+		"sqlite-backup.db",
+		"source-export.json",
+		"rehearsal-export.json",
+		"postgres-compat-report.json",
+		"postgres-compat-ddl.sql",
+		"readmodel-equivalence.json",
+		"rollback.md",
+		"manifest.json",
+	} {
+		if _, err := os.Stat(filepath.Join(outDir, name)); err != nil {
+			t.Fatalf("missing rehearsal artifact %s: %v", name, err)
+		}
+	}
+	manifestData, err := os.ReadFile(filepath.Join(outDir, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		OK            bool   `json:"ok"`
+		Backend       string `json:"backend"`
+		CompatOK      bool   `json:"compat_ok"`
+		EquivalenceOK bool   `json:"equivalence_ok"`
+		SourceCounts  struct {
+			Tasks    int `json:"tasks"`
+			Evidence int `json:"evidence"`
+			Reviews  int `json:"reviews"`
+		} `json:"source_counts"`
+		RehearsalCounts struct {
+			Tasks    int `json:"tasks"`
+			Evidence int `json:"evidence"`
+			Reviews  int `json:"reviews"`
+		} `json:"rehearsal_counts"`
+		Boundaries []string `json:"boundaries"`
+	}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if !manifest.OK || manifest.Backend != "postgres" || !manifest.CompatOK || !manifest.EquivalenceOK {
+		t.Fatalf("manifest=%s", string(manifestData))
+	}
+	if manifest.SourceCounts.Tasks != 1 || manifest.SourceCounts.Evidence != 1 || manifest.SourceCounts.Reviews != 1 {
+		t.Fatalf("source counts=%+v, want task/evidence/review counts", manifest.SourceCounts)
+	}
+	if manifest.SourceCounts != manifest.RehearsalCounts {
+		t.Fatalf("source counts=%+v rehearsal counts=%+v, want equivalent", manifest.SourceCounts, manifest.RehearsalCounts)
+	}
+	if !containsString(manifest.Boundaries, "no production store switch") || !containsString(manifest.Boundaries, "postgres DDL is review output, not applied by this command") {
+		t.Fatalf("boundaries=%+v", manifest.Boundaries)
+	}
+
+	jsonOut := runCapture(t, "--json", "db", "rehearsal", "--backend", "postgres", "--out", filepath.Join(repo, "rehearsal-json"))
+	assertContains(t, jsonOut, `"ok": true`)
+	assertContains(t, jsonOut, `"backend": "postgres"`)
+}
+
 func TestCLI_HelpAliases(t *testing.T) {
 	for _, args := range [][]string{
 		{"help"},
@@ -218,7 +301,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"audit", "notifications", "--help"}, "fairway audit notifications [--task <task-id>] [--all]"},
 		{[]string{"audit", "docs-backlog", "--help"}, "fairway audit docs-backlog [--doc <path>]..."},
 		{[]string{"dashboard", "--help"}, "fairway dashboard [--listen <addr>]"},
-		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat"},
+		{[]string{"db", "--help"}, "fairway db backup|export|migrate|compat|rehearsal"},
 		{[]string{"workflow", "--help"}, "fairway workflow check|closeout"},
 		{[]string{"batch", "--help"}, "fairway batch create|add|remove|evidence|link|show|list"},
 		{[]string{"batch", "create", "--help"}, "fairway batch create <batch-id> --title <title>"},

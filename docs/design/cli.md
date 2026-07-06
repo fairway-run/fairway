@@ -111,6 +111,7 @@ fairway prune-stale                                     # remove state rows for 
 fairway db backup | export
 fairway db migrate [--dry-run]
 fairway db compat --backend postgres [--print-ddl | --apply-ddl]
+fairway db rehearsal --backend postgres [--out <dir>]
 fairway import <yaml-or-json-path> [--state-once]        # accepts a task list or {tasks: [...]} envelope; state-once seeds legacy status once
 fairway config validate
 fairway dashboard [--no-open] [--listen <addr>] [--multi] # foreground server
@@ -588,8 +589,16 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   grant dashboard send/write authority. Projects may still configure their own
   `packet template` entries for reusable deploy rehearsal packets such as
   [environment-deploy-preflight.md](environment-deploy-preflight.md).
-- `db compat --backend postgres` is a planned adapter harness, not the default
-  v1 runtime.
+- `db compat --backend postgres` prints or validates the reviewed compatibility
+  DDL sketch for a future Postgres adapter. `--apply-ddl` remains intentionally
+  unimplemented.
+- `db rehearsal --backend postgres --out <dir>` creates a disposable rehearsal
+  packet from the current SQLite store: SQLite backup, source/rehearsal exports,
+  Postgres compatibility report/DDL, read-model equivalence report, manifest,
+  and rollback instructions. It opens the SQLite backup as the rehearsal source
+  and compares deterministic task/evidence/review/handoff/history counts. It
+  does not apply Postgres DDL, switch the runtime store, restart dashboards,
+  publish a release, or authorize public/shared write exposure.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that
   ships in each release.
 

@@ -14516,10 +14516,10 @@ func dashboardWorktrees(statuses []worktreeStatus) []dashboard.WorktreeStatus {
 
 func cmdDB(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("db requires backup, export, migrate, or compat")
+		return errors.New("db requires backup, export, migrate, compat, or rehearsal")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("db", "backup|export|migrate|compat")
+		subcommandUsage("db", "backup|export|migrate|compat|rehearsal")
 		return nil
 	}
 	switch args[0] {
@@ -14531,6 +14531,8 @@ func cmdDB(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdDBMigrate(ctx, opts, args[1:])
 	case "compat":
 		return cmdDBCompat(args[1:])
+	case "rehearsal":
+		return cmdDBRehearsal(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown db command %q", args[0])
 	}
@@ -14617,6 +14619,326 @@ func cmdDBCompat(args []string) error {
 	}
 	fmt.Printf("postgres compatibility checks passed (%d migrations)\n", len(report.Files))
 	return nil
+}
+
+type dbRehearsalReport struct {
+	Backend               string                `json:"backend"`
+	OK                    bool                  `json:"ok"`
+	ProjectID             string                `json:"project_id"`
+	CreatedAt             string                `json:"created_at"`
+	SourceDBPath          string                `json:"source_db_path"`
+	OutputDir             string                `json:"output_dir"`
+	BackupPath            string                `json:"backup_path"`
+	SourceExportPath      string                `json:"source_export_path"`
+	RehearsalExportPath   string                `json:"rehearsal_export_path"`
+	CompatReportPath      string                `json:"compat_report_path"`
+	CompatDDLPath         string                `json:"compat_ddl_path"`
+	EquivalencePath       string                `json:"equivalence_path"`
+	RollbackPath          string                `json:"rollback_path"`
+	ManifestPath          string                `json:"manifest_path"`
+	CompatOK              bool                  `json:"compat_ok"`
+	EquivalenceOK         bool                  `json:"equivalence_ok"`
+	SourceCounts          dbRehearsalCounts     `json:"source_counts"`
+	RehearsalCounts       dbRehearsalCounts     `json:"rehearsal_counts"`
+	EquivalenceMismatches []dbRehearsalMismatch `json:"equivalence_mismatches,omitempty"`
+	Artifacts             map[string]string     `json:"artifacts"`
+	Boundaries            []string              `json:"boundaries"`
+}
+
+type dbRehearsalCounts struct {
+	Tasks       int            `json:"tasks"`
+	Transitions int            `json:"transitions"`
+	Evidence    int            `json:"evidence"`
+	Handoffs    int            `json:"handoffs"`
+	Reviews     int            `json:"reviews"`
+	ByStatus    map[string]int `json:"by_status"`
+}
+
+type dbRehearsalTaskSummary struct {
+	Status      string `json:"status"`
+	Transitions int    `json:"transitions"`
+	Evidence    int    `json:"evidence"`
+	Handoffs    int    `json:"handoffs"`
+	Reviews     int    `json:"reviews"`
+}
+
+type dbRehearsalEquivalence struct {
+	OK         bool                              `json:"ok"`
+	Source     dbRehearsalCounts                 `json:"source"`
+	Rehearsal  dbRehearsalCounts                 `json:"rehearsal"`
+	Tasks      map[string]dbRehearsalTaskSummary `json:"tasks"`
+	Mismatches []dbRehearsalMismatch             `json:"mismatches,omitempty"`
+}
+
+type dbRehearsalMismatch struct {
+	Scope string `json:"scope"`
+	Field string `json:"field"`
+	Want  string `json:"want"`
+	Got   string `json:"got"`
+}
+
+func cmdDBRehearsal(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("db rehearsal", flag.ContinueOnError)
+	backend := fs.String("backend", "", "backend")
+	outDir := fs.String("out", "", "output directory")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected db rehearsal arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *backend != "postgres" {
+		return errors.New("db rehearsal currently supports --backend postgres")
+	}
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	dbPath := resolveDBPath(root, cfg, opts)
+	if *outDir == "" {
+		*outDir = filepath.Join(root, ".fairway", "rehearsals", "postgres-"+time.Now().UTC().Format("20060102T150405Z"))
+	}
+	if err := os.MkdirAll(*outDir, 0o755); err != nil {
+		return err
+	}
+	s, err := store.Open(ctx, dbPath, cfg.Fairway.ProjectName)
+	if err != nil {
+		return err
+	}
+	if err := s.SetTaskIDPattern(cfg.Fairway.TaskIDPattern); err != nil {
+		_ = s.Close()
+		return err
+	}
+	defer s.Close()
+
+	createdAt := time.Now().UTC().Format(time.RFC3339Nano)
+	backupPath := filepath.Join(*outDir, "sqlite-backup.db")
+	sourceExportPath := filepath.Join(*outDir, "source-export.json")
+	rehearsalExportPath := filepath.Join(*outDir, "rehearsal-export.json")
+	compatReportPath := filepath.Join(*outDir, "postgres-compat-report.json")
+	compatDDLPath := filepath.Join(*outDir, "postgres-compat-ddl.sql")
+	equivalencePath := filepath.Join(*outDir, "readmodel-equivalence.json")
+	rollbackPath := filepath.Join(*outDir, "rollback.md")
+	manifestPath := filepath.Join(*outDir, "manifest.json")
+
+	sourceSnapshot, err := s.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if err := writeJSONFile(sourceExportPath, sourceSnapshot); err != nil {
+		return err
+	}
+	if err := s.Backup(ctx, backupPath); err != nil {
+		return err
+	}
+
+	rehearsalStore, err := store.Open(ctx, backupPath, cfg.Fairway.ProjectName)
+	if err != nil {
+		return err
+	}
+	if err := rehearsalStore.SetTaskIDPattern(cfg.Fairway.TaskIDPattern); err != nil {
+		_ = rehearsalStore.Close()
+		return err
+	}
+	rehearsalSnapshot, err := rehearsalStore.Snapshot(ctx)
+	if closeErr := rehearsalStore.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := writeJSONFile(rehearsalExportPath, rehearsalSnapshot); err != nil {
+		return err
+	}
+
+	compatReport, err := store.PostgresCompatReport()
+	if err != nil {
+		return err
+	}
+	if err := writeJSONFile(compatReportPath, compatReport); err != nil {
+		return err
+	}
+	ddl, err := store.PostgresCompatDDL()
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(compatDDLPath, []byte(ddl), 0o644); err != nil {
+		return err
+	}
+
+	equivalence := compareRehearsalSnapshots(sourceSnapshot, rehearsalSnapshot)
+	if err := writeJSONFile(equivalencePath, equivalence); err != nil {
+		return err
+	}
+	rollback := renderDBRehearsalRollback(cfg.Fairway.ProjectName, dbPath, backupPath, createdAt)
+	if err := os.WriteFile(rollbackPath, []byte(rollback), 0o644); err != nil {
+		return err
+	}
+
+	report := dbRehearsalReport{
+		Backend:               "postgres",
+		OK:                    compatReport.OK && equivalence.OK,
+		ProjectID:             cfg.Fairway.ProjectName,
+		CreatedAt:             createdAt,
+		SourceDBPath:          dbPath,
+		OutputDir:             *outDir,
+		BackupPath:            backupPath,
+		SourceExportPath:      sourceExportPath,
+		RehearsalExportPath:   rehearsalExportPath,
+		CompatReportPath:      compatReportPath,
+		CompatDDLPath:         compatDDLPath,
+		EquivalencePath:       equivalencePath,
+		RollbackPath:          rollbackPath,
+		ManifestPath:          manifestPath,
+		CompatOK:              compatReport.OK,
+		EquivalenceOK:         equivalence.OK,
+		SourceCounts:          equivalence.Source,
+		RehearsalCounts:       equivalence.Rehearsal,
+		EquivalenceMismatches: equivalence.Mismatches,
+		Artifacts: map[string]string{
+			"sqlite_backup":      backupPath,
+			"source_export":      sourceExportPath,
+			"rehearsal_export":   rehearsalExportPath,
+			"postgres_compat":    compatReportPath,
+			"postgres_ddl":       compatDDLPath,
+			"equivalence_report": equivalencePath,
+			"rollback":           rollbackPath,
+		},
+		Boundaries: []string{
+			"disposable rehearsal only",
+			"no production store switch",
+			"no shared dashboard restart",
+			"no public exposure",
+			"no release tag or publish",
+			"postgres DDL is review output, not applied by this command",
+		},
+	}
+	if err := writeJSONFile(manifestPath, report); err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(report)
+	}
+	fmt.Printf("db_rehearsal: ok=%t backend=postgres project=%s out=%s\n", report.OK, report.ProjectID, report.OutputDir)
+	fmt.Printf("compat_ok=%t equivalence_ok=%t tasks=%d evidence=%d reviews=%d\n", report.CompatOK, report.EquivalenceOK, report.SourceCounts.Tasks, report.SourceCounts.Evidence, report.SourceCounts.Reviews)
+	fmt.Printf("manifest=%s\nbackup=%s\nrollback=%s\n", report.ManifestPath, report.BackupPath, report.RollbackPath)
+	if !report.OK {
+		return errors.New("db rehearsal failed")
+	}
+	return nil
+}
+
+func writeJSONFile(path string, value any) error {
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+func compareRehearsalSnapshots(source, rehearsal store.Snapshot) dbRehearsalEquivalence {
+	sourceCounts := rehearsalCounts(source)
+	rehearsalCounts := rehearsalCounts(rehearsal)
+	eq := dbRehearsalEquivalence{
+		OK:        true,
+		Source:    sourceCounts,
+		Rehearsal: rehearsalCounts,
+		Tasks:     map[string]dbRehearsalTaskSummary{},
+	}
+	compareInt := func(scope, field string, want, got int) {
+		if want != got {
+			eq.OK = false
+			eq.Mismatches = append(eq.Mismatches, dbRehearsalMismatch{Scope: scope, Field: field, Want: strconv.Itoa(want), Got: strconv.Itoa(got)})
+		}
+	}
+	compareInt("summary", "tasks", sourceCounts.Tasks, rehearsalCounts.Tasks)
+	compareInt("summary", "transitions", sourceCounts.Transitions, rehearsalCounts.Transitions)
+	compareInt("summary", "evidence", sourceCounts.Evidence, rehearsalCounts.Evidence)
+	compareInt("summary", "handoffs", sourceCounts.Handoffs, rehearsalCounts.Handoffs)
+	compareInt("summary", "reviews", sourceCounts.Reviews, rehearsalCounts.Reviews)
+	for status, want := range sourceCounts.ByStatus {
+		compareInt("status", status, want, rehearsalCounts.ByStatus[status])
+	}
+	sourceTasks := rehearsalTaskSummaries(source)
+	rehearsalTasks := rehearsalTaskSummaries(rehearsal)
+	for taskID, want := range sourceTasks {
+		got, ok := rehearsalTasks[taskID]
+		if !ok {
+			eq.OK = false
+			eq.Mismatches = append(eq.Mismatches, dbRehearsalMismatch{Scope: "task", Field: taskID, Want: "present", Got: "missing"})
+			continue
+		}
+		eq.Tasks[taskID] = got
+		if want != got {
+			eq.OK = false
+			wantJSON, _ := json.Marshal(want)
+			gotJSON, _ := json.Marshal(got)
+			eq.Mismatches = append(eq.Mismatches, dbRehearsalMismatch{Scope: "task", Field: taskID, Want: string(wantJSON), Got: string(gotJSON)})
+		}
+	}
+	for taskID := range rehearsalTasks {
+		if _, ok := sourceTasks[taskID]; !ok {
+			eq.OK = false
+			eq.Mismatches = append(eq.Mismatches, dbRehearsalMismatch{Scope: "task", Field: taskID, Want: "missing", Got: "present"})
+		}
+	}
+	return eq
+}
+
+func rehearsalCounts(snapshot store.Snapshot) dbRehearsalCounts {
+	counts := dbRehearsalCounts{Tasks: len(snapshot.Tasks), ByStatus: map[string]int{}}
+	for _, task := range snapshot.Tasks {
+		counts.Transitions += len(task.Transitions)
+		counts.Evidence += len(task.Evidence)
+		counts.Handoffs += len(task.Handoffs)
+		counts.Reviews += len(task.Reviews)
+		counts.ByStatus[task.Task.Status]++
+	}
+	return counts
+}
+
+func rehearsalTaskSummaries(snapshot store.Snapshot) map[string]dbRehearsalTaskSummary {
+	out := map[string]dbRehearsalTaskSummary{}
+	for _, task := range snapshot.Tasks {
+		out[task.Task.Definition.ID] = dbRehearsalTaskSummary{
+			Status:      task.Task.Status,
+			Transitions: len(task.Transitions),
+			Evidence:    len(task.Evidence),
+			Handoffs:    len(task.Handoffs),
+			Reviews:     len(task.Reviews),
+		}
+	}
+	return out
+}
+
+func renderDBRehearsalRollback(project, sourceDB, backupPath, createdAt string) string {
+	return fmt.Sprintf(`# Fairway DB Rehearsal Rollback
+
+- project: %s
+- created_at: %s
+- source_db: %s
+- backup: %s
+
+This rehearsal did not switch the Fairway runtime store and did not apply
+Postgres DDL. The SQLite backup is rollback input only.
+
+If a future reviewed cutover fails after using this backup as input:
+
+1. Stop shared writers or place Fairway into read-only/drain mode.
+2. Preserve the failed target store for investigation.
+3. Restore the SQLite backup to the configured Fairway DB path only after an
+   operator verifies no divergent writes need manual reconciliation.
+4. Run:
+
+   fairway db migrate --dry-run
+   fairway ready
+   fairway reconcile active --dry-run
+
+5. Record rollback evidence and any conflict/reconciliation packet in Fairway.
+
+This file is a rehearsal artifact, not production rollback authorization.
+`, project, createdAt, sourceDB, backupPath)
 }
 
 func cmdDBBackup(ctx context.Context, opts globalOptions, args []string) error {
@@ -15404,7 +15726,7 @@ func printCommandHelp(command string) bool {
 		"server":                     "fairway server --read-only [--listen <addr>] | fairway server --mode api-write-pilot --write\n  Run the shared-team API skeleton. The write pilot is append-only evidence/checkpoints only.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
-		"db":                         "fairway db backup|export|migrate|compat ...\n  Manage the local Fairway database.",
+		"db":                         "fairway db backup|export|migrate|compat|rehearsal ...\n  Manage the local Fairway database.",
 		"audit":                      "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog ...\n  Run advisory coverage, CI/deploy learning, known-failure routing, provider notification lifecycle, and docs-to-backlog reports.",
 		"usage":                      "fairway usage report|cost-report [--by <provider|task|epic|role|day|kind|phase|model>]\n  Report provider-neutral usage attribution and advisory cost forecasts.",
 		"register":                   "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",

@@ -58,15 +58,19 @@ The adapter may use Postgres-native types such as `jsonb`, `timestamptz`, and
 `boolean`, but the Go store must return the same domain structs and JSON output
 as the SQLite store.
 
-The current compatibility command is:
+The current compatibility commands are:
 
 ```bash
 fairway db compat --backend postgres [--print-ddl]
+fairway db rehearsal --backend postgres --out .fairway/rehearsals/postgres-<timestamp>
 ```
 
 `--print-ddl` is a review artifact, not an applyable migration. `--apply-ddl`
 is intentionally not implemented until the migration and cutover contract below
-exists.
+exists. `db rehearsal` is also non-mutating: it creates a SQLite backup,
+exports source and backup read models, writes the Postgres compatibility
+report/DDL, compares read-model counts, and records rollback instructions. It
+does not apply Postgres DDL or switch any runtime store.
 
 ## Transactions
 
@@ -110,20 +114,33 @@ store, or notification truth source.
 
 ```bash
 fairway db compat --backend postgres [--print-ddl | --apply-ddl]
+fairway db rehearsal --backend postgres --out <artifact-dir>
 ```
 
 The harness is for adapter development and disposable experiments. DDL printed
 by the harness is a sketch until a real migration path and cutover runbook
-exist.
+exist. Rehearsal output is a provenance packet, not a production cutover:
+
+- `sqlite-backup.db` is rollback/import input;
+- `source-export.json` captures the current SQLite read model;
+- `rehearsal-export.json` captures the read model from the disposable backup;
+- `postgres-compat-report.json` and `postgres-compat-ddl.sql` are review
+  artifacts;
+- `readmodel-equivalence.json` compares deterministic task, transition,
+  evidence, handoff, and review counts;
+- `manifest.json` records paths, counts, compatibility/equivalence status, and
+  boundaries;
+- `rollback.md` states the manual rollback/readback steps.
 
 The harness should grow in this order:
 
 1. static migration token checks that flag SQLite-specific SQL,
 2. generated Postgres DDL review output,
-3. disposable Postgres schema apply in CI or local containers,
-4. command parity tests that run the same store test cases against SQLite and
+3. disposable backup/export read-model equivalence rehearsal,
+4. disposable Postgres schema apply in CI or local containers,
+5. command parity tests that run the same store test cases against SQLite and
    Postgres,
-5. cutover rehearsal that imports a SQLite backup/export into Postgres and
+6. cutover rehearsal that imports a SQLite backup/export into Postgres and
    proves read-model equivalence.
 
 ## Migration And Cutover
