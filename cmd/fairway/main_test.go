@@ -6317,6 +6317,152 @@ func TestDashboardLifecycleChildArgsPreservesGlobalOptions(t *testing.T) {
 	}
 }
 
+func TestServerLifecycleFilesAndChildArgs(t *testing.T) {
+	root := t.TempDir()
+	pidFile, logFile := serverLifecycleFiles(root, "", "")
+	if pidFile != filepath.Join(root, ".fairway", "server-read-only.pid.json") {
+		t.Fatalf("pid file = %s", pidFile)
+	}
+	if logFile != filepath.Join(root, ".fairway", "server-read-only.log") {
+		t.Fatalf("log file = %s", logFile)
+	}
+	args := serverLifecycleChildArgs(globalOptions{ConfigPath: "/tmp/fairway.toml", DBPath: "/tmp/fairway.db", Role: "ops"}, "127.0.0.1:7880", "launch-token")
+	want := []string{"--config", "/tmp/fairway.toml", "--db", "/tmp/fairway.db", "--as", "ops", "server", "--read-only", "--listen", "127.0.0.1:7880", "--lifecycle-token", "launch-token"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+	if strings.Contains(strings.Join(args, " "), "--write") {
+		t.Fatalf("managed server args contain write authority: %#v", args)
+	}
+}
+
+func TestCLI_ServerLifecycleHelpCleanExit(t *testing.T) {
+	for _, action := range []string{"start", "status", "logs", "stop", "restart"} {
+		t.Run(action, func(t *testing.T) {
+			out := runCapture(t, "server", action, "--help")
+			assertContains(t, out, "fairway server "+action)
+			if strings.Contains(out, "Usage of server ") {
+				t.Fatalf("raw flag usage leaked for server %s:\n%s", action, out)
+			}
+		})
+	}
+}
+
+func TestServerLifecycleStatusRemovesStaleRecordAndRefusesPIDMismatch(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "server.pid.json")
+	logFile := filepath.Join(dir, "server.log")
+	stale := serverLifecycleRecord{Schema: serverLifecycleSchema, PID: 999999, Token: "stale", Listen: "127.0.0.1:17880", Mode: "read_only", BinaryPath: "/tmp/fairway", LogFile: logFile}
+	if err := writeJSONFile(pidFile, stale); err != nil {
+		t.Fatal(err)
+	}
+	status, err := readServerLifecycleStatus(pidFile, logFile, stale.Listen, "/tmp/config.toml", "/tmp/state.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "stopped" || status.Running {
+		t.Fatalf("stale status = %#v", status)
+	}
+	if _, err := os.Stat(pidFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale pid record still exists: %v", err)
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mismatch := serverLifecycleRecord{Schema: serverLifecycleSchema, PID: os.Getpid(), Token: "not-the-test-process", Listen: "127.0.0.1:17881", Mode: "read_only", BinaryPath: exe, LogFile: logFile}
+	if err := writeJSONFile(pidFile, mismatch); err != nil {
+		t.Fatal(err)
+	}
+	status, err = readServerLifecycleStatus(pidFile, logFile, mismatch.Listen, "/tmp/config.toml", "/tmp/state.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "mismatch" || status.Running {
+		t.Fatalf("mismatch status = %#v", status)
+	}
+	if err := stopServerLifecycle(status); err == nil || !strings.Contains(err.Error(), "refusing") {
+		t.Fatalf("stop mismatch error = %v, want refusal", err)
+	}
+	if !processAlive(os.Getpid()) {
+		t.Fatal("test process was signaled by mismatched lifecycle record")
+	}
+}
+
+func TestCLI_ServerReadOnlyLifecycle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds and runs a managed Fairway server")
+	}
+	repo := t.TempDir()
+	fairwayBin := filepath.Join(repo, "fairway")
+	build := exec.Command("go", "build", "-o", fairwayBin, ".")
+	build.Dir = mustGetwd(t)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fairway: %v\n%s", err, out)
+	}
+	runExternal := func(wantSuccess bool, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(fairwayBin, args...)
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		if wantSuccess && err != nil {
+			logData, _ := os.ReadFile(filepath.Join(repo, ".fairway", "managed-server.log"))
+			t.Fatalf("fairway %v: %v\n%s\nserver log:\n%s", args, err, out, logData)
+		}
+		if !wantSuccess && err == nil {
+			t.Fatalf("fairway %v succeeded, expected failure\n%s", args, out)
+		}
+		return string(out)
+	}
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runExternal(true, "init")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+	pidFile := filepath.Join(repo, ".fairway", "managed-server.pid.json")
+	logFile := filepath.Join(repo, ".fairway", "managed-server.log")
+	base := []string{"--listen", addr, "--pid-file", pidFile, "--log-file", logFile}
+	stop := func() { _ = exec.Command(fairwayBin, append([]string{"server", "stop"}, base...)...).Run() }
+	t.Cleanup(stop)
+
+	unsafe := runExternal(false, "server", "start", "--read-only", "--listen", "0.0.0.0:17880", "--pid-file", pidFile, "--log-file", logFile)
+	assertContains(t, unsafe, "loopback read-only only")
+	missingMode := runExternal(false, append([]string{"server", "start"}, base...)...)
+	assertContains(t, missingMode, "requires --read-only")
+
+	started := runExternal(true, append([]string{"server", "start", "--read-only"}, base...)...)
+	for _, want := range []string{"server started", "mode=read_only", "pid_file=" + pidFile, "log_file=" + logFile, "binary=" + fairwayBin, "config="} {
+		assertContains(t, started, want)
+	}
+	status := runExternal(true, append([]string{"server", "status"}, base...)...)
+	for _, want := range []string{"server running", "mode=read_only", "version=0.1.0-dev", "binary=" + fairwayBin} {
+		assertContains(t, status, want)
+	}
+	resp, err := http.Get("http://" + addr + "/api/v1/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status code = %d", resp.StatusCode)
+	}
+	logs := runExternal(true, append([]string{"server", "logs", "--tail", "10"}, base...)...)
+	assertContains(t, logs, "server http://"+addr)
+	runExternal(true, append([]string{"server", "stop"}, base...)...)
+	stopped := runExternal(true, append([]string{"server", "status"}, base...)...)
+	assertContains(t, stopped, "server stopped")
+
+	restarted := runExternal(true, append([]string{"server", "start", "--read-only"}, base...)...)
+	assertContains(t, restarted, "server started")
+	runExternal(true, append([]string{"server", "stop"}, base...)...)
+}
+
 func runOK(t *testing.T, args ...string) {
 	t.Helper()
 	_ = runCapture(t, args...)

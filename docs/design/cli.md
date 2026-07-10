@@ -587,6 +587,18 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   roles and included in `[server].allowed_roles`; bearer token failures return
   bounded errors and do not echo submitted or configured token values. This
   still does not add any shared write API.
+- `server start --read-only`, `server status`, `server logs`, `server stop`,
+  and `server restart --read-only` provide the bounded local lab lifecycle for
+  that loopback read-only API. The lifecycle writes
+  `.fairway/server-read-only.pid.json` and `.fairway/server-read-only.log` by
+  default; explicit `--pid-file` and `--log-file` paths are supported. Status
+  reports the binary, version, config, DB, address, and lifecycle paths. The
+  JSON pid record includes a non-secret per-launch identity token, and stop or
+  restart refuses to signal a process unless its command line matches that
+  token, binary, and read-only server shape. Stale records are removed, while
+  occupied addresses without a matching record remain `unknown` and fail
+  closed. Managed lifecycle never accepts write mode or a non-loopback listen
+  address.
 - `server --mode api-write-pilot --write` runs the shared-team write API pilot
   when `[server]` is configured for `api-write-pilot`, API-token identity, and a
   command-scoped write role. FW-271 added

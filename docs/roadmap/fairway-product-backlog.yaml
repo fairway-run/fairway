@@ -4715,3 +4715,105 @@ tasks:
       - "Focused `go test ./cmd/fairway -run TestCLI_ServerWriteModeFailsClosed -count=1` passes locally."
       - "`go test ./...`, `go vet ./...`, `git diff --check`, `fairway config validate`, and active reconciliation pass before closeout."
       - "No release, dashboard restart, public exposure, or server write authority change is introduced."
+
+  - id: FW-283
+    title: Package one-command small-team lab lifecycle
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: deployment
+    source_paths:
+      - docs/operations/small-team-lab-deployment.md
+      - docs/design/shared-team-deployment-operations.md
+      - docs/design/cli.md
+      - cmd/fairway
+      - examples
+    target_paths:
+      - cmd/fairway
+      - cmd/fairway/main_test.go
+      - docs/operations/small-team-lab-deployment.md
+      - docs/design/cli.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - backend
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: small-team-lab-lifecycle
+    dependencies:
+      - FW-274
+      - FW-278
+      - FW-279
+    acceptance_checks:
+      - "A bounded one-command lab lifecycle starts the loopback read-only shared server with explicit config, listen address, pid file, log file, and binary/version readback."
+      - "Companion status, logs, and stop commands fail closed for stale or mismatched pid files and never signal an unrelated process."
+      - "The lifecycle refuses non-loopback or write-capable server modes and does not grant dashboard write, provider-send, approval, merge, deploy, release, public-exposure, or live-operation authority."
+      - "Focused tests cover start/status/logs/stop, stale pid cleanup, version/config readback, unsafe listen rejection, and restart after a clean stop."
+      - "The small-team lab runbook uses the packaged lifecycle and documents operator-owned data, pid, log, backup, restore, smoke, and rollback paths."
+
+  - id: FW-284
+    title: Repeat small-team shared Fairway pilot with non-authoring operator
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: adoption
+    source_paths:
+      - docs/assessment/fairway-small-team-shared-pilot-2026-07-06.md
+      - docs/operations/small-team-lab-deployment.md
+      - docs/design/small-team-autonomy-operating-model.md
+    target_paths:
+      - docs/assessment
+      - docs/design/small-team-autonomy-operating-model.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: small-team-repeat-pilot
+    dependencies:
+      - FW-283
+    acceptance_checks:
+      - "A non-authoring operator runs the packaged lifecycle on the Mac mini GitLab lab or an equivalent isolated host and records exact binary, version, config, pid, log, and cleanup readback."
+      - "The operator verifies status, task list, one task detail, reports, and a review/wait/evidence readback flow without enabling server writes or dashboard mutation."
+      - "Pilot evidence includes startup and response timings, backup/restore or rollback proof, rough edges with owners, and before/after delivery-process metrics."
+      - "Closeout explicitly recommends promote read-only small-team mode, repeat with fixes, or block, while keeping write pilot, trusted-proxy runtime, public exposure, release, deploy, and live-operation authority out of scope."
+
+  - id: FW-285
+    title: Refresh Fairway v0.1.10 release packet after shared-team pilot
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - docs/assessment/fairway-v0.1.10-release-prep-2026-07-06.md
+      - docs/assessment
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - CHANGELOG.md
+    target_paths:
+      - docs/assessment/fairway-v0.1.10-release-prep-2026-07-06.md
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - CHANGELOG.md
+      - docs/roadmap/fairway-product-backlog.yaml
+    review_domains:
+      - governance
+      - ops
+      - security
+    risk_level: high
+    migration_type: shared-team-release-prep-refresh
+    dependencies:
+      - FW-276
+      - FW-281
+      - FW-282
+      - FW-284
+    acceptance_checks:
+      - "The v0.1.10 packet is refreshed to the final reviewed source SHA and includes all post-v0.1.9 work, including typed delivery resources, CI isolation, lifecycle packaging, repeat-pilot findings, and current operator-guide media."
+      - "Release notes distinguish supported read-only small-team behavior from preview-only write, trusted-proxy, non-loopback, and Postgres runtime boundaries."
+      - "Release-prep gates include tests, vet, diff check, config validation, deploy-mode clean/pushed workflow guard, GoReleaser check, local binary smoke, and active reconciliation."
+      - "Task remains release preparation only; tag, publish, Homebrew update, dashboard restart, public exposure, and release declaration require separate reviewed tasks."

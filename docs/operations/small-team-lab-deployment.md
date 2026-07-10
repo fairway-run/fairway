@@ -143,13 +143,25 @@ deployment task authorizes a different network boundary.
 
 ```bash
 cd "$FAIRWAY_PROJECT"
-"$FAIRWAY_BIN" --config "$FAIRWAY_CONFIG" server --read-only --listen 127.0.0.1:7880
+"$FAIRWAY_BIN" --config "$FAIRWAY_CONFIG" server start \
+  --read-only \
+  --listen 127.0.0.1:7880 \
+  --pid-file "$FAIRWAY_STATE/fairway-server-7880.pid.json" \
+  --log-file "$FAIRWAY_STATE/fairway-server-7880.log"
+
+"$FAIRWAY_BIN" --config "$FAIRWAY_CONFIG" server status \
+  --listen 127.0.0.1:7880 \
+  --pid-file "$FAIRWAY_STATE/fairway-server-7880.pid.json" \
+  --log-file "$FAIRWAY_STATE/fairway-server-7880.log"
 ```
 
-Run this under a supervised local lane such as `tmux`, `launchd`, or a lab
-service wrapper that writes pid/log files under `$FAIRWAY_STATE` or
-`$FAIRWAY_LOG_DIR`. The server must not be bound to `0.0.0.0`, a LAN address, a
-Tailscale address, or a public interface by this runbook.
+The managed lifecycle detaches the server, writes explicit version/config/DB
+readback, and refuses to stop or restart a PID unless the live process matches
+the lifecycle record's binary, read-only command shape, and per-launch identity
+token. Use `server logs --tail <n>` for bounded local log readback and `server
+restart --read-only` after a reviewed binary or config replacement. The server
+must not be bound to `0.0.0.0`, a LAN address, a Tailscale address, or a public
+interface by this runbook.
 
 ## Optional Proxy Boundary
 
@@ -235,6 +247,11 @@ Stop dashboard processes with their explicit pid files:
   --listen 127.0.0.1:7878 \
   --pid-file "$FAIRWAY_STATE/fairway-dashboard-7878.pid" \
   --log-file "$FAIRWAY_STATE/fairway-dashboard-7878.log"
+
+"$FAIRWAY_BIN" --config "$FAIRWAY_CONFIG" server stop \
+  --listen 127.0.0.1:7880 \
+  --pid-file "$FAIRWAY_STATE/fairway-server-7880.pid.json" \
+  --log-file "$FAIRWAY_STATE/fairway-server-7880.log"
 ```
 
 Rollback after a binary/config change:

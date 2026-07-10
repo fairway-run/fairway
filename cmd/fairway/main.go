@@ -252,14 +252,21 @@ func run(ctx context.Context, args []string) error {
 
 func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
-		subcommandUsage("server", "[--listen <addr>] --read-only | --mode api-write-pilot --write")
+		subcommandUsage("server", "[--listen <addr>] --read-only | --mode api-write-pilot --write | start|status|logs|stop|restart")
 		return nil
+	}
+	if len(args) > 0 {
+		switch args[0] {
+		case "start", "status", "logs", "stop", "restart":
+			return cmdServerLifecycle(ctx, opts, args[0], args[1:])
+		}
 	}
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	listen := fs.String("listen", "", "listen address")
 	readOnly := fs.Bool("read-only", false, "serve shared-team API in read-only mode")
 	mode := fs.String("mode", "", "server mode")
 	write := fs.Bool("write", false, "enable the append-only shared-team write API pilot")
+	lifecycleToken := fs.String("lifecycle-token", "", "managed lifecycle identity token")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -318,6 +325,7 @@ func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
 		if !isLoopbackAddr(addr) {
 			return fmt.Errorf("shared-team server mode is loopback-only until a reviewed deployment/public exposure task; refusing listen address %q", addr)
 		}
+		_ = lifecycleToken
 		fmt.Println("server", url)
 		worktrees, err := collectWorktreeStatus(cfg, root)
 		if err != nil {
@@ -325,6 +333,330 @@ func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
 		}
 		return http.ListenAndServe(addr, dashboard.NewWithRoot(s, cfg, roleNames(cfg), dashboardWorktrees(worktrees), root).ReadOnlyAPIHandler())
 	})
+}
+
+const serverLifecycleSchema = "fairway.server-lifecycle.v1"
+
+type serverLifecycleRecord struct {
+	Schema     string    `json:"schema"`
+	PID        int       `json:"pid"`
+	Token      string    `json:"token"`
+	Listen     string    `json:"listen"`
+	Mode       string    `json:"mode"`
+	BinaryPath string    `json:"binary_path"`
+	ConfigPath string    `json:"config_path"`
+	ConfigArg  bool      `json:"config_arg"`
+	DBPath     string    `json:"db_path"`
+	DBArg      bool      `json:"db_arg"`
+	LogFile    string    `json:"log_file"`
+	Version    string    `json:"version"`
+	StartedAt  time.Time `json:"started_at"`
+}
+
+type serverLifecycleStatus struct {
+	serverLifecycleRecord
+	PIDFile          string `json:"pid_file"`
+	Running          bool   `json:"running"`
+	State            string `json:"state"`
+	URL              string `json:"url,omitempty"`
+	ListenerDetected bool   `json:"listener_detected,omitempty"`
+	Warning          string `json:"warning,omitempty"`
+}
+
+func cmdServerLifecycle(ctx context.Context, opts globalOptions, action string, args []string) error {
+	if isHelpOnly(args) {
+		usage := "[--listen <loopback-addr>] [--pid-file <path>] [--log-file <path>]"
+		if action == "start" || action == "restart" {
+			usage += " --read-only"
+		}
+		subcommandUsage("server "+action, usage)
+		return nil
+	}
+	fs := flag.NewFlagSet("server "+action, flag.ContinueOnError)
+	listen := fs.String("listen", "", "loopback listen address")
+	readOnly := fs.Bool("read-only", false, "require read-only server mode")
+	pidFile := fs.String("pid-file", "", "managed server pid record")
+	logFile := fs.String("log-file", "", "managed server log")
+	tail := fs.Int("tail", 80, "number of trailing log lines")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected server %s arguments: %s", action, strings.Join(fs.Args(), " "))
+	}
+	if *tail < 1 || *tail > 1000 {
+		return errors.New("server logs --tail must be between 1 and 1000")
+	}
+	cfg, root, configPath, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	addr := firstNonEmpty(strings.TrimSpace(*listen), strings.TrimSpace(cfg.Server.Listen), "127.0.0.1:7880")
+	if !isLoopbackAddr(addr) {
+		return fmt.Errorf("managed server lifecycle is loopback read-only only; refusing listen address %q", addr)
+	}
+	resolvedPIDFile, resolvedLogFile := serverLifecycleFiles(root, *pidFile, *logFile)
+	status, err := readServerLifecycleStatus(resolvedPIDFile, resolvedLogFile, addr, configPath, resolveDBPath(root, cfg, opts))
+	if err != nil {
+		return err
+	}
+	switch action {
+	case "status":
+		return printServerLifecycleStatus(status, opts.JSON)
+	case "logs":
+		return printServerLifecycleLogs(status, *tail)
+	case "stop":
+		if err := stopServerLifecycle(status); err != nil {
+			return err
+		}
+		status.Running = false
+		status.PID = 0
+		status.State = "stopped"
+		if opts.JSON {
+			return printJSON(status)
+		}
+		fmt.Printf("server stopped\tpid_file=%s\tlog_file=%s\n", resolvedPIDFile, resolvedLogFile)
+		return nil
+	case "start", "restart":
+		if !*readOnly {
+			return errors.New("managed server lifecycle requires --read-only; write-capable lifecycle is not supported")
+		}
+		if status.State == "unknown" || status.State == "mismatch" {
+			return fmt.Errorf("refusing server %s: %s", action, status.Warning)
+		}
+		if action == "restart" && status.Running {
+			if err := stopServerLifecycle(status); err != nil {
+				return err
+			}
+			status.Running = false
+		}
+		if action == "start" && status.Running {
+			return printServerLifecycleStatus(status, opts.JSON)
+		}
+		return startServerLifecycle(opts, addr, configPath, resolveDBPath(root, cfg, opts), resolvedPIDFile, resolvedLogFile, action == "restart")
+	default:
+		return fmt.Errorf("unknown server lifecycle action %q", action)
+	}
+}
+
+func serverLifecycleFiles(root, pidFile, logFile string) (string, string) {
+	if strings.TrimSpace(pidFile) == "" {
+		pidFile = filepath.Join(root, ".fairway", "server-read-only.pid.json")
+	}
+	if strings.TrimSpace(logFile) == "" {
+		logFile = filepath.Join(root, ".fairway", "server-read-only.log")
+	}
+	return pidFile, logFile
+}
+
+func readServerLifecycleStatus(pidFile, logFile, addr, configPath, dbPath string) (serverLifecycleStatus, error) {
+	status := serverLifecycleStatus{
+		serverLifecycleRecord: serverLifecycleRecord{Schema: serverLifecycleSchema, Listen: addr, Mode: "read_only", ConfigPath: configPath, DBPath: dbPath, LogFile: logFile, Version: version},
+		PIDFile:               pidFile,
+		State:                 "stopped",
+		URL:                   dashboard.URL(addr),
+	}
+	if exe, err := os.Executable(); err == nil {
+		status.BinaryPath = exe
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			status.markUnknownIfListenerDetected()
+			return status, nil
+		}
+		return status, err
+	}
+	var record serverLifecycleRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return status, fmt.Errorf("read server lifecycle record %s: invalid JSON", pidFile)
+	}
+	if record.Schema != serverLifecycleSchema || record.PID <= 0 || strings.TrimSpace(record.Token) == "" {
+		return status, fmt.Errorf("read server lifecycle record %s: invalid or unsupported record", pidFile)
+	}
+	status.serverLifecycleRecord = record
+	status.PIDFile = pidFile
+	status.URL = dashboard.URL(record.Listen)
+	if !processAlive(record.PID) {
+		_ = os.Remove(pidFile)
+		status.PID = 0
+		status.State = "stopped"
+		status.markUnknownIfListenerDetected()
+		return status, nil
+	}
+	if !serverLifecycleProcessMatches(record) {
+		status.State = "mismatch"
+		status.Warning = "pid record does not match the live Fairway server process; refusing to signal it"
+		return status, nil
+	}
+	status.Running = true
+	status.State = "running"
+	return status, nil
+}
+
+func (status *serverLifecycleStatus) markUnknownIfListenerDetected() {
+	if dashboardAddressListening(status.Listen) {
+		status.State = "unknown"
+		status.ListenerDetected = true
+		status.Warning = "requested address is listening without a matching managed server record; choose another address or supply the matching --pid-file"
+	}
+}
+
+func serverLifecycleProcessMatches(record serverLifecycleRecord) bool {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(record.PID), "-o", "command=").Output()
+	if err != nil {
+		return false
+	}
+	command := string(out)
+	matches := strings.Contains(command, record.BinaryPath) &&
+		strings.Contains(command, "server") &&
+		strings.Contains(command, "--read-only") &&
+		strings.Contains(command, "--listen "+record.Listen) &&
+		strings.Contains(command, "--lifecycle-token "+record.Token)
+	if record.ConfigArg && record.ConfigPath != "" {
+		matches = matches && strings.Contains(command, "--config "+record.ConfigPath)
+	}
+	if record.DBArg && record.DBPath != "" {
+		matches = matches && strings.Contains(command, "--db "+record.DBPath)
+	}
+	return matches
+}
+
+func printServerLifecycleStatus(status serverLifecycleStatus, asJSON bool) error {
+	if asJSON {
+		return printJSON(status)
+	}
+	fmt.Printf("server %s", status.State)
+	if status.PID > 0 {
+		fmt.Printf("\tpid=%d", status.PID)
+	}
+	fmt.Printf("\t%s\tmode=%s\tversion=%s\tbinary=%s\tconfig=%s\tdb=%s\tpid_file=%s\tlog_file=%s", status.URL, status.Mode, status.Version, status.BinaryPath, status.ConfigPath, status.DBPath, status.PIDFile, status.LogFile)
+	if status.ListenerDetected {
+		fmt.Print("\tlistener=detected")
+	}
+	if status.Warning != "" {
+		fmt.Printf("\twarning=%s", status.Warning)
+	}
+	fmt.Println()
+	return nil
+}
+
+func printServerLifecycleLogs(status serverLifecycleStatus, tail int) error {
+	data, err := os.ReadFile(status.LogFile)
+	if err != nil {
+		return fmt.Errorf("read server log %s: %w", status.LogFile, err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	if len(lines) > tail {
+		lines = lines[len(lines)-tail:]
+	}
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+	return nil
+}
+
+func stopServerLifecycle(status serverLifecycleStatus) error {
+	if status.State == "mismatch" || status.State == "unknown" {
+		return fmt.Errorf("refusing to stop unmanaged server process: %s", status.Warning)
+	}
+	if !status.Running || status.PID <= 0 {
+		_ = os.Remove(status.PIDFile)
+		return nil
+	}
+	if !serverLifecycleProcessMatches(status.serverLifecycleRecord) {
+		return errors.New("refusing to stop server because process identity no longer matches the lifecycle record")
+	}
+	if err := syscall.Kill(status.PID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	for i := 0; i < 30; i++ {
+		if !processAlive(status.PID) {
+			_ = os.Remove(status.PIDFile)
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !serverLifecycleProcessMatches(status.serverLifecycleRecord) {
+		return errors.New("refusing to force-stop server because process identity no longer matches the lifecycle record")
+	}
+	if err := syscall.Kill(status.PID, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	_ = os.Remove(status.PIDFile)
+	return nil
+}
+
+func startServerLifecycle(opts globalOptions, addr, configPath, dbPath, pidFile, logFile string, restarted bool) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(pidFile), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
+		return err
+	}
+	log, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+	token := fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano())
+	record := serverLifecycleRecord{Schema: serverLifecycleSchema, Token: token, Listen: addr, Mode: "read_only", BinaryPath: exe, ConfigPath: configPath, ConfigArg: opts.ConfigPath != "", DBPath: dbPath, DBArg: opts.DBPath != "", LogFile: logFile, Version: version, StartedAt: time.Now().UTC()}
+	cmd := exec.Command(exe, serverLifecycleChildArgs(opts, addr, token)...)
+	cmd.Stdout = log
+	cmd.Stderr = log
+	cmd.Stdin = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+	record.PID = cmd.Process.Pid
+	if err := writeJSONFile(pidFile, record); err != nil {
+		_ = cmd.Process.Kill()
+		return err
+	}
+	for i := 0; i < 30; i++ {
+		select {
+		case err := <-waitCh:
+			_ = os.Remove(pidFile)
+			return fmt.Errorf("managed server exited before readiness: %v; inspect %s", err, logFile)
+		default:
+		}
+		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			verb := "started"
+			if restarted {
+				verb = "restarted"
+			}
+			fmt.Printf("server %s\tpid=%d\t%s\tmode=read_only\tversion=%s\tbinary=%s\tconfig=%s\tdb=%s\tpid_file=%s\tlog_file=%s\n", verb, record.PID, dashboard.URL(addr), version, exe, configPath, dbPath, pidFile, logFile)
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	_ = stopServerLifecycle(serverLifecycleStatus{serverLifecycleRecord: record, PIDFile: pidFile, Running: true, State: "running"})
+	return fmt.Errorf("managed server did not become ready at %s; inspect %s", addr, logFile)
+}
+
+func serverLifecycleChildArgs(opts globalOptions, addr, token string) []string {
+	var args []string
+	if opts.ConfigPath != "" {
+		args = append(args, "--config", opts.ConfigPath)
+	}
+	if opts.DBPath != "" {
+		args = append(args, "--db", opts.DBPath)
+	}
+	if opts.Role != "" {
+		args = append(args, "--as", opts.Role)
+	}
+	return append(args, "server", "--read-only", "--listen", addr, "--lifecycle-token", token)
 }
 
 func cmdAdd(ctx context.Context, opts globalOptions, args []string) error {
@@ -17234,7 +17566,7 @@ func printCommandHelp(command string) bool {
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json] | fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]\n  Read-only delivery velocity, process overhead, and typed delivery resource reports.",
 		"rough-edge":                 "fairway rough-edge add --task <task-id> --owner <role> --severity <level> --decision <fix-now|defer> --summary <text> | fairway rough-edge list [--task <task-id>] [--owner <role>] [--expired]\n  Record and inspect owner rough edges found while using the product; list is read-only.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
-		"server":                     "fairway server --read-only [--listen <addr>] | fairway server --mode api-write-pilot --write\n  Run the shared-team API skeleton. The write pilot is append-only evidence/checkpoints only.",
+		"server":                     "fairway server --read-only [--listen <addr>] | fairway server start|status|logs|stop|restart --read-only | fairway server --mode api-write-pilot --write\n  Run or manage the loopback shared-team API. Managed lifecycle is read-only only.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat|rehearsal ...\n  Manage the local Fairway database.",
