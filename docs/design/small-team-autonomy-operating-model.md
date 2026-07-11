@@ -7,6 +7,13 @@ reports, and dashboard projections. AI Cloud is one operating practice that
 uses those capabilities for MFA drills, demos, docs portal updates, VM restore
 work, airgap/staging rehearsals, and release coordination.
 
+Material choices and scope deviations follow the
+[`task decision memory`](task-decision-memory.md) model. This keeps replacement
+providers productive after context compaction without requiring full transcript
+retention. Small reversible implementation details remain lightweight; shared
+contracts, security boundaries, operational choices, risk acceptance, and
+unexpected changed scope receive a concise decision plus supporting facts.
+
 ## Operating Principle
 
 Move reversible work quickly with evidence. Slow down only at boundaries where

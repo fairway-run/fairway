@@ -186,6 +186,18 @@ The common path starts opt-in. Compare it with the primitive path:
 Promotion requires evidence that effort falls without hiding state or weakening
 review, release, security, or operational boundaries.
 
+## Decision Memory
+
+The common path uses the task decision and memory model in
+[`task-decision-memory.md`](task-decision-memory.md). Routine work does not need
+a narrated transcript. Material scope, risk, contract, security, migration, or
+operational choices require a concise decision linked to supporting facts.
+
+`work verify` identifies material changed scope that is not covered by the task
+or a decision. `work close` reports unexplained deviations as blockers after the
+decision-memory pilot establishes acceptable precision. Git remains the
+authority for what changed; the decision explains why.
+
 ## Anti-Goals
 
 This work does not turn Fairway into an LLM proxy, CI/deployment engine, IAM or

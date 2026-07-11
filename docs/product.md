@@ -15,6 +15,9 @@ For small teams using Fairway in AI Cloud-style loops, see the
 The [common-path automation model](design/common-path-automation.md) makes
 routine reversible work compact while preserving the underlying task, session,
 checkpoint, evidence, review, and promotion records.
+The [task decision memory model](design/task-decision-memory.md) preserves the
+material reasoning needed after context compaction while keeping transcripts
+optional and non-authoritative.
 
 Fairway is the local-first coordination control plane for that model.
 Traffic-control lanes were the first useful primitive: one lane, one role, one

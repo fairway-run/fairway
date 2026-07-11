@@ -17,6 +17,13 @@ inference. `--explain` names the underlying records and detailed inspection
 command. Neither command records evidence, synthesizes reviews, or authorizes
 merge, deploy, release, credentials, public exposure, or live operations.
 
+Material implementation choices use the task decision model documented in
+[`task-decision-memory.md`](task-decision-memory.md). Until the first-class
+command lands, record the concise decision through bounded task evidence or a
+checkpoint and reference it from track memory when it has cross-task value. Do
+not store raw prompts, chain-of-thought, transcripts, or tool bodies as a
+substitute for a decision.
+
 ```
 fairway init [--refresh-agent-contract]                # scaffold .fairway/config.toml + DB + .fairway/AGENTS.md
 fairway agent-guide [--path | --output <path>]          # print or write the embedded offline agent guide
