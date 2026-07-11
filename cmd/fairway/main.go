@@ -6965,6 +6965,8 @@ func cmdWorkStart(ctx context.Context, opts globalOptions, args []string) error 
 		text := strings.TrimSpace(*summary)
 		if text == "" {
 			text = fmt.Sprintf("Started %s work in session %s", owner, id)
+		} else if !strings.Contains(strings.ToLower(text), strings.ToLower(id)) {
+			text = fmt.Sprintf("%s (session %s)", text, id)
 		}
 		session := store.Session{ID: id, Role: owner, WorktreePath: root, Branch: fairwaygit.CurrentBranch(root), SessionBackend: *backend, Provider: *provider, TaskID: taskID, ExternalRunID: *externalRunID, Status: "running"}
 		result, err := s.StartWork(ctx, taskID, owner, session.Branch, session, text, cfg.States.Terminal)

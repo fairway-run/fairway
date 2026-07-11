@@ -10,6 +10,9 @@ checkpoint, evidence, and review records. It is not a second workflow or store.
 and records an active checkpoint. Repeating the command for the same active
 owner/session is safe. Blocked and terminal tasks fail closed; they require the
 existing explicit status/reopen commands and their reasons or gates.
+When `--summary` is supplied, Fairway retains the text and appends the stable
+session identifier if needed so provider lifecycle reconciliation remains
+deterministic.
 
 `work status` gives the compact current task state and durable fact counts.
 Without a task ID it uses only unambiguous existing task/session environment

@@ -83,7 +83,7 @@ func TestCLI_WorkStartAndStatusCommonPath(t *testing.T) {
 	git(t, repo, "config", "user.email", "test@example.com")
 	git(t, repo, "config", "user.name", "Test User")
 	runOK(t, "init")
-	writeFile(t, "tasks.yaml", "- id: T-001\n  title: Common path\n  role: backend\n")
+	writeFile(t, "tasks.yaml", "- id: T-001\n  title: Common path\n  role: backend\n- id: T-002\n  title: Custom summary\n  role: backend\n")
 	runOK(t, "import", "tasks.yaml")
 	started := runCapture(t, "work", "start", "T-001", "--provider", "codex", "--backend", "codex-thread")
 	assertContains(t, started, "work started task=T-001 status=in_progress owner=backend session=work-t-001")
@@ -95,6 +95,12 @@ func TestCLI_WorkStartAndStatusCommonPath(t *testing.T) {
 	if _, err := captureRun("work", "start"); err == nil || !strings.Contains(err.Error(), "explicit task id") {
 		t.Fatalf("missing task error=%v", err)
 	}
+	custom := runCapture(t, "work", "start", "T-002", "--session-id", "custom-session", "--summary", "Investigating lifecycle identity")
+	assertContains(t, custom, "session=custom-session")
+	checkpoints := runCapture(t, "checkpoint", "status", "--all")
+	assertContains(t, checkpoints, "Investigating lifecycle identity (session custom-session)")
+	reconcile := runCapture(t, "reconcile", "active", "--dry-run")
+	assertContains(t, reconcile, "no active reconciliation findings")
 }
 
 func TestCLI_DBRehearsal(t *testing.T) {
