@@ -107,6 +107,85 @@ func TestStartWorkFailsClosedOnUnfinishedDependency(t *testing.T) {
 	}
 }
 
+func TestTaskDecisionsRecordAssessAndSupersede(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Decision", Role: "backend"}, {ID: "T-002", Title: "Other", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim(ctx, "T-001", "backend", "main"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.RecordTaskDecision(ctx, TaskDecision{
+		TaskID: "T-001", Decision: "Centralize session authorization", Trigger: "A handler-only check left a bypass path",
+		Alternatives: []string{"Patch the handler", "Centralize session lookup"}, Chosen: "Centralize session lookup",
+		Reason: "All handlers then share one authorization boundary", ScopeAdded: []string{"internal/session"}, Risk: "Shared session behavior changes",
+		ValidationRefs: []string{"go test ./internal/session"}, FactRefs: []string{"evidence:42"}, CreatedBy: "backend",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID == 0 || first.QualityState != "draft" {
+		t.Fatalf("first=%+v", first)
+	}
+	if err := s.AssessTaskDecision(ctx, "T-001", first.ID, "accepted", "backend", "self review"); err == nil || !strings.Contains(err.Error(), "own task decision") {
+		t.Fatalf("self assessment error=%v", err)
+	}
+	if err := s.AssessTaskDecision(ctx, "T-001", first.ID, "accepted", "arch", "Concrete and consistent with the cited fact"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.RecordTaskDecision(ctx, TaskDecision{
+		TaskID: "T-001", Decision: "Centralize authorization and preserve compatibility", Trigger: "Compatibility coverage found a legacy caller",
+		Alternatives: []string{"Remove the caller", "Add a compatibility adapter"}, Chosen: "Add a compatibility adapter",
+		Reason: "The adapter preserves the shared boundary without breaking the caller", Risk: "Temporary adapter debt",
+		ValidationRefs: []string{"compatibility regression"}, FactRefs: []string{"commit:abc123"}, SupersedesID: first.ID, CreatedBy: "backend",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AssessTaskDecision(ctx, "T-001", second.ID, "insufficient", "arch", "Missing removal date for the temporary adapter"); err != nil {
+		t.Fatal(err)
+	}
+	decisions, err := s.TaskDecisions(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) != 2 || decisions[0].QualityState != "superseded" || decisions[0].SupersededByID != second.ID || decisions[0].QualityReviewer != "arch" || decisions[1].QualityState != "insufficient" || decisions[1].QualityReviewer != "arch" {
+		t.Fatalf("decisions=%+v", decisions)
+	}
+	duplicate := second
+	duplicate.ID = 0
+	duplicate.Decision = "Another replacement"
+	if _, err := s.RecordTaskDecision(ctx, duplicate); err == nil || !strings.Contains(err.Error(), "already has a replacement") {
+		t.Fatalf("duplicate supersession error=%v", err)
+	}
+	crossTask := second
+	crossTask.ID = 0
+	crossTask.TaskID = "T-002"
+	if _, err := s.RecordTaskDecision(ctx, crossTask); err == nil || !strings.Contains(err.Error(), "another task") {
+		t.Fatalf("cross-task supersession error=%v", err)
+	}
+}
+
+func TestTaskDecisionsRejectPrivateDataAndAuthorityClaims(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Decision", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	base := TaskDecision{TaskID: "T-001", Decision: "Choose bounded storage", Trigger: "A durable record is needed", Alternatives: []string{"Evidence", "Dedicated rows"}, Chosen: "Dedicated rows", Reason: "Structured projection is required", Risk: "Schema migration", ValidationRefs: []string{"store tests"}, FactRefs: []string{"task:T-001"}}
+	private := base
+	private.Reason = "transcript: provider-private text"
+	if _, err := s.RecordTaskDecision(ctx, private); err == nil || !strings.Contains(err.Error(), "private-data") {
+		t.Fatalf("private-data error=%v", err)
+	}
+	authority := base
+	authority.Decision = "Authorize the release"
+	if _, err := s.RecordTaskDecision(ctx, authority); err == nil || !strings.Contains(err.Error(), "authority") {
+		t.Fatalf("authority error=%v", err)
+	}
+}
+
 func TestMigrate_RecordsAppliedMigration(t *testing.T) {
 	s := newTestStore(t)
 	var count int

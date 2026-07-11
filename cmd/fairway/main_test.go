@@ -103,6 +103,83 @@ func TestCLI_WorkStartAndStatusCommonPath(t *testing.T) {
 	assertContains(t, reconcile, "no active reconciliation findings")
 }
 
+func TestCLI_TaskDecisionRecordsAndProjections(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", "- id: T-001\n  title: Decision task\n  role: backend\n  risk_level: high\n")
+	runOK(t, "import", "tasks.yaml")
+	runOK(t, "work", "start", "T-001", "--role", "backend")
+	firstJSON := runCapture(t, "--json", "decision", "record", "T-001",
+		"--decision", "Centralize session authorization",
+		"--trigger", "A handler-only check left a bypass path",
+		"--alternative", "Patch only the handler",
+		"--alternative", "Centralize session lookup",
+		"--chosen", "Centralize session lookup",
+		"--reason", "All handlers then share one authorization boundary",
+		"--scope-added", "internal/session",
+		"--risk", "Shared session behavior changes",
+		"--validation", "go test ./internal/session",
+		"--fact-ref", "evidence:42",
+	)
+	var first store.TaskDecision
+	if err := json.Unmarshal([]byte(firstJSON), &first); err != nil {
+		t.Fatalf("decision json: %v\n%s", err, firstJSON)
+	}
+	if first.ID == 0 || first.QualityState != "draft" || !first.AcceptanceRequired {
+		t.Fatalf("first=%+v", first)
+	}
+	status := runCapture(t, "work", "status", "T-001", "--explain")
+	assertContains(t, status, "decisions=1 superseded_decisions=0 decision_attention=1")
+	assertContains(t, status, "task_decisions task_decision_assessments")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "task decisions:")
+	assertContains(t, detail, "Centralize session authorization")
+	packet := runCapture(t, "packet", "context", "T-001")
+	assertContains(t, packet, "## Task Decisions")
+	assertContains(t, packet, "evidence:42")
+	if _, err := captureRun("decision", "assess", "T-001", "--decision-id", fmt.Sprint(first.ID), "--quality", "accepted", "--reviewer", "backend", "--reason", "self"); err == nil || !strings.Contains(err.Error(), "own task decision") {
+		t.Fatalf("self assessment error=%v", err)
+	}
+	runOK(t, "decision", "assess", "T-001", "--decision-id", fmt.Sprint(first.ID), "--quality", "accepted", "--reviewer", "arch", "--reason", "Concrete and fact-linked")
+	accepted := runCapture(t, "--json", "decision", "list", "T-001")
+	assertContains(t, accepted, `"quality_state": "accepted"`)
+	secondJSON := runCapture(t, "--json", "decision", "record", "T-001",
+		"--decision", "Preserve compatibility through a bounded adapter",
+		"--trigger", "Compatibility coverage found a legacy caller",
+		"--alternative", "Remove the caller",
+		"--chosen", "Add a compatibility adapter",
+		"--reason", "The adapter preserves the shared boundary during migration",
+		"--risk", "Temporary adapter debt",
+		"--validation", "compatibility regression",
+		"--fact-ref", "commit:abc123",
+		"--supersedes", fmt.Sprint(first.ID),
+	)
+	var second store.TaskDecision
+	if err := json.Unmarshal([]byte(secondJSON), &second); err != nil || second.SupersedesID != first.ID {
+		t.Fatalf("second=%+v err=%v", second, err)
+	}
+	list := runCapture(t, "--json", "decision", "list", "T-001")
+	assertContains(t, list, `"quality_state": "superseded"`)
+	assertContains(t, list, `"superseded_by_id": `+fmt.Sprint(second.ID))
+	if _, err := captureRun("decision", "record", "T-001", "--decision", "Authorize the release", "--trigger", "Request", "--alternative", "Wait", "--chosen", "Release", "--reason", "Ship", "--risk", "None", "--validation", "tests", "--fact-ref", "task:T-001"); err == nil || !strings.Contains(err.Error(), "authority") {
+		t.Fatalf("authority error=%v", err)
+	}
+	if _, err := captureRun("decision", "record", "T-001", "--decision", "Store transcript: private", "--trigger", "Request", "--alternative", "Wait", "--chosen", "Store", "--reason", "Need it", "--risk", "Privacy", "--validation", "tests", "--fact-ref", "task:T-001"); err == nil || !strings.Contains(err.Error(), "private-data") {
+		t.Fatalf("privacy error=%v", err)
+	}
+}
+
 func TestCLI_DBRehearsal(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -537,6 +614,13 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"session", "help"}, "fairway session upsert|status|end|reconcile|launch"},
 		{[]string{"lane", "--help"}, "fairway lane start|status|logs|stop"},
 		{[]string{"lane", "help"}, "fairway lane start|status|logs|stop"},
+		{[]string{"decision", "--help"}, "fairway decision record|assess|list"},
+		{[]string{"decision", "record", "--help"}, "fairway decision record <task-id>"},
+		{[]string{"decision", "record", "T-001", "--help"}, "fairway decision record <task-id>"},
+		{[]string{"decision", "assess", "--help"}, "fairway decision assess <task-id>"},
+		{[]string{"decision", "assess", "T-001", "--help"}, "fairway decision assess <task-id>"},
+		{[]string{"decision", "list", "--help"}, "fairway decision list <task-id>"},
+		{[]string{"decision", "list", "T-001", "--help"}, "fairway decision list <task-id>"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
 		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},

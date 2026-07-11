@@ -105,6 +105,29 @@ type Evidence struct {
 	CreatedAt       string
 }
 
+type TaskDecision struct {
+	ID                 int64    `json:"id"`
+	TaskID             string   `json:"task_id"`
+	Decision           string   `json:"decision"`
+	Trigger            string   `json:"trigger"`
+	Alternatives       []string `json:"alternatives"`
+	Chosen             string   `json:"chosen"`
+	Reason             string   `json:"reason"`
+	ScopeAdded         []string `json:"scope_added,omitempty"`
+	Risk               string   `json:"risk"`
+	ValidationRefs     []string `json:"validation_refs"`
+	FactRefs           []string `json:"fact_refs"`
+	SupersedesID       int64    `json:"supersedes_id,omitempty"`
+	SupersededByID     int64    `json:"superseded_by_id,omitempty"`
+	CreatedBy          string   `json:"created_by"`
+	CreatedAt          string   `json:"created_at"`
+	QualityState       string   `json:"quality_state"`
+	QualityReviewer    string   `json:"quality_reviewer,omitempty"`
+	QualityReason      string   `json:"quality_reason,omitempty"`
+	AcceptanceRequired bool     `json:"acceptance_required"`
+	AuthorityBoundary  string   `json:"authority_boundary"`
+}
+
 type Handoff struct {
 	ID             int64  `json:"id"`
 	FromRole       string `json:"from_role,omitempty"`
@@ -2270,6 +2293,222 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		return ServerWriteResult{}, err
 	}
 	return ServerWriteResult{RowID: rowID}, nil
+}
+
+var decisionAuthorityPattern = regexp.MustCompile(`(?i)\b(approve[sd]?|authorize[sd]?)\s+(the\s+)?(merge|deploy|release|live[ -]operation|public[ -]exposure|credential[ -]access)\b`)
+
+func (s *Store) RecordTaskDecision(ctx context.Context, decision TaskDecision) (TaskDecision, error) {
+	decision.TaskID = strings.TrimSpace(decision.TaskID)
+	decision.Decision = strings.TrimSpace(decision.Decision)
+	decision.Trigger = strings.TrimSpace(decision.Trigger)
+	decision.Chosen = strings.TrimSpace(decision.Chosen)
+	decision.Reason = strings.TrimSpace(decision.Reason)
+	decision.Risk = strings.TrimSpace(decision.Risk)
+	decision.Alternatives = uniqueNonEmptyStrings(decision.Alternatives)
+	decision.ScopeAdded = uniqueNonEmptyStrings(decision.ScopeAdded)
+	decision.ValidationRefs = uniqueNonEmptyStrings(decision.ValidationRefs)
+	decision.FactRefs = uniqueNonEmptyStrings(decision.FactRefs)
+	if decision.TaskID == "" || decision.Decision == "" || decision.Trigger == "" || decision.Chosen == "" || decision.Reason == "" || decision.Risk == "" {
+		return TaskDecision{}, errors.New("task decision requires task, decision, trigger, chosen option, reason, and risk")
+	}
+	if len(decision.Alternatives) == 0 || len(decision.ValidationRefs) == 0 || len(decision.FactRefs) == 0 {
+		return TaskDecision{}, errors.New("task decision requires at least one alternative, validation reference, and supporting fact reference")
+	}
+	if err := validateTaskDecisionText(decision); err != nil {
+		return TaskDecision{}, err
+	}
+	if decision.CreatedBy == "" {
+		decision.CreatedBy = Actor()
+	}
+	decision.CreatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	alternativesJSON, _ := json.Marshal(decision.Alternatives)
+	scopeAddedJSON, _ := json.Marshal(decision.ScopeAdded)
+	validationJSON, _ := json.Marshal(decision.ValidationRefs)
+	factRefsJSON, _ := json.Marshal(decision.FactRefs)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return TaskDecision{}, err
+	}
+	defer tx.Rollback()
+	var taskExists int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_definitions WHERE project_id=? AND id=?`, s.projectID, decision.TaskID).Scan(&taskExists); err != nil {
+		return TaskDecision{}, err
+	}
+	if taskExists == 0 {
+		return TaskDecision{}, ErrNotFound
+	}
+	var supersedes any
+	if decision.SupersedesID > 0 {
+		var priorTask string
+		if err := tx.QueryRowContext(ctx, `SELECT task_id FROM task_decisions WHERE project_id=? AND id=?`, s.projectID, decision.SupersedesID).Scan(&priorTask); errors.Is(err, sql.ErrNoRows) {
+			return TaskDecision{}, errors.New("superseded decision not found")
+		} else if err != nil {
+			return TaskDecision{}, err
+		}
+		if priorTask != decision.TaskID {
+			return TaskDecision{}, errors.New("superseded decision belongs to another task")
+		}
+		supersedes = decision.SupersedesID
+	}
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO task_decisions
+  (project_id, task_id, decision, trigger_text, alternatives, chosen, reason, scope_added, risk, validation_refs, fact_refs, supersedes_id, created_by, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.projectID, decision.TaskID, decision.Decision, decision.Trigger, string(alternativesJSON), decision.Chosen, decision.Reason, string(scopeAddedJSON), decision.Risk, string(validationJSON), string(factRefsJSON), supersedes, decision.CreatedBy, decision.CreatedAt)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return TaskDecision{}, errors.New("superseded decision already has a replacement")
+		}
+		return TaskDecision{}, err
+	}
+	decision.ID, err = res.LastInsertId()
+	if err != nil {
+		return TaskDecision{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TaskDecision{}, err
+	}
+	decision.QualityState = "draft"
+	decision.AuthorityBoundary = taskDecisionAuthorityBoundary
+	return decision, nil
+}
+
+func (s *Store) AssessTaskDecision(ctx context.Context, taskID string, decisionID int64, quality, reviewer, reason string) error {
+	taskID = strings.TrimSpace(taskID)
+	quality = strings.TrimSpace(quality)
+	reviewer = strings.TrimSpace(reviewer)
+	reason = strings.TrimSpace(reason)
+	if decisionID <= 0 || taskID == "" || reviewer == "" || reason == "" {
+		return errors.New("decision assessment requires task, decision id, reviewer, and reason")
+	}
+	if quality != "accepted" && quality != "insufficient" {
+		return fmt.Errorf("invalid decision quality %q", quality)
+	}
+	if err := validateTaskDecisionTextValues(reviewer, reason); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var owner, claimant string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(owner, ''), COALESCE(claimant, '') FROM task_state WHERE project_id=? AND task_id=?`, s.projectID, taskID).Scan(&owner, &claimant); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if reviewer == owner || (claimant != "" && reviewer == claimant) {
+		return errors.New("reviewer cannot assess their own task decision")
+	}
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_decisions WHERE project_id=? AND task_id=? AND id=?`, s.projectID, taskID, decisionID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return errors.New("task decision not found")
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO task_decision_assessments (project_id, task_id, decision_id, quality_state, reviewer, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, s.projectID, taskID, decisionID, quality, reviewer, reason, time.Now().UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+const taskDecisionAuthorityBoundary = "decision records explain choices only; they do not grant approval, merge, deploy, credential, release, public-exposure, or live-operation authority"
+
+func validateTaskDecisionText(decision TaskDecision) error {
+	values := []string{decision.Decision, decision.Trigger, decision.Chosen, decision.Reason, decision.Risk, decision.CreatedBy}
+	values = append(values, decision.Alternatives...)
+	values = append(values, decision.ScopeAdded...)
+	values = append(values, decision.ValidationRefs...)
+	values = append(values, decision.FactRefs...)
+	return validateTaskDecisionTextValues(values...)
+}
+
+func validateTaskDecisionTextValues(values ...string) error {
+	markers := []string{"raw_prompt:", "raw_prompt=", "transcript:", "tool_body:", "tool_body=", "generated_content:", "generated_content=", "authorization:", "bearer ", "api_key=", "access_token=", "refresh_token=", "client_secret=", "password=", "secret="}
+	for _, value := range values {
+		lower := strings.ToLower(value)
+		for _, marker := range markers {
+			if strings.Contains(lower, marker) {
+				return errors.New("task decision rejected: unsafe private-data marker")
+			}
+		}
+		if decisionAuthorityPattern.MatchString(value) {
+			return errors.New("task decision rejected: decision text cannot grant consequential authority")
+		}
+	}
+	return nil
+}
+
+func (s *Store) TaskDecisions(ctx context.Context, taskID string) ([]TaskDecision, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, task_id, decision, trigger_text, alternatives, chosen, reason, scope_added, risk, validation_refs, fact_refs,
+       COALESCE(supersedes_id, 0), created_by, created_at
+FROM task_decisions
+WHERE project_id=? AND task_id=?
+ORDER BY created_at, id`, s.projectID, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var decisions []TaskDecision
+	for rows.Next() {
+		var decision TaskDecision
+		var alternativesJSON, scopeAddedJSON, validationJSON, factRefsJSON string
+		if err := rows.Scan(&decision.ID, &decision.TaskID, &decision.Decision, &decision.Trigger, &alternativesJSON, &decision.Chosen, &decision.Reason, &scopeAddedJSON, &decision.Risk, &validationJSON, &factRefsJSON, &decision.SupersedesID, &decision.CreatedBy, &decision.CreatedAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(alternativesJSON), &decision.Alternatives); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(scopeAddedJSON), &decision.ScopeAdded); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(validationJSON), &decision.ValidationRefs); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(factRefsJSON), &decision.FactRefs); err != nil {
+			return nil, err
+		}
+		decision.QualityState = "draft"
+		decision.AuthorityBoundary = taskDecisionAuthorityBoundary
+		decisions = append(decisions, decision)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]*TaskDecision, len(decisions))
+	for i := range decisions {
+		byID[decisions[i].ID] = &decisions[i]
+		if decisions[i].SupersedesID > 0 {
+			if prior := byID[decisions[i].SupersedesID]; prior != nil {
+				prior.QualityState = "superseded"
+				prior.SupersededByID = decisions[i].ID
+			}
+		}
+	}
+	assessmentRows, err := s.db.QueryContext(ctx, `SELECT decision_id, quality_state, reviewer, reason FROM task_decision_assessments WHERE project_id=? AND task_id=? ORDER BY created_at, id`, s.projectID, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer assessmentRows.Close()
+	for assessmentRows.Next() {
+		var decisionID int64
+		var quality, reviewer, reason string
+		if err := assessmentRows.Scan(&decisionID, &quality, &reviewer, &reason); err != nil {
+			return nil, err
+		}
+		if decision := byID[decisionID]; decision != nil {
+			if decision.QualityState != "superseded" {
+				decision.QualityState = quality
+			}
+			decision.QualityReviewer = reviewer
+			decision.QualityReason = reason
+		}
+	}
+	return decisions, assessmentRows.Err()
 }
 
 func (s *Store) RecordHandoff(ctx context.Context, taskID string, h Handoff) error {

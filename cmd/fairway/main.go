@@ -108,6 +108,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdSetStatus(ctx, opts, args[1:])
 	case "record":
 		return cmdRecord(ctx, opts, args[1:])
+	case "decision":
+		return cmdDecision(ctx, opts, args[1:])
 	case "usage":
 		return cmdUsage(ctx, opts, args[1:])
 	case "task-detail":
@@ -6928,6 +6930,170 @@ func cmdWork(ctx context.Context, opts globalOptions, args []string) error {
 	}
 }
 
+func cmdDecision(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("decision requires subcommand: record, assess, list")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("decision", "record|assess|list")
+		return nil
+	}
+	switch args[0] {
+	case "record":
+		return cmdDecisionRecord(ctx, opts, args[1:])
+	case "assess":
+		return cmdDecisionAssess(ctx, opts, args[1:])
+	case "list":
+		return cmdDecisionList(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown decision subcommand %q", args[0])
+	}
+}
+
+func cmdDecisionRecord(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) || (len(args) > 1 && isHelpOnly(args[1:])) {
+		subcommandUsage("decision record", "<task-id> --decision <text> --trigger <text> --alternative <text>... --chosen <text> --reason <text> [--scope-added <path-or-domain>]... --risk <text> --validation <ref>... --fact-ref <ref>... [--supersedes <id>]")
+		return nil
+	}
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return errors.New("decision record requires an explicit task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("decision record", flag.ContinueOnError)
+	decisionText := fs.String("decision", "", "concise material decision")
+	trigger := fs.String("trigger", "", "fact that triggered the decision")
+	chosen := fs.String("chosen", "", "chosen alternative")
+	reason := fs.String("reason", "", "concrete tradeoff or boundary reason")
+	risk := fs.String("risk", "", "residual or changed risk")
+	supersedes := fs.Int64("supersedes", 0, "prior decision id replaced by this decision")
+	var alternatives, scopeAdded, validationRefs, factRefs multiFlag
+	fs.Var(&alternatives, "alternative", "credible alternative; repeatable")
+	fs.Var(&scopeAdded, "scope-added", "added path or ownership scope; repeatable")
+	fs.Var(&validationRefs, "validation", "validation reference; repeatable")
+	fs.Var(&factRefs, "fact-ref", "supporting Fairway or commit fact reference; repeatable")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected decision record arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		decision, err := s.RecordTaskDecision(ctx, store.TaskDecision{TaskID: taskID, Decision: *decisionText, Trigger: *trigger, Alternatives: alternatives, Chosen: *chosen, Reason: *reason, ScopeAdded: scopeAdded, Risk: *risk, ValidationRefs: validationRefs, FactRefs: factRefs, SupersedesID: *supersedes})
+		if err != nil {
+			return err
+		}
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		decision.AcceptanceRequired = decisionAcceptanceRequired(task)
+		if opts.JSON {
+			return printJSON(decision)
+		}
+		fmt.Printf("decision recorded task=%s id=%d quality=%s acceptance_required=%t\n", taskID, decision.ID, decision.QualityState, decision.AcceptanceRequired)
+		fmt.Printf("authority_boundary: %s\n", decision.AuthorityBoundary)
+		return nil
+	})
+}
+
+func cmdDecisionAssess(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) || (len(args) > 1 && isHelpOnly(args[1:])) {
+		subcommandUsage("decision assess", "<task-id> --decision-id <id> --quality <accepted|insufficient> --reviewer <identity> --reason <text>")
+		return nil
+	}
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return errors.New("decision assess requires an explicit task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("decision assess", flag.ContinueOnError)
+	decisionID := fs.Int64("decision-id", 0, "decision id")
+	quality := fs.String("quality", "", "accepted or insufficient")
+	reviewer := fs.String("reviewer", "", "independent reviewer identity")
+	reason := fs.String("reason", "", "quality assessment reason")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected decision assess arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		if err := s.AssessTaskDecision(ctx, taskID, *decisionID, *quality, *reviewer, *reason); err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(map[string]any{"task_id": taskID, "decision_id": *decisionID, "quality_state": *quality, "reviewer": *reviewer, "authority_boundary": "quality assessment does not grant workflow authority"})
+		}
+		fmt.Printf("decision assessed task=%s id=%d quality=%s reviewer=%s\n", taskID, *decisionID, *quality, *reviewer)
+		fmt.Println("authority_boundary: quality assessment does not grant approval, merge, deploy, credential, release, public-exposure, or live-operation authority")
+		return nil
+	})
+}
+
+func cmdDecisionList(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) || (len(args) > 1 && isHelpOnly(args[1:])) {
+		subcommandUsage("decision list", "<task-id>")
+		return nil
+	}
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return errors.New("decision list requires an explicit task id")
+	}
+	if len(args) > 1 {
+		return fmt.Errorf("unexpected decision list arguments: %s", strings.Join(args[1:], " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, _, _, _, err := s.TaskDetail(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		decisions, err := taskDecisions(ctx, s, task)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(decisions)
+		}
+		printTaskDecisions(decisions)
+		return nil
+	})
+}
+
+func taskDecisions(ctx context.Context, s *store.Store, task store.Task) ([]store.TaskDecision, error) {
+	decisions, err := s.TaskDecisions(ctx, task.Definition.ID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range decisions {
+		decisions[i].AcceptanceRequired = decisionAcceptanceRequired(task)
+	}
+	return decisions, nil
+}
+
+func decisionAcceptanceRequired(task store.Task) bool {
+	text := strings.ToLower(strings.Join(append([]string{task.Definition.RiskLevel, task.Definition.MigrationType, task.Definition.Profile, task.Definition.OwningLayer}, task.Definition.Tags...), " "))
+	for _, marker := range []string{"high", "critical", "release-boundary", "security", "live", "production", "deploy", "release", "credential", "public-exposure", "public_exposure", "irreversible", "migration"} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func printTaskDecisions(decisions []store.TaskDecision) {
+	if len(decisions) == 0 {
+		fmt.Println("- none")
+		return
+	}
+	for _, decision := range decisions {
+		fmt.Printf("- id=%d quality=%s acceptance_required=%t created_by=%s decision=%s\n", decision.ID, decision.QualityState, decision.AcceptanceRequired, decision.CreatedBy, decision.Decision)
+		fmt.Printf("  trigger=%s chosen=%s reason=%s risk=%s\n", decision.Trigger, decision.Chosen, decision.Reason, decision.Risk)
+		fmt.Printf("  alternatives=%s scope_added=%s validation=%s fact_refs=%s supersedes=%d superseded_by=%d\n", strings.Join(decision.Alternatives, "; "), strings.Join(decision.ScopeAdded, "; "), strings.Join(decision.ValidationRefs, "; "), strings.Join(decision.FactRefs, "; "), decision.SupersedesID, decision.SupersededByID)
+		if decision.QualityReviewer != "" {
+			fmt.Printf("  quality_reviewer=%s quality_reason=%s\n", decision.QualityReviewer, decision.QualityReason)
+		}
+		fmt.Printf("  authority_boundary=%s\n", decision.AuthorityBoundary)
+	}
+}
+
 func cmdWorkStart(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return errors.New("work start requires an explicit task id")
@@ -7031,21 +7197,40 @@ func cmdWorkStatus(ctx context.Context, opts globalOptions, args []string) error
 				checkpointCount++
 			}
 		}
+		decisions, err := taskDecisions(ctx, s, task)
+		if err != nil {
+			return err
+		}
+		currentDecisions, supersededDecisions, decisionAttention := 0, 0, 0
+		for _, decision := range decisions {
+			if decision.QualityState == "superseded" {
+				supersededDecisions++
+				continue
+			}
+			currentDecisions++
+			if decision.QualityState == "insufficient" || (decision.AcceptanceRequired && decision.QualityState != "accepted") {
+				decisionAttention++
+			}
+		}
 		row := struct {
-			TaskID      string `json:"task_id"`
-			Status      string `json:"status"`
-			Owner       string `json:"owner"`
-			Sessions    int    `json:"active_sessions"`
-			Checkpoints int    `json:"checkpoints"`
-			Evidence    int    `json:"evidence"`
-			Reviews     int    `json:"reviews"`
-		}{taskID, task.Status, task.Owner, activeSessions, checkpointCount, len(evidence), len(reviews)}
+			TaskID              string               `json:"task_id"`
+			Status              string               `json:"status"`
+			Owner               string               `json:"owner"`
+			Sessions            int                  `json:"active_sessions"`
+			Checkpoints         int                  `json:"checkpoints"`
+			Evidence            int                  `json:"evidence"`
+			Reviews             int                  `json:"reviews"`
+			CurrentDecisions    int                  `json:"current_decisions"`
+			SupersededDecisions int                  `json:"superseded_decisions"`
+			DecisionAttention   int                  `json:"decision_attention"`
+			Decisions           []store.TaskDecision `json:"decisions,omitempty"`
+		}{taskID, task.Status, task.Owner, activeSessions, checkpointCount, len(evidence), len(reviews), currentDecisions, supersededDecisions, decisionAttention, decisions}
 		if opts.JSON {
 			return printJSON(row)
 		}
-		fmt.Printf("work task=%s status=%s owner=%s sessions=%d checkpoints=%d evidence=%d reviews=%d\n", row.TaskID, row.Status, row.Owner, row.Sessions, row.Checkpoints, row.Evidence, row.Reviews)
+		fmt.Printf("work task=%s status=%s owner=%s sessions=%d checkpoints=%d evidence=%d reviews=%d decisions=%d superseded_decisions=%d decision_attention=%d\n", row.TaskID, row.Status, row.Owner, row.Sessions, row.Checkpoints, row.Evidence, row.Reviews, row.CurrentDecisions, row.SupersededDecisions, row.DecisionAttention)
 		if *explain {
-			fmt.Println("primitives: task_state agent_sessions task_checkpoints task_evidence task_reviews")
+			fmt.Println("primitives: task_state agent_sessions task_checkpoints task_evidence task_reviews task_decisions task_decision_assessments")
 			fmt.Printf("inspect: fairway task-detail %s\n", taskID)
 		}
 		return nil
@@ -11934,16 +12119,21 @@ func cmdPacketContext(ctx context.Context, opts globalOptions, args []string) er
 		if err != nil {
 			return err
 		}
+		decisions, err := taskDecisions(ctx, s, task)
+		if err != nil {
+			return err
+		}
 		packet := struct {
-			Task        store.Task         `json:"task"`
-			Goal        string             `json:"goal"`
-			Owner       string             `json:"owner"`
-			Acceptance  string             `json:"acceptance"`
-			Transitions []store.Transition `json:"transitions"`
-			Evidence    []store.Evidence   `json:"evidence"`
-			Handoffs    []store.Handoff    `json:"handoffs"`
-			Reviews     []store.Review     `json:"reviews"`
-		}{task, *goal, *owner, *acceptance, transitions, evidence, handoffs, reviews}
+			Task        store.Task           `json:"task"`
+			Goal        string               `json:"goal"`
+			Owner       string               `json:"owner"`
+			Acceptance  string               `json:"acceptance"`
+			Transitions []store.Transition   `json:"transitions"`
+			Evidence    []store.Evidence     `json:"evidence"`
+			Handoffs    []store.Handoff      `json:"handoffs"`
+			Reviews     []store.Review       `json:"reviews"`
+			Decisions   []store.TaskDecision `json:"decisions"`
+		}{task, *goal, *owner, *acceptance, transitions, evidence, handoffs, reviews, decisions}
 		if opts.JSON {
 			return printJSON(packet)
 		}
@@ -11978,6 +12168,8 @@ func cmdPacketContext(ctx context.Context, opts globalOptions, args []string) er
 		for _, review := range reviews {
 			fmt.Printf("- %s by %s: %s\n", review.Verdict, review.Reviewer, review.Reason)
 		}
+		fmt.Println("\n## Task Decisions")
+		printTaskDecisions(decisions)
 		return nil
 	})
 }
@@ -17447,6 +17639,10 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if err != nil {
 		return err
 	}
+	decisions, err := taskDecisions(ctx, s, task)
+	if err != nil {
+		return err
+	}
 	uxMediaEvidence := evidencemodel.UXMediaRows(evidence)
 	uxMediaSummary := evidencemodel.UXMediaSummaryFor(uxMediaEvidence)
 	if asJSON {
@@ -17464,6 +17660,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			Handoffs             []store.Handoff                        `json:"handoffs"`
 			CompletionHandbacks  []completionhandback.Handback          `json:"completion_handbacks,omitempty"`
 			Reviews              []store.Review                         `json:"reviews"`
+			Decisions            []store.TaskDecision                   `json:"decisions,omitempty"`
 			ReviewPolicy         reviewpolicy.Evaluation                `json:"review_policy,omitempty"`
 			MissingReviewDomains []string                               `json:"missing_review_domains,omitempty"`
 			ReviewHandback       *coord.ReviewCompletionHandback        `json:"review_handback,omitempty"`
@@ -17473,7 +17670,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			UsageRollups         []store.UsageRollup                    `json:"usage_rollups"`
 			Batches              []store.WorkBatch                      `json:"batches"`
 			Notifications        []store.Notification                   `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
+		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, decisions, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := reviewPolicy.MissingReviewDomains
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
@@ -17509,6 +17706,8 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 		}
 		fmt.Printf("- %s %s %s%s\n", ev.Result, ev.CommandText, ev.ArtifactPath, notes)
 	}
+	fmt.Println("\ntask decisions:")
+	printTaskDecisions(decisions)
 	fmt.Println("\nux media evidence:")
 	if len(uxMediaEvidence) == 0 {
 		fmt.Println("- none")
@@ -17756,7 +17955,7 @@ func usage() {
 	fmt.Println("  fairway <command> --help")
 	fmt.Println()
 	fmt.Println("Queue and task state:")
-	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail")
+	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail, decision")
 	fmt.Println("Evidence and review:")
 	fmt.Println("  record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
@@ -17785,6 +17984,7 @@ func printCommandHelp(command string) bool {
 		"claim":                      "fairway claim <task-id> | fairway claim --in <epic-id>\n  Claim a ready task.",
 		"set-status":                 "fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]\n  Move a task through the configured state machine.",
 		"task-detail":                "fairway task-detail <task-id>\n  Show task state, metadata, evidence, sessions, reviews, and readiness.",
+		"decision":                   "fairway decision record|assess|list ...\n  Record privacy-bounded material task decisions and independent quality assessments without granting workflow authority.",
 		"status-report":              "fairway status-report\n  Print task counts by status.",
 		"health-report":              "fairway health-report\n  Print aggregate health diagnostics for the local Fairway state.",
 		"timing-report":              "fairway timing-report\n  Print task timing and flow metrics.",

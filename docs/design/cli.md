@@ -21,11 +21,28 @@ command. Neither command records evidence, synthesizes reviews, or authorizes
 merge, deploy, release, credentials, public exposure, or live operations.
 
 Material implementation choices use the task decision model documented in
-[`task-decision-memory.md`](task-decision-memory.md). Until the first-class
-command lands, record the concise decision through bounded task evidence or a
-checkpoint and reference it from track memory when it has cross-task value. Do
-not store raw prompts, chain-of-thought, transcripts, or tool bodies as a
-substitute for a decision.
+[`task-decision-memory.md`](task-decision-memory.md). Use `decision record` for
+a concise doer-drafted explanation and `decision assess` for an independent
+quality assessment. Task detail, work status, and context packets project the
+same current and superseded rows. Do not store raw prompts, chain-of-thought,
+transcripts, or tool bodies as a substitute for a decision.
+
+`decision record` appends a structured task decision in `draft` quality state.
+It requires a trigger, credible alternative, chosen option, concrete reason,
+risk, validation reference, and supporting fact reference. `--supersedes`
+links a replacement while preserving the earlier row as `superseded` history.
+The canonical validator rejects raw-prompt, transcript, tool-body,
+generated-content, credential, token, secret, and consequential-authority
+markers.
+
+`decision assess` appends an independent `accepted` or `insufficient` quality
+assessment. The task owner or claimant cannot assess their own decision.
+Acceptance means only that the explanation is concrete and consistent with the
+diff and cited facts. It does not approve the task or grant merge, deploy,
+credential, release, public-exposure, or live-operation authority. High-risk
+and consequential task metadata reports that independent acceptance is
+required; reversible work keeps draft/insufficient findings advisory during the
+pilot.
 
 ```
 fairway init [--refresh-agent-contract]                # scaffold .fairway/config.toml + DB + .fairway/AGENTS.md
@@ -54,6 +71,9 @@ fairway review-waits wake [--task <task-id>] [--send]              # fixed-templ
 fairway review-policy report [--profile <name>]                   # review profile overhead/outcome report
 fairway work start <task-id> [--session-id <id>] [--role <role>] [--provider <name>] [--backend <name>] [--external-run-id <id>] [--summary <text>]
 fairway work status [<task-id>] [--explain]
+fairway decision record <task-id> --decision <text> --trigger <text> --alternative <text>... --chosen <text> --reason <text> [--scope-added <path-or-domain>]... --risk <text> --validation <ref>... --fact-ref <ref>... [--supersedes <id>]
+fairway decision assess <task-id> --decision-id <id> --quality <accepted|insufficient> --reviewer <identity> --reason <text>
+fairway decision list <task-id>
 fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <name>] [--provider <name>] [--task-id <id>] [--pid <pid>] [--monitor-kind <kind>] [--automation-id <id>] [--external-run-id <id>] [--poll-command <cmd>] [--manual-until <date-or-rfc3339>]
 fairway session status [--all]
 fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]

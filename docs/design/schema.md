@@ -177,6 +177,26 @@ tamper-evidence.
 
 FK: `(project_id, task_id) → task_state(project_id, task_id)`.
 
+### `task_decisions` and `task_decision_assessments`
+
+`task_decisions` is the append-only curated explanation for a material task
+choice. It stores the decision, trigger, alternatives, chosen option, reason,
+added scope, risk, validation references, supporting fact references, optional
+superseded decision id, author, and creation time. Structured lists are JSON
+text for SQLite/Postgres compatibility. A unique partial index permits only one
+direct replacement for a superseded row.
+
+`task_decision_assessments` appends independent `accepted` or `insufficient`
+quality findings. The task owner or claimant cannot assess their own decision.
+The read model derives `draft` when no assessment exists and `superseded` when a
+later decision replaces the row. Earlier decisions and assessments are never
+rewritten or deleted by the command surface.
+
+Decision text is privacy-bounded and cannot grant approval, merge, deploy,
+credential, release, public-exposure, or live-operation authority. An accepted
+decision means the explanation is concrete and fact-consistent; normal Fairway
+review, evidence, merge, deploy, and release gates remain separate.
+
 ### `task_reviews`
 
 Review records.
