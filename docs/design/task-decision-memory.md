@@ -133,6 +133,14 @@ Track memory participates in Fairway backup, export, restore, and shared-store
 rehearsal. A local SQLite copy without tested recovery is not sufficient for
 irreplaceable cross-task context.
 
+The lifecycle command surface uses `memory reconcile` as a read-only preview
+and `memory disposition` as the explicit audited transition. `memory history`
+retains every disposition event. New active records fail closed without owner,
+review date, and an existing Fairway source fact; legacy rows are reported for
+refresh rather than silently repaired. Export, SQLite backup readback, and the
+disposable shared-store rehearsal include both current memory and lifecycle
+rows.
+
 ## Promotion between memory levels
 
 ```text

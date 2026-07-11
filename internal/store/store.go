@@ -259,7 +259,26 @@ type TrackMemory struct {
 	SourceCheckpointIDs []int64  `json:"source_checkpoint_ids,omitempty"`
 	SourceEvidenceIDs   []int64  `json:"source_evidence_ids,omitempty"`
 	SourceReviewIDs     []int64  `json:"source_review_ids,omitempty"`
+	Owner               string   `json:"owner,omitempty"`
+	ReviewBy            string   `json:"review_by,omitempty"`
+	Disposition         string   `json:"disposition"`
+	PromotionTarget     string   `json:"promotion_target,omitempty"`
+	CanonicalCommit     string   `json:"canonical_commit,omitempty"`
+	SupersededByTrackID string   `json:"superseded_by_track_id,omitempty"`
 	UpdatedAt           string   `json:"updated_at,omitempty"`
+}
+
+type TrackMemoryLifecycle struct {
+	ID                  int64  `json:"id"`
+	TrackID             string `json:"track_id"`
+	FromDisposition     string `json:"from_disposition"`
+	ToDisposition       string `json:"to_disposition"`
+	Reason              string `json:"reason"`
+	PromotionTarget     string `json:"promotion_target,omitempty"`
+	CanonicalCommit     string `json:"canonical_commit,omitempty"`
+	SupersededByTrackID string `json:"superseded_by_track_id,omitempty"`
+	Actor               string `json:"actor"`
+	CreatedAt           string `json:"created_at"`
 }
 
 type TrackerLink struct {
@@ -442,9 +461,11 @@ type Health struct {
 }
 
 type Snapshot struct {
-	ProjectID  string         `json:"project_id"`
-	ExportedAt string         `json:"exported_at"`
-	Tasks      []SnapshotTask `json:"tasks"`
+	ProjectID            string                 `json:"project_id"`
+	ExportedAt           string                 `json:"exported_at"`
+	Tasks                []SnapshotTask         `json:"tasks"`
+	TrackMemories        []TrackMemory          `json:"track_memories,omitempty"`
+	TrackMemoryLifecycle []TrackMemoryLifecycle `json:"track_memory_lifecycle,omitempty"`
 }
 
 type SnapshotTask struct {
@@ -715,6 +736,14 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 			Handoffs:    handoffs,
 			Reviews:     reviews,
 		})
+	}
+	snapshot.TrackMemories, err = s.TrackMemories(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snapshot.TrackMemoryLifecycle, err = s.TrackMemoryLifecycle(ctx, "")
+	if err != nil {
+		return Snapshot{}, err
 	}
 	return snapshot, nil
 }
@@ -1706,7 +1735,9 @@ SELECT track_id, COALESCE(title, ''), COALESCE(purpose, ''), COALESCE(operating_
        COALESCE(active_scope, ''), COALESCE(current_objective, ''), COALESCE(decisions, '[]'),
        COALESCE(blockers, '[]'), COALESCE(open_questions, '[]'), COALESCE(next_actions, '[]'),
        COALESCE(source_checkpoint_ids, '[]'), COALESCE(source_evidence_ids, '[]'),
-       COALESCE(source_review_ids, '[]'), updated_at
+       COALESCE(source_review_ids, '[]'), COALESCE(owner, ''), COALESCE(review_by, ''),
+       COALESCE(disposition, 'active'), COALESCE(promotion_target, ''), COALESCE(canonical_commit, ''),
+       COALESCE(superseded_by_track_id, ''), updated_at
 FROM track_memory
 WHERE project_id=? AND track_id=?`, s.projectID, trackID)
 	if err := scanTrackMemory(row, &mem); err != nil {
@@ -1724,7 +1755,9 @@ SELECT track_id, COALESCE(title, ''), COALESCE(purpose, ''), COALESCE(operating_
        COALESCE(active_scope, ''), COALESCE(current_objective, ''), COALESCE(decisions, '[]'),
        COALESCE(blockers, '[]'), COALESCE(open_questions, '[]'), COALESCE(next_actions, '[]'),
        COALESCE(source_checkpoint_ids, '[]'), COALESCE(source_evidence_ids, '[]'),
-       COALESCE(source_review_ids, '[]'), updated_at
+       COALESCE(source_review_ids, '[]'), COALESCE(owner, ''), COALESCE(review_by, ''),
+       COALESCE(disposition, 'active'), COALESCE(promotion_target, ''), COALESCE(canonical_commit, ''),
+       COALESCE(superseded_by_track_id, ''), updated_at
 FROM track_memory
 WHERE project_id=?
 ORDER BY updated_at DESC`, s.projectID)
@@ -1748,25 +1781,48 @@ func (s *Store) UpsertTrackMemory(ctx context.Context, mem TrackMemory, appendFi
 	if mem.TrackID == "" {
 		return TrackMemory{}, errors.New("track id is required")
 	}
-	if err := s.validateTrackMemorySources(ctx, mem); err != nil {
+	existing, existingErr := s.TrackMemory(ctx, mem.TrackID)
+	if existingErr != nil && !errors.Is(existingErr, ErrNotFound) {
+		return TrackMemory{}, existingErr
+	}
+	if existingErr == nil {
+		if appendFields {
+			mem = mergeTrackMemory(existing, mem)
+		} else {
+			if mem.Owner == "" {
+				mem.Owner = existing.Owner
+			}
+			if mem.ReviewBy == "" {
+				mem.ReviewBy = existing.ReviewBy
+			}
+			if len(mem.SourceCheckpointIDs)+len(mem.SourceEvidenceIDs)+len(mem.SourceReviewIDs) == 0 {
+				mem.SourceCheckpointIDs = existing.SourceCheckpointIDs
+				mem.SourceEvidenceIDs = existing.SourceEvidenceIDs
+				mem.SourceReviewIDs = existing.SourceReviewIDs
+			}
+			mem.Disposition = existing.Disposition
+			mem.PromotionTarget = existing.PromotionTarget
+			mem.CanonicalCommit = existing.CanonicalCommit
+			mem.SupersededByTrackID = existing.SupersededByTrackID
+		}
+	}
+	if mem.Disposition == "" {
+		mem.Disposition = "active"
+	}
+	if err := validateTrackMemoryLifecycleFields(mem); err != nil {
 		return TrackMemory{}, err
 	}
-	if appendFields {
-		existing, err := s.TrackMemory(ctx, mem.TrackID)
-		if err != nil && !errors.Is(err, ErrNotFound) {
-			return TrackMemory{}, err
-		}
-		if err == nil {
-			mem = mergeTrackMemory(existing, mem)
-		}
+	if err := s.validateTrackMemorySources(ctx, mem); err != nil {
+		return TrackMemory{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO track_memory
   (project_id, track_id, title, purpose, operating_mode, active_scope, current_objective,
    decisions, blockers, open_questions, next_actions, source_checkpoint_ids, source_evidence_ids,
-   source_review_ids, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+   source_review_ids, owner, review_by, disposition, promotion_target, canonical_commit,
+   superseded_by_track_id, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(project_id, track_id) DO UPDATE SET
   title=excluded.title,
   purpose=excluded.purpose,
@@ -1780,15 +1836,128 @@ ON CONFLICT(project_id, track_id) DO UPDATE SET
   source_checkpoint_ids=excluded.source_checkpoint_ids,
   source_evidence_ids=excluded.source_evidence_ids,
   source_review_ids=excluded.source_review_ids,
+  owner=excluded.owner,
+  review_by=excluded.review_by,
+  disposition=excluded.disposition,
+  promotion_target=excluded.promotion_target,
+  canonical_commit=excluded.canonical_commit,
+  superseded_by_track_id=excluded.superseded_by_track_id,
   updated_at=excluded.updated_at`,
 		s.projectID, mem.TrackID, mem.Title, mem.Purpose, mem.OperatingMode, mem.ActiveScope, mem.CurrentObjective,
 		mustJSONStrings(mem.Decisions), mustJSONStrings(mem.Blockers), mustJSONStrings(mem.OpenQuestions),
 		mustJSONStrings(mem.NextActions), mustJSONInt64s(mem.SourceCheckpointIDs), mustJSONInt64s(mem.SourceEvidenceIDs),
-		mustJSONInt64s(mem.SourceReviewIDs), now)
+		mustJSONInt64s(mem.SourceReviewIDs), mem.Owner, mem.ReviewBy, mem.Disposition, mem.PromotionTarget,
+		mem.CanonicalCommit, mem.SupersededByTrackID, now)
 	if err != nil {
 		return TrackMemory{}, err
 	}
 	return s.TrackMemory(ctx, mem.TrackID)
+}
+
+func validateTrackMemoryLifecycleFields(mem TrackMemory) error {
+	switch mem.Disposition {
+	case "active", "promote", "archived", "superseded":
+	default:
+		return fmt.Errorf("invalid track memory disposition %q", mem.Disposition)
+	}
+	if mem.Disposition == "active" {
+		if strings.TrimSpace(mem.Owner) == "" {
+			return errors.New("active track memory owner is required")
+		}
+		if strings.TrimSpace(mem.ReviewBy) == "" {
+			return errors.New("active track memory review date is required")
+		}
+		if _, err := time.Parse("2006-01-02", mem.ReviewBy); err != nil {
+			if _, rfcErr := time.Parse(time.RFC3339, mem.ReviewBy); rfcErr != nil {
+				return errors.New("track memory review date must be YYYY-MM-DD or RFC3339")
+			}
+		}
+		if len(mem.SourceCheckpointIDs)+len(mem.SourceEvidenceIDs)+len(mem.SourceReviewIDs) == 0 {
+			return errors.New("active track memory requires at least one source fact")
+		}
+	}
+	return nil
+}
+
+func (s *Store) RecordTrackMemoryDisposition(ctx context.Context, trackID, disposition, reason, promotionTarget, canonicalCommit, supersededBy string) (TrackMemory, error) {
+	trackID = strings.TrimSpace(trackID)
+	disposition = strings.TrimSpace(disposition)
+	reason = strings.TrimSpace(reason)
+	if trackID == "" || reason == "" {
+		return TrackMemory{}, errors.New("track id and disposition reason are required")
+	}
+	if disposition != "active" && disposition != "promote" && disposition != "archived" && disposition != "superseded" {
+		return TrackMemory{}, fmt.Errorf("invalid track memory disposition %q", disposition)
+	}
+	if disposition == "promote" && strings.TrimSpace(promotionTarget) == "" {
+		return TrackMemory{}, errors.New("promote disposition requires promotion target")
+	}
+	if disposition == "superseded" && strings.TrimSpace(supersededBy) == "" {
+		return TrackMemory{}, errors.New("superseded disposition requires replacement track id")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return TrackMemory{}, err
+	}
+	defer tx.Rollback()
+	var from, existingTarget, existingCommit, existingSupersededBy string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(disposition,'active'), COALESCE(promotion_target,''), COALESCE(canonical_commit,''), COALESCE(superseded_by_track_id,'') FROM track_memory WHERE project_id=? AND track_id=?`, s.projectID, trackID).Scan(&from, &existingTarget, &existingCommit, &existingSupersededBy); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return TrackMemory{}, ErrNotFound
+		}
+		return TrackMemory{}, err
+	}
+	if from == disposition {
+		return TrackMemory{}, fmt.Errorf("track memory %q is already %s", trackID, disposition)
+	}
+	if promotionTarget == "" {
+		promotionTarget = existingTarget
+	}
+	if canonicalCommit == "" {
+		canonicalCommit = existingCommit
+	}
+	if supersededBy == "" {
+		supersededBy = existingSupersededBy
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO track_memory_lifecycle
+  (project_id, track_id, from_disposition, to_disposition, reason, promotion_target, canonical_commit, superseded_by_track_id, actor, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, s.projectID, trackID, from, disposition, reason, promotionTarget, canonicalCommit, supersededBy, Actor(), now); err != nil {
+		return TrackMemory{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE track_memory SET disposition=?, promotion_target=?, canonical_commit=?, superseded_by_track_id=?, updated_at=? WHERE project_id=? AND track_id=?`, disposition, promotionTarget, canonicalCommit, supersededBy, now, s.projectID, trackID); err != nil {
+		return TrackMemory{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TrackMemory{}, err
+	}
+	return s.TrackMemory(ctx, trackID)
+}
+
+func (s *Store) TrackMemoryLifecycle(ctx context.Context, trackID string) ([]TrackMemoryLifecycle, error) {
+	query := `SELECT id, track_id, from_disposition, to_disposition, reason,
+       COALESCE(promotion_target,''), COALESCE(canonical_commit,''), COALESCE(superseded_by_track_id,''), actor, created_at
+FROM track_memory_lifecycle WHERE project_id=?`
+	args := []any{s.projectID}
+	if strings.TrimSpace(trackID) != "" {
+		query += " AND track_id=?"
+		args = append(args, strings.TrimSpace(trackID))
+	}
+	query += " ORDER BY id"
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrackMemoryLifecycle
+	for rows.Next() {
+		var row TrackMemoryLifecycle
+		if err := rows.Scan(&row.ID, &row.TrackID, &row.FromDisposition, &row.ToDisposition, &row.Reason, &row.PromotionTarget, &row.CanonicalCommit, &row.SupersededByTrackID, &row.Actor, &row.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) validateTrackMemorySources(ctx context.Context, mem TrackMemory) error {
@@ -1835,7 +2004,9 @@ func scanTrackMemory(row rowScanner, mem *TrackMemory) error {
 	var decisions, blockers, openQuestions, nextActions string
 	var checkpointIDs, evidenceIDs, reviewIDs string
 	if err := row.Scan(&mem.TrackID, &mem.Title, &mem.Purpose, &mem.OperatingMode, &mem.ActiveScope, &mem.CurrentObjective,
-		&decisions, &blockers, &openQuestions, &nextActions, &checkpointIDs, &evidenceIDs, &reviewIDs, &mem.UpdatedAt); err != nil {
+		&decisions, &blockers, &openQuestions, &nextActions, &checkpointIDs, &evidenceIDs, &reviewIDs,
+		&mem.Owner, &mem.ReviewBy, &mem.Disposition, &mem.PromotionTarget, &mem.CanonicalCommit,
+		&mem.SupersededByTrackID, &mem.UpdatedAt); err != nil {
 		return err
 	}
 	if err := json.Unmarshal([]byte(decisions), &mem.Decisions); err != nil {
@@ -1877,6 +2048,12 @@ func mergeTrackMemory(existing, update TrackMemory) TrackMemory {
 	}
 	if update.CurrentObjective != "" {
 		existing.CurrentObjective = update.CurrentObjective
+	}
+	if update.Owner != "" {
+		existing.Owner = update.Owner
+	}
+	if update.ReviewBy != "" {
+		existing.ReviewBy = update.ReviewBy
 	}
 	existing.Decisions = appendUniqueStrings(existing.Decisions, update.Decisions...)
 	existing.Blockers = appendUniqueStrings(existing.Blockers, update.Blockers...)

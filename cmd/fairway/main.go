@@ -10604,10 +10604,10 @@ func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string,
 
 func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("memory requires subcommand: show, update, append, packet, stale")
+		return errors.New("memory requires subcommand: show, update, append, packet, stale, reconcile, disposition, history")
 	}
 	if args[0] == "--help" || args[0] == "-h" {
-		subcommandUsage("memory", "show|update|append|packet|stale")
+		subcommandUsage("memory", "show|update|append|packet|stale|reconcile|disposition|history")
 		return nil
 	}
 	switch args[0] {
@@ -10641,6 +10641,24 @@ func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 			return nil
 		}
 		return cmdMemoryStale(ctx, opts, args[1:])
+	case "reconcile":
+		if len(args) > 1 && isHelpOnly(args[1:]) {
+			subcommandUsage("memory reconcile", "[--older-than <duration>]")
+			return nil
+		}
+		return cmdMemoryReconcile(ctx, opts, args[1:])
+	case "disposition":
+		if len(args) > 1 && isHelpOnly(args[1:]) {
+			subcommandUsage("memory disposition", "--track <track-id> --state <active|promote|archived|superseded> --reason <text> [--promotion-target <path>] [--canonical-commit <sha>] [--superseded-by <track-id>]")
+			return nil
+		}
+		return cmdMemoryDisposition(ctx, opts, args[1:])
+	case "history":
+		if len(args) > 1 && isHelpOnly(args[1:]) {
+			subcommandUsage("memory history", "--track <track-id>")
+			return nil
+		}
+		return cmdMemoryHistory(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown memory subcommand %q", args[0])
 	}
@@ -11657,6 +11675,8 @@ func cmdMemoryUpsert(ctx context.Context, opts globalOptions, args []string, app
 	checkpointID := multiInt64Flag{}
 	evidenceID := multiInt64Flag{}
 	reviewID := multiInt64Flag{}
+	owner := fs.String("owner", "", "accountable memory owner")
+	reviewBy := fs.String("review-by", "", "review date in YYYY-MM-DD or RFC3339")
 	fs.Var(&decision, "decision", "curated decision summary")
 	fs.Var(&blocker, "blocker", "curated blocker summary")
 	fs.Var(&question, "open-question", "curated open question")
@@ -11687,6 +11707,9 @@ func cmdMemoryUpsert(ctx context.Context, opts globalOptions, args []string, app
 		SourceCheckpointIDs: []int64(checkpointID),
 		SourceEvidenceIDs:   []int64(evidenceID),
 		SourceReviewIDs:     []int64(reviewID),
+		Owner:               *owner,
+		ReviewBy:            *reviewBy,
+		Disposition:         "active",
 	}
 	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
 		updated, err := s.UpsertTrackMemory(ctx, mem, appendFields)
@@ -11697,6 +11720,180 @@ func cmdMemoryUpsert(ctx context.Context, opts globalOptions, args []string, app
 			return printJSON(updated)
 		}
 		fmt.Printf("memory updated %s\n", updated.TrackID)
+		return nil
+	})
+}
+
+type memoryReconcileFinding struct {
+	TrackID          string `json:"track_id"`
+	Kind             string `json:"kind"`
+	Severity         string `json:"severity"`
+	Reason           string `json:"reason"`
+	Action           string `json:"action"`
+	SuggestedCommand string `json:"suggested_command"`
+}
+
+func cmdMemoryReconcile(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("memory reconcile", flag.ContinueOnError)
+	olderThan := fs.Duration("older-than", 30*24*time.Hour, "age that creates refresh or promotion debt")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected memory reconcile arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		memories, err := s.TrackMemories(ctx)
+		if err != nil {
+			return err
+		}
+		findings := reconcileTrackMemories(memories, time.Now().UTC(), *olderThan)
+		if opts.JSON {
+			return printJSON(struct {
+				OK       bool                     `json:"ok"`
+				Findings []memoryReconcileFinding `json:"findings"`
+				ReadOnly bool                     `json:"read_only"`
+			}{len(findings) == 0, findings, true})
+		}
+		fmt.Printf("memory_reconcile: %t\nread_only: true\n", len(findings) == 0)
+		if len(findings) == 0 {
+			fmt.Println("findings: none")
+			return nil
+		}
+		fmt.Println("findings:")
+		for _, finding := range findings {
+			fmt.Printf("- track=%s kind=%s severity=%s action=%s reason=%s command=%s\n", finding.TrackID, finding.Kind, finding.Severity, finding.Action, finding.Reason, finding.SuggestedCommand)
+		}
+		return nil
+	})
+}
+
+func reconcileTrackMemories(memories []store.TrackMemory, now time.Time, olderThan time.Duration) []memoryReconcileFinding {
+	if olderThan <= 0 {
+		olderThan = 30 * 24 * time.Hour
+	}
+	sharedFacts := map[string][]string{}
+	for _, mem := range memories {
+		if mem.Disposition != "active" && mem.Disposition != "promote" {
+			continue
+		}
+		for _, id := range mem.SourceCheckpointIDs {
+			sharedFacts[fmt.Sprintf("checkpoint:%d", id)] = append(sharedFacts[fmt.Sprintf("checkpoint:%d", id)], mem.TrackID)
+		}
+		for _, id := range mem.SourceEvidenceIDs {
+			sharedFacts[fmt.Sprintf("evidence:%d", id)] = append(sharedFacts[fmt.Sprintf("evidence:%d", id)], mem.TrackID)
+		}
+		for _, id := range mem.SourceReviewIDs {
+			sharedFacts[fmt.Sprintf("review:%d", id)] = append(sharedFacts[fmt.Sprintf("review:%d", id)], mem.TrackID)
+		}
+	}
+	add := func(out *[]memoryReconcileFinding, mem store.TrackMemory, kind, severity, reason, action, command string) {
+		*out = append(*out, memoryReconcileFinding{mem.TrackID, kind, severity, reason, action, command})
+	}
+	var out []memoryReconcileFinding
+	for _, mem := range memories {
+		if mem.Disposition == "active" && strings.TrimSpace(mem.Owner) == "" {
+			add(&out, mem, "missing_owner", "warning", "active memory has no accountable owner", "refresh", "fairway memory update --track "+mem.TrackID+" --owner <owner> --review-by <date> --source-evidence-id <id>")
+		}
+		if mem.Disposition == "active" && len(mem.SourceCheckpointIDs)+len(mem.SourceEvidenceIDs)+len(mem.SourceReviewIDs) == 0 {
+			add(&out, mem, "missing_source_facts", "warning", "active memory has no Fairway source facts", "refresh", "fairway memory update --track "+mem.TrackID+" --source-evidence-id <id>")
+		}
+		if mem.Disposition == "active" {
+			reviewAt, err := parseMemoryReviewDate(mem.ReviewBy)
+			if err != nil {
+				add(&out, mem, "missing_review_date", "warning", "active memory has no valid review date", "refresh", "fairway memory update --track "+mem.TrackID+" --review-by <date>")
+			} else if !reviewAt.After(now) {
+				add(&out, mem, "review_overdue", "warning", "memory review date has elapsed", "refresh", "fairway memory update --track "+mem.TrackID+" --review-by <date>")
+			}
+		}
+		updated, err := time.Parse(time.RFC3339Nano, mem.UpdatedAt)
+		if err != nil || now.Sub(updated) >= olderThan {
+			add(&out, mem, "stale", "warning", "memory has exceeded the configured refresh age", "refresh", "fairway memory update --track "+mem.TrackID+" --review-by <date>")
+		}
+		if mem.Disposition == "promote" {
+			add(&out, mem, "promotion_debt", "warning", "promotion remains pending until the canonical document commit is linked and the memory is archived", "promote", "fairway memory disposition --track "+mem.TrackID+" --state archived --reason <reason> --canonical-commit <sha>")
+		}
+		if mem.Disposition == "superseded" && mem.SupersededByTrackID == "" {
+			add(&out, mem, "missing_supersession", "warning", "superseded memory does not name its replacement", "supersede", "fairway memory disposition --track "+mem.TrackID+" --state superseded --reason <reason> --superseded-by <track-id>")
+		}
+	}
+	for fact, tracks := range sharedFacts {
+		if len(tracks) < 2 {
+			continue
+		}
+		sort.Strings(tracks)
+		for _, trackID := range tracks {
+			add(&out, store.TrackMemory{TrackID: trackID}, "potential_fact_conflict", "warning", fact+" is shared by active memories "+strings.Join(tracks, ",")+"; inspect whether one supersedes or contradicts another", "supersede", "fairway memory disposition --track "+trackID+" --state superseded --reason <reason> --superseded-by <track-id>")
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].TrackID != out[j].TrackID {
+			return out[i].TrackID < out[j].TrackID
+		}
+		return out[i].Kind < out[j].Kind
+	})
+	return out
+}
+
+func parseMemoryReviewDate(value string) (time.Time, error) {
+	if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value)); err == nil {
+		return parsed, nil
+	}
+	parsed, err := time.Parse("2006-01-02", strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.Add(24 * time.Hour), nil
+}
+
+func cmdMemoryDisposition(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("memory disposition", flag.ContinueOnError)
+	track := fs.String("track", "", "track id")
+	stateName := fs.String("state", "", "active, promote, archived, or superseded")
+	reason := fs.String("reason", "", "accountable disposition reason")
+	promotionTarget := fs.String("promotion-target", "", "canonical document target")
+	canonicalCommit := fs.String("canonical-commit", "", "commit proving canonical promotion")
+	supersededBy := fs.String("superseded-by", "", "replacement track memory id")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected memory disposition arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		updated, err := s.RecordTrackMemoryDisposition(ctx, *track, *stateName, *reason, *promotionTarget, *canonicalCommit, *supersededBy)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(updated)
+		}
+		fmt.Printf("memory disposition recorded track=%s state=%s\n", updated.TrackID, updated.Disposition)
+		fmt.Println("authority_boundary: disposition does not promote content into canonical documentation or grant workflow authority")
+		return nil
+	})
+}
+
+func cmdMemoryHistory(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("memory history", flag.ContinueOnError)
+	track := fs.String("track", "", "track id")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*track) == "" {
+		return errors.New("memory history requires --track")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		rows, err := s.TrackMemoryLifecycle(ctx, *track)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(rows)
+		}
+		for _, row := range rows {
+			fmt.Printf("%d track=%s %s->%s actor=%s at=%s reason=%s\n", row.ID, row.TrackID, row.FromDisposition, row.ToDisposition, row.Actor, row.CreatedAt, row.Reason)
+		}
 		return nil
 	})
 }
@@ -11814,7 +12011,7 @@ func printTrackMemories(opts globalOptions, memories []store.TrackMemory) error 
 		return nil
 	}
 	for _, mem := range memories {
-		fmt.Printf("%s updated=%s title=%s objective=%s\n", mem.TrackID, mem.UpdatedAt, firstNonEmpty(mem.Title, "none"), firstNonEmpty(mem.CurrentObjective, "none"))
+		fmt.Printf("%s updated=%s owner=%s review_by=%s disposition=%s title=%s objective=%s\n", mem.TrackID, mem.UpdatedAt, firstNonEmpty(mem.Owner, "missing"), firstNonEmpty(mem.ReviewBy, "missing"), firstNonEmpty(mem.Disposition, "active"), firstNonEmpty(mem.Title, "none"), firstNonEmpty(mem.CurrentObjective, "none"))
 		if len(mem.Blockers) > 0 {
 			fmt.Printf("  blockers: %s\n", strings.Join(mem.Blockers, "; "))
 		}
@@ -11831,8 +12028,8 @@ func printMemoryPacket(packet memoryPacket) {
 	if packet.ForProvider != "" {
 		fmt.Printf("for: %s\n", packet.ForProvider)
 	}
-	fmt.Printf("title: %s\npurpose: %s\noperating_mode: %s\nactive_scope: %s\ncurrent_objective: %s\nupdated_at: %s\n",
-		mem.Title, mem.Purpose, mem.OperatingMode, mem.ActiveScope, mem.CurrentObjective, mem.UpdatedAt)
+	fmt.Printf("title: %s\nowner: %s\nreview_by: %s\ndisposition: %s\npromotion_target: %s\ncanonical_commit: %s\npurpose: %s\noperating_mode: %s\nactive_scope: %s\ncurrent_objective: %s\nupdated_at: %s\n",
+		mem.Title, mem.Owner, mem.ReviewBy, mem.Disposition, mem.PromotionTarget, mem.CanonicalCommit, mem.Purpose, mem.OperatingMode, mem.ActiveScope, mem.CurrentObjective, mem.UpdatedAt)
 	printStringSection("Decisions", mem.Decisions)
 	printStringSection("Blockers", packet.Blockers)
 	printStringSection("Open Questions", mem.OpenQuestions)
@@ -16642,13 +16839,15 @@ type dbRehearsalReport struct {
 }
 
 type dbRehearsalCounts struct {
-	Tasks       int            `json:"tasks"`
-	Transitions int            `json:"transitions"`
-	Evidence    int            `json:"evidence"`
-	Handoffs    int            `json:"handoffs"`
-	Reviews     int            `json:"reviews"`
-	Sessions    int            `json:"sessions"`
-	ByStatus    map[string]int `json:"by_status"`
+	Tasks                int            `json:"tasks"`
+	Transitions          int            `json:"transitions"`
+	Evidence             int            `json:"evidence"`
+	Handoffs             int            `json:"handoffs"`
+	Reviews              int            `json:"reviews"`
+	Sessions             int            `json:"sessions"`
+	TrackMemories        int            `json:"track_memories"`
+	TrackMemoryLifecycle int            `json:"track_memory_lifecycle"`
+	ByStatus             map[string]int `json:"by_status"`
 }
 
 type dbRehearsalTaskSummary struct {
@@ -16954,6 +17153,8 @@ func runPostgresRehearsalProof(ctx context.Context, dsnEnv, schema, ddl string, 
 	compareInt("handoffs", sourceCounts.Handoffs, counts.Handoffs)
 	compareInt("reviews", sourceCounts.Reviews, counts.Reviews)
 	compareInt("sessions", sourceCounts.Sessions, counts.Sessions)
+	compareInt("track_memories", sourceCounts.TrackMemories, counts.TrackMemories)
+	compareInt("track_memory_lifecycle", sourceCounts.TrackMemoryLifecycle, counts.TrackMemoryLifecycle)
 	for status, want := range sourceCounts.ByStatus {
 		compareInt("status:"+status, want, counts.ByStatus[status])
 	}
@@ -17108,6 +17309,8 @@ UNION ALL SELECT 'evidence', count(*) FROM task_evidence
 UNION ALL SELECT 'handoffs', count(*) FROM task_handoffs
 UNION ALL SELECT 'reviews', count(*) FROM task_reviews
 UNION ALL SELECT 'sessions', count(*) FROM agent_sessions
+UNION ALL SELECT 'track_memories', count(*) FROM track_memory
+UNION ALL SELECT 'track_memory_lifecycle', count(*) FROM track_memory_lifecycle
 UNION ALL SELECT 'status:' || status, count(*) FROM task_state GROUP BY status
 ORDER BY 1;`, schema)
 	cmd, err := postgresPSQLCommand(ctx, dsn, "-At", "-F", "\t", "-v", "ON_ERROR_STOP=1", "-c", query)
@@ -17150,6 +17353,10 @@ ORDER BY 1;`, schema)
 			counts.Reviews = value
 		case key == "sessions":
 			counts.Sessions = value
+		case key == "track_memories":
+			counts.TrackMemories = value
+		case key == "track_memory_lifecycle":
+			counts.TrackMemoryLifecycle = value
 		case strings.HasPrefix(key, "status:"):
 			counts.ByStatus[strings.TrimPrefix(key, "status:")] = value
 		}
@@ -17289,6 +17496,14 @@ func renderPostgresImportSQL(snapshot store.Snapshot, sessions []store.Session) 
 			sqlNullString(session.EndReason),
 		)
 	}
+	for _, mem := range snapshot.TrackMemories {
+		fmt.Fprintf(&b, "INSERT INTO track_memory (project_id, track_id, title, purpose, operating_mode, active_scope, current_objective, decisions, blockers, open_questions, next_actions, source_checkpoint_ids, source_evidence_ids, source_review_ids, updated_at, owner, review_by, disposition, promotion_target, canonical_commit, superseded_by_track_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);\n",
+			sqlQuote(snapshot.ProjectID), sqlQuote(mem.TrackID), sqlNullString(mem.Title), sqlNullString(mem.Purpose), sqlNullString(mem.OperatingMode), sqlNullString(mem.ActiveScope), sqlNullString(mem.CurrentObjective), sqlJSON(mem.Decisions), sqlJSON(mem.Blockers), sqlJSON(mem.OpenQuestions), sqlJSON(mem.NextActions), sqlJSON(mem.SourceCheckpointIDs), sqlJSON(mem.SourceEvidenceIDs), sqlJSON(mem.SourceReviewIDs), sqlQuote(mem.UpdatedAt), sqlNullString(mem.Owner), sqlNullString(mem.ReviewBy), sqlQuote(firstNonEmpty(mem.Disposition, "active")), sqlNullString(mem.PromotionTarget), sqlNullString(mem.CanonicalCommit), sqlNullString(mem.SupersededByTrackID))
+	}
+	for _, row := range snapshot.TrackMemoryLifecycle {
+		fmt.Fprintf(&b, "INSERT INTO track_memory_lifecycle (id, project_id, track_id, from_disposition, to_disposition, reason, promotion_target, canonical_commit, superseded_by_track_id, actor, created_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);\n",
+			row.ID, sqlQuote(snapshot.ProjectID), sqlQuote(row.TrackID), sqlQuote(row.FromDisposition), sqlQuote(row.ToDisposition), sqlQuote(row.Reason), sqlNullString(row.PromotionTarget), sqlNullString(row.CanonicalCommit), sqlNullString(row.SupersededByTrackID), sqlQuote(row.Actor), sqlQuote(row.CreatedAt))
+	}
 	return b.String()
 }
 
@@ -17351,6 +17566,8 @@ func compareRehearsalSnapshots(source, rehearsal store.Snapshot, sourceSessions,
 	compareInt("summary", "handoffs", sourceCounts.Handoffs, rehearsalCounts.Handoffs)
 	compareInt("summary", "reviews", sourceCounts.Reviews, rehearsalCounts.Reviews)
 	compareInt("summary", "sessions", sourceCounts.Sessions, rehearsalCounts.Sessions)
+	compareInt("summary", "track_memories", sourceCounts.TrackMemories, rehearsalCounts.TrackMemories)
+	compareInt("summary", "track_memory_lifecycle", sourceCounts.TrackMemoryLifecycle, rehearsalCounts.TrackMemoryLifecycle)
 	for status, want := range sourceCounts.ByStatus {
 		compareInt("status", status, want, rehearsalCounts.ByStatus[status])
 	}
@@ -17381,7 +17598,7 @@ func compareRehearsalSnapshots(source, rehearsal store.Snapshot, sourceSessions,
 }
 
 func rehearsalCounts(snapshot store.Snapshot) dbRehearsalCounts {
-	counts := dbRehearsalCounts{Tasks: len(snapshot.Tasks), ByStatus: map[string]int{}}
+	counts := dbRehearsalCounts{Tasks: len(snapshot.Tasks), TrackMemories: len(snapshot.TrackMemories), TrackMemoryLifecycle: len(snapshot.TrackMemoryLifecycle), ByStatus: map[string]int{}}
 	for _, task := range snapshot.Tasks {
 		counts.Transitions += len(task.Transitions)
 		counts.Evidence += len(task.Evidence)
@@ -18210,7 +18427,7 @@ func printCommandHelp(command string) bool {
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale] | fairway live-window retry-budget record|status ...\n  Record and inspect repeated live-operation handshake phases and retry budgets via task checkpoints.",
-		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
+		"memory":                     "fairway memory show|update|append|packet|stale|reconcile|disposition|history ...\n  Store curated track memory, reconcile lifecycle debt, and render compact provider-independent packets.",
 		"wait":                       "fairway wait add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, acknowledge them, project wait state, and emit bounded wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"work":                       "fairway work start <task-id> [--session-id <id>] [--role <role>] | fairway work status [<task-id>] [--explain] | fairway work verify <task-id> --command-text <summary> --result <result> | fairway work close <task-id> [--session-id <id>]\n  Use the compact common path over durable task, session, checkpoint, evidence, review, and reconciliation records.",

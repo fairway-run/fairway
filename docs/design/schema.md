@@ -23,6 +23,19 @@ ownership boundaries, command semantics, and `project_id` scoping described
 here; see [postgres-adapter.md](postgres-adapter.md) for the assessed deployment
 model, cutover requirements, and compatibility harness.
 
+## Track memory lifecycle
+
+`track_memory` is replace-by-key curated context with accountable `owner`,
+`review_by`, `disposition`, `promotion_target`, `canonical_commit`, and
+`superseded_by_track_id` projection fields. New active rows require at least
+one existing checkpoint, evidence, or review source ID.
+
+`track_memory_lifecycle` is append-only audit history for explicit disposition
+changes. It records prior and next disposition, reason, promotion or
+supersession references, actor, and timestamp. Reconciliation and dashboard
+views derive lifecycle debt from these rows; there is no second memory or wait
+store.
+
 ## Tables
 
 ### `task_definitions`

@@ -168,10 +168,13 @@ fairway checkpoint record <task-id> --summary <text> [--state <state>] [--owner 
 fairway checkpoint status [--all]
 fairway checkpoint stale [--before <date>] [--all]
 fairway memory show [--track <track-id>]
-fairway memory update --track <track-id> [--title <text>] [--purpose <text>] [--operating-mode <text>] [--active-scope <text>] [--current-objective <text>] [--decision <text>]... [--blocker <text>]... [--open-question <text>]... [--next-action <text>]... [--source-checkpoint-id <id>]... [--source-evidence-id <id>]... [--source-review-id <id>]...
+fairway memory update --track <track-id> --owner <role-or-user> --review-by <YYYY-MM-DD|RFC3339> [--title <text>] [--purpose <text>] [--operating-mode <text>] [--active-scope <text>] [--current-objective <text>] [--decision <text>]... [--blocker <text>]... [--open-question <text>]... [--next-action <text>]... [--source-checkpoint-id <id>]... [--source-evidence-id <id>]... [--source-review-id <id>]...
 fairway memory append --track <track-id> [fields]
 fairway memory packet --track <track-id> [--for <provider-or-surface>]
 fairway memory stale [--older-than <duration>]
+fairway memory reconcile [--older-than <duration>]
+fairway memory disposition --track <track-id> --state <active|promote|archived|superseded> --reason <text> [--promotion-target <path>] [--canonical-commit <sha>] [--superseded-by <track-id>]
+fairway memory history --track <track-id>
 fairway wait add --task <task-id> --track <track-id> --on <condition> [--kind <kind>] [--target <target>] [--deadline <time>] [--deadline-source <origin>] [--action <action>] [--reason <text>] [--suggested-command <cmd>]
 fairway wait ack <wait-id> [--reason <text>] [--actor <role-or-track>]
 fairway wait list [--task <task-id>] [--stale] [--kind <kind>]
@@ -362,6 +365,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   database state. `memory packet` renders a compact packet from the memory row
   plus current Fairway tasks, sessions, and checkpoints so new provider
   attachments can resume without polling chat.
+- New active memory requires an accountable owner, a review date, and at least
+  one existing checkpoint, evidence, or review source fact. Legacy rows remain
+  readable and appear as findings instead of being rewritten silently.
+  `memory reconcile` is read-only and previews refresh, promote, archive, or
+  supersede commands for stale or incomplete lifecycle state, conflicting
+  source facts, and promotion debt. `memory disposition` appends an auditable
+  transition; `memory history` exposes those immutable events. Promotion does
+  not make memory canonical: the target document and commit remain authoritative.
+- Database export and disposable shared-store rehearsal include track memory
+  and lifecycle events. SQLite backup readback proves local recovery without
+  silently replacing the configured database.
 - `wait add|ack|list|tick|wake` manages generic parked-work waits while keeping
   Fairway as the state source of truth. `wait add` records a structured
   checkpoint fact for parked work such as repeated handoffs, live-window

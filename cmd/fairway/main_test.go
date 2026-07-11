@@ -3699,6 +3699,9 @@ func TestCLI_TrackMemoryPackets(t *testing.T) {
 
 	runOK(t, "memory", "update",
 		"--track", "architecture-control",
+		"--owner", "arch",
+		"--review-by", "2099-01-01",
+		"--source-checkpoint-id", "1",
 		"--title", "Architecture Control",
 		"--purpose", "coordinate tracks",
 		"--operating-mode", "control",
@@ -3728,8 +3731,55 @@ func TestCLI_TrackMemoryPackets(t *testing.T) {
 	stale := runCapture(t, "memory", "stale", "--older-than", "0s")
 	assertContains(t, stale, "architecture-control")
 
-	if out, err := captureRun("memory", "update", "--track", "bad-source", "--source-checkpoint-id", "999999"); err == nil {
+	if out, err := captureRun("memory", "update", "--track", "bad-source", "--owner", "arch", "--review-by", "2099-01-01", "--source-checkpoint-id", "999999"); err == nil {
 		t.Fatalf("memory update with missing source succeeded:\n%s", out)
+	}
+
+	reconcile := runCapture(t, "memory", "reconcile")
+	assertContains(t, reconcile, "memory_reconcile: true")
+	runOK(t, "memory", "disposition", "--track", "architecture-control", "--state", "promote", "--reason", "stable cross-task rule", "--promotion-target", "docs/design/architecture.md")
+	debt := runCapture(t, "memory", "reconcile")
+	assertContains(t, debt, "kind=promotion_debt")
+	history := runCapture(t, "memory", "history", "--track", "architecture-control")
+	assertContains(t, history, "active->promote")
+	runOK(t, "memory", "disposition", "--track", "architecture-control", "--state", "archived", "--reason", "canonical document committed", "--canonical-commit", "abc123")
+	runOK(t, "memory", "update", "--track", "architecture-control", "--current-objective", "historical reference only")
+	archived := runCapture(t, "memory", "show", "--track", "architecture-control")
+	assertContains(t, archived, "disposition=archived")
+	export := runCapture(t, "db", "export", "-")
+	assertContains(t, export, `"track_memories"`)
+	assertContains(t, export, `"track_memory_lifecycle"`)
+	backup := filepath.Join(repo, "memory-backup.db")
+	runOK(t, "db", "backup", backup)
+	backupReadback := runCapture(t, "--db", backup, "memory", "show", "--track", "architecture-control")
+	assertContains(t, backupReadback, "disposition=archived")
+	rehearsalDir := filepath.Join(repo, "memory-rehearsal")
+	runOK(t, "db", "rehearsal", "--backend", "postgres", "--out", rehearsalDir)
+	equivalence, err := os.ReadFile(filepath.Join(rehearsalDir, "readmodel-equivalence.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, string(equivalence), `"track_memories": 1`)
+	assertContains(t, string(equivalence), `"track_memory_lifecycle": 2`)
+}
+
+func TestTrackMemoryReconcileFindings(t *testing.T) {
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	rows := []store.TrackMemory{
+		{TrackID: "legacy", Disposition: "active", UpdatedAt: now.Add(-40 * 24 * time.Hour).Format(time.RFC3339Nano)},
+		{TrackID: "one", Owner: "arch", ReviewBy: "2026-07-01", Disposition: "active", SourceEvidenceIDs: []int64{7}, UpdatedAt: now.Format(time.RFC3339Nano)},
+		{TrackID: "two", Owner: "ops", ReviewBy: "2026-08-01", Disposition: "active", SourceEvidenceIDs: []int64{7}, UpdatedAt: now.Format(time.RFC3339Nano)},
+		{TrackID: "promote", Owner: "governance", ReviewBy: "2026-08-01", Disposition: "promote", PromotionTarget: "docs/design/model.md", SourceReviewIDs: []int64{8}, UpdatedAt: now.Format(time.RFC3339Nano)},
+		{TrackID: "superseded", Disposition: "superseded", UpdatedAt: now.Format(time.RFC3339Nano)},
+	}
+	findings := reconcileTrackMemories(rows, now, 30*24*time.Hour)
+	raw, err := json.Marshal(findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, expected := range []string{"missing_owner", "missing_source_facts", "missing_review_date", "review_overdue", "stale", "potential_fact_conflict", "promotion_debt", "missing_supersession"} {
+		assertContains(t, text, expected)
 	}
 }
 
@@ -3748,7 +3798,7 @@ func TestCLI_GenericWaitListAndTick(t *testing.T) {
 	runOK(t, "add", "T-001", "--title", "Needs approval", "--role", "backend")
 	runOK(t, "claim", "T-001")
 	runOK(t, "checkpoint", "record", "T-001", "--state", "awaiting_input", "--owner", "arch", "--summary", "approval required before retry")
-	runOK(t, "memory", "update", "--track", "architecture-control", "--current-objective", "watch parked work")
+	runOK(t, "memory", "update", "--track", "architecture-control", "--owner", "arch", "--review-by", "2099-01-01", "--source-checkpoint-id", "1", "--current-objective", "watch parked work")
 
 	waits := runCapture(t, "wait", "list", "--task", "T-001")
 	assertContains(t, waits, "kind=approval")
@@ -3939,7 +3989,9 @@ func TestCLI_GenericWaitWakeCoversTrackMemoryAndProviderSessionTargets(t *testin
 name = "product"
 provider = "codex"
 `)
-	runOK(t, "memory", "update", "--track", "product", "--title", "Product memory", "--current-objective", "refresh packet")
+	runOK(t, "add", "T-001", "--title", "Product memory source", "--role", "product")
+	runOK(t, "checkpoint", "record", "T-001", "--state", "active", "--owner", "product", "--summary", "memory source")
+	runOK(t, "memory", "update", "--track", "product", "--owner", "product", "--review-by", "2099-01-01", "--source-checkpoint-id", "1", "--title", "Product memory", "--current-objective", "refresh packet")
 	time.Sleep(time.Millisecond)
 
 	memoryWake := runCapture(t, "wait", "wake", "--kind", "track_memory", "--memory-stale-after", "1ns")

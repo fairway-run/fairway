@@ -40,11 +40,14 @@ func TestDashboardCoordinationIntelligenceProjection(t *testing.T) {
 		}},
 	}
 	coordination := dashboardCoordinationIntelligence(plan, []store.TrackMemory{
-		{TrackID: "fresh", UpdatedAt: now.Add(-time.Hour).Format(time.RFC3339Nano), NextActions: []string{"keep moving"}},
+		{TrackID: "fresh", Owner: "arch", ReviewBy: "2026-07-01", Disposition: "promote", PromotionTarget: "docs/design/model.md", UpdatedAt: now.Add(-time.Hour).Format(time.RFC3339Nano), NextActions: []string{"keep moving"}},
 		{TrackID: "stale", UpdatedAt: now.Add(-25 * time.Hour).Format(time.RFC3339Nano), Blockers: []string{"needs refresh"}},
 	}, now, 24*time.Hour)
 	if coordination.MemoryTotal != 2 || coordination.MemoryStale != 1 {
 		t.Fatalf("memory summary=%+v", coordination)
+	}
+	if coordination.Memories[0].Owner != "arch" || !coordination.Memories[0].PromotionDebt {
+		t.Fatalf("memory lifecycle projection=%+v", coordination.Memories[0])
 	}
 	if coordination.OpenWaits != 2 || coordination.StaleWaits != 1 || coordination.NotificationFailures != 1 {
 		t.Fatalf("wait summary=%+v", coordination)

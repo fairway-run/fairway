@@ -44,12 +44,16 @@ type CoordinationWait struct {
 }
 
 type CoordinationMemory struct {
-	TrackID     string `json:"track_id"`
-	Title       string `json:"title,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
-	Stale       bool   `json:"stale"`
-	NextAction  string `json:"next_action,omitempty"`
-	OpenBlocker string `json:"open_blocker,omitempty"`
+	TrackID       string `json:"track_id"`
+	Title         string `json:"title,omitempty"`
+	Owner         string `json:"owner,omitempty"`
+	ReviewBy      string `json:"review_by,omitempty"`
+	Disposition   string `json:"disposition,omitempty"`
+	PromotionDebt bool   `json:"promotion_debt"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
+	Stale         bool   `json:"stale"`
+	NextAction    string `json:"next_action,omitempty"`
+	OpenBlocker   string `json:"open_blocker,omitempty"`
 }
 
 func dashboardCoordinationIntelligence(plan coord.Plan, memories []store.TrackMemory, now time.Time, staleMemoryAfter time.Duration) CoordinationIntelligence {
@@ -65,12 +69,16 @@ func dashboardCoordinationIntelligence(plan coord.Plan, memories []store.TrackMe
 	}
 	for _, mem := range memories {
 		row := CoordinationMemory{
-			TrackID:     mem.TrackID,
-			Title:       mem.Title,
-			UpdatedAt:   mem.UpdatedAt,
-			Stale:       trackMemoryStale(mem, now, staleMemoryAfter),
-			NextAction:  firstNonEmptyString(mem.NextActions),
-			OpenBlocker: firstNonEmptyString(mem.Blockers),
+			TrackID:       mem.TrackID,
+			Title:         mem.Title,
+			Owner:         mem.Owner,
+			ReviewBy:      mem.ReviewBy,
+			Disposition:   mem.Disposition,
+			PromotionDebt: mem.Disposition == "promote" && (mem.PromotionTarget == "" || mem.CanonicalCommit == ""),
+			UpdatedAt:     mem.UpdatedAt,
+			Stale:         trackMemoryStale(mem, now, staleMemoryAfter),
+			NextAction:    firstNonEmptyString(mem.NextActions),
+			OpenBlocker:   firstNonEmptyString(mem.Blockers),
 		}
 		if row.Stale {
 			out.MemoryStale++

@@ -344,6 +344,10 @@ mapping gaps, wake target provider/thread, last wake attempt, and fixed CLI
 recovery suggestions. It does not add dashboard wake authority or write
 notification, review, task, merge, deploy, or execution state.
 
+Track-memory rows also project owner, review date, disposition, and promotion
+debt. These fields remain read-only: the dashboard cannot refresh, promote,
+archive, supersede, or otherwise mutate memory.
+
 Environment deploy readiness is also projected from existing task tags,
 profile gates, evidence, checkpoints, handoffs, and completion handbacks. A
 deploy rehearsal task tagged with values such as `environment:staging` and

@@ -103,6 +103,12 @@ Track memory records can include:
 - decisions, blockers, open questions, and next actions;
 - source checkpoint, evidence, and review ids.
 
+Active track memory also requires an accountable owner and review date. Use
+`memory reconcile` for read-only lifecycle findings, `memory disposition` for
+an explicit promote/archive/supersede action, and `memory history` for the
+append-only audit. Promotion remains incomplete until a canonical documentation
+commit is linked; memory never replaces that document.
+
 `fairway memory packet --track <track-id>` renders that curated memory together
 with current task, session, and checkpoint facts. The packet is a compact
 provider-independent resume view. It does not approve work, expand scope, send
