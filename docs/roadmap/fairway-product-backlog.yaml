@@ -5038,3 +5038,104 @@ tasks:
       - "Pilot compares manual actions, elapsed time, review waits, defects caught, reopen/retry count, evidence completeness, and rollback confidence."
       - "Promotion requires lower common-path effort without weaker consequential-boundary enforcement."
       - "Findings produce concrete automation or policy follow-ups rather than adding default ceremony."
+
+  - id: FW-296
+    title: Close AI Cloud consumer-driven Fairway gaps
+    kind: epic
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product
+    source_paths: [docs/assessment]
+    target_paths: [docs/design, cmd/fairway, internal]
+    review_domains: [arch, governance, ops]
+    risk_level: high
+    migration_type: consumer-gap-epic
+    acceptance_checks:
+      - "AI Cloud operational pain is converted into bounded Fairway product tasks with evidence and ownership."
+      - "Fixes reduce coordination noise without weakening durable evidence or consequential boundaries."
+
+  - id: FW-297
+    parent_id: FW-296
+    title: Add reviewer-domain routing coverage preflight
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: review-routing
+    source_paths: [internal/config, internal/reviewstate]
+    target_paths: [cmd/fairway, internal/config, docs/design]
+    review_domains: [backend, governance, ops]
+    risk_level: high
+    migration_type: review-routing-preflight
+    acceptance_checks:
+      - "A project can validate every review domain used by active tasks before waits become mapping_required."
+      - "Output distinguishes configured aliases, routes, provider targets, and actionable missing mappings."
+
+  - id: FW-298
+    parent_id: FW-296
+    title: Add lifecycle-aware historical wait triage and bulk resolution
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: waits
+    source_paths: [internal/reviewstate, internal/completionhandback]
+    target_paths: [cmd/fairway, internal/dashboard, docs/design]
+    review_domains: [backend, governance, ops]
+    risk_level: high
+    migration_type: wait-hygiene
+    acceptance_checks:
+      - "Open-wait projections suppress resolved terminal and superseded facts while preserving immutable history."
+      - "Operators can preview and record bounded bulk acknowledgement or supersede decisions without deleting evidence."
+
+  - id: FW-299
+    parent_id: FW-296
+    title: Make failure routing state and follow-up aware
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: failure-routing
+    source_paths: [internal/audit, cmd/fairway]
+    target_paths: [internal/audit, cmd/fairway, docs/design]
+    review_domains: [backend, governance, ops]
+    risk_level: high
+    migration_type: failure-routing-noise
+    acceptance_checks:
+      - "Failure routing does not classify passing closeout commands or superseded historical evidence as missing local gates."
+      - "Existing follow-up tasks and terminal task state suppress duplicate recommendations while preserving source evidence."
+
+  - id: FW-300
+    parent_id: FW-296
+    title: Keep managed Fairway binaries out of consumer worktrees
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: lifecycle
+    source_paths: [cmd/fairway, docs/operations]
+    target_paths: [cmd/fairway, docs/operations]
+    review_domains: [backend, ops, security]
+    risk_level: high
+    migration_type: managed-binary-cache
+    acceptance_checks:
+      - "Managed binary installs default to an OS/user cache outside the consumer repository or install a durable ignore rule explicitly."
+      - "Upgrade, rollback, status, and cleanup preserve exact binary/version readback without dirtying project git status."
+
+  - id: FW-301
+    parent_id: FW-296
+    title: Add consumer capability and minimum-version readiness report
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: readiness
+    source_paths: [cmd/fairway, internal/config]
+    target_paths: [cmd/fairway, internal/config, docs/design]
+    review_domains: [arch, backend, ops]
+    risk_level: high
+    migration_type: consumer-capability-readiness
+    acceptance_checks:
+      - "Consumer config can declare or derive required Fairway capabilities and minimum version."
+      - "Readiness reports exact missing commands, schema, and features plus pinned and running binary versions without mutating or upgrading automatically."
