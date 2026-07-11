@@ -4927,3 +4927,114 @@ tasks:
       - "v0.1.11 contains the reviewed dashboard lifecycle identity fix and passes CI/release verification."
       - "GitHub assets and Homebrew cask 0.1.11 are public and fetchable."
       - "Both dashboards restart on v0.1.11 with JSON lifecycle records and independently verified process paths."
+
+  - id: FW-290
+    title: Make Fairway common-path work nearly automatic
+    kind: epic
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product
+    source_paths: [docs/design/small-team-autonomy-operating-model.md, docs/design/review-policy-profiles.md, docs/design/work-batch-model.md, cmd/fairway/main.go]
+    target_paths: [docs/design/common-path-automation.md, cmd/fairway, internal/dashboard, docs/agent-guide.md, docs/quickstart.md]
+    review_domains: [arch, governance, ops]
+    risk_level: high
+    migration_type: progressive-disclosure-epic
+    acceptance_checks:
+      - "Routine reversible work uses a compact lifecycle while preserving durable task, session, checkpoint, evidence, review, and closeout records."
+      - "Consequential boundaries remain explicit and blocking; no command infers approval, live authority, deploy, release, credential use, or public exposure."
+      - "Usability and process metrics prove the common path reduces operator actions and cycle time without reducing defect or rollback evidence."
+
+  - id: FW-291
+    parent_id: FW-290
+    title: Define Fairway common-path automation and progressive disclosure contract
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: design
+    source_paths: [docs/design/small-team-autonomy-operating-model.md, docs/design/review-policy-profiles.md]
+    target_paths: [docs/design/common-path-automation.md, README.md, docs/product.md]
+    review_domains: [arch, governance, ops]
+    risk_level: high
+    migration_type: common-path-design
+    acceptance_checks:
+      - "Design separates common, advanced, and consequential paths and maps each shortcut to existing durable primitives."
+      - "Design defines fail-closed inference, idempotency, output, recovery, and measurement requirements."
+      - "Anti-goals prevent a hidden workflow engine, approval authority, CI runner, or second coordination store."
+
+  - id: FW-292
+    parent_id: FW-290
+    title: Implement atomic fairway work start and status
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli
+    source_paths: [cmd/fairway/main.go, internal/store]
+    target_paths: [cmd/fairway/main.go, cmd/fairway/main_test.go, docs/design/cli.md]
+    review_domains: [backend, governance, ops]
+    risk_level: high
+    migration_type: common-path-start
+    dependencies: [FW-291]
+    acceptance_checks:
+      - "work start atomically resolves one task, attaches/upserts one provider session, transitions or claims the task, and records one active lifecycle checkpoint."
+      - "Repeated start is idempotent and reports the existing attachment instead of duplicating state."
+      - "work status presents the compact lifecycle plus commands for advanced detail without hiding blockers."
+
+  - id: FW-293
+    parent_id: FW-290
+    title: Implement guarded fairway work verify and close
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli
+    source_paths: [cmd/fairway/main.go, internal/store, internal/reviewpolicy]
+    target_paths: [cmd/fairway/main.go, cmd/fairway/main_test.go, docs/design/cli.md]
+    review_domains: [backend, governance, ops, security]
+    risk_level: high
+    migration_type: common-path-close
+    dependencies: [FW-292]
+    acceptance_checks:
+      - "work verify records bounded validation evidence without becoming a CI runner or storing raw command output by default."
+      - "work close runs existing review/evidence/reconcile gates, closes the session and task only when they pass, and returns exact blockers otherwise."
+      - "No close shortcut creates reviews, approvals, deploy authorization, release authorization, or live-operation authority."
+
+  - id: FW-294
+    parent_id: FW-290
+    title: Add common-path recommendations and progressive dashboard disclosure
+    kind: task
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths: [internal/dashboard, internal/reviewpolicy, cmd/fairway/main.go]
+    target_paths: [internal/dashboard, cmd/fairway, docs/design/dashboard.md]
+    review_domains: [backend, ui, governance]
+    risk_level: high
+    migration_type: common-path-ui
+    dependencies: [FW-292]
+    acceptance_checks:
+      - "CLI/dashboard lead with current action, blockers, and boundary status while keeping primitive-level audit detail available on demand."
+      - "Recommendations are deterministic and advisory; ambiguous task/risk/session inference fails closed."
+      - "Small changes do not display false missing-review or zero-value diagnostic states."
+
+  - id: FW-295
+    parent_id: FW-290
+    title: Pilot and measure Fairway common-path process weight
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: adoption
+    source_paths: [docs/design/common-path-automation.md, internal/deliveryreport]
+    target_paths: [docs/assessment, docs/design/common-path-automation.md, internal/deliveryreport]
+    review_domains: [governance, ops]
+    risk_level: high
+    migration_type: common-path-pilot
+    dependencies: [FW-293, FW-294]
+    acceptance_checks:
+      - "Pilot compares manual actions, elapsed time, review waits, defects caught, reopen/retry count, evidence completeness, and rollback confidence."
+      - "Promotion requires lower common-path effort without weaker consequential-boundary enforcement."
+      - "Findings produce concrete automation or policy follow-ups rather than adding default ceremony."

@@ -12,6 +12,9 @@ substantial implementation work, but evidence, review, ownership, promotion,
 and human comprehension remain first-class engineering controls.
 For small teams using Fairway in AI Cloud-style loops, see the
 [Small-team autonomy operating model](design/small-team-autonomy-operating-model.md).
+The [common-path automation model](design/common-path-automation.md) makes
+routine reversible work compact while preserving the underlying task, session,
+checkpoint, evidence, review, and promotion records.
 
 Fairway is the local-first coordination control plane for that model.
 Traffic-control lanes were the first useful primitive: one lane, one role, one

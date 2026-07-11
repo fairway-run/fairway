@@ -143,6 +143,7 @@ Start here:
 - [Product](docs/product.md) — vision, principles, roadmap, anti-goals
 - [Governed agentic engineering](docs/governed-agentic-engineering.md) — the operating model Fairway supports
 - [Small-team autonomy operating model](docs/design/small-team-autonomy-operating-model.md) — how small AI Cloud-style lanes use Fairway for reversible work, grouped review, rough edges, and escalation boundaries
+- [Common-path automation](docs/design/common-path-automation.md) — progressive disclosure and a compact work lifecycle over existing Fairway primitives
 - [Product boundaries](docs/design/product-boundaries.md) — what Fairway coordinates and what it deliberately does not do
 - [Backlog sources](docs/design/backlog-sources.md) — active backlog, archive, examples, and runtime DB authority
 - [Agent guide](docs/agent-guide.md) — practical command flow for agents using Fairway
