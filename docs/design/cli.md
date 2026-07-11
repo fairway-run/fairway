@@ -186,8 +186,9 @@ fairway memory disposition --track <track-id> --state <active|promote|archived|s
 fairway memory history --track <track-id>
 fairway wait add --task <task-id> --track <track-id> --on <condition> [--kind <kind>] [--target <target>] [--deadline <time>] [--deadline-source <origin>] [--action <action>] [--reason <text>] [--suggested-command <cmd>]
 fairway wait ack <wait-id> [--reason <text>] [--actor <role-or-track>]
-fairway wait list [--task <task-id>] [--stale] [--kind <kind>]
-fairway wait tick [--task <task-id>] [--stale] [--kind <kind>]
+fairway wait list [--task <task-id>] [--stale] [--kind <kind>] [--all]
+fairway wait tick [--task <task-id>] [--stale] [--kind <kind>] [--all]
+fairway wait resolve --task <task-id> --reason <text> [--kind <kind>] [--actor <role-or-track>] [--apply]
 fairway wait wake [--task <task-id>] [--kind <kind>] [--send]
 fairway live-window record <task-id> --phase <phase> [--next-owner <role>] [--next-action <action>] [--authorization-state <state>] [--prompt <text>] [--command <cmd>] [--missed-deadline-action <action>] [--target-close-by <date>] [--artifact <path>]
 fairway live-window status [--task <task-id>]
@@ -393,7 +394,7 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - Database export and disposable shared-store rehearsal include track memory
   and lifecycle events. SQLite backup readback proves local recovery without
   silently replacing the configured database.
-- `wait add|ack|list|tick|wake` manages generic parked-work waits while keeping
+- `wait add|ack|list|tick|resolve|wake` manages generic parked-work waits while keeping
   Fairway as the state source of truth. `wait add` records a structured
   checkpoint fact for parked work such as repeated handoffs, live-window
   closeout, non-review actor waits, or external control-loop waits. The wait
@@ -402,8 +403,16 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   checkpoint without deleting history. `wait list|tick|wake` projects those
   durable wait checkpoints together with review waits, completion handbacks,
   provider/session and checkpoint plan actions, live-window handoffs, monitor
-  actions, approvals, and stale track memory. `wait tick` is a dry-run/operator
-  visibility surface.
+  actions, approvals, and stale track memory. The default list/tick projection
+  shows open work only: resolved/cancelled review waits, acknowledged manual
+  waits, superseded completion handbacks or memory, and terminal-task waits are
+  suppressed. `--all` restores those immutable historical rows. `wait tick` is
+  a dry-run/operator visibility surface.
+  `wait resolve` is task-scoped and previews by default. With `--apply`, it may
+  record acknowledgement checkpoints for open manual waits and supersede
+  evidence for completion handbacks only when the task is terminal or blocked.
+  It refuses ineligible mixed batches before writing, never deletes evidence,
+  and does not resolve review verdicts or arbitrary coordinator-derived waits.
   `wait wake` renders fixed-template wake prompts for stale or failed
   task-backed waits and, with `--send`, records bounded delivery or
   `notification_failed` evidence through existing task notification rows with a

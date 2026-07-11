@@ -28,7 +28,7 @@ func TestDashboardCoordinationIntelligenceProjection(t *testing.T) {
 			TargetID:       "thread-1",
 			LastNotifiedAt: "2026-06-14T10:00:00Z",
 			Reason:         "review ack timeout elapsed",
-		}},
+		}, {TaskID: "T-RESOLVED", Domain: "ops", State: "resolved", Action: "run_merge_ready"}},
 		CompletionHandbacks: []completionhandback.Handback{{
 			TaskID:          "T-002",
 			ToRole:          "ops",
@@ -37,12 +37,12 @@ func TestDashboardCoordinationIntelligenceProjection(t *testing.T) {
 			SuggestedCommand: "fairway record notification T-002 --domain ops " +
 				"--state notification_delivered",
 			Reason: "no provider target",
-		}},
+		}, {TaskID: "T-DONE", TaskStatus: "done", ToRole: "ops", DeliveryStatus: "pending"}},
 	}
 	coordination := dashboardCoordinationIntelligence(plan, []store.TrackMemory{
 		{TrackID: "fresh", Owner: "arch", ReviewBy: "2026-07-01", Disposition: "promote", PromotionTarget: "docs/design/model.md", UpdatedAt: now.Add(-time.Hour).Format(time.RFC3339Nano), NextActions: []string{"keep moving"}},
 		{TrackID: "stale", UpdatedAt: now.Add(-25 * time.Hour).Format(time.RFC3339Nano), Blockers: []string{"needs refresh"}},
-	}, now, 24*time.Hour)
+	}, now, 24*time.Hour, []string{"done"})
 	if coordination.MemoryTotal != 2 || coordination.MemoryStale != 1 {
 		t.Fatalf("memory summary=%+v", coordination)
 	}

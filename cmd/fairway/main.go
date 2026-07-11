@@ -10781,10 +10781,10 @@ func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 
 func cmdWait(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("wait requires subcommand: add, ack, list, tick, wake")
+		return errors.New("wait requires subcommand: add, ack, list, tick, resolve, wake")
 	}
 	if args[0] == "--help" || args[0] == "-h" {
-		subcommandUsage("wait", "add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]")
+		subcommandUsage("wait", "add|ack|list|tick|resolve|wake [--task <task-id>] [--stale] [--kind <kind>]")
 		return nil
 	}
 	switch args[0] {
@@ -10802,10 +10802,16 @@ func cmdWait(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdWaitAck(ctx, opts, args[1:])
 	case "list", "tick":
 		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
-			subcommandUsage("wait", args[0]+" [--task <task-id>] [--stale] [--kind <kind>]")
+			subcommandUsage("wait", args[0]+" [--task <task-id>] [--stale] [--kind <kind>] [--all]")
 			return nil
 		}
 		return cmdWaitList(ctx, opts, args[1:], args[0] == "tick")
+	case "resolve":
+		if len(args) > 1 && isHelpOnly(args[1:]) {
+			subcommandUsage("wait", "resolve --task <task-id> --reason <text> [--kind <kind>] [--apply]")
+			return nil
+		}
+		return cmdWaitResolve(ctx, opts, args[1:])
 	case "wake":
 		return cmdWaitWake(ctx, opts, args[1:])
 	default:
@@ -10981,7 +10987,7 @@ func cmdWaitAck(ctx context.Context, opts globalOptions, args []string) error {
 		}
 		var row waitRow
 		for _, candidate := range rows {
-			if candidate.WaitID == waitID && candidate.Source == "manual_wait" {
+			if candidate.WaitID == waitID && candidate.Source == "manual_wait" && candidate.State != "acknowledged" {
 				row = candidate
 				break
 			}
@@ -10989,29 +10995,8 @@ func cmdWaitAck(ctx context.Context, opts globalOptions, args []string) error {
 		if row.WaitID == "" {
 			return fmt.Errorf("manual wait %q not found or already acknowledged", waitID)
 		}
-		payload := manualWaitPayload{
-			Event:     "ack",
-			WaitID:    row.WaitID,
-			Kind:      row.Kind,
-			TaskID:    row.TaskID,
-			TrackID:   firstNonEmpty(strings.TrimSpace(*actor), row.TrackID, row.Owner),
-			Condition: row.Condition,
-			Target:    row.Target,
-			AckReason: strings.TrimSpace(*reason),
-		}
-		if payload.AckReason == "" {
-			payload.AckReason = "acknowledged"
-		}
-		summary, err := encodeManualWaitSummary(payload)
+		payload, err := recordManualWaitAcknowledgement(ctx, s, row, strings.TrimSpace(*actor), strings.TrimSpace(*reason))
 		if err != nil {
-			return err
-		}
-		if err := s.RecordCheckpoint(ctx, store.Checkpoint{
-			TaskID:  row.TaskID,
-			State:   "done",
-			Owner:   payload.TrackID,
-			Summary: summary,
-		}); err != nil {
 			return err
 		}
 		row.State = "acknowledged"
@@ -11027,11 +11012,172 @@ func cmdWaitAck(ctx context.Context, opts globalOptions, args []string) error {
 	})
 }
 
+func recordManualWaitAcknowledgement(ctx context.Context, s *store.Store, row waitRow, actor, reason string) (manualWaitPayload, error) {
+	payload := manualWaitPayload{
+		Event:     "ack",
+		WaitID:    row.WaitID,
+		Kind:      row.Kind,
+		TaskID:    row.TaskID,
+		TrackID:   firstNonEmpty(strings.TrimSpace(actor), row.TrackID, row.Owner),
+		Condition: row.Condition,
+		Target:    row.Target,
+		AckReason: firstNonEmpty(strings.TrimSpace(reason), "acknowledged"),
+	}
+	summary, err := encodeManualWaitSummary(payload)
+	if err != nil {
+		return manualWaitPayload{}, err
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{
+		TaskID:  row.TaskID,
+		State:   "done",
+		Owner:   payload.TrackID,
+		Summary: summary,
+	}); err != nil {
+		return manualWaitPayload{}, err
+	}
+	return payload, nil
+}
+
+type waitResolutionAction struct {
+	WaitID    string `json:"wait_id"`
+	TaskID    string `json:"task_id"`
+	Kind      string `json:"kind"`
+	Source    string `json:"source"`
+	State     string `json:"state"`
+	Action    string `json:"action"`
+	Eligible  bool   `json:"eligible"`
+	Reason    string `json:"reason"`
+	HandoffID int64  `json:"handoff_id,omitempty"`
+	Applied   bool   `json:"applied,omitempty"`
+}
+
+type waitResolutionReport struct {
+	TaskID  string                 `json:"task_id"`
+	Apply   bool                   `json:"apply"`
+	Actions []waitResolutionAction `json:"actions"`
+}
+
+func cmdWaitResolve(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("wait resolve", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task id whose waits should be triaged")
+	kind := fs.String("kind", "", "optional wait kind")
+	reason := fs.String("reason", "", "bounded acknowledgement or supersede reason")
+	actor := fs.String("actor", "", "actor recording manual-wait acknowledgement")
+	apply := fs.Bool("apply", false, "record eligible acknowledgement and supersede facts")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected wait resolve arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	*taskID = strings.TrimSpace(*taskID)
+	*kind = strings.TrimSpace(*kind)
+	*reason = strings.TrimSpace(*reason)
+	if *taskID == "" {
+		return errors.New("--task is required")
+	}
+	if *reason == "" {
+		return errors.New("--reason is required")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		task, _, _, _, _, err := s.TaskDetail(ctx, *taskID)
+		if err != nil {
+			return err
+		}
+		rows, err := projectedWaitRows(ctx, cfg, root, s, 24*time.Hour)
+		if err != nil {
+			return err
+		}
+		rows = filterWaitRows(rows, *taskID, *kind, false)
+		terminal := terminalStatusSet(cfg.States.Terminal)[task.Status]
+		report := waitResolutionReport{TaskID: *taskID, Apply: *apply}
+		for _, row := range rows {
+			switch row.State {
+			case "resolved", "cancelled", "acknowledged", "archived", "superseded", "done":
+				continue
+			}
+			action := waitResolutionAction{WaitID: row.WaitID, TaskID: row.TaskID, Kind: row.Kind, Source: row.Source, State: row.State, Reason: *reason}
+			switch row.Source {
+			case "manual_wait":
+				action.Action = "acknowledge"
+				action.Eligible = true
+			case "completion_handbacks":
+				action.Action = "supersede_completion_handback"
+				action.HandoffID = completionWaitHandoffID(row.WaitID)
+				action.Eligible = action.HandoffID > 0 && (terminal || task.Status == "blocked")
+				if !action.Eligible {
+					action.Reason = "completion handback supersede requires terminal/blocked task state or an explicit replacement handback"
+				}
+			default:
+				continue
+			}
+			report.Actions = append(report.Actions, action)
+		}
+		if *apply {
+			for _, action := range report.Actions {
+				if !action.Eligible {
+					return fmt.Errorf("wait %s is not eligible for bounded bulk resolution: %s", action.WaitID, action.Reason)
+				}
+			}
+			for i := range report.Actions {
+				action := &report.Actions[i]
+				switch action.Action {
+				case "acknowledge":
+					var row waitRow
+					for _, candidate := range rows {
+						if candidate.WaitID == action.WaitID && candidate.Source == "manual_wait" {
+							row = candidate
+							break
+						}
+					}
+					if row.WaitID == "" {
+						return fmt.Errorf("manual wait %q not found", action.WaitID)
+					}
+					if _, err := recordManualWaitAcknowledgement(ctx, s, row, strings.TrimSpace(*actor), *reason); err != nil {
+						return err
+					}
+				case "supersede_completion_handback":
+					if err := s.RecordEvidence(ctx, *taskID, store.Evidence{
+						CommandText:  fmt.Sprintf("completion-handback-supersede handoff_id=%d", action.HandoffID),
+						Result:       "pass",
+						ArtifactType: "completion-handback-superseded",
+						Notes:        *reason,
+					}); err != nil {
+						return err
+					}
+				}
+				action.Applied = true
+			}
+		}
+		if opts.JSON {
+			return printJSON(report)
+		}
+		fmt.Printf("wait_resolution task=%s mode=%s actions=%d\n", report.TaskID, map[bool]string{false: "preview", true: "apply"}[report.Apply], len(report.Actions))
+		for _, action := range report.Actions {
+			fmt.Printf("- wait=%s kind=%s source=%s state=%s action=%s eligible=%t applied=%t reason=%s\n", action.WaitID, action.Kind, action.Source, action.State, action.Action, action.Eligible, action.Applied, action.Reason)
+		}
+		fmt.Println("authority_boundary: wait resolution records acknowledgement or supersede facts only; it does not delete history or grant review, merge, deploy, release, credential, public-exposure, or live-operation authority")
+		return nil
+	})
+}
+
+func completionWaitHandoffID(waitID string) int64 {
+	if !strings.HasPrefix(waitID, "completion:") {
+		return 0
+	}
+	id, _ := strconv.ParseInt(strings.TrimPrefix(waitID, "completion:"), 10, 64)
+	if id <= 0 {
+		return 0
+	}
+	return id
+}
+
 func cmdWaitList(ctx context.Context, opts globalOptions, args []string, tick bool) error {
 	fs := flag.NewFlagSet("wait list", flag.ContinueOnError)
 	taskID := fs.String("task", "", "task id")
 	kind := fs.String("kind", "", "wait kind")
 	staleOnly := fs.Bool("stale", false, "show only stale waits")
+	includeAll := fs.Bool("all", false, "include resolved, acknowledged, superseded, and terminal-task history")
 	staleMemoryAfter := fs.Duration("memory-stale-after", 24*time.Hour, "track memory stale threshold")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -11044,6 +11190,11 @@ func cmdWaitList(ctx context.Context, opts globalOptions, args []string, tick bo
 		if err != nil {
 			return err
 		}
+		statuses, err := taskStatuses(ctx, s)
+		if err != nil {
+			return err
+		}
+		rows = filterOpenWaitRows(rows, statuses, terminalStatusSet(cfg.States.Terminal), *includeAll)
 		rows = filterWaitRows(rows, *taskID, *kind, *staleOnly)
 		sort.SliceStable(rows, func(i, j int) bool {
 			if rows[i].Stale != rows[j].Stale {
@@ -11448,7 +11599,11 @@ func waitRowsFromPlan(plan coord.Plan) []waitRow {
 	}
 	for _, handback := range plan.CompletionHandbacks {
 		state := "open"
-		if handback.Stale {
+		if handback.Superseded || handback.DeliveryStatus == "superseded" {
+			state = "superseded"
+		} else if handback.DeliveryStatus == "delivered" {
+			state = "resolved"
+		} else if handback.Stale {
 			state = "stale"
 		}
 		if strings.Contains(handback.DeliveryStatus, "failed") || strings.Contains(handback.DeliveryState, "failed") {
@@ -11503,6 +11658,18 @@ func waitRowsFromTrackMemory(memories []store.TrackMemory, staleAfter time.Durat
 	var rows []waitRow
 	cutoff := time.Now().UTC().Add(-staleAfter)
 	for _, mem := range memories {
+		if mem.Disposition == "archived" || mem.Disposition == "superseded" {
+			rows = append(rows, waitRow{
+				WaitID: "memory:" + mem.TrackID,
+				Kind:   "track_memory",
+				Owner:  mem.TrackID,
+				State:  mem.Disposition,
+				Action: "none",
+				Reason: "track memory lifecycle disposition is " + mem.Disposition,
+				Source: "track_memory",
+			})
+			continue
+		}
 		updated, err := time.Parse(time.RFC3339Nano, mem.UpdatedAt)
 		stale := err != nil || updated.Before(cutoff)
 		if !stale {
@@ -11529,6 +11696,7 @@ func waitRowsFromManualCheckpoints(checkpoints []store.Checkpoint, notifications
 		checkpoint store.Checkpoint
 		acked      bool
 		ackAt      string
+		ackReason  string
 	}
 	states := map[string]manualWaitState{}
 	for i := len(checkpoints) - 1; i >= 0; i-- {
@@ -11542,6 +11710,7 @@ func waitRowsFromManualCheckpoints(checkpoints []store.Checkpoint, notifications
 		case "ack":
 			current.acked = true
 			current.ackAt = cp.CreatedAt
+			current.ackReason = payload.AckReason
 			if current.payload.WaitID == "" {
 				current.payload = payload
 				current.checkpoint = cp
@@ -11551,6 +11720,7 @@ func waitRowsFromManualCheckpoints(checkpoints []store.Checkpoint, notifications
 			current.checkpoint = cp
 			current.acked = false
 			current.ackAt = ""
+			current.ackReason = ""
 		}
 		states[payload.WaitID] = current
 	}
@@ -11558,7 +11728,7 @@ func waitRowsFromManualCheckpoints(checkpoints []store.Checkpoint, notifications
 	now := time.Now().UTC()
 	rows := make([]waitRow, 0, len(states))
 	for _, state := range states {
-		if state.acked || state.payload.WaitID == "" {
+		if state.payload.WaitID == "" {
 			continue
 		}
 		payload := state.payload
@@ -11582,6 +11752,15 @@ func waitRowsFromManualCheckpoints(checkpoints []store.Checkpoint, notifications
 		}
 		if row.Kind == "" {
 			row.Kind = "generic"
+		}
+		if state.acked {
+			row.State = "acknowledged"
+			row.Action = "none"
+			row.Reason = firstNonEmpty(state.ackReason, "acknowledged")
+			row.Stale = false
+			row.StaleAge = ""
+			rows = append(rows, row)
+			continue
 		}
 		if row.Deadline != "" {
 			if deadline, err := parseFlexibleTime(row.Deadline); err == nil && now.After(deadline) {
@@ -11743,6 +11922,24 @@ func filterWaitRows(rows []waitRow, taskID, kind string, staleOnly bool) []waitR
 			continue
 		}
 		if staleOnly && !row.Stale {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func filterOpenWaitRows(rows []waitRow, statuses map[string]string, terminal map[string]bool, includeAll bool) []waitRow {
+	if includeAll {
+		return rows
+	}
+	var out []waitRow
+	for _, row := range rows {
+		if row.TaskID != "" && terminal[strings.TrimSpace(statuses[row.TaskID])] {
+			continue
+		}
+		switch strings.TrimSpace(row.State) {
+		case "resolved", "cancelled", "acknowledged", "archived", "superseded", "done":
 			continue
 		}
 		out = append(out, row)
@@ -18544,7 +18741,7 @@ func printCommandHelp(command string) bool {
 		"route":                      "fairway route review <task-id> ... | fairway route review-preflight [--task <task-id>]\n  Route one review or validate project-wide review-domain coverage without mutation.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale] | fairway live-window retry-budget record|status ...\n  Record and inspect repeated live-operation handshake phases and retry budgets via task checkpoints.",
 		"memory":                     "fairway memory show|update|append|packet|stale|reconcile|disposition|history ...\n  Store curated track memory, reconcile lifecycle debt, and render compact provider-independent packets.",
-		"wait":                       "fairway wait add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, acknowledge them, project wait state, and emit bounded wake prompts.",
+		"wait":                       "fairway wait add|ack|list|tick|resolve|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, preserve closed history, apply bounded acknowledgement/supersede facts, and emit wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"work":                       "fairway work start <task-id> [--session-id <id>] [--role <role>] | fairway work status [<task-id>] [--explain] | fairway work verify <task-id> --command-text <summary> --result <result> | fairway work close <task-id> [--session-id <id>]\n  Use the compact common path over durable task, session, checkpoint, evidence, review, and reconciliation records.",
 		"lane":                       "fairway lane start|status|logs|stop ...\n  Record and inspect local/tmux lane runtime lifecycle without launching providers or storing transcript content.",

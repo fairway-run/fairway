@@ -757,7 +757,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		TaskRoles:            taskRoleMap(tasks),
 		ActiveReport:         activeReport,
 		CoordinatorPlan:      coordinatorPlan,
-		Coordination:         dashboardCoordinationIntelligence(coordinatorPlan, memories, time.Now().UTC(), 24*time.Hour),
+		Coordination:         dashboardCoordinationIntelligence(coordinatorPlan, memories, time.Now().UTC(), 24*time.Hour, s.cfg.States.Terminal),
 		CloseoutReports:      closeoutReports,
 		Audit:                auditDiagnostics,
 		DiagnosticsDeferred:  diagnosticsDeferred,

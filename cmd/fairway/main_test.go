@@ -683,11 +683,12 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"memory", "--help"}, "fairway memory show|update|append|packet|stale"},
 		{[]string{"memory", "show", "--help"}, "fairway memory show [--track <track-id>]"},
 		{[]string{"memory", "packet", "--help"}, "fairway memory packet --track <track-id>"},
-		{[]string{"wait", "--help"}, "fairway wait add|ack|list|tick|wake"},
+		{[]string{"wait", "--help"}, "fairway wait add|ack|list|tick|resolve|wake"},
 		{[]string{"wait", "add", "--help"}, "fairway wait add --task <task-id> --track <track-id> --on <condition>"},
 		{[]string{"wait", "ack", "--help"}, "fairway wait ack <wait-id>"},
-		{[]string{"wait", "list", "--help"}, "fairway wait list [--task <task-id>]"},
-		{[]string{"wait", "tick", "--help"}, "fairway wait tick [--task <task-id>]"},
+		{[]string{"wait", "list", "--help"}, "fairway wait list [--task <task-id>] [--stale] [--kind <kind>] [--all]"},
+		{[]string{"wait", "tick", "--help"}, "fairway wait tick [--task <task-id>] [--stale] [--kind <kind>] [--all]"},
+		{[]string{"wait", "resolve", "--help"}, "fairway wait resolve --task <task-id> --reason <text>"},
 		{[]string{"wait", "wake", "--help"}, "fairway wait wake [--task <task-id>]"},
 		{[]string{"packet", "--help"}, "fairway packet context|bugfix|retry|watcher"},
 		{[]string{"packet", "retry", "--help"}, "fairway packet retry <task-id> --kind <preflight|live-operation>"},
@@ -3970,6 +3971,10 @@ func TestCLI_GenericWaitAddAndAck(t *testing.T) {
 	afterAck := runCapture(t, "wait", "list", "--task", "T-001", "--kind", "live_window")
 	assertContains(t, afterAck, "waits:")
 	assertContains(t, afterAck, "- none")
+	history := runCapture(t, "wait", "list", "--task", "T-001", "--kind", "live_window", "--all")
+	assertContains(t, history, waitID)
+	assertContains(t, history, "state=acknowledged")
+	assertContains(t, history, "operator closeout received")
 
 	checkpoints := runCapture(t, "checkpoint", "status", "--all")
 	assertContains(t, checkpoints, "fairway_wait:")
@@ -4022,6 +4027,10 @@ type = "thread"
 	runOK(t, "record", "notification", "T-002", "--domain", "product", "--provider", "codex", "--target", "missing", "--state", "notification_failed", "--reason", "no mapping")
 	runOK(t, "record", "review", "T-003", "--reviewer", "ops-reviewer", "--domain", "ops", "--verdict", "approve", "--reason", "ok")
 	time.Sleep(time.Millisecond)
+	resolvedOpen := runCapture(t, "wait", "list", "--task", "T-003", "--kind", "review")
+	assertContains(t, resolvedOpen, "- none")
+	resolvedHistory := runCapture(t, "wait", "list", "--task", "T-003", "--kind", "review", "--all")
+	assertContains(t, resolvedHistory, "state=resolved")
 
 	dryRun := runCapture(t, "wait", "wake", "--task", "T-001", "--kind", "review")
 	assertContains(t, dryRun, "generic_wait_wakes:")
@@ -4055,6 +4064,56 @@ type = "thread"
 
 	resolved := runCapture(t, "wait", "wake", "--task", "T-003", "--kind", "review")
 	assertContains(t, resolved, "generic_wait_wakes: none")
+}
+
+func TestCLI_WaitResolvePreviewsAndRecordsBoundedHistory(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Historical waits", "--role", "backend")
+	runOK(t, "set-status", "T-001", "blocked", "--reason", "follow-up owns the remaining work")
+	runOK(t, "wait", "add", "--task", "T-001", "--track", "architecture-control", "--kind", "operator", "--on", "closeout readback")
+	handback := runCapture(t, "record", "completion-handback", "T-001", "--to", "ops", "--next-action", "inspect old closeout", "--completion-state", "blocked-with-follow-up")
+	assertContains(t, handback, "handoff_id=1")
+
+	preview := runCapture(t, "wait", "resolve", "--task", "T-001", "--reason", "follow-up task now owns both historical waits")
+	assertContains(t, preview, "mode=preview actions=2")
+	assertContains(t, preview, "action=acknowledge eligible=true applied=false")
+	assertContains(t, preview, "action=supersede_completion_handback eligible=true applied=false")
+	beforeApply := runCapture(t, "wait", "list", "--task", "T-001")
+	assertContains(t, beforeApply, "source=manual_wait")
+	assertContains(t, beforeApply, "source=completion_handbacks")
+
+	applied := runCapture(t, "wait", "resolve", "--task", "T-001", "--reason", "follow-up task now owns both historical waits", "--actor", "architecture-control", "--apply")
+	assertContains(t, applied, "mode=apply actions=2")
+	assertContains(t, applied, "action=acknowledge eligible=true applied=true")
+	assertContains(t, applied, "action=supersede_completion_handback eligible=true applied=true")
+	assertContains(t, applied, "does not delete history")
+
+	open := runCapture(t, "wait", "list", "--task", "T-001")
+	assertContains(t, open, "- none")
+	history := runCapture(t, "wait", "list", "--task", "T-001", "--all")
+	assertContains(t, history, "state=acknowledged")
+	assertContains(t, history, "state=superseded")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "completion-handback-supersede handoff_id=1")
+	assertContains(t, detail, "follow-up task now owns both historical waits")
+
+	runOK(t, "add", "T-002", "--title", "Terminal wait history", "--role", "backend")
+	runOK(t, "wait", "add", "--task", "T-002", "--track", "ops", "--on", "old operator response")
+	runOK(t, "set-status", "T-002", "done", "--reason", "task closed elsewhere")
+	terminalOpen := runCapture(t, "wait", "list", "--task", "T-002")
+	assertContains(t, terminalOpen, "- none")
+	terminalHistory := runCapture(t, "wait", "list", "--task", "T-002", "--all")
+	assertContains(t, terminalHistory, "manual:t-002:generic:ops:old-operator-response")
 }
 
 func TestCLI_GenericWaitWakeCoversTrackMemoryAndProviderSessionTargets(t *testing.T) {

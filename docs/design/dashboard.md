@@ -344,6 +344,12 @@ mapping gaps, wake target provider/thread, last wake attempt, and fixed CLI
 recovery suggestions. It does not add dashboard wake authority or write
 notification, review, task, merge, deploy, or execution state.
 
+Open-wait counts and panels suppress resolved/cancelled review waits,
+acknowledged manual waits, superseded completion handbacks or memory, and waits
+owned by terminal tasks. The CLI `fairway wait list --all` remains the explicit
+immutable-history surface. Bounded `wait resolve --apply` recording stays in the
+trusted CLI; the dashboard cannot acknowledge or supersede waits.
+
 Track-memory rows also project owner, review date, disposition, and promotion
 debt. These fields remain read-only: the dashboard cannot refresh, promote,
 archive, supersede, or otherwise mutate memory.

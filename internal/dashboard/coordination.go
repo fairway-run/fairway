@@ -56,7 +56,7 @@ type CoordinationMemory struct {
 	OpenBlocker   string `json:"open_blocker,omitempty"`
 }
 
-func dashboardCoordinationIntelligence(plan coord.Plan, memories []store.TrackMemory, now time.Time, staleMemoryAfter time.Duration) CoordinationIntelligence {
+func dashboardCoordinationIntelligence(plan coord.Plan, memories []store.TrackMemory, now time.Time, staleMemoryAfter time.Duration, terminalStatuses []string) CoordinationIntelligence {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
@@ -85,12 +85,13 @@ func dashboardCoordinationIntelligence(plan coord.Plan, memories []store.TrackMe
 		}
 		out.Memories = append(out.Memories, row)
 	}
-	out.Waits = append(out.Waits, coordinationReviewWaits(plan.ReviewWaits)...)
-	out.Waits = append(out.Waits, coordinationCompletionWaits(plan.CompletionHandbacks)...)
-	for _, wait := range out.Waits {
-		if wait.State != "resolved" && wait.State != "cancelled" && wait.State != "superseded" {
-			out.OpenWaits++
+	projectedWaits := append(coordinationReviewWaits(plan.ReviewWaits), coordinationCompletionWaits(plan.CompletionHandbacks, terminalStatuses)...)
+	for _, wait := range projectedWaits {
+		if wait.State == "resolved" || wait.State == "cancelled" || wait.State == "superseded" {
+			continue
 		}
+		out.Waits = append(out.Waits, wait)
+		out.OpenWaits++
 		if wait.State == "stale" || strings.Contains(wait.Action, "escalate") {
 			out.StaleWaits++
 		}
@@ -155,10 +156,10 @@ func coordinationReviewWaits(waits []reviewstate.ReviewWait) []CoordinationWait 
 	return out
 }
 
-func coordinationCompletionWaits(handbacks []completionhandback.Handback) []CoordinationWait {
+func coordinationCompletionWaits(handbacks []completionhandback.Handback, terminalStatuses []string) []CoordinationWait {
 	var out []CoordinationWait
 	for _, handback := range handbacks {
-		if completionhandback.IsResolved(handback) {
+		if completionhandback.IsResolved(handback) || stringInList(handback.TaskStatus, terminalStatuses) {
 			continue
 		}
 		out = append(out, CoordinationWait{
@@ -175,6 +176,16 @@ func coordinationCompletionWaits(handbacks []completionhandback.Handback) []Coor
 		})
 	}
 	return out
+}
+
+func stringInList(value string, values []string) bool {
+	value = strings.TrimSpace(value)
+	for _, candidate := range values {
+		if value == strings.TrimSpace(candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 func trackMemoryStale(mem store.TrackMemory, now time.Time, staleAfter time.Duration) bool {
