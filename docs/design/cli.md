@@ -484,6 +484,13 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   actions until review; it does not create tasks unless an explicit
   operator/configured apply path does so. Use `--template` to render a learning
   artifact for review or release notes.
+  Routing is lifecycle-aware: a later pass for the same normalized command or
+  artifact route, an existing scoped follow-up task, or terminal source-task
+  state removes the historical failure from actionable findings. The original
+  evidence remains in `non_actionable_evidence` with a deterministic
+  `routing_state` (`superseded_by_pass`, `follow_up_exists`, or
+  `source_task_terminal`) so audit history is preserved without duplicate task
+  recommendations. Passing closeout evidence never becomes a failure finding.
 - `audit notifications [--task <id>] [--all]` is a read-only lifecycle report
   over existing review waits, completion handbacks, generic waits, coordinator
   plan rows, handoffs, and `task_notifications`. It reports task, source,

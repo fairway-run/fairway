@@ -3918,8 +3918,13 @@ func cmdAuditCILearning(ctx context.Context, opts globalOptions, command string,
 		if report.TaskID != "" {
 			fmt.Printf("task_id: %s\n", report.TaskID)
 		}
-		fmt.Printf("summary: failed_evidence=%d missing_follow_ups=%d missed_local_gates=%d missed_review_gates=%d ci_environment_only=%d flaky_runner_or_cache=%d approval_gated_blocker=%d artifact_contract=%d provider_api=%d browser_surface=%d setup_gate=%d callback_missing=%d redaction_finding=%d commit_boundary=%d undelivered_handoff=%d\n",
+		fmt.Printf("summary: failed_evidence=%d actionable_findings=%d non_actionable_evidence=%d superseded_by_pass=%d covered_by_follow_up=%d terminal_task_evidence=%d missing_follow_ups=%d missed_local_gates=%d missed_review_gates=%d ci_environment_only=%d flaky_runner_or_cache=%d approval_gated_blocker=%d artifact_contract=%d provider_api=%d browser_surface=%d setup_gate=%d callback_missing=%d redaction_finding=%d commit_boundary=%d undelivered_handoff=%d\n",
 			report.Summary.FailedEvidence,
+			len(report.Findings),
+			report.Summary.NonActionableEvidence,
+			report.Summary.SupersededByPass,
+			report.Summary.CoveredByFollowUp,
+			report.Summary.TerminalTaskEvidence,
 			report.Summary.MissingFollowUps,
 			report.Summary.MissedLocalGates,
 			report.Summary.MissedReviewGates,
@@ -3940,7 +3945,6 @@ func cmdAuditCILearning(ctx context.Context, opts globalOptions, command string,
 			} else {
 				fmt.Println("no CI/deploy learning findings")
 			}
-			return nil
 		}
 		for _, finding := range report.Findings {
 			fmt.Printf("warning\t%s\ttask=%s\tfollow_up=%s\tcommand=%s\n", finding.FailureClass, finding.TaskID, finding.FollowUpTask, finding.CommandText)
@@ -3964,6 +3968,13 @@ func cmdAuditCILearning(ctx context.Context, opts globalOptions, command string,
 		for _, artifact := range report.Templates {
 			fmt.Println()
 			fmt.Println(artifact.Markdown)
+		}
+		for _, disposition := range report.NonActionableEvidence {
+			fmt.Printf("info\trouting_state=%s\ttask=%s\tfollow_up=%s\tcommand=%s\n", disposition.RoutingState, disposition.TaskID, disposition.FollowUpTask, disposition.CommandText)
+			fmt.Printf("  reason: %s\n", disposition.Reason)
+			if disposition.ArtifactPath != "" {
+				fmt.Printf("  artifact: %s\n", disposition.ArtifactPath)
+			}
 		}
 		return nil
 	})

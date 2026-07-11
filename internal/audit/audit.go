@@ -392,29 +392,45 @@ func BuildDocsBacklogReport(ctx context.Context, root string, s *store.Store, op
 }
 
 type CILearningReport struct {
-	OK        bool                `json:"ok"`
-	TaskID    string              `json:"task_id,omitempty"`
-	Findings  []CILearningFinding `json:"findings"`
-	Summary   CILearningSummary   `json:"summary"`
-	Templates []LearningArtifact  `json:"learning_artifacts,omitempty"`
+	OK                    bool                            `json:"ok"`
+	TaskID                string                          `json:"task_id,omitempty"`
+	Findings              []CILearningFinding             `json:"findings"`
+	NonActionableEvidence []CILearningEvidenceDisposition `json:"non_actionable_evidence,omitempty"`
+	Summary               CILearningSummary               `json:"summary"`
+	Templates             []LearningArtifact              `json:"learning_artifacts,omitempty"`
 }
 
 type CILearningSummary struct {
-	FailedEvidence       int `json:"failed_evidence"`
-	MissingFollowUps     int `json:"missing_follow_ups"`
-	MissedLocalGates     int `json:"missed_local_gates"`
-	MissedReviewGates    int `json:"missed_review_gates"`
-	CIEnvironmentOnly    int `json:"ci_environment_only"`
-	FlakyRunnerOrCache   int `json:"flaky_runner_or_cache"`
-	ApprovalGatedBlocker int `json:"approval_gated_blocker"`
-	ArtifactContract     int `json:"artifact_contract"`
-	ProviderAPI          int `json:"provider_api"`
-	BrowserSurface       int `json:"browser_surface"`
-	SetupGate            int `json:"setup_gate"`
-	CallbackMissing      int `json:"callback_missing"`
-	RedactionFinding     int `json:"redaction_finding"`
-	CommitBoundary       int `json:"commit_boundary"`
-	UndeliveredHandoff   int `json:"undelivered_handoff"`
+	FailedEvidence        int `json:"failed_evidence"`
+	MissingFollowUps      int `json:"missing_follow_ups"`
+	MissedLocalGates      int `json:"missed_local_gates"`
+	MissedReviewGates     int `json:"missed_review_gates"`
+	CIEnvironmentOnly     int `json:"ci_environment_only"`
+	FlakyRunnerOrCache    int `json:"flaky_runner_or_cache"`
+	ApprovalGatedBlocker  int `json:"approval_gated_blocker"`
+	ArtifactContract      int `json:"artifact_contract"`
+	ProviderAPI           int `json:"provider_api"`
+	BrowserSurface        int `json:"browser_surface"`
+	SetupGate             int `json:"setup_gate"`
+	CallbackMissing       int `json:"callback_missing"`
+	RedactionFinding      int `json:"redaction_finding"`
+	CommitBoundary        int `json:"commit_boundary"`
+	UndeliveredHandoff    int `json:"undelivered_handoff"`
+	NonActionableEvidence int `json:"non_actionable_evidence"`
+	SupersededByPass      int `json:"superseded_by_pass"`
+	CoveredByFollowUp     int `json:"covered_by_follow_up"`
+	TerminalTaskEvidence  int `json:"terminal_task_evidence"`
+}
+
+type CILearningEvidenceDisposition struct {
+	TaskID       string `json:"task_id"`
+	EvidenceType string `json:"evidence_type"`
+	Result       string `json:"result"`
+	CommandText  string `json:"command_text"`
+	ArtifactPath string `json:"artifact_path,omitempty"`
+	RoutingState string `json:"routing_state"`
+	Reason       string `json:"reason"`
+	FollowUpTask string `json:"follow_up_task,omitempty"`
 }
 
 type CILearningFinding struct {
@@ -477,13 +493,26 @@ func BuildCILearningReport(ctx context.Context, cfg config.Config, s *store.Stor
 		if err != nil {
 			return CILearningReport{}, err
 		}
-		for _, ev := range evidence {
+		for i, ev := range evidence {
 			if !isFailedPipelineEvidence(ev) {
+				continue
+			}
+			report.Summary.FailedEvidence++
+			if disposition, ok := nonActionableLearningEvidence(cfg, task, ev, evidence[i+1:], allFollowUps); ok {
+				report.NonActionableEvidence = append(report.NonActionableEvidence, disposition)
+				report.Summary.NonActionableEvidence++
+				switch disposition.RoutingState {
+				case "superseded_by_pass":
+					report.Summary.SupersededByPass++
+				case "follow_up_exists":
+					report.Summary.CoveredByFollowUp++
+				case "source_task_terminal":
+					report.Summary.TerminalTaskEvidence++
+				}
 				continue
 			}
 			finding := classifyLearningFailure(cfg, task, ev, reviews, allFollowUps)
 			report.Findings = append(report.Findings, finding)
-			report.Summary.FailedEvidence++
 			if finding.FollowUpMissing {
 				report.Summary.MissingFollowUps++
 			}
@@ -526,7 +555,16 @@ func BuildCILearningReport(ctx context.Context, cfg config.Config, s *store.Stor
 		}
 		return report.Findings[i].CommandText < report.Findings[j].CommandText
 	})
-	report.OK = report.Summary.MissingFollowUps == 0 && report.Summary.MissedLocalGates == 0 && report.Summary.MissedReviewGates == 0 && report.Summary.ApprovalGatedBlocker == 0
+	sort.SliceStable(report.NonActionableEvidence, func(i, j int) bool {
+		if report.NonActionableEvidence[i].TaskID != report.NonActionableEvidence[j].TaskID {
+			return report.NonActionableEvidence[i].TaskID < report.NonActionableEvidence[j].TaskID
+		}
+		if report.NonActionableEvidence[i].RoutingState != report.NonActionableEvidence[j].RoutingState {
+			return report.NonActionableEvidence[i].RoutingState < report.NonActionableEvidence[j].RoutingState
+		}
+		return report.NonActionableEvidence[i].CommandText < report.NonActionableEvidence[j].CommandText
+	})
+	report.OK = len(report.Findings) == 0
 	return report, nil
 }
 
@@ -877,6 +915,58 @@ func isFailedPipelineEvidence(ev store.Evidence) bool {
 		}
 	}
 	return false
+}
+
+func nonActionableLearningEvidence(cfg config.Config, task store.Task, ev store.Evidence, later []store.Evidence, followUps map[string]string) (CILearningEvidenceDisposition, bool) {
+	disposition := CILearningEvidenceDisposition{
+		TaskID:       task.Definition.ID,
+		EvidenceType: ev.ArtifactType,
+		Result:       ev.Result,
+		CommandText:  ev.CommandText,
+		ArtifactPath: ev.ArtifactPath,
+	}
+	if learningEvidenceSupersededByPass(ev, later) {
+		disposition.RoutingState = "superseded_by_pass"
+		disposition.Reason = "a later passing evidence row covers the same command or artifact route"
+		return disposition, true
+	}
+	if followUp := strings.TrimSpace(followUps[task.Definition.ID]); followUp != "" {
+		disposition.RoutingState = "follow_up_exists"
+		disposition.Reason = "an existing scoped follow-up task owns the actionable work"
+		disposition.FollowUpTask = followUp
+		return disposition, true
+	}
+	if isTerminalStatus(task.Status, cfg.States.Terminal) {
+		disposition.RoutingState = "source_task_terminal"
+		disposition.Reason = "the source task has a terminal status; inspect its evidence without creating a duplicate routing recommendation"
+		return disposition, true
+	}
+	return CILearningEvidenceDisposition{}, false
+}
+
+func learningEvidenceSupersededByPass(failed store.Evidence, later []store.Evidence) bool {
+	key := learningEvidenceRouteKey(failed)
+	if key == "" {
+		return false
+	}
+	for _, candidate := range later {
+		if strings.EqualFold(strings.TrimSpace(candidate.Result), "pass") && learningEvidenceRouteKey(candidate) == key {
+			return true
+		}
+	}
+	return false
+}
+
+func learningEvidenceRouteKey(ev store.Evidence) string {
+	if command := strings.Join(strings.Fields(strings.ToLower(ev.CommandText)), " "); command != "" {
+		return "command:" + command
+	}
+	artifactType := strings.TrimSpace(strings.ToLower(ev.ArtifactType))
+	artifactPath := strings.TrimSpace(strings.ToLower(ev.ArtifactPath))
+	if artifactType == "" && artifactPath == "" {
+		return ""
+	}
+	return "artifact:" + artifactType + "|" + artifactPath
 }
 
 func classifyLearningFailure(cfg config.Config, task store.Task, ev store.Evidence, reviews []store.Review, followUps map[string]string) CILearningFinding {

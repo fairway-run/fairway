@@ -4961,15 +4961,40 @@ func TestCLI_AuditCILearning(t *testing.T) {
 	runOK(t, "record", "evidence", "T-002", "--command-text", "github actions deploy smoke", "--result", "fail", "--artifact-type", "deploy", "--notes", "CI only environment variable differs")
 	runOK(t, "add", "CD-FIX-T-002", "--title", "Follow up T-002 deploy env", "--role", "ops")
 	envReport := runCapture(t, "--json", "audit", "ci-learning", "--task-id", "T-002", "--template")
-	assertContains(t, envReport, `"failure_class": "ci_environment_only"`)
+	assertContains(t, envReport, `"ok": true`)
+	assertContains(t, envReport, `"routing_state": "follow_up_exists"`)
 	assertContains(t, envReport, `"follow_up_task": "CD-FIX-T-002"`)
 	assertContains(t, envReport, `"missing_follow_ups": 0`)
+	assertNotContains(t, envReport, `"recommended_follow_up_task_id"`)
 
 	runOK(t, "add", "T-003", "--title", "Clean pipeline", "--role", "ops")
 	runOK(t, "record", "evidence", "T-003", "--command-text", "ci pipeline", "--result", "pass", "--artifact-type", "ci")
 	cleanReport := runCapture(t, "audit", "ci-learning", "--task-id", "T-003")
 	assertContains(t, cleanReport, "ci_learning_ok: true")
 	assertContains(t, cleanReport, "no CI/deploy learning findings")
+
+	runOK(t, "add", "T-004", "--title", "Historical failure", "--role", "backend")
+	runOK(t, "record", "evidence", "T-004", "--command-text", "go test ./...", "--result", "fail", "--artifact-type", "ci")
+	runOK(t, "record", "evidence", "T-004", "--command-text", "go   test ./...", "--result", "pass", "--artifact-type", "ci")
+	supersededReport := runCapture(t, "--json", "audit", "failure-routing", "--task-id", "T-004")
+	assertContains(t, supersededReport, `"ok": true`)
+	assertContains(t, supersededReport, `"routing_state": "superseded_by_pass"`)
+	assertContains(t, supersededReport, `"command_text": "go test ./..."`)
+	assertNotContains(t, supersededReport, `"failure_class": "missed_local_gate"`)
+
+	runOK(t, "add", "T-005", "--title", "Terminal failure", "--role", "ops")
+	runOK(t, "record", "evidence", "T-005", "--command-text", "deploy smoke", "--result", "blocked", "--artifact-type", "deploy")
+	runOK(t, "set-status", "T-005", "done", "--reason", "closed with recorded blocker")
+	terminalReport := runCapture(t, "audit", "failure-routing", "--task-id", "T-005")
+	assertContains(t, terminalReport, "failure_routing_ok: true")
+	assertContains(t, terminalReport, "routing_state=source_task_terminal")
+	assertNotContains(t, terminalReport, "missing follow-up: create")
+
+	runOK(t, "add", "T-006", "--title", "Passing closeout", "--role", "backend")
+	runOK(t, "record", "evidence", "T-006", "--command-text", "fairway work close T-006", "--result", "pass", "--artifact-type", "closeout")
+	passingCloseout := runCapture(t, "audit", "failure-routing", "--task-id", "T-006")
+	assertContains(t, passingCloseout, "failure_routing_ok: true")
+	assertContains(t, passingCloseout, "failed_evidence=0 actionable_findings=0 non_actionable_evidence=0")
 }
 
 func TestCLI_KnownFailureRoutingRecommendations(t *testing.T) {
