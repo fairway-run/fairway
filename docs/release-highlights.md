@@ -1,16 +1,12 @@
-- Dashboard lifecycle readback is now process-verifiable: managed JSON records
-  bind pid, listen address, binary, version, and mode flags, while legacy or
-  mismatched records report unknown and block signaling.
-- Larger Fairway stores are now easier to operate: route timing logs, batched
-  review/evidence projections, the fast board path, snapshot caching, and
-  lazy-loaded diagnostics turn previously multi-second dashboard paths into
-  explicit fast/default and deep-diagnostics modes.
-- Bounded read-only small-team Fairway is supported on an operator-controlled
-  host: managed loopback lifecycle, explicit status/version/config/database/
-  pid/log readback, backup/restore, read APIs, local CLI fallback, and a
-  versioned clean-state CI rehearsal. Shared writes and non-loopback origins
-  remain preview or unsupported.
-- Team-store work is measurable but not overclaimed: disposable Postgres
-  rehearsal packets and apply/import/readback proof validate compatibility
-  boundaries without switching the runtime store or claiming production
-  migration readiness.
+- Atomic `work start`, compact status, guarded verification, and composed
+  closeout make the common Fairway path faster without bypassing existing
+  evidence, review, reconciliation, or consequential release/live controls.
+- Task decisions, track-memory lifecycle, routing preflight, wait hygiene,
+  managed binary cache, and consumer readiness reports move repeatable
+  coordination and environment state out of provider chat loops.
+- Deterministic `fairway explain code` packets connect committed Git locations
+  to cited Fairway contracts, decisions, evidence, and reviews while showing
+  conflicts and missing provenance instead of generating history.
+- Optional loopback-only advisory narratives label every statement as recorded,
+  inferred, or unknown and require packet citations. Generated text remains
+  display-only and never becomes accepted provenance or workflow authority.

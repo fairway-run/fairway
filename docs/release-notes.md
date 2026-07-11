@@ -10,6 +10,72 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.1.12
+
+### What Changed
+
+- The common work path now atomically starts task/session/checkpoint state and
+  provides compact `work status`, guarded `work verify`, and composed
+  `work close` surfaces. These commands use existing Fairway facts and gates;
+  they do not create reviews or grant merge, deploy, release, credential,
+  public-exposure, or live-operation authority.
+- First-class task decisions and track-memory lifecycle records make material
+  choices, scope additions, quality assessment, supersession, promotion, and
+  replacement-agent continuation durable without treating raw provider
+  transcripts as authority.
+- Progressive common-path guidance, failure-routing accuracy, reviewer-route
+  preflight, lifecycle-aware wait hygiene, managed binary cache commands, and
+  consumer capability readiness reduce repeated coordination and environment
+  debugging while keeping consequential controls explicit.
+- The measured common-path pilot found materially shorter validation-to-close
+  and active-to-done time with complete session/checkpoint/evidence coverage,
+  but did not produce enough labeled precision data to justify a blocking
+  reversible-work intent-to-diff gate. `work verify` therefore reports
+  deterministic declared, accepted-decision, and unexplained path classes as
+  advisory evidence; existing consequential gates remain blocking.
+- `fairway explain code` produces deterministic `fairway.explain-code.v1`
+  JSON or Markdown from committed Git metadata and cited Fairway task,
+  contract, decision, evidence, and review facts. It reports conflicts and
+  missing provenance instead of inventing historical rationale.
+- An optional loopback-only `local_ollama` adapter can render a validated
+  `fairway.explain-narrative.v1` advisory narrative. Statements must be labeled
+  `recorded`, `inferred`, or `unknown`, and recorded/inferred statements require
+  packet citations. Generated text is displayed only and is never accepted or
+  persisted as provenance.
+
+### Known Limits
+
+- LLM narrative output is not deterministic execution or historical truth.
+  The release supports only an explicitly configured loopback `local_ollama`
+  narrative endpoint; credentialed remote explanation providers are not
+  implemented.
+- `explain code` resolves committed source. Symbol resolution currently covers
+  Go functions, methods, types, constants, and variables; source bodies are not
+  emitted.
+- Reversible intent-to-diff findings remain advisory until a later measured
+  pilot demonstrates sufficient precision and safety value. Security, live,
+  deploy, release, credential, public-exposure, migration, irreversible, and
+  other configured consequential boundaries remain blocking.
+- Managed binary cache commands install only an explicit local executable.
+  They do not download releases, update consumer configs, or restart running
+  processes. Consumer readiness reports do not install, migrate, or upgrade.
+- This release does not promote shared-team write pilots, trusted-proxy
+  identity, non-loopback server exposure, a Postgres runtime switch, dashboard
+  mutation, provider-send authority, or autonomous approval.
+
+### Release Checklist
+
+- All included tasks are done with required reviews and recorded validation.
+- `go test ./...` and `go test -tags=integration ./...` pass.
+- `go vet ./...` and `git diff --check` pass.
+- `fairway config validate` and `goreleaser check` pass.
+- `fairway workflow check --mode deploy --require-clean --require-pushed`
+  passes on the exact reviewed source before tagging.
+- A local release-ldflags build reports `0.1.12` and passes ready/reconcile
+  smoke checks.
+- Separate reviewed tasks own tag/publish/Homebrew/docs verification and the
+  two shared dashboard restarts/version readback.
+
 ## v0.1.11
 
 ### What Changed

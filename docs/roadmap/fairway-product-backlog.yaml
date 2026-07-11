@@ -5320,15 +5320,70 @@ tasks:
     owning_domain: fairway
     owning_layer: release
     source_paths: [docs/release-notes.md, docs/release-highlights.md, CHANGELOG.md]
-    target_paths: [docs/assessment, GitHub-release-v0.1.12, fairway-run/homebrew-tap, docs.fairway.run]
+    target_paths: [CHANGELOG.md, docs/release-notes.md, docs/release-highlights.md, docs/assessment, docs/roadmap/fairway-product-backlog.yaml, GitHub-release-v0.1.12, fairway-run/homebrew-tap, docs.fairway.run]
     review_domains: [arch, governance, ops, security]
     risk_level: critical
     migration_type: agent-native-release-prep
-    dependencies: [FW-293, FW-294, FW-295, FW-297, FW-298, FW-299, FW-300, FW-301, FW-303, FW-304, FW-306, FW-309, FW-310]
+    dependencies: [FW-291, FW-292, FW-293, FW-294, FW-295, FW-297, FW-298, FW-299, FW-300, FW-301, FW-303, FW-304, FW-305, FW-306, FW-307, FW-308, FW-309, FW-310, FW-312]
     acceptance_checks:
       - "All common-path, decision-memory, consumer-gap, and explainability tasks included in the release are done with reviewed evidence."
       - "Release packet states implemented versus advisory behavior and does not claim deterministic LLM reproducibility."
       - "CI, docs, release assets, Homebrew, version readback, and dashboard restart have explicit publish and verification tasks."
+
+  - id: FW-313
+    title: Publish Fairway v0.1.12 binary docs and Homebrew update
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths: [docs/assessment/fairway-v0.1.12-release-prep-2026-07-11.md, docs/release-notes.md, docs/release-highlights.md, CHANGELOG.md]
+    target_paths: [GitHub-release-v0.1.12, fairway-run/homebrew-tap, docs.fairway.run]
+    review_domains: [governance, ops, security]
+    risk_level: critical
+    migration_type: release-publish
+    dependencies: [FW-311]
+    acceptance_checks:
+      - "Deploy-mode clean/pushed guard, exact local/remote source SHA, absent v0.1.12 tag, tests, vet, GoReleaser, config, and release-ldflags smoke pass before tag creation."
+      - "An annotated v0.1.12 tag is created at the reviewed source SHA and published through the normal GitHub Actions and GoReleaser path without moving an existing tag."
+      - "GitHub assets and checksums, docs release content, Homebrew tap/cask version, and brew fetch are verified and recorded."
+      - "Dashboard restart and public exposure changes remain outside this publish task and are owned by FW-314."
+
+  - id: FW-314
+    title: Restart shared Fairway dashboards on v0.1.12 and record version readback
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-lifecycle
+    source_paths: [docs/operations/small-team-lab-deployment.md, docs/design/dashboard.md]
+    target_paths: [AI-Cloud-dashboard-7878, AI-Cloud-dashboard-7879]
+    review_domains: [governance, ops]
+    risk_level: critical
+    migration_type: dashboard-release-restart
+    dependencies: [FW-313]
+    acceptance_checks:
+      - "The released v0.1.12 binary is installed outside consumer worktrees and both shared dashboards restart with distinct durable pid and log files."
+      - "Status readback records version, binary, config, listen address, read-only/full mode, pid, and log identity for ports 7878 and 7879."
+      - "Local root/board probes and the public Cloudflare Access boundary probe pass without changing dashboard authority or public exposure policy."
+
+  - id: FW-315
+    title: Assess v0.1.12 dashboard performance on real AI Cloud data
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-performance
+    source_paths: [internal/dashboard, docs/design/dashboard.md]
+    target_paths: [docs/assessment, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [backend, ui, ops]
+    risk_level: high
+    migration_type: dashboard-performance-assessment
+    dependencies: [FW-314]
+    acceptance_checks:
+      - "Cold and warm TTFB and total time are measured for root, board, diagnostics, reports, task detail, and lazy panel routes on both 7878 and 7879 using the real AI Cloud data set."
+      - "The assessment captures dashboard_timing projection breakdowns, cache hit/miss behavior, DB row counts, contention, memory/CPU, and browser-visible usability against documented budgets and FW-250 through FW-254 baselines."
+      - "Confirmed bottlenecks become bounded Fairway tasks with owning layer, reproduction, baseline, target, regression coverage, and no dashboard authority change; product defects remain separate from data/archive hygiene and deployment/runtime findings."
 
   - id: FW-312
     title: Make latest review verdict ordering deterministic

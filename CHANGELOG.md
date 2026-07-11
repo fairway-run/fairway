@@ -9,6 +9,41 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
+## v0.1.12
+
+### Added
+
+- Atomic common-path work start/status plus guarded verification and closeout
+  commands over existing task, session, checkpoint, evidence, review, git, and
+  reconciliation primitives.
+- Structured task decision records with independent quality assessment,
+  supersession, accepted scope additions, and context-packet projection.
+- Track-memory lifecycle history, promotion/disposition controls, and
+  progressive common-path dashboard guidance.
+- Review routing preflight, lifecycle-aware failure routing and wait hygiene,
+  managed local binary cache lifecycle, and consumer capability/minimum-version
+  readiness reporting.
+- Deterministic grounded code explanation packets for file, line, Go symbol,
+  commit, and task entry points, with cited contracts, decisions, evidence, and
+  reviews.
+- Optional loopback-only local Ollama narrative rendering with strict
+  recorded/inferred/unknown labels, citation validation, privacy rejection,
+  and no Fairway state writeback.
+
+### Changed
+
+- Reversible intent-to-diff classification remains advisory after the measured
+  common-path pilot did not establish sufficient precision for blocking
+  promotion. Existing consequential boundaries remain blocking.
+- Common-path recommendations and failure routing distinguish lifecycle,
+  review, notification, and capability state more precisely without turning
+  advisory findings into workflow authority.
+
+### Fixed
+
+- Latest review verdict reads now use durable append order so tied timestamps
+  or wall-clock movement cannot invert review-completion state.
+
 ## v0.1.11
 
 ### Fixed
