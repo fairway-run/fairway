@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/subashram/fairway/internal/audit"
@@ -32,13 +34,23 @@ import (
 )
 
 type Server struct {
-	store     *store.Store
-	cfg       config.Config
-	root      string
-	roles     []string
-	worktrees []WorktreeStatus
-	csrfToken string
-	snapshots *dashboardSnapshotCache
+	store                   *store.Store
+	cfg                     config.Config
+	root                    string
+	roles                   []string
+	worktrees               []WorktreeStatus
+	csrfToken               string
+	snapshots               *dashboardSnapshotCache
+	eventPollInterval       time.Duration
+	reviewWaitSweepInterval time.Duration
+	sseStats                *ssePollStats
+}
+
+type ssePollStats struct {
+	cursorChecks         atomic.Uint64
+	sourceHydrations     atomic.Uint64
+	reviewWaitSweeps     atomic.Uint64
+	targetWaitHydrations atomic.Uint64
 }
 
 const taskDetailCompletionActionLimit = 10000
@@ -72,7 +84,18 @@ func New(s *store.Store, cfg config.Config, roles []string, worktrees []Worktree
 }
 
 func NewWithRoot(s *store.Store, cfg config.Config, roles []string, worktrees []WorktreeStatus, root string) *Server {
-	return &Server{store: s, cfg: cfg, root: root, roles: roles, worktrees: worktrees, csrfToken: newCSRFToken(), snapshots: newDashboardSnapshotCache(dashboardSnapshotCacheTTL)}
+	return &Server{
+		store:                   s,
+		cfg:                     cfg,
+		root:                    root,
+		roles:                   roles,
+		worktrees:               worktrees,
+		csrfToken:               newCSRFToken(),
+		snapshots:               newDashboardSnapshotCache(dashboardSnapshotCacheTTL),
+		eventPollInterval:       time.Second,
+		reviewWaitSweepInterval: reviewWaitEventSweepInterval(cfg),
+		sseStats:                &ssePollStats{},
+	}
 }
 
 func NewMulti(projects []ProjectStore) http.Handler {
@@ -3194,110 +3217,147 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	initial, err := s.store.EventSources(r.Context(), dashboardEventPollLimit)
+	cursor, err := s.store.LatestEventCursor(r.Context())
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
 		flusher.Flush()
 		return
 	}
-	seen := map[string]bool{}
-	for _, source := range initial {
-		for _, event := range sseEventsFromSource(source) {
-			seen[event.ID] = true
+	if resumed, ok := parseSourceCursorID(r.Header.Get("Last-Event-ID")); ok {
+		cursor = resumed
+	}
+	if _, err := io.WriteString(w, ": connected\n\n"); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	pollInterval := s.eventPollInterval
+	if pollInterval <= 0 {
+		pollInterval = time.Second
+	}
+	waitSweepInterval := s.reviewWaitSweepInterval
+	if waitSweepInterval <= 0 {
+		waitSweepInterval = maximumReviewWaitSweepInterval
+	}
+	pollTicker := time.NewTicker(pollInterval)
+	defer pollTicker.Stop()
+	waitTicker := time.NewTicker(waitSweepInterval)
+	defer waitTicker.Stop()
+	waitSeen := map[string]bool{}
+	lastKeepalive := time.Now()
+
+	writeWaitEvents := func(events []sseEvent, cursorID string) error {
+		for _, event := range events {
+			if waitSeen[event.ID] {
+				continue
+			}
+			event.CursorID = cursorID
+			if err := writeSSEEvent(w, event); err != nil {
+				return err
+			}
+			waitSeen[event.ID] = true
 		}
+		return nil
 	}
-	initialWaitEvents, err := s.reviewWaitEvents(r.Context(), time.Now().UTC().Format(time.RFC3339Nano))
-	if err != nil {
+	writeError := func(err error) {
 		fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
 		flusher.Flush()
-		return
 	}
-	for _, event := range initialWaitEvents {
-		seen[event.ID] = true
-	}
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-ticker.C:
-			sources, err := s.store.EventSources(r.Context(), dashboardEventPollLimit)
+		case <-pollTicker.C:
+			s.sseStats.cursorChecks.Add(1)
+			latest, err := s.store.LatestEventCursor(r.Context())
 			if err != nil {
-				fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
-				flusher.Flush()
+				writeError(err)
 				return
 			}
-			for i := len(sources) - 1; i >= 0; i-- {
-				source := sources[i]
-				events := sseEventsFromSource(source)
-				if len(events) == 0 {
-					continue
-				}
-				sourceSeen := true
-				for _, event := range events {
-					if !seen[event.ID] {
-						sourceSeen = false
-						break
-					}
-				}
-				if sourceSeen {
-					continue
-				}
-				for _, event := range events {
-					if seen[event.ID] {
-						continue
-					}
-					if err := writeSSEEvent(w, event); err != nil {
-						fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
-						flusher.Flush()
+			if compareEventCursor(cursor, latest) >= 0 {
+				if time.Since(lastKeepalive) >= 15*time.Second {
+					if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
 						return
 					}
-					seen[event.ID] = true
-				}
-				gateEvents, err := s.gateChangeEvents(r.Context(), events[0].ID, source.Cursor.At)
-				if err != nil {
-					fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
 					flusher.Flush()
+					lastKeepalive = time.Now()
+				}
+				continue
+			}
+			sources, err := s.store.EventSourcesAfter(r.Context(), cursor, dashboardEventPollLimit)
+			s.sseStats.sourceHydrations.Add(1)
+			if err != nil {
+				writeError(err)
+				return
+			}
+			affectedTasks := map[string]bool{}
+			lastSourceID := ""
+			lastCursorID := ""
+			lastAt := ""
+			for _, source := range sources {
+				events := sseEventsFromSource(source)
+				for _, event := range events {
+					if err := writeSSEEvent(w, event); err != nil {
+						return
+					}
+				}
+				if source.TaskID != "" {
+					affectedTasks[source.TaskID] = true
+				}
+				cursor = source.Cursor
+				lastAt = source.Cursor.At
+				lastCursorID = sourceCursorID(source.Cursor)
+				if len(events) > 0 {
+					lastSourceID = events[len(events)-1].ID
+				}
+			}
+			if len(sources) == 0 {
+				cursor = latest
+				continue
+			}
+			if lastSourceID != "" {
+				gateEvents, err := s.gateChangeEvents(r.Context(), lastSourceID, lastAt)
+				if err != nil {
+					writeError(err)
 					return
 				}
 				for _, event := range gateEvents {
-					if seen[event.ID] {
-						continue
-					}
+					event.CursorID = lastCursorID
 					if err := writeSSEEvent(w, event); err != nil {
-						fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
-						flusher.Flush()
 						return
 					}
-					seen[event.ID] = true
 				}
-				if err := writeLegacyRefresh(w, events[0].ID); err != nil {
-					fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
-					flusher.Flush()
+			}
+			for taskID := range affectedTasks {
+				s.sseStats.targetWaitHydrations.Add(1)
+				waitEvents, err := s.reviewWaitEventsForTask(r.Context(), taskID, time.Now().UTC().Format(time.RFC3339Nano))
+				if err != nil {
+					writeError(err)
 					return
 				}
-				flusher.Flush()
+				if err := writeWaitEvents(waitEvents, lastCursorID); err != nil {
+					return
+				}
 			}
-			at := time.Now().UTC().Format(time.RFC3339Nano)
-			waitEvents, err := s.reviewWaitEvents(r.Context(), at)
+			if lastSourceID != "" {
+				if err := writeLegacyRefresh(w, lastSourceID); err != nil {
+					return
+				}
+			}
+			flusher.Flush()
+			lastKeepalive = time.Now()
+		case <-waitTicker.C:
+			s.sseStats.reviewWaitSweeps.Add(1)
+			waitEvents, err := s.activeReviewWaitEvents(r.Context(), time.Now().UTC().Format(time.RFC3339Nano))
 			if err != nil {
-				fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
-				flusher.Flush()
+				writeError(err)
 				return
 			}
-			for _, event := range waitEvents {
-				if seen[event.ID] {
-					continue
-				}
-				if err := writeSSEEvent(w, event); err != nil {
-					fmt.Fprintf(w, "event: error\ndata: %q\n\n", err.Error())
-					flusher.Flush()
-					return
-				}
-				seen[event.ID] = true
-				flusher.Flush()
+			if err := writeWaitEvents(waitEvents, ""); err != nil {
+				return
 			}
+			flusher.Flush()
+			lastKeepalive = time.Now()
 		}
 	}
 }

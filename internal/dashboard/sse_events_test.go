@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,13 +68,25 @@ func TestSSEEventsFromSourceMapsTaxonomy(t *testing.T) {
 
 func TestWriteSSEEvent(t *testing.T) {
 	var out strings.Builder
-	err := writeSSEEvent(&out, sseEvent{Name: "claim", Payload: map[string]any{"task_id": "T-001"}})
+	err := writeSSEEvent(&out, sseEvent{CursorID: "fairway-source:test", Name: "claim", Payload: map[string]any{"task_id": "T-001"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "event: claim\n") || !strings.Contains(got, `"task_id":"T-001"`) {
+	if !strings.Contains(got, "id: fairway-source:test\n") || !strings.Contains(got, "event: claim\n") || !strings.Contains(got, `"task_id":"T-001"`) {
 		t.Fatalf("unexpected SSE output: %q", got)
+	}
+}
+
+func TestSourceCursorIDRoundTrip(t *testing.T) {
+	want := store.EventCursor{At: "2026-07-11T20:00:00.123Z", SourceOrder: 45, ID: 99}
+	encoded := sourceCursorID(want)
+	got, ok := parseSourceCursorID(encoded)
+	if !ok || got != want {
+		t.Fatalf("cursor round trip = %#v, %t; want %#v", got, ok, want)
+	}
+	if _, ok := parseSourceCursorID("review_wait:T-001/ops"); ok {
+		t.Fatal("non-source event id unexpectedly parsed")
 	}
 }
 
@@ -97,6 +110,9 @@ func TestStoreEventSourcesCoverDashboardTaxonomyInputs(t *testing.T) {
 	if err := s.RecordReview(ctx, "T-001", store.Review{Reviewer: "arch", Verdict: "approve", Reason: "ok"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "T-001", Domain: "arch", Provider: "codex", State: "thread_steered"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.UpsertSession(ctx, store.Session{ID: "codex-1", Role: "backend", Provider: "codex", SessionBackend: "codex-thread", TaskID: "T-001"}); err != nil {
 		t.Fatal(err)
 	}
@@ -117,11 +133,179 @@ func TestStoreEventSourcesCoverDashboardTaxonomyInputs(t *testing.T) {
 			seen[event.Name] = true
 		}
 	}
-	for _, want := range []string{"claim", "done", "evidence", "handoff", "review_verdict", "session_attach", "session_heartbeat", "session_detach"} {
+	for _, want := range []string{"claim", "done", "evidence", "handoff", "review_verdict", "notification", "session_attach", "session_heartbeat", "session_detach"} {
 		if !seen[want] {
 			t.Fatalf("missing %s in events from sources %#v", want, sources)
 		}
 	}
+}
+
+func TestStoreEventSourcesAfterUsesCursorAndIncludesNotifications(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := s.LatestEventCursor(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sources, err := s.EventSourcesAfter(ctx, baseline, 100); err != nil || len(sources) != 0 {
+		t.Fatalf("idle sources = %#v, %v", sources, err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass", ArtifactType: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "T-001", Domain: "ops", Provider: "codex", State: "thread_steered"}); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := s.EventSourcesAfter(ctx, baseline, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 2 || sources[0].Source != "evidence" || sources[1].Source != "notification" {
+		t.Fatalf("incremental sources = %#v", sources)
+	}
+	events := sseEventsFromSource(sources[1])
+	if len(events) != 1 || events[0].Name != "notification" || events[0].Payload["domain"] != "ops" || events[0].Payload["state"] != "thread_steered" {
+		t.Fatalf("notification events = %#v", events)
+	}
+	latest, err := s.LatestEventCursor(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compareEventCursor(baseline, latest) >= 0 || compareEventCursor(latest, sources[len(sources)-1].Cursor) != 0 {
+		t.Fatalf("cursor baseline=%#v latest=%#v sources=%#v", baseline, latest, sources)
+	}
+}
+
+func TestEventsIdlePollDoesNotHydrateFullSources(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	server.eventPollInterval = 5 * time.Millisecond
+	server.reviewWaitSweepInterval = time.Hour
+
+	requestCtx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/events", nil).WithContext(requestCtx)
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		server.events(rec, req)
+		close(done)
+	}()
+	time.Sleep(35 * time.Millisecond)
+	cancel()
+	<-done
+
+	if checks := server.sseStats.cursorChecks.Load(); checks < 3 {
+		t.Fatalf("cursor checks = %d; want at least 3", checks)
+	}
+	if hydrations := server.sseStats.sourceHydrations.Load(); hydrations != 0 {
+		t.Fatalf("idle source hydrations = %d; want 0", hydrations)
+	}
+	if sweeps := server.sseStats.reviewWaitSweeps.Load(); sweeps != 0 {
+		t.Fatalf("idle review wait sweeps = %d; want 0", sweeps)
+	}
+	if !strings.Contains(rec.Body.String(), ": connected\n\n") {
+		t.Fatalf("stream body = %q", rec.Body.String())
+	}
+}
+
+func TestEventsDeliverIncrementalChangeAndResumeFromCursor(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	server.eventPollInterval = 5 * time.Millisecond
+	server.reviewWaitSweepInterval = time.Hour
+
+	firstBody := runTestEventStream(t, server, "", func() {
+		if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "first", Result: "pass", ArtifactType: "test"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(firstBody, "event: evidence\n") || !strings.Contains(firstBody, `"count":1`) {
+		t.Fatalf("first stream = %q", firstBody)
+	}
+	var resumeID string
+	for _, line := range strings.Split(firstBody, "\n") {
+		if strings.HasPrefix(line, "id: ") {
+			resumeID = strings.TrimPrefix(line, "id: ")
+		}
+	}
+	if resumeID == "" {
+		t.Fatalf("first stream missing cursor id: %q", firstBody)
+	}
+	secondBody := runTestEventStream(t, server, resumeID, func() {
+		if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "second", Result: "pass", ArtifactType: "test"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(secondBody, `"count":2`) || strings.Contains(secondBody, `"count":1`) {
+		t.Fatalf("resumed stream = %q", secondBody)
+	}
+}
+
+func TestEventsSweepEmitsStaleReviewWait(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Review", Kind: "task", Role: "backend", ReviewDomains: []string{"ops"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "in_progress", "review", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "T-001", Domain: "ops", Provider: "codex", Target: "thread-ops", State: "notification_delivered"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults(t.TempDir())
+	cfg.Roles = []config.Role{{Name: "ops"}}
+	cfg.Coordinator.NotificationAckTimeout = "1ns"
+	server := New(s, cfg, []string{"backend"}, nil)
+	server.eventPollInterval = time.Hour
+	server.reviewWaitSweepInterval = 5 * time.Millisecond
+
+	requestCtx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/events", nil).WithContext(requestCtx)
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		server.events(rec, req)
+		close(done)
+	}()
+	time.Sleep(40 * time.Millisecond)
+	cancel()
+	<-done
+	if !strings.Contains(rec.Body.String(), "event: review_wait.stale\n") {
+		t.Fatalf("stale stream = %q", rec.Body.String())
+	}
+}
+
+func runTestEventStream(t *testing.T, server *Server, lastEventID string, mutate func()) string {
+	t.Helper()
+	requestCtx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/events", nil).WithContext(requestCtx)
+	if lastEventID != "" {
+		req.Header.Set("Last-Event-ID", lastEventID)
+	}
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		server.events(rec, req)
+		close(done)
+	}()
+	time.Sleep(15 * time.Millisecond)
+	mutate()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+	return rec.Body.String()
 }
 
 func TestReviewWaitEventsUseSharedProjection(t *testing.T) {

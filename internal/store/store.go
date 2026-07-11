@@ -3750,9 +3750,26 @@ LIMIT ?`, args...)
 }
 
 func (s *Store) EventSources(ctx context.Context, limit int) ([]EventSource, error) {
+	return s.eventSources(ctx, nil, limit)
+}
+
+func (s *Store) EventSourcesAfter(ctx context.Context, after EventCursor, limit int) ([]EventSource, error) {
+	return s.eventSources(ctx, &after, limit)
+}
+
+func (s *Store) eventSources(ctx context.Context, after *EventCursor, limit int) ([]EventSource, error) {
 	if limit <= 0 {
 		limit = 1000
 	}
+	filter := "WHERE at IS NOT NULL AND at != ''"
+	order := "DESC"
+	args := []any{s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID}
+	if after != nil && strings.TrimSpace(after.At) != "" {
+		filter += ` AND (at > ? OR (at = ? AND source_order > ?) OR (at = ? AND source_order = ? AND id > ?))`
+		args = append(args, after.At, after.At, after.SourceOrder, after.At, after.SourceOrder, after.ID)
+		order = "ASC"
+	}
+	args = append(args, limit)
 	rows, err := s.db.QueryContext(ctx, `
 SELECT at, source_order, id, source, task_id, role, owner, from_status, to_status,
        actor, reason, from_role, to_role, evidence_type, evidence_count,
@@ -3800,6 +3817,16 @@ FROM (
     JOIN task_state st ON st.project_id=r.project_id AND st.task_id=r.task_id
    WHERE r.project_id=?
   UNION ALL
+  SELECT n.created_at, 45, n.id, 'notification',
+         n.task_id, d.role, COALESCE(st.owner, ''),
+         '', '', '', COALESCE(n.reason, ''), '', '', '', 0,
+         COALESCE(n.domain, ''), COALESCE(n.state, ''),
+         '', COALESCE(n.provider, ''), ''
+    FROM task_notifications n
+    JOIN task_definitions d ON d.project_id=n.project_id AND d.id=n.task_id
+    JOIN task_state st ON st.project_id=n.project_id AND st.task_id=n.task_id
+   WHERE n.project_id=?
+  UNION ALL
   SELECT s.started_at, 50, s.rowid, 'session_attach',
          COALESCE(s.task_id, ''), s.role, '',
          '', '', '', '', '', '', '', 0, '', '',
@@ -3821,9 +3848,9 @@ FROM (
     FROM agent_sessions s
    WHERE s.project_id=? AND s.ended_at IS NOT NULL
 )
-WHERE at IS NOT NULL AND at != ''
-ORDER BY at DESC, source_order DESC, id DESC
-LIMIT ?`, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, limit)
+`+filter+`
+ORDER BY at `+order+`, source_order `+order+`, id `+order+`
+LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -3837,6 +3864,67 @@ LIMIT ?`, s.projectID, s.projectID, s.projectID, s.projectID, s.projectID, s.pro
 		out = append(out, ev)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) LatestEventCursor(ctx context.Context) (EventCursor, error) {
+	args := make([]any, 0, 16)
+	for i := 0; i < 16; i++ {
+		args = append(args, s.projectID)
+	}
+	row := s.db.QueryRowContext(ctx, `
+SELECT at, source_order, id
+FROM (
+  SELECT h.at AS at, 10 AS source_order, MAX(h.id) AS id
+    FROM task_state_history h
+   WHERE h.project_id=? AND h.at=(SELECT MAX(h2.at) FROM task_state_history h2 WHERE h2.project_id=?)
+   GROUP BY h.at
+  UNION ALL
+  SELECT e.created_at, 20, MAX(e.id)
+    FROM task_evidence e
+   WHERE e.project_id=? AND e.created_at=(SELECT MAX(e2.created_at) FROM task_evidence e2 WHERE e2.project_id=?)
+   GROUP BY e.created_at
+  UNION ALL
+  SELECT h.created_at, 30, MAX(h.id)
+    FROM task_handoffs h
+   WHERE h.project_id=? AND h.created_at=(SELECT MAX(h2.created_at) FROM task_handoffs h2 WHERE h2.project_id=?)
+   GROUP BY h.created_at
+  UNION ALL
+  SELECT r.created_at, 40, MAX(r.id)
+    FROM task_reviews r
+   WHERE r.project_id=? AND r.created_at=(SELECT MAX(r2.created_at) FROM task_reviews r2 WHERE r2.project_id=?)
+   GROUP BY r.created_at
+  UNION ALL
+  SELECT n.created_at, 45, MAX(n.id)
+    FROM task_notifications n
+   WHERE n.project_id=? AND n.created_at=(SELECT MAX(n2.created_at) FROM task_notifications n2 WHERE n2.project_id=?)
+   GROUP BY n.created_at
+  UNION ALL
+  SELECT s.started_at, 50, MAX(s.rowid)
+    FROM agent_sessions s
+   WHERE s.project_id=? AND s.started_at=(SELECT MAX(s2.started_at) FROM agent_sessions s2 WHERE s2.project_id=?)
+   GROUP BY s.started_at
+  UNION ALL
+  SELECT s.last_heartbeat_at, 60, MAX(s.rowid)
+    FROM agent_sessions s
+   WHERE s.project_id=? AND s.last_heartbeat_at=(SELECT MAX(s2.last_heartbeat_at) FROM agent_sessions s2 WHERE s2.project_id=?)
+   GROUP BY s.last_heartbeat_at
+  UNION ALL
+  SELECT s.ended_at, 70, MAX(s.rowid)
+    FROM agent_sessions s
+   WHERE s.project_id=? AND s.ended_at=(SELECT MAX(s2.ended_at) FROM agent_sessions s2 WHERE s2.project_id=?)
+   GROUP BY s.ended_at
+)
+WHERE at IS NOT NULL AND at != ''
+ORDER BY at DESC, source_order DESC, id DESC
+LIMIT 1`, args...)
+	var cursor EventCursor
+	if err := row.Scan(&cursor.At, &cursor.SourceOrder, &cursor.ID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return EventCursor{}, nil
+		}
+		return EventCursor{}, err
+	}
+	return cursor, nil
 }
 
 func (s *Store) Health(ctx context.Context) (Health, error) {

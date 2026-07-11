@@ -557,6 +557,17 @@ blocks include counts, for example `task_detail_calls=50`, so operators can see
 whether a slow route is dominated by broad read models, N+1 task detail loops,
 or template rendering before changing dashboard behavior.
 
+The `/events` stream uses a durable event-source cursor rather than hydrating
+the full event history on every poll. A new connection starts at the latest
+cursor unless the browser supplies a valid Fairway `Last-Event-ID`; reconnects
+then request only newer facts. State, evidence, handoff, review, notification,
+and provider-session facts trigger task-scoped review-wait projection, while
+time-based stale review waits use a bounded sweep over active review tasks.
+Idle polls perform only the latest-cursor check and periodic SSE keepalive; they
+must not rebuild project-wide review waits or gate state every second. This
+keeps one idle client below the dashboard CPU budget without weakening the
+existing event-latency target or adding dashboard mutation authority.
+
 The version from `dashboard status` should match the release binary intended for
 the dashboard restart. For shared read-only dashboards, also probe the local
 origin and the identity-aware proxy boundary after restart. If the local

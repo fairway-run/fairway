@@ -2,32 +2,43 @@ package dashboard
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/config"
 	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/store"
 )
 
 const dashboardEventPollLimit = 1000
 
+const (
+	minimumReviewWaitSweepInterval = time.Second
+	maximumReviewWaitSweepInterval = time.Minute
+)
+
 type sseEvent struct {
-	ID      string
-	Name    string
-	Payload map[string]any
+	ID       string
+	CursorID string
+	Name     string
+	Payload  map[string]any
 }
 
 func sseEventsFromSource(src store.EventSource) []sseEvent {
 	id := fmt.Sprintf("%s:%d:%d:%s", src.Cursor.At, src.Cursor.SourceOrder, src.Cursor.ID, src.Source)
+	cursorID := sourceCursorID(src.Cursor)
 	at := src.Cursor.At
 	switch src.Source {
 	case "history":
 		if src.ToStatus == "in_progress" && src.Reason == "claim" {
 			return []sseEvent{{
-				ID:   id,
-				Name: "claim",
+				ID:       id,
+				CursorID: cursorID,
+				Name:     "claim",
 				Payload: map[string]any{
 					"task_id": src.TaskID,
 					"role":    src.Role,
@@ -38,8 +49,9 @@ func sseEventsFromSource(src store.EventSource) []sseEvent {
 		}
 		if src.ToStatus == "done" {
 			return []sseEvent{{
-				ID:   id,
-				Name: "done",
+				ID:       id,
+				CursorID: cursorID,
+				Name:     "done",
 				Payload: map[string]any{
 					"task_id": src.TaskID,
 					"role":    src.Role,
@@ -49,8 +61,9 @@ func sseEventsFromSource(src store.EventSource) []sseEvent {
 			}}
 		}
 		return []sseEvent{{
-			ID:   id,
-			Name: "status_change",
+			ID:       id,
+			CursorID: cursorID,
+			Name:     "status_change",
 			Payload: map[string]any{
 				"task_id": src.TaskID,
 				"role":    src.Role,
@@ -62,8 +75,9 @@ func sseEventsFromSource(src store.EventSource) []sseEvent {
 		}}
 	case "evidence":
 		return []sseEvent{{
-			ID:   id,
-			Name: "evidence",
+			ID:       id,
+			CursorID: cursorID,
+			Name:     "evidence",
 			Payload: map[string]any{
 				"task_id": src.TaskID,
 				"role":    src.Role,
@@ -74,8 +88,9 @@ func sseEventsFromSource(src store.EventSource) []sseEvent {
 		}}
 	case "handoff":
 		return []sseEvent{{
-			ID:   id,
-			Name: "handoff",
+			ID:       id,
+			CursorID: cursorID,
+			Name:     "handoff",
 			Payload: map[string]any{
 				"task_id":   src.TaskID,
 				"from_role": src.FromRole,
@@ -87,14 +102,29 @@ func sseEventsFromSource(src store.EventSource) []sseEvent {
 		}}
 	case "review":
 		return []sseEvent{{
-			ID:   id,
-			Name: "review_verdict",
+			ID:       id,
+			CursorID: cursorID,
+			Name:     "review_verdict",
 			Payload: map[string]any{
 				"task_id":         src.TaskID,
 				"role":            src.Role,
 				"verdict":         src.Verdict,
 				"reviewer_domain": src.Reviewer,
 				"at":              at,
+			},
+		}}
+	case "notification":
+		return []sseEvent{{
+			ID:       id,
+			CursorID: cursorID,
+			Name:     "notification",
+			Payload: map[string]any{
+				"task_id":  src.TaskID,
+				"role":     src.Role,
+				"domain":   src.Reviewer,
+				"state":    src.Verdict,
+				"provider": src.Provider,
+				"at":       at,
 			},
 		}}
 	case "session_attach", "session_heartbeat", "session_detach":
@@ -109,10 +139,53 @@ func sseEventsFromSource(src store.EventSource) []sseEvent {
 		if name == "session_detach" {
 			payload["reason"] = src.EndReason
 		}
-		return []sseEvent{{ID: id, Name: name, Payload: payload}}
+		return []sseEvent{{ID: id, CursorID: cursorID, Name: name, Payload: payload}}
 	default:
 		return nil
 	}
+}
+
+func sourceCursorID(cursor store.EventCursor) string {
+	payload, _ := json.Marshal(cursor)
+	return "fairway-source:" + base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func parseSourceCursorID(value string) (store.EventCursor, bool) {
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, "fairway-source:") {
+		return store.EventCursor{}, false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, "fairway-source:"))
+	if err != nil {
+		return store.EventCursor{}, false
+	}
+	var cursor store.EventCursor
+	if err := json.Unmarshal(payload, &cursor); err != nil || strings.TrimSpace(cursor.At) == "" {
+		return store.EventCursor{}, false
+	}
+	return cursor, true
+}
+
+func compareEventCursor(left, right store.EventCursor) int {
+	if left.At < right.At {
+		return -1
+	}
+	if left.At > right.At {
+		return 1
+	}
+	if left.SourceOrder < right.SourceOrder {
+		return -1
+	}
+	if left.SourceOrder > right.SourceOrder {
+		return 1
+	}
+	if left.ID < right.ID {
+		return -1
+	}
+	if left.ID > right.ID {
+		return 1
+	}
+	return 0
 }
 
 func (s *Server) gateChangeEvents(ctx context.Context, sourceID, at string) ([]sseEvent, error) {
@@ -145,7 +218,11 @@ func (s *Server) gateChangeEvents(ctx context.Context, sourceID, at string) ([]s
 }
 
 func (s *Server) reviewWaitEvents(ctx context.Context, at string) ([]sseEvent, error) {
-	waits, err := s.reviewWaits(ctx, "", dashboardEventTime(at))
+	return s.reviewWaitEventsForTask(ctx, "", at)
+}
+
+func (s *Server) reviewWaitEventsForTask(ctx context.Context, taskID, at string) ([]sseEvent, error) {
+	waits, err := s.reviewWaits(ctx, taskID, dashboardEventTime(at))
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +256,38 @@ func (s *Server) reviewWaitEvents(ctx context.Context, at string) ([]sseEvent, e
 	return out, nil
 }
 
+func (s *Server) activeReviewWaitEvents(ctx context.Context, at string) ([]sseEvent, error) {
+	tasks, err := s.store.AllTasks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []sseEvent
+	for _, task := range tasks {
+		if task.Status != "in_progress" || len(task.Definition.ReviewDomains) == 0 {
+			continue
+		}
+		events, err := s.reviewWaitEventsForTask(ctx, task.Definition.ID, at)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, events...)
+	}
+	return out, nil
+}
+
+func reviewWaitEventSweepInterval(cfg config.Config) time.Duration {
+	interval := maximumReviewWaitSweepInterval
+	if raw := strings.TrimSpace(cfg.Coordinator.NotificationAckTimeout); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed < interval {
+			interval = parsed
+		}
+	}
+	if interval < minimumReviewWaitSweepInterval {
+		return minimumReviewWaitSweepInterval
+	}
+	return interval
+}
+
 func reviewWaitEventName(wait reviewstate.ReviewWait) string {
 	switch wait.State {
 	case "stale":
@@ -203,6 +312,11 @@ func writeSSEEvent(w io.Writer, event sseEvent) error {
 	payload, err := json.Marshal(event.Payload)
 	if err != nil {
 		return err
+	}
+	if event.CursorID != "" {
+		if _, err := fmt.Fprintf(w, "id: %s\n", event.CursorID); err != nil {
+			return err
+		}
 	}
 	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Name, payload)
 	return err
