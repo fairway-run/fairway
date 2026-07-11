@@ -526,20 +526,31 @@ func reportFactsForStore(ctx context.Context, s *store.Store, tasks []store.Task
 	reviewActivityByTask := reportReviewActivityByTask(activity, time.Time{}, time.Now().AddDate(100, 0, 0))
 	facts := make([]reportTaskFacts, 0, len(tasks))
 	start := time.Now()
-	taskDetailCalls := 0
+	taskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.Definition.ID)
+	}
+	transitionsByTask, err := s.TransitionsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return nil, err
+	}
+	evidenceByTask, err := s.EvidenceByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return nil, err
+	}
+	reviewsByTask, err := s.ReviewsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return nil, err
+	}
 	defer func() {
 		if timing != nil {
-			timing.add("reports.facts.task_detail_loop", time.Since(start), fmt.Sprintf("task_detail_calls=%d", taskDetailCalls))
+			timing.add("reports.facts.batch", time.Since(start), fmt.Sprintf("tasks=%d queries=3 task_detail_calls=0", len(tasks)))
 		}
 	}()
 	for _, task := range tasks {
-		taskDetailCalls++
-		detailTask, transitions, evidence, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
-		if err != nil {
-			return nil, err
-		}
-		detailTask.Project = taskProject(task, "")
-		facts = append(facts, reportTaskFacts{Task: detailTask, Transitions: transitions, Evidence: evidence, Reviews: reviews, ReviewActivities: reviewActivityByTask[detailTask.Definition.ID]})
+		task.Project = taskProject(task, "")
+		id := task.Definition.ID
+		facts = append(facts, reportTaskFacts{Task: task, Transitions: transitionsByTask[id], Evidence: evidenceByTask[id], Reviews: reviewsByTask[id], ReviewActivities: reviewActivityByTask[id]})
 	}
 	return facts, nil
 }

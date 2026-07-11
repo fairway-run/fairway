@@ -128,6 +128,34 @@ func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options)
 	if err != nil {
 		return Report{}, err
 	}
+	taskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.Definition.ID)
+	}
+	transitionsByTask, err := s.TransitionsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return Report{}, err
+	}
+	evidenceByTask, err := s.EvidenceByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return Report{}, err
+	}
+	handoffsByTask, err := s.HandoffsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return Report{}, err
+	}
+	reviewsByTask, err := s.ReviewsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return Report{}, err
+	}
+	allNotifications, err := s.Notifications(ctx, "")
+	if err != nil {
+		return Report{}, err
+	}
+	notificationsByTask := make(map[string][]store.Notification)
+	for _, notification := range allNotifications {
+		notificationsByTask[notification.TaskID] = append(notificationsByTask[notification.TaskID], notification)
+	}
 	ackTimeout, _ := time.ParseDuration(strings.TrimSpace(cfg.Coordinator.NotificationAckTimeout))
 	report := Report{OK: true, Since: opts.Since.String(), Profile: opts.Profile}
 	outcomes := map[string]int{}
@@ -136,21 +164,19 @@ func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options)
 		if opts.Profile != "" && task.Definition.Profile != opts.Profile {
 			continue
 		}
-		detail, transitions, evidence, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
-		if err != nil {
-			return Report{}, err
-		}
-		notifications, err := s.Notifications(ctx, task.Definition.ID)
-		if err != nil {
-			return Report{}, err
-		}
-		row := taskRow(cfg, detail, transitions, evidence, handoffs, reviews, notifications, ackTimeout, start, now)
+		id := task.Definition.ID
+		transitions := transitionsByTask[id]
+		evidence := evidenceByTask[id]
+		handoffs := handoffsByTask[id]
+		reviews := reviewsByTask[id]
+		notifications := notificationsByTask[id]
+		row := taskRow(cfg, task, transitions, evidence, handoffs, reviews, notifications, ackTimeout, start, now)
 		if !rowInWindow(row, transitions, evidence, reviews, notifications, handoffs, start) {
 			continue
 		}
 		report.Rows = append(report.Rows, row)
 		addSummary(&report.Summary, row)
-		addOverhead(&report.Overhead, detail, evidence, reviews, notifications, handoffs)
+		addOverhead(&report.Overhead, task, evidence, reviews, notifications, handoffs)
 		report.Overhead.ReopenRetryCount += row.ReopenRetryCount
 		if row.OutcomeSource != "" {
 			outcomes[row.OutcomeSource]++
@@ -163,7 +189,7 @@ func Build(ctx context.Context, cfg config.Config, s *store.Store, opts Options)
 				Recommended: row.RecommendedAction,
 			})
 		}
-		addRehearsalFailures(rehearsals, detail.Definition.ID, evidence)
+		addRehearsalFailures(rehearsals, id, evidence)
 	}
 	report.OutcomeSources = outcomeSources(outcomes)
 	report.Rehearsals = rehearsalFailures(rehearsals)

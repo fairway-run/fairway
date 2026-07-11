@@ -98,6 +98,12 @@ Show:
 This should use the same review-domain and gate logic as the board and
 `merge-ready` checks.
 
+Report construction batches task history, evidence, handoff, review, and
+notification reads across the visible task set. It must not call `TaskDetail`
+once per task. Slow-request timing records `reports.facts.batch` with the task
+count, bounded query count, and `task_detail_calls=0`. Rough-edge projection
+reuses the same batch evidence boundary rather than hydrating each task.
+
 Evidence artifact links in task detail and report drill-downs must go through
 the safe artifact viewer rather than raw downloads. The viewer is enabled only
 for recorded evidence paths inside configured `[fairway].local_artifact_paths`.

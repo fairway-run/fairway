@@ -56,13 +56,17 @@ func Rows(ctx context.Context, s *store.Store, now time.Time) ([]Row, error) {
 	if err != nil {
 		return nil, err
 	}
+	taskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.Definition.ID)
+	}
+	evidenceByTask, err := s.EvidenceByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return nil, err
+	}
 	rows := []Row{}
-	for _, listed := range tasks {
-		task, _, evidence, _, _, err := s.TaskDetail(ctx, listed.Definition.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, ev := range evidence {
+	for _, task := range tasks {
+		for _, ev := range evidenceByTask[task.Definition.ID] {
 			if strings.TrimSpace(ev.ArtifactType) != ArtifactType {
 				continue
 			}

@@ -217,6 +217,39 @@ func TestWallFastPathDefersCoordinatorAndCloseoutProjections(t *testing.T) {
 	}
 }
 
+func TestReportFactsUseBatchedTaskReaders(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "One", Role: "backend", Kind: "task"},
+		{ID: "T-002", Title: "Two", Role: "ops", Kind: "task"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass", ArtifactType: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timing := newDashboardTiming("reports", httptest.NewRequest(http.MethodGet, "/reports", nil))
+	facts, err := reportFactsForStore(ctx, s, tasks, nil, timing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 2 || len(facts[0].Evidence)+len(facts[1].Evidence) != 1 {
+		t.Fatalf("facts=%+v, want two tasks and one evidence row", facts)
+	}
+	if len(timing.blocks) != 1 || timing.blocks[0].Name != "reports.facts.batch" || !strings.Contains(timing.blocks[0].Detail, "task_detail_calls=0") {
+		t.Fatalf("report timing blocks=%+v, want batched facts with no TaskDetail calls", timing.blocks)
+	}
+}
+
 func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

@@ -1501,6 +1501,60 @@ func (s *Store) EvidenceByTaskIDs(ctx context.Context, taskIDs []string) (map[st
 	return out, rows.Err()
 }
 
+func (s *Store) TransitionsByTaskIDs(ctx context.Context, taskIDs []string) (map[string][]Transition, error) {
+	ids := uniqueNonEmptyStrings(taskIDs)
+	out := make(map[string][]Transition, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, s.projectID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT task_id, COALESCE(from_status, ''), to_status, actor, COALESCE(reason, ''), at FROM task_state_history WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY task_id, at`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var taskID string
+		var tr Transition
+		if err := rows.Scan(&taskID, &tr.FromStatus, &tr.ToStatus, &tr.Actor, &tr.Reason, &tr.At); err != nil {
+			return nil, err
+		}
+		out[taskID] = append(out[taskID], tr)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) HandoffsByTaskIDs(ctx context.Context, taskIDs []string) (map[string][]Handoff, error) {
+	ids := uniqueNonEmptyStrings(taskIDs)
+	out := make(map[string][]Handoff, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, s.projectID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT task_id, id, COALESCE(from_role, ''), to_role, COALESCE(payload, ''), COALESCE(acknowledged_at, ''), created_at FROM task_handoffs WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY task_id, created_at`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var taskID string
+		var h Handoff
+		if err := rows.Scan(&taskID, &h.ID, &h.FromRole, &h.ToRole, &h.Payload, &h.AcknowledgedAt, &h.CreatedAt); err != nil {
+			return nil, err
+		}
+		out[taskID] = append(out[taskID], h)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) HasApprovedReview(ctx context.Context, taskID string) (bool, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_reviews WHERE project_id=? AND task_id=? AND verdict='approve'`, s.projectID, taskID).Scan(&count)

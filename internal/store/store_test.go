@@ -380,7 +380,7 @@ func TestTaskDetail_AllowsEvidenceWithoutArtifact(t *testing.T) {
 	}
 }
 
-func TestBatchEvidenceAndReviewsByTaskIDs(t *testing.T) {
+func TestBatchTaskFactsByTaskIDs(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
 	if err := s.ImportTasks(ctx, []TaskDefinition{
@@ -406,6 +406,12 @@ func TestBatchEvidenceAndReviewsByTaskIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.RecordReview(ctx, "T-003", Review{Reviewer: "carol", Domain: "ui", Verdict: "approve", Reason: "not requested"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "in_progress", "started", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHandoff(ctx, "T-002", Handoff{FromRole: "backend", ToRole: "ops", Payload: "verify"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -438,6 +444,28 @@ func TestBatchEvidenceAndReviewsByTaskIDs(t *testing.T) {
 	}
 	if _, ok := reviews["T-003"]; ok {
 		t.Fatalf("unexpected reviews for unrequested T-003: %+v", reviews["T-003"])
+	}
+
+	transitions, err := s.TransitionsByTaskIDs(ctx, []string{"T-001", "T-001", "T-002"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := transitions["T-001"]; len(got) != 2 || got[0].ToStatus != "todo" || got[1].ToStatus != "in_progress" || got[1].Reason != "started" {
+		t.Fatalf("T-001 transitions=%+v, want ordered import and in_progress transitions", got)
+	}
+	if _, ok := transitions["T-003"]; ok {
+		t.Fatalf("unexpected transitions for unrequested T-003: %+v", transitions["T-003"])
+	}
+
+	handoffs, err := s.HandoffsByTaskIDs(ctx, []string{"T-002", "", "T-001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := handoffs["T-002"]; len(got) != 1 || got[0].FromRole != "backend" || got[0].ToRole != "ops" {
+		t.Fatalf("T-002 handoffs=%+v, want backend to ops", got)
+	}
+	if got := len(handoffs["T-001"]); got != 0 {
+		t.Fatalf("T-001 handoff count=%d, want 0", got)
 	}
 }
 
