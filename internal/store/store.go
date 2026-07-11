@@ -641,6 +641,46 @@ func PendingMigrations(ctx context.Context, path string) ([]PendingMigration, er
 	return pending, nil
 }
 
+// SchemaVersions reads the applied and embedded migration versions without
+// applying migrations or creating a missing database.
+func SchemaVersions(ctx context.Context, path string) (applied int, available int, err error) {
+	migrations, err := embeddedMigrations()
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, migration := range migrations {
+		if migration.Version > available {
+			available = migration.Version
+		}
+	}
+	if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
+		return 0, available, nil
+	} else if statErr != nil {
+		return 0, available, statErr
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return 0, available, err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, "PRAGMA query_only=ON"); err != nil {
+		return 0, available, err
+	}
+	var tableName string
+	err = db.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, available, nil
+	}
+	if err != nil {
+		return 0, available, err
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&applied); err != nil {
+		return 0, available, err
+	}
+	return applied, available, nil
+}
+
 func embeddedMigrations() ([]PendingMigration, error) {
 	entries, err := migrationFS.ReadDir("migrations")
 	if err != nil {

@@ -148,6 +148,7 @@ fairway notify send --notifier <name> --task <task-id> --domain <domain> [--temp
 fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
+fairway readiness capabilities                                  # compare configured consumer binary/schema/features
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
@@ -679,6 +680,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - `readiness report` evaluates configured profile gates across a workstream or
   all profiles. Missing blocking gates make the report fail in human mode;
   `--json` returns the full report for automation.
+- `readiness capabilities` reads `[consumer_readiness]` and reports the invoked
+  Fairway binary/version, optional pinned binary/version, applied and available
+  schema versions, and every required capability, command, or feature. Unknown
+  or unavailable requirements are named explicitly in text/JSON and return a
+  non-zero exit status. The command does not install, upgrade, migrate, restart,
+  or mutate consumer state.
 - `dashboard` without a subcommand runs in the foreground. Use `dashboard start`,
   `dashboard stop`, `dashboard restart`, and `dashboard status` for a detached
   local dashboard. Detached lifecycle commands do not open a browser unless

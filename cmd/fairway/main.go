@@ -10277,11 +10277,14 @@ type readinessReport struct {
 
 func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("readiness requires subcommand: report")
+		return errors.New("readiness requires subcommand: report or capabilities")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("readiness", "report")
+		subcommandUsage("readiness", "report|capabilities")
 		return nil
+	}
+	if args[0] == "capabilities" {
+		return cmdConsumerCapabilityReadiness(ctx, opts, args[1:])
 	}
 	if args[0] != "report" {
 		return fmt.Errorf("unknown readiness subcommand %q", args[0])
@@ -10337,6 +10340,305 @@ func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error 
 		}
 		return nil
 	})
+}
+
+type consumerCapabilityDefinition struct {
+	Commands       []string
+	Features       []string
+	MinimumSchema  int
+	MinimumVersion string
+}
+
+type consumerReadinessRequirement struct {
+	Kind             string `json:"kind"`
+	Name             string `json:"name"`
+	Status           string `json:"status"`
+	Detail           string `json:"detail"`
+	SuggestedCommand string `json:"suggested_command,omitempty"`
+}
+
+type consumerBinaryReadback struct {
+	Path    string `json:"path,omitempty"`
+	Version string `json:"version"`
+	State   string `json:"state"`
+}
+
+type consumerSchemaReadback struct {
+	Required  int `json:"required"`
+	Applied   int `json:"applied"`
+	Available int `json:"available"`
+}
+
+type consumerCapabilityReadinessReport struct {
+	OK                  bool                           `json:"ok"`
+	MinimumVersion      string                         `json:"minimum_version,omitempty"`
+	RunningBinary       consumerBinaryReadback         `json:"running_binary"`
+	PinnedBinary        consumerBinaryReadback         `json:"pinned_binary"`
+	Schema              consumerSchemaReadback         `json:"schema"`
+	Requirements        []consumerReadinessRequirement `json:"requirements"`
+	MissingCommands     []string                       `json:"missing_commands,omitempty"`
+	MissingFeatures     []string                       `json:"missing_features,omitempty"`
+	MissingCapabilities []string                       `json:"missing_capabilities,omitempty"`
+}
+
+func cmdConsumerCapabilityReadiness(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("readiness capabilities", "")
+		return nil
+	}
+	fs := flag.NewFlagSet("readiness capabilities", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected readiness capabilities arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	report, err := buildConsumerCapabilityReadiness(ctx, cfg, root, resolveDBPath(root, cfg, opts))
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		printConsumerCapabilityReadiness(report)
+	}
+	if !report.OK {
+		return errors.New("consumer capability readiness has missing requirements")
+	}
+	return nil
+}
+
+func buildConsumerCapabilityReadiness(ctx context.Context, cfg config.Config, root, dbPath string) (consumerCapabilityReadinessReport, error) {
+	configured := cfg.ConsumerReadiness
+	runningPath, _ := os.Executable()
+	report := consumerCapabilityReadinessReport{
+		OK:             true,
+		MinimumVersion: strings.TrimSpace(configured.MinimumVersion),
+		RunningBinary:  consumerBinaryReadback{Path: runningPath, Version: version, State: "running"},
+		PinnedBinary:   consumerBinaryReadback{Version: "not_configured", State: "not_configured"},
+		Requirements:   []consumerReadinessRequirement{},
+	}
+	applied, available, err := store.SchemaVersions(ctx, dbPath)
+	if err != nil {
+		return report, err
+	}
+	requiredSchema := configured.MinimumSchemaVersion
+	report.Schema = consumerSchemaReadback{Required: requiredSchema, Applied: applied, Available: available}
+	if requiredSchema > 0 {
+		status := "available"
+		detail := fmt.Sprintf("schema %d applied; minimum %d", applied, requiredSchema)
+		if applied < requiredSchema {
+			status = "missing"
+			detail = fmt.Sprintf("schema %d applied; minimum %d required (binary supports %d)", applied, requiredSchema, available)
+			report.OK = false
+		}
+		suggested := "fairway db migrate --dry-run"
+		if requiredSchema > available {
+			suggested = "fairway readiness capabilities"
+		}
+		report.Requirements = append(report.Requirements, consumerReadinessRequirement{Kind: "schema", Name: strconv.Itoa(requiredSchema), Status: status, Detail: detail, SuggestedCommand: suggested})
+	}
+	if report.MinimumVersion != "" {
+		status := "available"
+		detail := fmt.Sprintf("running %s satisfies minimum %s", version, report.MinimumVersion)
+		if !fairwayVersionAtLeast(version, report.MinimumVersion) {
+			status = "missing"
+			detail = fmt.Sprintf("running %s is below minimum %s", version, report.MinimumVersion)
+			report.OK = false
+		}
+		report.Requirements = append(report.Requirements, consumerReadinessRequirement{Kind: "version", Name: report.MinimumVersion, Status: status, Detail: detail, SuggestedCommand: "fairway binary status"})
+	}
+	if pinned := strings.TrimSpace(configured.PinnedBinaryPath); pinned != "" {
+		if !filepath.IsAbs(pinned) {
+			pinned = filepath.Join(root, pinned)
+		}
+		pinned, err = filepath.Abs(filepath.Clean(pinned))
+		if err != nil {
+			return report, err
+		}
+		report.PinnedBinary = consumerBinaryReadback{Path: pinned, Version: "unknown", State: "missing"}
+		pinnedVersion, versionErr := managedBinaryVersion(pinned)
+		if versionErr == nil {
+			report.PinnedBinary.Version = pinnedVersion
+			report.PinnedBinary.State = "available"
+			if report.MinimumVersion != "" && !fairwayVersionAtLeast(pinnedVersion, report.MinimumVersion) {
+				report.PinnedBinary.State = "outdated"
+				report.OK = false
+			}
+		} else {
+			report.OK = false
+		}
+	}
+	catalog := consumerCapabilityCatalog()
+	availableCommands := consumerAvailableCommands()
+	availableFeatures := consumerAvailableFeatures()
+	for _, name := range configured.RequiredCapabilities {
+		definition, ok := catalog[name]
+		if !ok {
+			report.OK = false
+			report.MissingCapabilities = append(report.MissingCapabilities, name)
+			report.Requirements = append(report.Requirements, consumerReadinessRequirement{Kind: "capability", Name: name, Status: "missing", Detail: "capability is not provided by this Fairway binary", SuggestedCommand: "fairway readiness capabilities"})
+			continue
+		}
+		missing := consumerCapabilityMissing(definition, availableCommands, availableFeatures, applied, version)
+		status := "available"
+		detail := "all capability commands, features, schema, and version requirements are available"
+		if len(missing) > 0 {
+			status = "missing"
+			detail = strings.Join(missing, "; ")
+			report.OK = false
+			report.MissingCapabilities = append(report.MissingCapabilities, name)
+		}
+		report.Requirements = append(report.Requirements, consumerReadinessRequirement{Kind: "capability", Name: name, Status: status, Detail: detail})
+	}
+	for _, command := range configured.RequiredCommands {
+		status := "available"
+		detail := "command is available in this Fairway binary"
+		if !availableCommands[command] {
+			status = "missing"
+			detail = "command is not available in this Fairway binary"
+			report.OK = false
+			report.MissingCommands = append(report.MissingCommands, command)
+		}
+		report.Requirements = append(report.Requirements, consumerReadinessRequirement{Kind: "command", Name: command, Status: status, Detail: detail})
+	}
+	for _, feature := range configured.RequiredFeatures {
+		status := "available"
+		detail := "feature is available in this Fairway binary"
+		if !availableFeatures[feature] {
+			status = "missing"
+			detail = "feature is not available in this Fairway binary"
+			report.OK = false
+			report.MissingFeatures = append(report.MissingFeatures, feature)
+		}
+		report.Requirements = append(report.Requirements, consumerReadinessRequirement{Kind: "feature", Name: feature, Status: status, Detail: detail})
+	}
+	sort.Strings(report.MissingCapabilities)
+	sort.Strings(report.MissingCommands)
+	sort.Strings(report.MissingFeatures)
+	return report, nil
+}
+
+func consumerCapabilityCatalog() map[string]consumerCapabilityDefinition {
+	return map[string]consumerCapabilityDefinition{
+		"managed-binary-cache":   {Commands: []string{"binary install", "binary status", "binary rollback", "binary cleanup"}, Features: []string{"managed_binary_cache"}},
+		"task-decision-memory":   {Commands: []string{"decision record", "decision assess", "decision list"}, Features: []string{"task_decision_memory"}, MinimumSchema: 12},
+		"track-memory-lifecycle": {Commands: []string{"memory disposition", "memory history"}, Features: []string{"track_memory_lifecycle"}, MinimumSchema: 13},
+		"work-common-path":       {Commands: []string{"work start", "work status", "work verify", "work close"}, Features: []string{"atomic_work_lifecycle"}},
+		"wait-hygiene":           {Commands: []string{"wait list", "wait tick", "wait resolve"}, Features: []string{"lifecycle_aware_wait_projection"}},
+	}
+}
+
+func consumerAvailableCommands() map[string]bool {
+	commands := map[string]bool{}
+	for _, command := range []string{
+		"init", "agent-guide", "import", "add", "spawn", "update", "tree", "list", "ready", "claim", "set-status", "task-detail",
+		"record evidence", "record handoff", "record notification", "record review", "record push-intent",
+		"route review", "route review-preflight", "merge-ready", "review checkout", "review-waits list", "review-waits wake", "review-policy report",
+		"work start", "work status", "work verify", "work close", "session upsert", "session status", "session end", "lane start", "lane status", "lane logs", "lane stop",
+		"decision record", "decision assess", "decision list", "memory show", "memory update", "memory packet", "memory disposition", "memory history",
+		"wait add", "wait ack", "wait list", "wait tick", "wait resolve", "wait wake", "coordinator plan", "coordinator tick", "coordinator status", "coordinator preflight",
+		"readiness report", "readiness capabilities", "doctor", "preflight", "workflow check", "workflow closeout", "reconcile active",
+		"dashboard start", "dashboard status", "dashboard stop", "dashboard restart", "server start", "server status", "server logs", "server stop", "server restart",
+		"binary install", "binary status", "binary rollback", "binary cleanup", "db backup", "db export", "db migrate", "db compat", "db rehearsal",
+		"delivery report", "delivery resources", "automation candidates", "audit work-coverage", "audit ci-learning", "audit failure-routing", "audit notifications", "audit docs-backlog",
+		"packet context", "packet bugfix", "packet retry", "packet watcher", "packet release-run", "packet template", "packet rules", "packet architecture-map", "packet boundary-guard", "packet vertical-slice",
+		"contract agent-output", "provenance report", "provenance prompt-packet", "provenance manifest", "recipe extract", "recipe render", "recipe list",
+		"config validate", "release verify", "version",
+	} {
+		commands[command] = true
+	}
+	for _, definition := range consumerCapabilityCatalog() {
+		for _, command := range definition.Commands {
+			commands[command] = true
+		}
+	}
+	return commands
+}
+
+func consumerAvailableFeatures() map[string]bool {
+	features := map[string]bool{}
+	for _, definition := range consumerCapabilityCatalog() {
+		for _, feature := range definition.Features {
+			features[feature] = true
+		}
+	}
+	return features
+}
+
+func consumerCapabilityMissing(definition consumerCapabilityDefinition, commands, features map[string]bool, schema int, runningVersion string) []string {
+	var missing []string
+	for _, command := range definition.Commands {
+		if !commands[command] {
+			missing = append(missing, "command "+command)
+		}
+	}
+	for _, feature := range definition.Features {
+		if !features[feature] {
+			missing = append(missing, "feature "+feature)
+		}
+	}
+	if definition.MinimumSchema > schema {
+		missing = append(missing, fmt.Sprintf("schema %d", definition.MinimumSchema))
+	}
+	if definition.MinimumVersion != "" && !fairwayVersionAtLeast(runningVersion, definition.MinimumVersion) {
+		missing = append(missing, "version "+definition.MinimumVersion)
+	}
+	return missing
+}
+
+func fairwayVersionAtLeast(actual, minimum string) bool {
+	a, okA := parseFairwayVersion(actual)
+	m, okM := parseFairwayVersion(minimum)
+	if !okA || !okM {
+		return false
+	}
+	for i := range a {
+		if a[i] != m[i] {
+			return a[i] > m[i]
+		}
+	}
+	return true
+}
+
+func parseFairwayVersion(value string) ([3]int, bool) {
+	var parsed [3]int
+	value = strings.TrimPrefix(strings.TrimSpace(value), "v")
+	if idx := strings.IndexByte(value, '-'); idx >= 0 {
+		value = value[:idx]
+	}
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 {
+		return parsed, false
+	}
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return parsed, false
+		}
+		parsed[i] = n
+	}
+	return parsed, true
+}
+
+func printConsumerCapabilityReadiness(report consumerCapabilityReadinessReport) {
+	fmt.Println("# Fairway Consumer Capability Readiness")
+	fmt.Printf("\nready: %t\nrunning_binary: %s\nrunning_version: %s\npinned_binary: %s\npinned_version: %s\npinned_state: %s\n", report.OK, report.RunningBinary.Path, report.RunningBinary.Version, firstNonEmpty(report.PinnedBinary.Path, "not_configured"), report.PinnedBinary.Version, report.PinnedBinary.State)
+	fmt.Printf("schema: applied=%d available=%d required=%d\n", report.Schema.Applied, report.Schema.Available, report.Schema.Required)
+	fmt.Println("\n## Requirements")
+	if len(report.Requirements) == 0 {
+		fmt.Println("- none configured")
+		return
+	}
+	for _, requirement := range report.Requirements {
+		fmt.Printf("- %s %s: %s (%s)\n", requirement.Kind, requirement.Name, requirement.Status, requirement.Detail)
+	}
 }
 
 func findWorkstreamProfile(cfg config.Config, name string) (config.WorkstreamProfile, bool) {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -245,6 +246,37 @@ func TestMigrate_RecordsAppliedMigration(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("migration count=%d, want 1", count)
+	}
+}
+
+func TestSchemaVersionsReadsWithoutMigrating(t *testing.T) {
+	ctx := context.Background()
+	missing := filepath.Join(t.TempDir(), "missing.db")
+	applied, available, err := SchemaVersions(ctx, missing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 || available < 13 {
+		t.Fatalf("missing schema versions = applied=%d available=%d", applied, available)
+	}
+	if _, err := os.Stat(missing); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("SchemaVersions created missing DB: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "state.db")
+	s, err := Open(ctx, path, "schema-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	applied, available, err = SchemaVersions(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != available || applied < 13 {
+		t.Fatalf("migrated schema versions = applied=%d available=%d", applied, available)
 	}
 }
 

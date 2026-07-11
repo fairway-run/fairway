@@ -17,6 +17,41 @@ func TestRootForConfigPath_DefaultFairwayDir(t *testing.T) {
 	}
 }
 
+func TestValidateConsumerReadiness(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.ConsumerReadiness = ConsumerReadinessConfig{
+		MinimumVersion: "0.1.12", MinimumSchemaVersion: 13,
+		PinnedBinaryPath: "/tmp/fairway", RequiredCapabilities: []string{"managed-binary-cache"},
+		RequiredCommands: []string{"binary status"}, RequiredFeatures: []string{"managed_binary_cache"},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	tests := []struct {
+		name  string
+		apply func(*ConsumerReadinessConfig)
+		want  string
+	}{
+		{name: "invalid version", apply: func(c *ConsumerReadinessConfig) { c.MinimumVersion = "latest" }, want: "minimum_version"},
+		{name: "negative schema", apply: func(c *ConsumerReadinessConfig) { c.MinimumSchemaVersion = -1 }, want: "non-negative"},
+		{name: "capability whitespace", apply: func(c *ConsumerReadinessConfig) { c.RequiredCapabilities = []string{"managed cache"} }, want: "required_capabilities"},
+		{name: "duplicate feature", apply: func(c *ConsumerReadinessConfig) { c.RequiredFeatures = []string{"cache", "cache"} }, want: "duplicate"},
+		{name: "multiline command", apply: func(c *ConsumerReadinessConfig) { c.RequiredCommands = []string{"binary status\nrm"} }, want: "single lines"},
+		{name: "multiline path", apply: func(c *ConsumerReadinessConfig) { c.PinnedBinaryPath = "one\ntwo" }, want: "single line"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := Defaults(t.TempDir())
+			tc.apply(&candidate.ConsumerReadiness)
+			err := Validate(candidate)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestValidateRuleSources(t *testing.T) {
 	base := Defaults(t.TempDir())
 	base.RuleSources = []RuleSource{

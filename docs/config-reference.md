@@ -69,6 +69,14 @@ max_review_tracks = 1
 checkpoint_stale_after = "24h"
 notification_ack_timeout = "24h"
 
+[consumer_readiness]
+minimum_version = "0.1.12"
+minimum_schema_version = 13
+pinned_binary_path = "/Users/operator/Library/Caches/fairway/binaries/versions/0.1.12-abc123/fairway"
+required_capabilities = ["managed-binary-cache", "track-memory-lifecycle"]
+required_commands = ["binary status", "memory disposition"]
+required_features = ["managed_binary_cache", "track_memory_lifecycle"]
+
 [[roles]]
 name = "backend"
 branch = "agent/backend"
@@ -536,6 +544,26 @@ reports rather than being treated as zero.
 | `max_review_tracks` | int | `1` | Advisory limit for active review/verification tracks. |
 | `checkpoint_stale_after` | duration | `24h` | Checkpoints older than this are stale unless the checkpoint state is `awaiting_input`, `done`, `parked`, or `abandoned`. |
 | `notification_ack_timeout` | duration | `24h` | How long a `sent` provider/thread notification may wait without acknowledgement, `review_recorded`, or a real matching review before coordinator plan escalates it as `stale-sent`. |
+
+### `[consumer_readiness]`
+
+Optional, non-mutating requirements consumed by `fairway readiness
+capabilities`.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `minimum_version` | version | — | Minimum invoked and pinned Fairway version in `MAJOR.MINOR.PATCH` form. |
+| `minimum_schema_version` | int | `0` | Minimum applied SQLite migration version. The report also names the latest schema supported by the invoked binary. |
+| `pinned_binary_path` | path | — | Optional consumer-selected binary whose `fairway version` readback is reported; relative paths resolve from the project root. |
+| `required_capabilities` | []string | — | Named Fairway bundles such as `managed-binary-cache`, `task-decision-memory`, `track-memory-lifecycle`, `work-common-path`, or `wait-hygiene`. |
+| `required_commands` | []string | — | Exact command paths required by the consumer, for example `binary status`. |
+| `required_features` | []string | — | Exact feature tokens required by the consumer, for example `managed_binary_cache`. |
+
+The report is advisory/readiness-only but returns non-zero when configured
+requirements are missing. It never downloads, installs, upgrades, migrates,
+restarts, or mutates task/dashboard/server state. A pinned path is explicit
+trusted local operator input; Fairway executes only its `version` subcommand
+and does not store output beyond the bounded version readback.
 
 ### `[[roles]]`
 

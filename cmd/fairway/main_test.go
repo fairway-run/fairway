@@ -1881,6 +1881,74 @@ accepted_results = ["pass"]
 	assertContains(t, report, "satisfied")
 }
 
+func TestCLI_ConsumerCapabilityReadiness(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	oldVersion := version
+	version = "0.1.12"
+	t.Cleanup(func() { version = oldVersion })
+	assertContains(t, runCapture(t, "readiness", "capabilities", "--help"), "fairway readiness capabilities")
+
+	runOK(t, "init")
+	pinned := filepath.Join(t.TempDir(), "fairway-pinned")
+	if err := os.WriteFile(pinned, []byte("#!/bin/sh\nprintf '0.1.12\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	appendFile(t, ".fairway/config.toml", fmt.Sprintf(`
+[consumer_readiness]
+minimum_version = "0.1.12"
+minimum_schema_version = 13
+pinned_binary_path = %q
+required_capabilities = ["managed-binary-cache", "track-memory-lifecycle"]
+required_commands = ["binary status"]
+required_features = ["managed_binary_cache"]
+`, pinned))
+
+	report := runCapture(t, "--json", "readiness", "capabilities")
+	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 13`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
+		assertContains(t, report, want)
+	}
+
+	configData, err := os.ReadFile(".fairway/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingConfig := strings.Replace(string(configData), `required_commands = ["binary status"]`, `required_commands = ["future command"]`, 1)
+	missingConfig = strings.Replace(missingConfig, `minimum_version = "0.1.12"`, `minimum_version = "9.0.0"`, 1)
+	if err := os.WriteFile(".fairway/config.toml", []byte(missingConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := runCaptureAllowError(t, "--json", "readiness", "capabilities")
+	assertContains(t, missing, `"ok": false`)
+	assertContains(t, missing, `"running 0.1.12 is below minimum 9.0.0"`)
+	assertContains(t, missing, `"missing_commands": [`)
+	assertContains(t, missing, `"future command"`)
+}
+
+func TestFairwayVersionAtLeast(t *testing.T) {
+	for _, tc := range []struct {
+		actual, minimum string
+		want            bool
+	}{
+		{"0.1.12", "0.1.12", true},
+		{"v0.2.0", "0.1.12", true},
+		{"0.1.12-dev", "0.1.12", true},
+		{"0.1.11", "0.1.12", false},
+		{"development", "0.1.12", false},
+	} {
+		if got := fairwayVersionAtLeast(tc.actual, tc.minimum); got != tc.want {
+			t.Errorf("fairwayVersionAtLeast(%q, %q)=%t, want %t", tc.actual, tc.minimum, got, tc.want)
+		}
+	}
+}
+
 func TestCLI_ProfileGateTaskKindsScopeReadiness(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

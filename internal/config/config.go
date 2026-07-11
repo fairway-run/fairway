@@ -16,27 +16,28 @@ import (
 const DefaultConfigPath = ".fairway/config.toml"
 
 type Config struct {
-	Fairway             FairwayConfig        `toml:"fairway"`
-	Dashboard           DashboardConfig      `toml:"dashboard"`
-	Server              ServerConfig         `toml:"server"`
-	Worktrees           WorktreesConfig      `toml:"worktrees"`
-	Sessions            SessionsConfig       `toml:"sessions"`
-	Coordinator         CoordinatorConfig    `toml:"coordinator"`
-	States              StatesConfig         `toml:"states"`
-	Gates               GatesConfig          `toml:"gates"`
-	TaskKinds           TaskKindsConfig      `toml:"task_kinds"`
-	TaskPriorities      TaskPrioritiesConfig `toml:"task_priorities"`
-	Roles               []Role               `toml:"roles"`
-	ReviewDomainAliases map[string]string    `toml:"review_domain_aliases"`
-	ReviewRoutes        []ReviewRoute        `toml:"review_routes"`
-	WorkstreamProfiles  []WorkstreamProfile  `toml:"workstream_profiles"`
-	ReviewProfiles      []ReviewProfile      `toml:"review_profiles"`
-	PacketTemplates     []PacketTemplate     `toml:"packet_templates"`
-	RuleSources         []RuleSource         `toml:"rule_sources"`
-	ProviderTargets     []ProviderTarget     `toml:"provider_targets"`
-	ProviderModelPrices []ProviderModelPrice `toml:"provider_model_prices"`
-	AdvisoryAdapters    []AdvisoryAdapter    `toml:"advisory_provider_adapters"`
-	ExternalNotifiers   []ExternalNotifier   `toml:"external_notifiers"`
+	Fairway             FairwayConfig           `toml:"fairway"`
+	Dashboard           DashboardConfig         `toml:"dashboard"`
+	Server              ServerConfig            `toml:"server"`
+	Worktrees           WorktreesConfig         `toml:"worktrees"`
+	Sessions            SessionsConfig          `toml:"sessions"`
+	Coordinator         CoordinatorConfig       `toml:"coordinator"`
+	ConsumerReadiness   ConsumerReadinessConfig `toml:"consumer_readiness"`
+	States              StatesConfig            `toml:"states"`
+	Gates               GatesConfig             `toml:"gates"`
+	TaskKinds           TaskKindsConfig         `toml:"task_kinds"`
+	TaskPriorities      TaskPrioritiesConfig    `toml:"task_priorities"`
+	Roles               []Role                  `toml:"roles"`
+	ReviewDomainAliases map[string]string       `toml:"review_domain_aliases"`
+	ReviewRoutes        []ReviewRoute           `toml:"review_routes"`
+	WorkstreamProfiles  []WorkstreamProfile     `toml:"workstream_profiles"`
+	ReviewProfiles      []ReviewProfile         `toml:"review_profiles"`
+	PacketTemplates     []PacketTemplate        `toml:"packet_templates"`
+	RuleSources         []RuleSource            `toml:"rule_sources"`
+	ProviderTargets     []ProviderTarget        `toml:"provider_targets"`
+	ProviderModelPrices []ProviderModelPrice    `toml:"provider_model_prices"`
+	AdvisoryAdapters    []AdvisoryAdapter       `toml:"advisory_provider_adapters"`
+	ExternalNotifiers   []ExternalNotifier      `toml:"external_notifiers"`
 }
 
 type FairwayConfig struct {
@@ -87,6 +88,15 @@ type SessionsConfig struct {
 
 type CoordinatorConfig struct {
 	NotificationAckTimeout string `toml:"notification_ack_timeout"`
+}
+
+type ConsumerReadinessConfig struct {
+	MinimumVersion       string   `toml:"minimum_version"`
+	MinimumSchemaVersion int      `toml:"minimum_schema_version"`
+	PinnedBinaryPath     string   `toml:"pinned_binary_path"`
+	RequiredCapabilities []string `toml:"required_capabilities"`
+	RequiredCommands     []string `toml:"required_commands"`
+	RequiredFeatures     []string `toml:"required_features"`
 }
 
 type StatesConfig struct {
@@ -369,6 +379,9 @@ func Validate(cfg Config) error {
 	if _, err := regexp.Compile(cfg.Fairway.TaskIDPattern); err != nil {
 		return fmt.Errorf("[fairway] task_id_pattern is invalid: %w", err)
 	}
+	if err := validateConsumerReadiness(cfg.ConsumerReadiness); err != nil {
+		return err
+	}
 	switch strings.TrimSpace(cfg.Dashboard.TrustedProxy) {
 	case "", "none", "cloudflare_access", "identity_aware_proxy":
 	default:
@@ -591,6 +604,65 @@ func Validate(cfg Config) error {
 		return err
 	}
 	return nil
+}
+
+func validateConsumerReadiness(readiness ConsumerReadinessConfig) error {
+	if readiness.MinimumSchemaVersion < 0 {
+		return errors.New("[consumer_readiness] minimum_schema_version must be non-negative")
+	}
+	if value := strings.TrimSpace(readiness.MinimumVersion); value != "" && !validFairwayVersionRequirement(value) {
+		return fmt.Errorf("[consumer_readiness] minimum_version %q must use vMAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH", value)
+	}
+	for label, values := range map[string][]string{
+		"required_capabilities": readiness.RequiredCapabilities,
+		"required_features":     readiness.RequiredFeatures,
+	} {
+		seen := map[string]bool{}
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value == "" || strings.ContainsAny(value, " \t\r\n") {
+				return fmt.Errorf("[consumer_readiness] %s values must be non-empty tokens", label)
+			}
+			if seen[value] {
+				return fmt.Errorf("[consumer_readiness] %s contains duplicate %q", label, value)
+			}
+			seen[value] = true
+		}
+	}
+	seenCommands := map[string]bool{}
+	for _, command := range readiness.RequiredCommands {
+		command = strings.TrimSpace(command)
+		if command == "" || strings.ContainsAny(command, "\r\n") {
+			return errors.New("[consumer_readiness] required_commands values must be non-empty single lines")
+		}
+		if seenCommands[command] {
+			return fmt.Errorf("[consumer_readiness] required_commands contains duplicate %q", command)
+		}
+		seenCommands[command] = true
+	}
+	if strings.ContainsAny(strings.TrimSpace(readiness.PinnedBinaryPath), "\r\n") {
+		return errors.New("[consumer_readiness] pinned_binary_path must be a single line")
+	}
+	return nil
+}
+
+func validFairwayVersionRequirement(value string) bool {
+	value = strings.TrimPrefix(strings.TrimSpace(value), "v")
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validateExternalNotifiers(notifiers []ExternalNotifier) error {
