@@ -171,10 +171,17 @@ func run(ctx context.Context, args []string) error {
 	case "wait":
 		return cmdWait(ctx, opts, args[1:])
 	case "route":
-		if len(args) >= 2 && args[1] == "review" {
-			return cmdRouteReview(ctx, opts, args[2:])
+		if len(args) == 1 || isHelpOnly(args[1:]) {
+			subcommandUsage("route", "review <task-id> ... | review-preflight [--task <task-id>]")
+			return nil
 		}
-		return errors.New("route requires subcommand: review")
+		switch args[1] {
+		case "review":
+			return cmdRouteReview(ctx, opts, args[2:])
+		case "review-preflight":
+			return cmdRouteReviewPreflight(ctx, opts, args[2:])
+		}
+		return errors.New("route requires subcommand: review or review-preflight")
 	case "review":
 		if len(args) >= 2 && args[1] == "checkout" {
 			return cmdReviewCheckout(ctx, opts, args[2:])
@@ -5375,6 +5382,64 @@ func cmdRouteReview(ctx context.Context, opts globalOptions, args []string) erro
 	})
 }
 
+func cmdRouteReviewPreflight(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("route review-preflight", "[--task <task-id>]")
+		fmt.Println("  Validate review-domain coverage across non-terminal tasks without creating reviews, waits, or notifications.")
+		return nil
+	}
+	fs := flag.NewFlagSet("route review-preflight", flag.ContinueOnError)
+	taskID := fs.String("task", "", "limit coverage to one task")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected route review-preflight arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		var tasks []store.Task
+		if strings.TrimSpace(*taskID) != "" {
+			task, _, _, _, _, err := s.TaskDetail(ctx, strings.TrimSpace(*taskID))
+			if err != nil {
+				return err
+			}
+			tasks = []store.Task{task}
+		} else {
+			var err error
+			tasks, err = s.AllTasks(ctx)
+			if err != nil {
+				return err
+			}
+		}
+		report := reviewstate.ReviewRoutingCoverage(tasks, reviewWaitOptions(cfg))
+		if opts.JSON {
+			if err := printJSON(report); err != nil {
+				return err
+			}
+		} else {
+			printReviewRoutingCoverage(report)
+		}
+		if !report.OK {
+			return errors.New("review routing preflight failed")
+		}
+		return nil
+	})
+}
+
+func printReviewRoutingCoverage(report reviewstate.RoutingCoverageReport) {
+	fmt.Printf("review_routing_ok: %t\n", report.OK)
+	fmt.Printf("scope: %s\n", report.Scope)
+	fmt.Printf("summary: domains=%d configured_roles=%d configured_aliases=%d review_routes=%d provider_targets=%d missing_mappings=%d\n", report.Summary.Domains, report.Summary.ConfiguredRoles, report.Summary.ConfiguredAliases, report.Summary.ReviewRoutes, report.Summary.ProviderTargets, report.Summary.MissingMappings)
+	for _, row := range report.Rows {
+		targets := make([]string, 0, len(row.ProviderTargets))
+		for _, target := range row.ProviderTargets {
+			targets = append(targets, firstNonEmpty(strings.TrimSpace(target.Provider), "unknown")+":"+firstNonEmpty(strings.TrimSpace(target.Type), "generic")+":"+strings.TrimSpace(target.Target))
+		}
+		fmt.Printf("- domain=%s tasks=%s routable=%t resolution=%s configured_role=%s role_provider=%s alias_role=%s alias_provider=%s review_routes=%s provider_targets=%s action=%s\n", row.Domain, strings.Join(row.TaskIDs, ","), row.Routable, row.Resolution, firstNonEmpty(row.ConfiguredRole, "none"), firstNonEmpty(row.RoleProvider, "none"), firstNonEmpty(row.AliasRole, "none"), firstNonEmpty(row.AliasProvider, "none"), firstNonEmpty(strings.Join(row.ReviewRoutes, ","), "none"), firstNonEmpty(strings.Join(targets, ","), "none"), row.Action)
+		fmt.Printf("  reason: %s\n", row.Reason)
+	}
+}
+
 func cmdReviewWaits(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
 		return errors.New("review-waits requires subcommand: list, wake")
@@ -6284,6 +6349,7 @@ func taskStatuses(ctx context.Context, s *store.Store) (map[string]string, error
 func reviewWaitOptions(cfg config.Config) reviewstate.ReviewWaitOptions {
 	return reviewstate.ReviewWaitOptions{
 		ProviderTargets: cfg.ProviderTargets,
+		DomainAliases:   cfg.ReviewDomainAliases,
 		ReviewRoutes:    cfg.ReviewRoutes,
 		Roles:           cfg.Roles,
 		Terminal:        cfg.States.Terminal,
@@ -9122,14 +9188,15 @@ func isLeafKind(kind string) bool {
 }
 
 type coordinatorReport struct {
-	OK              bool             `json:"ok"`
-	Health          store.Health     `json:"health"`
-	ReadyCount      int              `json:"ready_count"`
-	ReadyByRole     map[string]int   `json:"ready_by_role"`
-	LiveSessions    []store.Session  `json:"live_sessions"`
-	Worktrees       []worktreeStatus `json:"worktrees"`
-	Issues          []string         `json:"issues"`
-	Recommendations []string         `json:"recommendations"`
+	OK              bool                              `json:"ok"`
+	Health          store.Health                      `json:"health"`
+	ReviewRouting   reviewstate.RoutingCoverageReport `json:"review_routing"`
+	ReadyCount      int                               `json:"ready_count"`
+	ReadyByRole     map[string]int                    `json:"ready_by_role"`
+	LiveSessions    []store.Session                   `json:"live_sessions"`
+	Worktrees       []worktreeStatus                  `json:"worktrees"`
+	Issues          []string                          `json:"issues"`
+	Recommendations []string                          `json:"recommendations"`
 }
 
 type dispatchPlan struct {
@@ -9517,12 +9584,13 @@ func buildCoordinatorReport(ctx context.Context, cfg config.Config, root string,
 		return coordinatorReport{}, err
 	}
 	report := coordinatorReport{
-		OK:           true,
-		Health:       health,
-		ReadyCount:   len(ready),
-		ReadyByRole:  map[string]int{},
-		LiveSessions: sessions,
-		Worktrees:    worktrees,
+		OK:            true,
+		Health:        health,
+		ReviewRouting: reviewstate.ReviewRoutingCoverage(tasks, reviewWaitOptions(cfg)),
+		ReadyCount:    len(ready),
+		ReadyByRole:   map[string]int{},
+		LiveSessions:  sessions,
+		Worktrees:     worktrees,
 	}
 	for _, task := range ready {
 		report.ReadyByRole[task.Definition.Role]++
@@ -9614,6 +9682,9 @@ func coordinatorWakeTargetIssues(ctx context.Context, cfg config.Config, root st
 func printCoordinatorStatus(report coordinatorReport) {
 	fmt.Printf("ok: %t\nready: %d\nlive_sessions: %d\n", report.OK, report.ReadyCount, len(report.LiveSessions))
 	fmt.Printf("health: in_progress=%d stale=%d handoffs=%d reviews=%d\n", report.Health.InProgress, report.Health.StaleInProgress, report.Health.UnacknowledgedHandoff, report.Health.UnroutedReviews)
+	if len(report.ReviewRouting.Rows) > 0 {
+		printReviewRoutingCoverage(report.ReviewRouting)
+	}
 	if len(report.ReadyByRole) > 0 {
 		fmt.Println("ready_by_role:")
 		for role, count := range report.ReadyByRole {
@@ -18470,6 +18541,7 @@ func printCommandHelp(command string) bool {
 		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
+		"route":                      "fairway route review <task-id> ... | fairway route review-preflight [--task <task-id>]\n  Route one review or validate project-wide review-domain coverage without mutation.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale] | fairway live-window retry-budget record|status ...\n  Record and inspect repeated live-operation handshake phases and retry budgets via task checkpoints.",
 		"memory":                     "fairway memory show|update|append|packet|stale|reconcile|disposition|history ...\n  Store curated track memory, reconcile lifecycle debt, and render compact provider-independent packets.",
 		"wait":                       "fairway wait add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, acknowledge them, project wait state, and emit bounded wake prompts.",

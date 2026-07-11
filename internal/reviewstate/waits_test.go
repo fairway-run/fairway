@@ -57,9 +57,10 @@ func TestWaitsForTaskProjectsStatesAndActions(t *testing.T) {
 }
 
 func TestUnroutableRequiredDomains(t *testing.T) {
-	task := store.Task{Definition: store.TaskDefinition{ID: "REVIEW-002", ReviewDomains: []string{"arch", "product", "security"}}}
+	task := store.Task{Definition: store.TaskDefinition{ID: "REVIEW-002", ReviewDomains: []string{"arch", "compliance", "product", "security"}}}
 	issues := UnroutableRequiredDomains(task, ReviewWaitOptions{
 		Roles:           []config.Role{{Name: "arch"}},
+		DomainAliases:   map[string]string{"compliance": "arch"},
 		ProviderTargets: []config.ProviderTarget{{Domain: "security", Provider: "codex", Target: "thread-security"}},
 	})
 	if len(issues) != 1 || issues[0].Domain != "product" || issues[0].Action != "mapping_required" {

@@ -12,6 +12,7 @@ import (
 
 type ReviewWaitOptions struct {
 	ProviderTargets []config.ProviderTarget
+	DomainAliases   map[string]string
 	ReviewRoutes    []config.ReviewRoute
 	Roles           []config.Role
 	AckTimeout      time.Duration
@@ -120,7 +121,7 @@ func WaitsForTask(task store.Task, handoffs []store.Handoff, reviews []store.Rev
 			if !routable {
 				wait.State = "notification_failed"
 				wait.Action = "mapping_required"
-				wait.Reason = "required review domain has no configured reviewer role, review route, or provider target"
+				wait.Reason = "required review domain has no configured reviewer role, domain alias, review route, or provider target"
 			} else {
 				wait.State = pendingOrStale(wait.ExpectedResponseAt, opts.Now)
 				wait.Action = "deliver_notification"
@@ -171,7 +172,7 @@ func UnroutableRequiredDomains(task store.Task, opts ReviewWaitOptions) []Routab
 		issues = append(issues, RoutabilityIssue{
 			TaskID: task.Definition.ID,
 			Domain: domain,
-			Reason: "required review domain has no configured reviewer role, review route, or provider target",
+			Reason: "required review domain has no configured reviewer role, domain alias, review route, or provider target",
 			Action: "mapping_required",
 		})
 	}
@@ -183,6 +184,13 @@ func targetForDomain(domain string, opts ReviewWaitOptions) (config.ProviderTarg
 	for _, target := range opts.ProviderTargets {
 		if strings.TrimSpace(target.Domain) == domain {
 			return target, true
+		}
+	}
+	if aliasRole := strings.TrimSpace(opts.DomainAliases[domain]); aliasRole != "" {
+		for _, role := range opts.Roles {
+			if strings.TrimSpace(role.Name) == aliasRole {
+				return config.ProviderTarget{Domain: domain, Provider: firstNonEmpty(role.Provider, "fairway"), Target: aliasRole, Type: "role_alias"}, true
+			}
 		}
 	}
 	for _, role := range opts.Roles {

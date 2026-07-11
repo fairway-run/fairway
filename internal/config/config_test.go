@@ -682,6 +682,30 @@ func TestValidate_RejectsReviewRouteOutsideRoles(t *testing.T) {
 	}
 }
 
+func TestValidateReviewDomainAliases(t *testing.T) {
+	cfg := Defaults("/tmp/repo")
+	cfg.Roles = []Role{{Name: "arch"}}
+	cfg.ReviewDomainAliases = map[string]string{"security": "arch"}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	for name, aliases := range map[string]map[string]string{
+		"unknown role": {"security": "security-reviewer"},
+		"self alias":   {"arch": "arch"},
+		"empty role":   {"security": ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			invalid := Defaults("/tmp/repo")
+			invalid.Roles = []Role{{Name: "arch"}}
+			invalid.ReviewDomainAliases = aliases
+			if err := Validate(invalid); err == nil {
+				t.Fatal("expected review domain alias validation error")
+			}
+		})
+	}
+}
+
 func TestValidate_AcceptsWorkstreamProfilesAndPacketTemplates(t *testing.T) {
 	cfg := Defaults("/tmp/repo")
 	cfg.WorkstreamProfiles = []WorkstreamProfile{{

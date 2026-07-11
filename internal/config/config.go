@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,6 +27,7 @@ type Config struct {
 	TaskKinds           TaskKindsConfig      `toml:"task_kinds"`
 	TaskPriorities      TaskPrioritiesConfig `toml:"task_priorities"`
 	Roles               []Role               `toml:"roles"`
+	ReviewDomainAliases map[string]string    `toml:"review_domain_aliases"`
 	ReviewRoutes        []ReviewRoute        `toml:"review_routes"`
 	WorkstreamProfiles  []WorkstreamProfile  `toml:"workstream_profiles"`
 	ReviewProfiles      []ReviewProfile      `toml:"review_profiles"`
@@ -502,6 +504,27 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("duplicate role %q", role.Name)
 		}
 		seen[role.Name] = true
+	}
+	aliasDomains := make([]string, 0, len(cfg.ReviewDomainAliases))
+	for domain := range cfg.ReviewDomainAliases {
+		aliasDomains = append(aliasDomains, domain)
+	}
+	sort.Strings(aliasDomains)
+	for _, domain := range aliasDomains {
+		trimmedDomain := strings.TrimSpace(domain)
+		role := strings.TrimSpace(cfg.ReviewDomainAliases[domain])
+		if trimmedDomain == "" {
+			return errors.New("[review_domain_aliases] domain is required")
+		}
+		if role == "" {
+			return fmt.Errorf("[review_domain_aliases] %s must name a configured role", trimmedDomain)
+		}
+		if trimmedDomain == role {
+			return fmt.Errorf("[review_domain_aliases] %s cannot alias itself", trimmedDomain)
+		}
+		if !seen[role] {
+			return fmt.Errorf("[review_domain_aliases] %s targets unknown role %q", trimmedDomain, role)
+		}
 	}
 	for _, route := range cfg.ReviewRoutes {
 		if route.Match == "" {

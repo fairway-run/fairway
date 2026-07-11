@@ -79,6 +79,9 @@ name = "ui"
 branch = "agent/ui"
 provider = "codex"
 
+[review_domain_aliases]
+security = "arch"
+
 [[review_routes]]
 match = "doc/api/**"
 reviewer = "arch"
@@ -550,6 +553,20 @@ Ordered list. The first matching glob wins.
 |---|---|---|---|
 | `match` | string | — | Glob matched against paths touched in the task's commits. |
 | `reviewer` | string | — | Role name to route the review to. Must match a configured role. |
+
+### `[review_domain_aliases]`
+
+Maps a review domain that has no same-named role to one configured reviewer
+role. For example, `security = "arch"` makes the `security` domain routable
+through the `arch` lane while preserving `security` as the required review
+domain in task and review records. Alias targets must be configured roles;
+self-aliases, empty targets, and alias-to-alias chains fail validation.
+
+Aliases are routing metadata only. They do not let the mapped role self-approve,
+waive the original domain, or create a review verdict. Use `fairway route
+review-preflight` to distinguish exact roles, configured aliases, review-route
+patterns, explicit provider targets, and missing mappings before a task enters
+review wait.
 
 ### `[[workstream_profiles]]`
 

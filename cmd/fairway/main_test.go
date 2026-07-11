@@ -673,6 +673,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"review-waits", "list", "--help"}, "fairway review-waits list [--blocking] [--task <task-id>] [--stale]"},
 		{[]string{"review-waits", "wake", "--help"}, "fairway review-waits wake [--task <task-id>]"},
 		{[]string{"review-policy", "report", "--help"}, "fairway review-policy report [--profile <name>]"},
+		{[]string{"route", "--help"}, "fairway route review <task-id> ... | fairway route review-preflight [--task <task-id>]"},
+		{[]string{"route", "review-preflight", "--help"}, "fairway route review-preflight [--task <task-id>]"},
 		{[]string{"coordinator", "tick", "--help"}, "fairway coordinator tick [--completion-handback-wake]"},
 		{[]string{"live-window", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "record", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
@@ -3647,6 +3649,87 @@ name = "arch"
 	}
 	assertContains(t, preflight, "required review domain product is not routable")
 	assertContains(t, preflight, "action=mapping_required")
+}
+
+func TestCLI_RouteReviewPreflightExplainsCoverageSources(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	appendFile(t, ".fairway/config.toml", `
+[[roles]]
+name = "backend"
+provider = "codex"
+
+[[roles]]
+name = "governance"
+
+[[roles]]
+name = "arch"
+provider = "codex"
+
+[review_domain_aliases]
+compliance = "arch"
+
+[[review_routes]]
+match = "docs/**"
+reviewer = "governance"
+
+[[provider_targets]]
+domain = "security"
+provider = "codex"
+target = "thread-security"
+type = "thread"
+`)
+	runOK(t, "add", "T-001", "--title", "Role alias", "--role", "backend", "--review-domains", "backend")
+	runOK(t, "add", "T-002", "--title", "Review route", "--role", "backend", "--review-domains", "governance")
+	runOK(t, "add", "T-003", "--title", "Provider target", "--role", "backend", "--review-domains", "security")
+	runOK(t, "add", "T-004", "--title", "Missing mapping", "--role", "backend", "--review-domains", "product")
+	runOK(t, "add", "T-005", "--title", "Configured alias", "--role", "backend", "--review-domains", "compliance")
+
+	report, err := captureRun("route", "review-preflight")
+	if err == nil {
+		t.Fatalf("review preflight unexpectedly passed:\n%s", report)
+	}
+	for _, want := range []string{
+		"review_routing_ok: false",
+		"domains=5 configured_roles=2 configured_aliases=1 review_routes=1 provider_targets=1 missing_mappings=1",
+		"domain=backend tasks=T-001 routable=true resolution=configured_role",
+		"domain=compliance tasks=T-005 routable=true resolution=configured_alias",
+		"alias_role=arch alias_provider=codex",
+		"domain=governance tasks=T-002 routable=true resolution=configured_role",
+		"review_routes=docs/**",
+		"domain=security tasks=T-003 routable=true resolution=provider_target",
+		"domain=product tasks=T-004 routable=false resolution=missing",
+		"action=configure_review_mapping",
+	} {
+		assertContains(t, report, want)
+	}
+
+	jsonReport, err := captureRun("--json", "route", "review-preflight", "--task", "T-004")
+	if err == nil {
+		t.Fatalf("JSON review preflight unexpectedly passed:\n%s", jsonReport)
+	}
+	assertContains(t, jsonReport, `"resolution": "missing"`)
+	assertContains(t, jsonReport, `"action": "configure_review_mapping"`)
+
+	appendFile(t, ".fairway/config.toml", `
+[[provider_targets]]
+domain = "product"
+provider = "codex"
+target = "thread-product"
+type = "thread"
+`)
+	resolved := runCapture(t, "route", "review-preflight", "--task", "T-004")
+	assertContains(t, resolved, "review_routing_ok: true")
+	assertContains(t, resolved, "resolution=provider_target")
 }
 
 func TestCLI_CheckpointAndPacket(t *testing.T) {

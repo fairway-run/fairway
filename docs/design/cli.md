@@ -89,6 +89,7 @@ fairway record completion-handback-supersede <task-id> --handoff-id <id> --reaso
 fairway record review <task-id> --reviewer <role-or-user> [--domain <review-domain>] --verdict <approve|changes|reject> [--reason <text>] [--commit <sha>]
 fairway record usage <task-id> --provider <name> [--session-id <id>] [--external-session-id <id>] [--role <role>] [--phase <phase>] [--source <provider_reported|derived_snapshot|manual|unknown>] [--confidence <exact|estimated|unknown>] [--input-tokens <n>] [--cached-input-tokens <n>] [--output-tokens <n>] [--total-tokens <n>]
 fairway route review <task-id> [--reviewer <role>] [--path <path>]... [--reason <text>] # mark pending review
+fairway route review-preflight [--task <task-id>] # explain review-domain routing coverage before waits are created
 fairway merge-ready <task-id> [--base <ref>]          # verify evidence/review/handoff/git/profile gates
 fairway review checkout <task-id> [--source-role <role>] # create/reset named review branch
 fairway review-waits list [--blocking] [--task <task-id>] [--stale] # read-only review wait projection
@@ -344,6 +345,14 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   retry` fails closed until an existing Fairway causal reset task and reset
   reason are recorded. This does not authorize another live window; it only
   makes the retry/reset decision explicit.
+- `route review-preflight` is a read-only project coverage check over review
+  domains used by non-terminal tasks. It explains whether each domain resolves
+  through an explicit provider target, `[review_domain_aliases]`, an exact
+  configured role, or a review route, lists the affected task ids, and fails with
+  `action=configure_review_mapping` for missing coverage. It creates no review,
+  wait, notification, provider delivery, or workflow state. `coordinator
+  preflight` includes the same coverage rows while retaining its task-level
+  `mapping_required` failures for active review waits.
 - `review-policy report` summarizes configured and built-in review-profile
   pilots and blocking policies. Built-in defaults distinguish reversible
   evidence-led work from irreversible, live, and release boundaries, and expose
