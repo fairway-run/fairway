@@ -15581,6 +15581,20 @@ type dashboardLifecycleStatus struct {
 	BinaryPath       string `json:"binary_path,omitempty"`
 	ListenerDetected bool   `json:"listener_detected,omitempty"`
 	Warning          string `json:"warning,omitempty"`
+	record           dashboardLifecycleRecord
+}
+
+const dashboardLifecycleSchema = "fairway.dashboard-lifecycle.v1"
+
+type dashboardLifecycleRecord struct {
+	Schema     string `json:"schema"`
+	PID        int    `json:"pid"`
+	Listen     string `json:"listen"`
+	BinaryPath string `json:"binary_path"`
+	Version    string `json:"version"`
+	ReadOnly   bool   `json:"read_only"`
+	Multi      bool   `json:"multi"`
+	StartedAt  string `json:"started_at"`
 }
 
 func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action string, args []string) error {
@@ -15622,6 +15636,9 @@ func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action strin
 	case "status":
 		return printDashboardLifecycleStatus(status, opts.JSON)
 	case "stop":
+		if status.State == "unknown" || status.State == "mismatch" {
+			return fmt.Errorf("refusing to stop unverified dashboard process: %s", status.Warning)
+		}
 		if err := stopDashboardLifecycle(status); err != nil {
 			return err
 		}
@@ -15633,6 +15650,9 @@ func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action strin
 		fmt.Println("dashboard stopped")
 		return nil
 	case "restart":
+		if status.State == "unknown" || status.State == "mismatch" {
+			return fmt.Errorf("refusing to restart over unverified dashboard process: %s", status.Warning)
+		}
 		if status.Running {
 			if err := stopDashboardLifecycle(status); err != nil {
 				return err
@@ -15640,6 +15660,9 @@ func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action strin
 		}
 		return startDashboardLifecycle(opts, addr, childNoOpen, *readOnly, *multi, resolvedPIDFile, resolvedLogFile, true)
 	case "start":
+		if status.State == "unknown" || status.State == "mismatch" {
+			return fmt.Errorf("refusing to start over unverified dashboard process: %s", status.Warning)
+		}
 		if status.Running {
 			return printDashboardLifecycleStatus(status, opts.JSON)
 		}
@@ -15681,13 +15704,47 @@ func readDashboardLifecycleStatus(pidFile, logFile, addr string) (dashboardLifec
 		status.markUnknownIfListenerDetected(addr)
 		return status, nil
 	}
-	var pid int
-	if _, err := fmt.Sscanf(raw, "%d", &pid); err != nil {
-		return status, fmt.Errorf("read dashboard pid file %s: invalid pid %q", pidFile, raw)
+	var record dashboardLifecycleRecord
+	if strings.HasPrefix(raw, "{") {
+		if err := json.Unmarshal(data, &record); err != nil {
+			return status, fmt.Errorf("read dashboard pid file %s: invalid JSON", pidFile)
+		}
+		if record.Schema != dashboardLifecycleSchema || record.PID <= 0 || strings.TrimSpace(record.BinaryPath) == "" || strings.TrimSpace(record.Listen) == "" {
+			return status, fmt.Errorf("read dashboard pid file %s: invalid or unsupported record", pidFile)
+		}
+		status.PID = record.PID
+		status.URL = dashboard.URL(record.Listen)
+		status.Version = record.Version
+		status.BinaryPath = record.BinaryPath
+		status.record = record
+		if record.Listen != addr {
+			status.State = "mismatch"
+			status.Warning = fmt.Sprintf("dashboard lifecycle record listen address %s does not match requested address %s", record.Listen, addr)
+			return status, nil
+		}
+	} else {
+		var pid int
+		if _, err := fmt.Sscanf(raw, "%d", &pid); err != nil {
+			return status, fmt.Errorf("read dashboard pid file %s: invalid pid %q", pidFile, raw)
+		}
+		status.PID = pid
+		if processAlive(pid) {
+			status.State = "unknown"
+			status.Version = "unknown"
+			status.BinaryPath = dashboardProcessBinary(pid)
+			status.ListenerDetected = dashboardAddressListening(addr)
+			status.Warning = "legacy pid file cannot verify the live dashboard binary or version; stop the verified process manually, remove the pid file, and restart with the current Fairway lifecycle"
+			return status, nil
+		}
 	}
-	status.PID = pid
-	status.Running = processAlive(pid)
+	status.Running = processAlive(status.PID)
 	if status.Running {
+		if !dashboardLifecycleProcessMatches(record) {
+			status.Running = false
+			status.State = "mismatch"
+			status.Warning = "dashboard lifecycle record does not match the live process; refusing to signal it"
+			return status, nil
+		}
 		status.State = "running"
 	}
 	if !status.Running {
@@ -15696,6 +15753,37 @@ func readDashboardLifecycleStatus(pidFile, logFile, addr string) (dashboardLifec
 		status.markUnknownIfListenerDetected(addr)
 	}
 	return status, nil
+}
+
+func dashboardLifecycleProcessMatches(record dashboardLifecycleRecord) bool {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(record.PID), "-o", "command=").Output()
+	if err != nil {
+		return false
+	}
+	command := string(out)
+	fields := strings.Fields(command)
+	matches := len(fields) > 0 && fields[0] == record.BinaryPath &&
+		strings.Contains(command, "dashboard") &&
+		strings.Contains(command, "--listen "+record.Listen)
+	if record.ReadOnly {
+		matches = matches && strings.Contains(command, "--read-only")
+	}
+	if record.Multi {
+		matches = matches && strings.Contains(command, "--multi")
+	}
+	return matches
+}
+
+func dashboardProcessBinary(pid int) string {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
+	if err != nil {
+		return ""
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
 }
 
 func (status *dashboardLifecycleStatus) markUnknownIfListenerDetected(addr string) {
@@ -15755,6 +15843,9 @@ func stopDashboardLifecycle(status dashboardLifecycleStatus) error {
 		_ = os.Remove(status.PIDFile)
 		return nil
 	}
+	if !dashboardLifecycleProcessMatches(status.record) {
+		return errors.New("refusing to stop dashboard because process identity no longer matches the lifecycle record")
+	}
 	if err := syscall.Kill(status.PID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return err
 	}
@@ -15764,6 +15855,9 @@ func stopDashboardLifecycle(status dashboardLifecycleStatus) error {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if !dashboardLifecycleProcessMatches(status.record) {
+		return errors.New("refusing to force-stop dashboard because process identity no longer matches the lifecycle record")
 	}
 	if err := syscall.Kill(status.PID, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return err
@@ -15797,7 +15891,18 @@ func startDashboardLifecycle(opts globalOptions, addr string, noOpen bool, readO
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d\n", cmd.Process.Pid)), 0o644); err != nil {
+	record := dashboardLifecycleRecord{
+		Schema: dashboardLifecycleSchema, PID: cmd.Process.Pid, Listen: addr,
+		BinaryPath: exe, Version: version, ReadOnly: readOnly, Multi: multi,
+		StartedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	recordData, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		_ = cmd.Process.Kill()
+		return err
+	}
+	recordData = append(recordData, '\n')
+	if err := os.WriteFile(pidFile, recordData, 0o644); err != nil {
 		_ = cmd.Process.Kill()
 		return err
 	}

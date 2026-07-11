@@ -6300,6 +6300,81 @@ func TestDashboardLifecycleStatusReportsUnknownForStalePIDWhenAddressIsListening
 	}
 }
 
+func TestDashboardLifecycleStatusFailsClosedForLiveLegacyPID(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "dashboard.pid")
+	logFile := filepath.Join(dir, "dashboard.log")
+	writeFile(t, pidFile, fmt.Sprintf("%d\n", os.Getpid()))
+
+	status, err := readDashboardLifecycleStatus(pidFile, logFile, "127.0.0.1:17888")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "unknown" || status.Running {
+		t.Fatalf("status = state=%q running=%t, want unknown/false", status.State, status.Running)
+	}
+	if status.Version != "unknown" {
+		t.Fatalf("version = %q, want unknown", status.Version)
+	}
+	if status.BinaryPath == "" {
+		t.Fatal("expected live process binary readback")
+	}
+	if !strings.Contains(status.Warning, "legacy pid file") {
+		t.Fatalf("warning = %q", status.Warning)
+	}
+}
+
+func TestDashboardLifecycleStatusUsesManagedRecordAndRejectsMismatch(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "dashboard.pid")
+	logFile := filepath.Join(dir, "dashboard.log")
+	record := dashboardLifecycleRecord{
+		Schema: dashboardLifecycleSchema, PID: os.Getpid(), Listen: "127.0.0.1:17888",
+		BinaryPath: "/definitely/not/the/test/binary", Version: "9.9.9",
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, pidFile, string(data))
+
+	status, err := readDashboardLifecycleStatus(pidFile, logFile, record.Listen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "mismatch" || status.Running {
+		t.Fatalf("status = state=%q running=%t, want mismatch/false", status.State, status.Running)
+	}
+	if status.Version != record.Version || status.BinaryPath != record.BinaryPath {
+		t.Fatalf("record readback mismatch: %+v", status)
+	}
+}
+
+func TestDashboardLifecycleStatusRejectsRecordForDifferentListenAddress(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "dashboard.pid")
+	record := dashboardLifecycleRecord{
+		Schema: dashboardLifecycleSchema, PID: os.Getpid(), Listen: "127.0.0.1:17888",
+		BinaryPath: "/tmp/fairway", Version: "0.1.10",
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, pidFile, string(data))
+
+	status, err := readDashboardLifecycleStatus(pidFile, filepath.Join(dir, "dashboard.log"), "127.0.0.1:17889")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "mismatch" || status.Running {
+		t.Fatalf("status = state=%q running=%t, want mismatch/false", status.State, status.Running)
+	}
+	if !strings.Contains(status.Warning, "does not match requested address") {
+		t.Fatalf("warning = %q", status.Warning)
+	}
+}
+
 func TestDashboardLifecycleChildArgsPreservesGlobalOptions(t *testing.T) {
 	args := dashboardLifecycleChildArgs(globalOptions{
 		ConfigPath: "/tmp/fairway.toml",

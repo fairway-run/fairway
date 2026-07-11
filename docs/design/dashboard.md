@@ -19,6 +19,15 @@ There is no dashboard version switch. `[dashboard] surface` is not part of the
 active config contract; historical configs that still contain it load only
 because unknown TOML keys are ignored.
 
+Managed dashboard lifecycle commands write a versioned JSON pid record with
+the process id, listen address, binary path, Fairway version, mode flags, and
+start time. `dashboard status` reports version and binary from that record only
+after matching it to the live process command. Legacy integer-only pid files
+cannot prove binary/version identity and therefore report `unknown`; start,
+stop, and restart fail closed until the operator verifies and replaces the
+legacy process. The querying CLI version must never be presented as the running
+dashboard version.
+
 ## Why Web
 
 - It can stay open on a second monitor while several agents work in parallel.

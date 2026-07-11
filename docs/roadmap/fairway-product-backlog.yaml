@@ -4872,3 +4872,26 @@ tasks:
       - "Shared read-only and local full dashboards run the released v0.1.10 binary with durable pid/log files."
       - "Status reports version 0.1.10 and exact binary path for both instances."
       - "Local probes pass and the public compatibility hostname preserves its Cloudflare Access boundary."
+
+  - id: FW-288
+    title: Fix dashboard status binary and version readback against live process
+    kind: bug
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard
+    source_paths:
+      - cmd/fairway/main.go
+    target_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - docs/design/dashboard.md
+    review_domains:
+      - backend
+      - ops
+    risk_level: high
+    migration_type: dashboard-status-correctness
+    acceptance_checks:
+      - "Dashboard status derives or verifies version and binary path from the live managed process rather than the invoking CLI binary."
+      - "Status fails closed or reports unknown when legacy pid files cannot prove the process binary/version."
+      - "Regression covers invoking a newer CLI against an older running dashboard process."
