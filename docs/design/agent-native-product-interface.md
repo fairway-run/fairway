@@ -95,6 +95,24 @@ missing provenance instead of filling gaps. It does not emit source bodies or
 generate a narrative. Non-Go symbol resolution and optional advisory narrative
 generation remain later slices.
 
+An optional first narrative adapter is available through:
+
+```bash
+fairway explain code packages/platform/iam/session_store.go \
+  --line 142 \
+  --narrative-provider local-explain \
+  --format packet
+```
+
+This path is deliberately narrower than generic provider execution. It accepts
+an enabled, capability-declaring `local_ollama` adapter with a loopback endpoint
+only. Fairway sends the already-redacted grounded packet in memory and validates
+an exact `fairway.explain-narrative.v1` response. Every recorded or inferred
+statement must cite a packet reference; unknown statements remain explicit.
+Generated text is displayed but never written back as evidence, a decision, or
+accepted provenance. Missing local provider access leaves deterministic packet
+generation fully usable.
+
 ## LLM narrative boundary
 
 An optional configured advisory provider may turn the grounded packet into a

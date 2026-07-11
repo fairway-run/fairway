@@ -775,8 +775,31 @@ func validateAdvisoryAdapters(adapters []AdvisoryAdapter) error {
 		if endpointEnv := strings.TrimSpace(adapter.EndpointEnv); endpointEnv != "" && !validEnvName(endpointEnv) {
 			return fmt.Errorf("[[advisory_provider_adapters]] endpoint_env %q is invalid for %q", adapter.EndpointEnv, name)
 		}
+		if stringSliceContains(adapter.Capabilities, "explain_code_narrative") {
+			if adapterType != "local_ollama" {
+				return fmt.Errorf("[[advisory_provider_adapters]] explain_code_narrative requires local_ollama type for %q", name)
+			}
+			if strings.TrimSpace(adapter.Model) == "" {
+				return fmt.Errorf("[[advisory_provider_adapters]] explain_code_narrative requires model for %q", name)
+			}
+			if strings.TrimSpace(adapter.EndpointEnv) == "" {
+				return fmt.Errorf("[[advisory_provider_adapters]] explain_code_narrative requires endpoint_env for %q", name)
+			}
+			if !stringSliceContains(adapter.AllowedActions, "render_packet") {
+				return fmt.Errorf("[[advisory_provider_adapters]] explain_code_narrative requires render_packet allowed action for %q", name)
+			}
+		}
 	}
 	return nil
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAdapterTokenList(label, adapterName string, values []string) error {

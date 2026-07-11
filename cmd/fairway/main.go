@@ -4788,7 +4788,7 @@ func cmdProvenance(ctx context.Context, opts globalOptions, args []string) error
 
 func cmdExplain(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		fmt.Println("fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--format packet|markdown|json]")
+		fmt.Println("fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]")
 		fmt.Println("  Render deterministic recorded facts, conflicts, missing provenance, and bounded inference inputs without generating historical rationale.")
 		return nil
 	}
@@ -4800,7 +4800,7 @@ func cmdExplain(ctx context.Context, opts globalOptions, args []string) error {
 
 func cmdExplainCode(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
-		fmt.Println("fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--format packet|markdown|json]")
+		fmt.Println("fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]")
 		fmt.Println("  Resolve committed Git metadata and cited Fairway facts; source bodies and generated rationale are excluded.")
 		return nil
 	}
@@ -4809,6 +4809,7 @@ func cmdExplainCode(ctx context.Context, opts globalOptions, args []string) erro
 	symbol := fs.String("symbol", "", "committed Go symbol or Type.Method")
 	commit := fs.String("commit", "", "commit or ref; defaults to task commit or HEAD")
 	taskID := fs.String("task", "", "explicit Fairway task entry point")
+	narrativeProvider := fs.String("narrative-provider", "", "optional configured advisory local narrative adapter")
 	format := fs.String("format", "packet", "packet, markdown, or json")
 	path := ""
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -4829,12 +4830,56 @@ func cmdExplainCode(ctx context.Context, opts globalOptions, args []string) erro
 		if err != nil {
 			return err
 		}
+		if strings.TrimSpace(*narrativeProvider) != "" {
+			narrative, err := provenance.GenerateExplainNarrative(ctx, cfg, packet, *narrativeProvider)
+			if err != nil {
+				return err
+			}
+			if opts.JSON || *format == "json" {
+				return printJSON(struct {
+					Packet    provenance.ExplainCodePacket `json:"packet"`
+					Narrative provenance.ExplainNarrative  `json:"narrative"`
+				}{packet, narrative})
+			}
+			printExplainCodePacketMarkdown(packet)
+			printExplainNarrativeMarkdown(narrative)
+			return nil
+		}
 		if opts.JSON || *format == "json" {
 			return printJSON(packet)
 		}
 		printExplainCodePacketMarkdown(packet)
 		return nil
 	})
+}
+
+func printExplainNarrativeMarkdown(narrative provenance.ExplainNarrative) {
+	fmt.Println()
+	fmt.Println("# Advisory Narrative")
+	fmt.Println()
+	fmt.Printf("- schema: `%s`\n", narrative.Schema)
+	fmt.Printf("- provider: `%s`\n", markdownPacketValue(narrative.Provider))
+	if narrative.Model != "" {
+		fmt.Printf("- model: `%s`\n", markdownPacketValue(narrative.Model))
+	}
+	fmt.Println("- status: advisory; generated text is not recorded provenance")
+	for _, statement := range narrative.Statements {
+		fmt.Println()
+		fmt.Printf("## %s\n", narrativeHeading(statement.Label))
+		fmt.Println(markdownPacketValue(statement.Text))
+		if len(statement.Citations) > 0 {
+			fmt.Printf("Citations: `%s`\n", strings.Join(statement.Citations, "`, `"))
+		}
+	}
+	fmt.Println()
+	fmt.Printf("Authority boundary: %s\n", markdownPacketValue(narrative.AuthorityBoundary))
+}
+
+func narrativeHeading(label string) string {
+	if label == "" {
+		return "Statement"
+	}
+	return strings.ToUpper(label[:1]) + label[1:]
 }
 
 func printExplainCodePacketMarkdown(packet provenance.ExplainCodePacket) {
@@ -19678,7 +19723,7 @@ func printCommandHelp(command string) bool {
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
-		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--format packet|markdown|json]\n  Render a deterministic grounded packet without generating historical rationale.",
+		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]\n  Render a deterministic grounded packet with an optional validated advisory narrative.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
 		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",

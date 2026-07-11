@@ -2437,6 +2437,67 @@ func TestCLI_ExplainCodeGroundedPacket(t *testing.T) {
 	if err := run(context.Background(), []string{"explain", "code", "../outside", "--task", "EXPLAIN-001"}); err == nil || !strings.Contains(err.Error(), "within the repository") {
 		t.Fatalf("traversal error=%v", err)
 	}
+
+	providerJSON := `{"schema":"fairway.explain-narrative.v1","statements":[{"label":"recorded","text":"The task is recorded in Fairway.","citations":["task:EXPLAIN-001"]},{"label":"inferred","text":"The bounded packet supports independent explanation.","citations":["task:EXPLAIN-001:acceptance:1"]},{"label":"unknown","text":"No record explains later callers."}]}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/generate" {
+			t.Errorf("request=%s %s", r.Method, r.URL.Path)
+		}
+		var request struct {
+			Prompt string `json:"prompt"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+		}
+		if !strings.Contains(request.Prompt, "fairway.explain-code.v1") || strings.Contains(request.Prompt, "func Run()") || strings.Contains(request.Prompt, "supersecret") || strings.Contains(request.Prompt, "json-secret") {
+			t.Errorf("unsafe or incomplete grounded prompt: %s", request.Prompt)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"response": providerJSON})
+	}))
+	defer server.Close()
+	t.Setenv("FAIRWAY_TEST_OLLAMA_ENDPOINT", server.URL)
+	configPath := filepath.Join(repo, ".fairway", "config.toml")
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configData = append(configData, []byte(`
+
+[[advisory_provider_adapters]]
+name = "local-explain"
+provider = "ollama"
+type = "local_ollama"
+mode = "advisory"
+trust = "low"
+model = "test-model"
+endpoint_env = "FAIRWAY_TEST_OLLAMA_ENDPOINT"
+capabilities = ["explain_code_narrative"]
+allowed_actions = ["render_packet"]
+`)...)
+	if err := os.WriteFile(configPath, configData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	detailBefore := runCapture(t, "task-detail", "EXPLAIN-001")
+	narrative := runCapture(t, "--json", "explain", "code", "internal/example/run.go", "--task", "EXPLAIN-001", "--narrative-provider", "local-explain")
+	assertContains(t, narrative, `"schema": "fairway.explain-narrative.v1"`)
+	assertContains(t, narrative, `"label": "recorded"`)
+	assertContains(t, narrative, `"label": "inferred"`)
+	assertContains(t, narrative, `"label": "unknown"`)
+	assertContains(t, narrative, `"advisory": true`)
+	assertContains(t, narrative, "generated narrative is advisory display output only")
+	assertNotContains(t, narrative, "supersecret")
+	if detailAfter := runCapture(t, "task-detail", "EXPLAIN-001"); detailAfter != detailBefore {
+		t.Fatal("advisory narrative mutated Fairway task state")
+	}
+
+	providerJSON = `{"schema":"fairway.explain-narrative.v1","statements":[{"label":"recorded","text":"Unsupported citation.","citations":["task:OTHER"]}]}`
+	if err := run(context.Background(), []string{"explain", "code", "internal/example/run.go", "--task", "EXPLAIN-001", "--narrative-provider", "local-explain"}); err == nil || !strings.Contains(err.Error(), "unknown packet fact") {
+		t.Fatalf("unknown citation error=%v", err)
+	}
+	providerJSON = `{"schema":"fairway.explain-narrative.v1","statements":[{"label":"recorded","text":"authorization: Bearer leaked-secret","citations":["task:EXPLAIN-001"]}]}`
+	if err := run(context.Background(), []string{"explain", "code", "internal/example/run.go", "--task", "EXPLAIN-001", "--narrative-provider", "local-explain"}); err == nil || !strings.Contains(err.Error(), "privacy-rejected") {
+		t.Fatalf("privacy error=%v", err)
+	}
 }
 
 func TestCLI_TaskRecipeExtractRender(t *testing.T) {

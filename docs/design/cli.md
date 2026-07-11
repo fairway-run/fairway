@@ -591,7 +591,7 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   objective, scope, acceptance, source facts, validation gates, evidence refs,
   review refs, and forbidden actions, but it does not authorize execution,
   review approval, merge, push, deploy, release, or dashboard mutation.
-- `explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--format packet|markdown|json]`
+- `explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]`
   renders `fairway.explain-code.v1`, a deterministic grounded packet over
   committed Git metadata and existing Fairway task, contract, decision,
   evidence, and review references. File, line, commit, and task entry points
@@ -602,6 +602,14 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   inference inputs. It excludes source bodies, raw prompts, private
   transcripts, raw tool bodies, generated-content dumps, and secret-like
   values. It does not invent historical rationale or grant workflow authority.
+  When `--narrative-provider` names an enabled `local_ollama` advisory adapter,
+  Fairway sends the redacted packet in memory to its loopback endpoint and
+  validates the returned `fairway.explain-narrative.v1` JSON. Each statement
+  must be labeled `recorded`, `inferred`, or `unknown`; recorded and inferred
+  statements require citations present in the packet. Unknown citations,
+  privacy-rejected output, redirects, non-loopback endpoints, and oversized
+  responses fail closed. The narrative is display-only and is never recorded
+  as evidence, a decision, or historical provenance.
 - `recipe extract|render|list` promotes completed tasks into reusable
   recipe/context packets. Recipes are JSON files, normally under
   `.fairway/recipes`, that reference source facts, evidence refs, validation

@@ -112,7 +112,7 @@ mode = "advisory"                     # advisory | report_only | disabled
 trust = "low"                         # low | medium | high
 model = "llama3.1"
 endpoint_env = "FAIRWAY_OLLAMA_ENDPOINT"
-capabilities = ["summarize_evidence", "rank_ready_tasks"]
+capabilities = ["summarize_evidence", "rank_ready_tasks", "explain_code_narrative"]
 allowed_actions = ["inspect_task", "render_packet"]
 
 [[external_notifiers]]
@@ -410,7 +410,7 @@ mode = "advisory"
 trust = "low"
 model = "llama3.1"
 endpoint_env = "FAIRWAY_OLLAMA_ENDPOINT"
-capabilities = ["summarize_evidence", "rank_ready_tasks"]
+capabilities = ["summarize_evidence", "rank_ready_tasks", "explain_code_narrative"]
 allowed_actions = ["inspect_task", "render_packet", "wake_provider"]
 ```
 
@@ -432,6 +432,16 @@ apply the recommendation automatically.
 | `endpoint_env` | string | — | Optional environment variable name for an endpoint URL. This is an env var name, not the endpoint value and not a credential. |
 | `capabilities` | []string | — | Tokenized advisory capabilities for reporting and review. |
 | `allowed_actions` | []string | all bounded advisory actions | Optional subset of the advisory action enum accepted from this adapter. |
+
+`explain code --narrative-provider <name>` implements the first provider-backed
+advisory surface only for `type = "local_ollama"`. The adapter must declare
+`capabilities = ["explain_code_narrative"]`, allow `render_packet`, and name an
+`endpoint_env` whose runtime value is a loopback-only HTTP base URL. Fairway
+posts the already-redacted grounded packet to `/api/generate`; redirects,
+non-loopback endpoints, unsupported response schemas, unknown citations,
+privacy-rejected text, and responses over 64 KiB fail closed. The endpoint
+value and generated provider exchange are not persisted. Credentialed remote
+providers are not implemented by this slice.
 
 ### `[[external_notifiers]]`
 

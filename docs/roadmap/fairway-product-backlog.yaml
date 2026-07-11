@@ -5302,7 +5302,7 @@ tasks:
     owning_domain: fairway
     owning_layer: explainability
     source_paths: [internal/provenance, internal/config]
-    target_paths: [cmd/fairway, internal/config, docs/design]
+    target_paths: [cmd/fairway, internal/config, internal/provenance, docs/config-reference.md, docs/design, docs/roadmap/fairway-product-backlog.yaml]
     review_domains: [arch, backend, governance, security]
     risk_level: high
     migration_type: explain-code-narrative

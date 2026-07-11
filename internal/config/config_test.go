@@ -302,6 +302,26 @@ func TestValidateAdvisoryAdapters(t *testing.T) {
 			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Capabilities: []string{"raw prompt"}}},
 			want:     "must be a single token",
 		},
+		{
+			name:     "narrative requires local ollama",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Type: "openai-compatible", Model: "model", EndpointEnv: "FAIRWAY_ENDPOINT", Capabilities: []string{"explain_code_narrative"}, AllowedActions: []string{"render_packet"}}},
+			want:     "requires local_ollama type",
+		},
+		{
+			name:     "narrative requires model",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Type: "local_ollama", EndpointEnv: "FAIRWAY_ENDPOINT", Capabilities: []string{"explain_code_narrative"}, AllowedActions: []string{"render_packet"}}},
+			want:     "requires model",
+		},
+		{
+			name:     "narrative requires endpoint env",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Type: "local_ollama", Model: "model", Capabilities: []string{"explain_code_narrative"}, AllowedActions: []string{"render_packet"}}},
+			want:     "requires endpoint_env",
+		},
+		{
+			name:     "narrative requires render packet",
+			adapters: []AdvisoryAdapter{{Name: "local", Provider: "ollama", Type: "local_ollama", Model: "model", EndpointEnv: "FAIRWAY_ENDPOINT", Capabilities: []string{"explain_code_narrative"}}},
+			want:     "requires render_packet",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
