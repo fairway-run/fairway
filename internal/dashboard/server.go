@@ -349,6 +349,7 @@ type TaskDetailViewData struct {
 	Audit                AuditDiagnostics
 	ActiveFindings       []reconcile.ActiveFinding
 	ReadOnly             bool
+	Recommendation       CommonPathRecommendation
 }
 
 type TaskGateStatus struct {
@@ -2556,6 +2557,30 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	decisions, err := s.store.TaskDecisions(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	decisionAttention := 0
+	for _, decision := range decisions {
+		if decision.QualityState == "superseded" {
+			continue
+		}
+		if decision.QualityState == "insufficient" || (taskDecisionAcceptanceRequired(task) && decision.QualityState != "accepted") {
+			decisionAttention++
+		}
+	}
+	taskSessions := sessionsForDashboardTask(sessions, id)
+	recommendation := RecommendCommonPath(CommonPathInput{
+		Task:                 task,
+		ActiveSessions:       len(taskSessions),
+		EvidenceCount:        len(evidence),
+		MissingReviewDomains: missingReviewDomains,
+		ReviewMode:           reviewPolicy.Mode,
+		ActiveFindings:       activeFindingsForTask(activeReport.Findings, id),
+		DecisionAttention:    decisionAttention,
+	})
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -2578,7 +2603,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		ReviewWaits:          reviewWaits,
 		CompletionHandbacks:  completionHandbacks,
 		CompletionActions:    completionActions,
-		TaskSessions:         sessionsForDashboardTask(sessions, id),
+		TaskSessions:         taskSessions,
 		Usage:                usageEvents,
 		UsageRollups:         usageRollups,
 		Batches:              batches,
@@ -2590,6 +2615,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Audit:                s.auditDiagnostics(r.Context(), id),
 		ActiveFindings:       activeFindingsForTask(activeReport.Findings, id),
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
+		Recommendation:       recommendation,
 	}
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
 }

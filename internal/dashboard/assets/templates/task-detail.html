@@ -28,6 +28,18 @@
 </div>
 </section>
 <section class="detail-grid">
+<article class="detail-panel wide common-path-recommendation">
+<p class="eyebrow">Current action / {{.Recommendation.BoundaryStatus}}</p>
+<h2>{{.Recommendation.CurrentAction}}</h2>
+<p><code>{{.Recommendation.SuggestedCommand}}</code></p>
+{{range .Recommendation.Blockers}}<p><b>Blocker:</b> {{.}}</p>{{end}}
+{{range .Recommendation.Advisories}}<p><b>Advisory:</b> {{.}}</p>{{end}}
+<details>
+<summary>Audit detail</summary>
+<p>{{.Recommendation.AuthorityBoundary}}</p>
+<p><code>{{.Recommendation.AuditCommand}}</code></p>
+</details>
+</article>
 {{if not .ReadOnly}}
 <article class="detail-panel">
 <h2>Status</h2>
@@ -214,7 +226,7 @@
 <article class="detail-panel">
 <h2>Reviews</h2>
 <div class="detail-stack">
-{{if .MissingReviewDomains}}<p><b>Missing required domains</b>: {{range .MissingReviewDomains}}<code>{{.}}</code> {{end}}</p>{{end}}
+{{if .MissingReviewDomains}}<p><b>Required before close</b>: {{range .MissingReviewDomains}}<code>{{.}}</code> {{end}}</p>{{end}}
 {{range .Reviews}}<p><b>{{.Verdict}}</b> by {{.Reviewer}}: {{.Reason}}</p>{{else}}<p>none</p>{{end}}
 </div>
 </article>

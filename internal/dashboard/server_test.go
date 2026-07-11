@@ -1324,7 +1324,7 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 			t.Fatalf("covered grouped child detail missing %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, "Missing required domains") {
+	if strings.Contains(body, "Required before close") {
 		t.Fatalf("covered grouped child rendered missing review domains:\n%s", body)
 	}
 
@@ -1341,7 +1341,7 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 			t.Fatalf("terminal no-review task detail missing %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, "Missing required domains") {
+	if strings.Contains(body, "Required before close") {
 		t.Fatalf("terminal no-review task rendered missing review domains:\n%s", body)
 	}
 
@@ -1355,7 +1355,7 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 		"backend",
 		"governance",
 		"required",
-		"Missing required domains",
+		"Required before close",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("uncovered grouped child detail missing %q:\n%s", want, body)
@@ -1376,7 +1376,7 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 		"governance",
 		"ops",
 		"security",
-		"Missing required domains",
+		"Required before close",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("live grouped child detail missing %q:\n%s", want, body)
@@ -1392,7 +1392,7 @@ func TestDashboardUsesReviewPolicyForGroupedReviewCoverage(t *testing.T) {
 		"grouped-slice",
 		"Inheritance blocked",
 		"release-boundary boundary blocks inherited review coverage",
-		"Missing required domains",
+		"Required before close",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("release grouped child detail missing %q:\n%s", want, body)
@@ -1620,7 +1620,13 @@ func TestTaskDetailRendersMetadata(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.Claim(ctx, "T-001", "arch", "main"); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.UpsertSession(ctx, store.Session{ID: "tmux-arch", Role: "arch", SessionBackend: "tmux", Provider: "claude", TaskID: "T-001", TmuxPane: "%1", TranscriptPath: ".fairway/transcripts/T-001.log", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCheckpoint(ctx, store.Checkpoint{TaskID: "T-001", State: "active", Owner: "arch", Summary: "provider session tmux-arch active"}); err != nil {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"arch"}, nil)
@@ -1629,7 +1635,7 @@ func TestTaskDetailRendersMetadata(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.task(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"fairway", "dashboard", "/assets/css/detail.css", "Task", "detail", "arch", "Wall", `href="/board?role=arch&amp;status=in_progress"`, `href="/board"`, `href="/board?tab=diagnostics"`, "Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map", "tmux-arch", ".fairway/transcripts/T-001.log", "Missing required domains"} {
+	for _, want := range []string{"fairway", "dashboard", "/assets/css/detail.css", "Task", "detail", "arch", "Wall", `href="/board?role=arch&amp;status=in_progress"`, `href="/board"`, `href="/board?tab=diagnostics"`, "Current action", "fairway work verify T-001", "Audit detail", "Metadata", "platform-foundation", "platform", "architecture", "cmd/api", "ownership-map", "tmux-arch", ".fairway/transcripts/T-001.log", "Required before close"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("task detail body missing %q:\n%s", want, body)
 		}
@@ -1663,7 +1669,7 @@ func TestTaskDetailRendersPartialApprovalWhenReviewDomainsMissing(t *testing.T) 
 	rec := httptest.NewRecorder()
 	server.task(rec, req)
 	body := rec.Body.String()
-	for _, want := range []string{"review partial_approval", "Missing required domains", "governance"} {
+	for _, want := range []string{"review partial_approval", "Required before close", "governance"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("task detail partial approval missing %q:\n%s", want, body)
 		}

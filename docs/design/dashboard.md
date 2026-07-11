@@ -410,8 +410,17 @@ intended for audit, analysis, and external planning tools.
 
 ## Task Detail
 
-Task detail uses the same dashboard shell with a compact detail header. It
-shows:
+Task detail uses the same dashboard shell with a compact detail header. The
+first panel uses the same deterministic common-path recommendation as
+`fairway work status`: current action, suggested command, blocker, and boundary
+status. Primitive counts and the authority explanation remain available through
+the Audit detail disclosure and the rest of task detail. Required reviews are
+labelled as closeout requirements, not proof that an early reversible task is
+already blocked. Ambiguous session or reconciliation state fails closed. The
+recommendation is read-only and cannot create evidence, reviews, approvals, or
+merge, deploy, release, or live-operation authority.
+
+The remaining detail includes:
 
 ![Fairway task detail view](/img/dashboard/fairway-dashboard-task-detail.png)
 

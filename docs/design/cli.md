@@ -16,9 +16,17 @@ deterministic.
 
 `work status` gives the compact current task state and durable fact counts.
 Without a task ID it uses only unambiguous existing task/session environment
-inference. `--explain` names the underlying records and detailed inspection
-command. Neither command records evidence, synthesizes reviews, or authorizes
+inference. Human output leads with the deterministic current action, suggested
+command, blocker, and boundary state. `--explain` adds durable counts, names the
+underlying records, and gives the detailed inspection command. JSON includes
+both recommendation and audit fields. Neither command records evidence, synthesizes reviews, or authorizes
 merge, deploy, release, credentials, public exposure, or live operations.
+
+Recommendations fail closed for ambiguous task state, missing or multiple
+active-session attachments, and target-scoped reconciliation findings. Required
+review domains become a current blocker only after validation evidence exists;
+before that, the current action remains verification rather than a misleading
+missing-review alarm. Advisory profiles remain advisory.
 
 `work verify` records one bounded validation evidence row. It accepts a command
 or check summary, result, optional duration, bounded notes, and an artifact

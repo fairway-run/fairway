@@ -939,7 +939,7 @@ func cmdTree(ctx context.Context, opts globalOptions, args []string) error {
 		return fmt.Errorf("unexpected tree arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	rootID := args[0]
-	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
 		tasks, err := s.AllTasks(ctx)
 		if err != nil {
 			return err
@@ -7180,7 +7180,7 @@ func cmdWorkStatus(ctx context.Context, opts globalOptions, args []string) error
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected work status arguments: %s", strings.Join(fs.Args(), " "))
 	}
-	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		taskID := taskArg
 		if taskID == "" {
 			var err error
@@ -7231,29 +7231,62 @@ func cmdWorkStatus(ctx context.Context, opts globalOptions, args []string) error
 				decisionAttention++
 			}
 		}
+		reviewEval, err := reviewPolicyEvaluation(ctx, cfg, s, task, reviews, nil)
+		if err != nil {
+			return err
+		}
+		activeReport, err := reconcile.Active(ctx, s, reconcile.ActiveOptions{Terminal: cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
+		if err != nil {
+			return err
+		}
+		recommendation := dashboard.RecommendCommonPath(dashboard.CommonPathInput{
+			Task:                 task,
+			ActiveSessions:       activeSessions,
+			EvidenceCount:        len(evidence),
+			MissingReviewDomains: reviewEval.MissingReviewDomains,
+			ReviewMode:           reviewEval.Mode,
+			ActiveFindings:       workActiveFindings(activeReport.Findings, taskID),
+			DecisionAttention:    decisionAttention,
+		})
 		row := struct {
-			TaskID              string               `json:"task_id"`
-			Status              string               `json:"status"`
-			Owner               string               `json:"owner"`
-			Sessions            int                  `json:"active_sessions"`
-			Checkpoints         int                  `json:"checkpoints"`
-			Evidence            int                  `json:"evidence"`
-			Reviews             int                  `json:"reviews"`
-			CurrentDecisions    int                  `json:"current_decisions"`
-			SupersededDecisions int                  `json:"superseded_decisions"`
-			DecisionAttention   int                  `json:"decision_attention"`
-			Decisions           []store.TaskDecision `json:"decisions,omitempty"`
-		}{taskID, task.Status, task.Owner, activeSessions, checkpointCount, len(evidence), len(reviews), currentDecisions, supersededDecisions, decisionAttention, decisions}
+			TaskID              string                             `json:"task_id"`
+			Status              string                             `json:"status"`
+			Owner               string                             `json:"owner"`
+			Sessions            int                                `json:"active_sessions"`
+			Checkpoints         int                                `json:"checkpoints"`
+			Evidence            int                                `json:"evidence"`
+			Reviews             int                                `json:"reviews"`
+			CurrentDecisions    int                                `json:"current_decisions"`
+			SupersededDecisions int                                `json:"superseded_decisions"`
+			DecisionAttention   int                                `json:"decision_attention"`
+			Decisions           []store.TaskDecision               `json:"decisions,omitempty"`
+			Recommendation      dashboard.CommonPathRecommendation `json:"recommendation"`
+		}{taskID, task.Status, task.Owner, activeSessions, checkpointCount, len(evidence), len(reviews), currentDecisions, supersededDecisions, decisionAttention, decisions, recommendation}
 		if opts.JSON {
 			return printJSON(row)
 		}
-		fmt.Printf("work task=%s status=%s owner=%s sessions=%d checkpoints=%d evidence=%d reviews=%d decisions=%d superseded_decisions=%d decision_attention=%d\n", row.TaskID, row.Status, row.Owner, row.Sessions, row.Checkpoints, row.Evidence, row.Reviews, row.CurrentDecisions, row.SupersededDecisions, row.DecisionAttention)
+		fmt.Printf("work action=%s boundary=%s command=%s\n", recommendation.Classification, recommendation.BoundaryStatus, recommendation.SuggestedCommand)
+		fmt.Printf("next: %s\n", recommendation.CurrentAction)
+		for _, blocker := range recommendation.Blockers {
+			fmt.Printf("blocker: %s\n", blocker)
+		}
 		if *explain {
+			fmt.Printf("detail task=%s status=%s owner=%s sessions=%d checkpoints=%d evidence=%d reviews=%d decisions=%d superseded_decisions=%d decision_attention=%d\n", row.TaskID, row.Status, row.Owner, row.Sessions, row.Checkpoints, row.Evidence, row.Reviews, row.CurrentDecisions, row.SupersededDecisions, row.DecisionAttention)
 			fmt.Println("primitives: task_state agent_sessions task_checkpoints task_evidence task_reviews task_decisions task_decision_assessments")
 			fmt.Printf("inspect: fairway task-detail %s\n", taskID)
 		}
 		return nil
 	})
+}
+
+func workActiveFindings(findings []reconcile.ActiveFinding, taskID string) []reconcile.ActiveFinding {
+	var out []reconcile.ActiveFinding
+	for _, finding := range findings {
+		if finding.TaskID == taskID {
+			out = append(out, finding)
+		}
+	}
+	return out
 }
 
 const (
