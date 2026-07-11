@@ -1518,7 +1518,7 @@ func (s *Store) ReviewsByTaskIDs(ctx context.Context, taskIDs []string) (map[str
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT task_id, reviewer, COALESCE(review_domain, ''), verdict, notes, reviewed_commit_sha, created_at FROM task_reviews WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY task_id, created_at`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT task_id, reviewer, COALESCE(review_domain, ''), verdict, notes, reviewed_commit_sha, created_at FROM task_reviews WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY task_id, id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -4190,7 +4190,7 @@ func (s *Store) handoffs(ctx context.Context, taskID string) ([]Handoff, error) 
 }
 
 func (s *Store) reviews(ctx context.Context, taskID string) ([]Review, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT reviewer, COALESCE(review_domain, ''), verdict, notes, reviewed_commit_sha, created_at FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY created_at`, s.projectID, taskID)
+	rows, err := s.db.QueryContext(ctx, `SELECT reviewer, COALESCE(review_domain, ''), verdict, notes, reviewed_commit_sha, created_at FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY id`, s.projectID, taskID)
 	if err != nil {
 		return nil, err
 	}

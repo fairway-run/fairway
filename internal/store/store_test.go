@@ -249,6 +249,37 @@ func TestMigrate_RecordsAppliedMigration(t *testing.T) {
 	}
 }
 
+func TestReviewsOrderEqualTimestampsByDurableID(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-900", Title: "Review order", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-900", Review{Reviewer: "arch", Domain: "arch", Verdict: "changes", Reason: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "T-900", Review{Reviewer: "arch", Domain: "arch", Verdict: "approve", Reason: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE task_reviews SET created_at='2026-07-11T00:00:00Z' WHERE project_id=? AND task_id=?`, s.projectID, "T-900"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, _, reviews, err := s.TaskDetail(ctx, "T-900")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reviews) != 2 || reviews[0].Verdict != "changes" || reviews[1].Verdict != "approve" {
+		t.Fatalf("task detail reviews=%+v", reviews)
+	}
+	byTask, err := s.ReviewsByTaskIDs(ctx, []string{"T-900"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := byTask["T-900"]; len(got) != 2 || got[0].Verdict != "changes" || got[1].Verdict != "approve" {
+		t.Fatalf("batched reviews=%+v", got)
+	}
+}
+
 func TestSchemaVersionsReadsWithoutMigrating(t *testing.T) {
 	ctx := context.Background()
 	missing := filepath.Join(t.TempDir(), "missing.db")

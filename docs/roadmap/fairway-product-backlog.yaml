@@ -5329,3 +5329,19 @@ tasks:
       - "All common-path, decision-memory, consumer-gap, and explainability tasks included in the release are done with reviewed evidence."
       - "Release packet states implemented versus advisory behavior and does not claim deterministic LLM reproducibility."
       - "CI, docs, release assets, Homebrew, version readback, and dashboard restart have explicit publish and verification tasks."
+
+  - id: FW-312
+    title: Make latest review verdict ordering deterministic
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: store
+    source_paths: [internal/store, internal/coordinator]
+    target_paths: [internal/store, internal/coordinator, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [backend, governance, ops]
+    risk_level: high
+    migration_type: review-ordering
+    acceptance_checks:
+      - "Review readers order append-only rows by durable row id so latest verdict is deterministic even when timestamps tie or the wall clock moves backward."
+      - "Coordinator review completion handback tests pass repeatedly for changes-then-approved and approved-then-changes sequences."
