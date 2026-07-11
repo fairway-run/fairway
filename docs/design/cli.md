@@ -209,6 +209,8 @@ fairway dashboard restart [--listen <addr>] [--multi] [--open] [--pid-file <path
 fairway dashboard status [--listen <addr>] [--multi] [--pid-file <path>] [--log-file <path>]
 fairway server --read-only [--listen <addr>]              # shared-team read-only API skeleton
 fairway server --mode api-write-pilot --write             # guarded shared-team write API pilot
+fairway binary install --source <local-binary> [--cache-dir <path>] # verified user-cache install/upgrade
+fairway binary status|rollback|cleanup [--cache-dir <path>]         # exact managed binary lifecycle readback
 fairway tui [--once]                                    # interactive ready/claim/status/detail/status-update/evidence/readiness loop
 fairway tracker providers
 fairway tracker configure <plane|jira|linear> [--url <url>] [--workspace <slug>] [--project <id-or-slug>] [--team <key>] [--dry-run]

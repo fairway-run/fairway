@@ -3,10 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -249,6 +251,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdDashboard(ctx, opts, args[1:])
 	case "server":
 		return cmdServer(ctx, opts, args[1:])
+	case "binary":
+		return cmdBinary(opts, args[1:])
 	case "db":
 		return cmdDB(ctx, opts, args[1:])
 	case "version":
@@ -259,6 +263,436 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown command %q", args[0])
+}
+
+const managedBinaryManifestSchema = "fairway.managed-binary.v1"
+
+type managedBinaryEntry struct {
+	Path        string    `json:"path"`
+	Version     string    `json:"version"`
+	SHA256      string    `json:"sha256"`
+	InstalledAt time.Time `json:"installed_at"`
+}
+
+type managedBinaryManifest struct {
+	Schema   string              `json:"schema"`
+	CacheDir string              `json:"cache_dir"`
+	Current  *managedBinaryEntry `json:"current,omitempty"`
+	Previous *managedBinaryEntry `json:"previous,omitempty"`
+}
+
+type managedBinaryStatus struct {
+	managedBinaryManifest
+	ManifestPath     string `json:"manifest_path"`
+	CurrentVerified  bool   `json:"current_verified"`
+	PreviousVerified bool   `json:"previous_verified,omitempty"`
+}
+
+func cmdBinary(opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("binary", "install|status|rollback|cleanup [--cache-dir <path>]")
+		return nil
+	}
+	action := args[0]
+	if action != "install" && action != "status" && action != "rollback" && action != "cleanup" {
+		return fmt.Errorf("unknown binary action %q", action)
+	}
+	if isHelpOnly(args[1:]) {
+		usage := "[--cache-dir <path>]"
+		if action == "install" {
+			usage = "--source <local-binary> [--cache-dir <path>]"
+		}
+		subcommandUsage("binary "+action, usage)
+		return nil
+	}
+	fs := flag.NewFlagSet("binary "+action, flag.ContinueOnError)
+	cacheDir := fs.String("cache-dir", "", "managed binary cache outside consumer worktrees")
+	source := fs.String("source", "", "local Fairway binary to install")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected binary %s arguments: %s", action, strings.Join(fs.Args(), " "))
+	}
+	if action != "install" && strings.TrimSpace(*source) != "" {
+		return fmt.Errorf("binary %s does not accept --source", action)
+	}
+	root, err := managedBinaryCacheDir(*cacheDir)
+	if err != nil {
+		return err
+	}
+	manifestPath := filepath.Join(root, "manifest.json")
+	manifest, err := readManagedBinaryManifest(manifestPath, root)
+	if err != nil {
+		return err
+	}
+	switch action {
+	case "install":
+		if strings.TrimSpace(*source) == "" {
+			return errors.New("binary install requires --source <local-binary>")
+		}
+		manifest, err = installManagedBinary(root, manifest, *source)
+		if err != nil {
+			return err
+		}
+		if err := writeManagedBinaryManifest(manifestPath, manifest); err != nil {
+			return err
+		}
+	case "rollback":
+		if manifest.Previous == nil {
+			return errors.New("binary rollback requires a verified previous binary")
+		}
+		if err := verifyManagedBinary(*manifest.Previous); err != nil {
+			return fmt.Errorf("refusing rollback: %w", err)
+		}
+		manifest.Current, manifest.Previous = manifest.Previous, manifest.Current
+		if err := writeManagedBinaryManifest(manifestPath, manifest); err != nil {
+			return err
+		}
+	case "cleanup":
+		if err := cleanupManagedBinaries(root, manifest); err != nil {
+			return err
+		}
+	}
+	status, err := managedBinaryReadback(manifestPath, manifest)
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(status)
+	}
+	printManagedBinaryStatus(action, status)
+	return nil
+}
+
+func managedBinaryCacheDir(override string) (string, error) {
+	root := strings.TrimSpace(override)
+	if root == "" {
+		root = strings.TrimSpace(os.Getenv("FAIRWAY_BINARY_CACHE"))
+	}
+	if root == "" {
+		userCache, err := os.UserCacheDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user cache: %w", err)
+		}
+		root = filepath.Join(userCache, "fairway", "binaries")
+	}
+	abs, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return "", err
+	}
+	if resolved, resolveErr := canonicalPathWithMissingTail(abs); resolveErr == nil {
+		abs = resolved
+	}
+	if gitRoot := containingGitWorktreeRoot(abs); gitRoot != "" {
+		return "", errors.New("managed binary cache must be outside the consumer Git worktree")
+	}
+	if repoRoot := currentGitWorktreeRoot(); repoRoot != "" {
+		rel, relErr := filepath.Rel(repoRoot, abs)
+		if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+			return "", errors.New("managed binary cache must be outside the consumer Git worktree")
+		}
+	}
+	return abs, nil
+}
+
+func canonicalPathWithMissingTail(path string) (string, error) {
+	candidate := filepath.Clean(path)
+	var tail []string
+	for {
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved, nil
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return "", err
+		}
+		tail = append(tail, filepath.Base(candidate))
+		candidate = parent
+	}
+}
+
+func containingGitWorktreeRoot(path string) string {
+	for candidate := filepath.Clean(path); ; candidate = filepath.Dir(candidate) {
+		if _, err := os.Stat(filepath.Join(candidate, ".git")); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return ""
+		}
+	}
+}
+
+func currentGitWorktreeRoot() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for candidate := filepath.Clean(cwd); ; candidate = filepath.Dir(candidate) {
+		if _, err := os.Stat(filepath.Join(candidate, ".git")); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return ""
+		}
+	}
+}
+
+func readManagedBinaryManifest(path, root string) (managedBinaryManifest, error) {
+	manifest := managedBinaryManifest{Schema: managedBinaryManifestSchema, CacheDir: root}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return manifest, nil
+	}
+	if err != nil {
+		return manifest, err
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return manifest, errors.New("read managed binary manifest: invalid JSON")
+	}
+	if manifest.Schema != managedBinaryManifestSchema || filepath.Clean(manifest.CacheDir) != filepath.Clean(root) {
+		return manifest, errors.New("read managed binary manifest: unsupported schema or cache path mismatch")
+	}
+	for _, entry := range []*managedBinaryEntry{manifest.Current, manifest.Previous} {
+		if entry != nil && !managedBinaryEntryPathValid(root, entry.Path) {
+			return manifest, errors.New("read managed binary manifest: binary path escapes managed cache")
+		}
+	}
+	return manifest, nil
+}
+
+func installManagedBinary(root string, manifest managedBinaryManifest, source string) (managedBinaryManifest, error) {
+	resolved, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		return manifest, fmt.Errorf("resolve source binary: %w", err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return manifest, err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		return manifest, errors.New("source must be a regular executable file")
+	}
+	versionValue, err := managedBinaryVersion(resolved)
+	if err != nil {
+		return manifest, err
+	}
+	digest, err := fileSHA256(resolved)
+	if err != nil {
+		return manifest, err
+	}
+	targetDir := filepath.Join(root, "versions", sanitizeManagedBinaryVersion(versionValue)+"-"+digest[:12])
+	target := filepath.Join(targetDir, "fairway")
+	entry := managedBinaryEntry{Path: target, Version: versionValue, SHA256: digest, InstalledAt: time.Now().UTC()}
+	if manifest.Current != nil && manifest.Current.SHA256 == digest && manifest.Current.Version == versionValue {
+		if err := verifyManagedBinary(*manifest.Current); err != nil {
+			return manifest, err
+		}
+		return manifest, nil
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return manifest, err
+	}
+	resolvedRoot, rootErr := filepath.EvalSymlinks(root)
+	resolvedTarget, targetErr := filepath.EvalSymlinks(targetDir)
+	if rootErr != nil || targetErr != nil || !pathIsWithin(resolvedRoot, resolvedTarget) {
+		return manifest, errors.New("managed binary target escapes cache through a symlink")
+	}
+	if err := copyManagedBinary(resolved, target); err != nil {
+		return manifest, err
+	}
+	if err := verifyManagedBinary(entry); err != nil {
+		_ = os.Remove(target)
+		return manifest, err
+	}
+	manifest.Previous = manifest.Current
+	manifest.Current = &entry
+	return manifest, nil
+}
+
+func copyManagedBinary(source, target string) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".fairway-binary-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := io.Copy(tmp, in); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o755); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, target)
+}
+
+func managedBinaryVersion(binary string) (string, error) {
+	out, err := exec.Command(binary, "version").CombinedOutput()
+	if err != nil {
+		return "", errors.New("source binary did not return a Fairway version")
+	}
+	value := strings.TrimSpace(string(out))
+	if value == "" || strings.ContainsAny(value, "\r\n/\\") {
+		return "", errors.New("source binary returned an invalid Fairway version")
+	}
+	return value, nil
+}
+
+func sanitizeManagedBinaryVersion(value string) string {
+	value = regexp.MustCompile(`[^A-Za-z0-9._-]+`).ReplaceAllString(value, "-")
+	value = strings.Trim(value, ".-")
+	if value == "" {
+		return "unknown"
+	}
+	return value
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func verifyManagedBinary(entry managedBinaryEntry) error {
+	info, err := os.Lstat(entry.Path)
+	if err != nil {
+		return fmt.Errorf("verify managed binary %s: %w", entry.Path, err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("verify managed binary %s: expected regular non-symlink file", entry.Path)
+	}
+	digest, err := fileSHA256(entry.Path)
+	if err != nil {
+		return fmt.Errorf("verify managed binary %s: %w", entry.Path, err)
+	}
+	if digest != entry.SHA256 {
+		return fmt.Errorf("verify managed binary %s: checksum mismatch", entry.Path)
+	}
+	actualVersion, err := managedBinaryVersion(entry.Path)
+	if err != nil {
+		return fmt.Errorf("verify managed binary %s: %w", entry.Path, err)
+	}
+	if actualVersion != entry.Version {
+		return fmt.Errorf("verify managed binary %s: version mismatch", entry.Path)
+	}
+	return nil
+}
+
+func managedBinaryEntryPathValid(root, binaryPath string) bool {
+	versions := filepath.Join(filepath.Clean(root), "versions")
+	clean := filepath.Clean(binaryPath)
+	return filepath.Base(clean) == "fairway" && pathIsWithin(versions, clean) && filepath.Dir(clean) != versions
+}
+
+func pathIsWithin(root, candidate string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(candidate))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+func writeManagedBinaryManifest(path string, manifest managedBinaryManifest) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".manifest-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
+func managedBinaryReadback(path string, manifest managedBinaryManifest) (managedBinaryStatus, error) {
+	status := managedBinaryStatus{managedBinaryManifest: manifest, ManifestPath: path}
+	if manifest.Current != nil {
+		if err := verifyManagedBinary(*manifest.Current); err != nil {
+			return status, err
+		}
+		status.CurrentVerified = true
+	}
+	if manifest.Previous != nil {
+		status.PreviousVerified = verifyManagedBinary(*manifest.Previous) == nil
+	}
+	return status, nil
+}
+
+func cleanupManagedBinaries(root string, manifest managedBinaryManifest) error {
+	keep := map[string]bool{}
+	for _, entry := range []*managedBinaryEntry{manifest.Current, manifest.Previous} {
+		if entry != nil {
+			keep[filepath.Clean(filepath.Dir(entry.Path))] = true
+		}
+	}
+	versionsDir := filepath.Join(root, "versions")
+	entries, err := os.ReadDir(versionsDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		candidate := filepath.Join(versionsDir, entry.Name())
+		if !entry.IsDir() || keep[filepath.Clean(candidate)] {
+			continue
+		}
+		if err := os.RemoveAll(candidate); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func printManagedBinaryStatus(action string, status managedBinaryStatus) {
+	fmt.Printf("binary %s\tcache=%s\tmanifest=%s", action, status.CacheDir, status.ManifestPath)
+	if status.Current != nil {
+		fmt.Printf("\tcurrent=%s\tversion=%s\tsha256=%s\tverified=%t", status.Current.Path, status.Current.Version, status.Current.SHA256, status.CurrentVerified)
+	} else {
+		fmt.Print("\tcurrent=none")
+	}
+	if status.Previous != nil {
+		fmt.Printf("\tprevious=%s\tprevious_version=%s\tprevious_verified=%t", status.Previous.Path, status.Previous.Version, status.PreviousVerified)
+	}
+	fmt.Println()
 }
 
 func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
@@ -18707,7 +19141,7 @@ func usage() {
 	fmt.Println("Rules, packets, reports, and audits:")
 	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
-	fmt.Println("  dashboard, server, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
+	fmt.Println("  dashboard, server, binary, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
 	fmt.Println("Run `fairway agent-guide` for the offline agent operating guide.")
 	fmt.Println("Run `fairway <command> --help` for concise command usage.")
@@ -18760,6 +19194,7 @@ func printCommandHelp(command string) bool {
 		"rough-edge":                 "fairway rough-edge add --task <task-id> --owner <role> --severity <level> --decision <fix-now|defer> --summary <text> | fairway rough-edge list [--task <task-id>] [--owner <role>] [--expired]\n  Record and inspect owner rough edges found while using the product; list is read-only.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"server":                     "fairway server --read-only [--listen <addr>] | fairway server start|status|logs|stop|restart --read-only | fairway server --mode api-write-pilot --write\n  Run or manage the loopback shared-team API. Managed lifecycle is read-only only.",
+		"binary":                     "fairway binary install --source <local-binary> [--cache-dir <path>] | fairway binary status|rollback|cleanup [--cache-dir <path>]\n  Install and manage verified Fairway binaries in the user cache outside consumer worktrees.",
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat|rehearsal ...\n  Manage the local Fairway database.",

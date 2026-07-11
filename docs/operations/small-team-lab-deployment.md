@@ -59,7 +59,6 @@ the root filesystem and do not rely on the launch shell's current directory.
 
 ```bash
 export FAIRWAY_HOME="$HOME/fairway-lab"
-export FAIRWAY_BIN="$FAIRWAY_HOME/bin/fairway"
 export FAIRWAY_REPO="$HOME/dev/fairway"
 export FAIRWAY_PROJECT="$HOME/dev/your-repo"
 export FAIRWAY_CONFIG="$FAIRWAY_PROJECT/.fairway/config.toml"
@@ -67,22 +66,33 @@ export FAIRWAY_STATE="$FAIRWAY_PROJECT/.fairway"
 export FAIRWAY_LOG_DIR="$FAIRWAY_HOME/logs"
 export FAIRWAY_BACKUP_DIR="$FAIRWAY_HOME/backups"
 
-mkdir -p "$FAIRWAY_HOME/bin" "$FAIRWAY_LOG_DIR" "$FAIRWAY_BACKUP_DIR"
+mkdir -p "$FAIRWAY_LOG_DIR" "$FAIRWAY_BACKUP_DIR"
 ```
 
-For a release binary, place the exact binary under `$FAIRWAY_HOME/bin` and
-record its version and checksum. For source builds, build outside the consumer
-repo and copy the binary into the lab path:
+Managed binaries belong in the user/OS cache, never under a consumer
+repository's `.fairway` directory. Install an exact downloaded release or a
+source build with the managed binary command, then use the `current.path`
+reported by JSON status as `FAIRWAY_BIN`:
 
 ```bash
 cd "$FAIRWAY_REPO"
-go build -o "$FAIRWAY_BIN" ./cmd/fairway
+build_dir="$(mktemp -d /tmp/fairway-build.XXXXXX)"
+go build -o "$build_dir/fairway" ./cmd/fairway
+fairway binary install --source "$build_dir/fairway"
+fairway --json binary status > "$FAIRWAY_HOME/binary-status.json"
+export FAIRWAY_BIN="$(sed -n 's/.*"path": "\([^"]*\)".*/\1/p' "$FAIRWAY_HOME/binary-status.json" | head -1)"
 "$FAIRWAY_BIN" version
-shasum -a 256 "$FAIRWAY_BIN"
 ```
 
-Record the binary path, version, source commit, and checksum as Fairway evidence
-before using the host for team coordination.
+`FAIRWAY_BINARY_CACHE` is optional. Without it, Fairway uses the operating
+system user cache. An explicit `--cache-dir` is rejected when it resolves under
+the current Git worktree. The manifest records current and previous exact
+paths, versions, SHA-256 values, and install times. Reinstalling a different
+binary upgrades current and retains the prior binary for `binary rollback`.
+`binary cleanup` removes inactive versions only; current and previous remain
+available. Status, rollback, and cleanup verify current binary version and
+checksum and fail closed on tampering. Record JSON status plus source commit as
+Fairway evidence before using the host for team coordination.
 
 ## Config
 

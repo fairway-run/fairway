@@ -6803,6 +6803,140 @@ func TestCLI_ServerLifecycleHelpCleanExit(t *testing.T) {
 	}
 }
 
+func TestCLI_ManagedBinaryCacheInstallRollbackStatusAndCleanup(t *testing.T) {
+	repo := t.TempDir()
+	git(t, repo, "init", "-b", "main")
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	cache := filepath.Join(t.TempDir(), "managed-cache")
+	canonicalCache, err := canonicalPathWithMissingTail(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeBinary := func(name, reportedVersion string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nif [ \"$1\" = version ]; then printf '%s\\n' '"+reportedVersion+"'; else exit 2; fi\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	v1 := makeBinary("fairway-v1", "0.1.11")
+	v2 := makeBinary("fairway-v2", "0.1.12")
+
+	installed := runCapture(t, "--json", "binary", "install", "--source", v1, "--cache-dir", cache)
+	var first managedBinaryStatus
+	if err := json.Unmarshal([]byte(installed), &first); err != nil {
+		t.Fatal(err)
+	}
+	if first.Current == nil || first.Current.Version != "0.1.11" || !first.CurrentVerified {
+		t.Fatalf("first install = %#v", first)
+	}
+	if strings.HasPrefix(first.Current.Path, repo+string(filepath.Separator)) {
+		t.Fatalf("managed binary stored under consumer repo: %s", first.Current.Path)
+	}
+
+	upgraded := runCapture(t, "--json", "binary", "install", "--source", v2, "--cache-dir", cache)
+	var second managedBinaryStatus
+	if err := json.Unmarshal([]byte(upgraded), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second.Current == nil || second.Current.Version != "0.1.12" || second.Previous == nil || second.Previous.Version != "0.1.11" {
+		t.Fatalf("upgrade readback = %#v", second)
+	}
+	staleDir := filepath.Join(cache, "versions", "stale")
+	if err := os.MkdirAll(staleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runOK(t, "binary", "cleanup", "--cache-dir", cache)
+	if _, err := os.Stat(staleDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("inactive cache directory remains: %v", err)
+	}
+
+	rolledBack := runCapture(t, "--json", "binary", "rollback", "--cache-dir", cache)
+	var rollback managedBinaryStatus
+	if err := json.Unmarshal([]byte(rolledBack), &rollback); err != nil {
+		t.Fatal(err)
+	}
+	if rollback.Current == nil || rollback.Current.Version != "0.1.11" || rollback.Previous == nil || rollback.Previous.Version != "0.1.12" {
+		t.Fatalf("rollback readback = %#v", rollback)
+	}
+	status := runCapture(t, "binary", "status", "--cache-dir", cache)
+	for _, want := range []string{"version=0.1.11", "previous_version=0.1.12", "verified=true", "cache=" + canonicalCache} {
+		assertContains(t, status, want)
+	}
+}
+
+func TestCLI_ManagedBinaryCacheFailsClosed(t *testing.T) {
+	repo := t.TempDir()
+	git(t, repo, "init", "-b", "main")
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	inside := filepath.Join(repo, ".fairway", "bin")
+	if err := run(context.Background(), []string{"binary", "status", "--cache-dir", inside}); err == nil || !strings.Contains(err.Error(), "outside the consumer Git worktree") {
+		t.Fatalf("inside-worktree cache error = %v", err)
+	}
+
+	cache := filepath.Join(t.TempDir(), "cache")
+	source := filepath.Join(t.TempDir(), "fairway")
+	if err := os.WriteFile(source, []byte("#!/bin/sh\nprintf '0.1.12\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runOK(t, "binary", "install", "--source", source, "--cache-dir", cache)
+	canonicalCache, err := managedBinaryCacheDir(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := readManagedBinaryManifest(filepath.Join(canonicalCache, "manifest.json"), canonicalCache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifest.Current.Path, []byte("tampered"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(context.Background(), []string{"binary", "status", "--cache-dir", cache}); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("tampered status error = %v", err)
+	}
+
+	escapeCache := filepath.Join(t.TempDir(), "escape-cache")
+	if err := os.MkdirAll(escapeCache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	escapeCache, err = managedBinaryCacheDir(escapeCache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	escaped := managedBinaryManifest{
+		Schema: managedBinaryManifestSchema, CacheDir: escapeCache,
+		Current: &managedBinaryEntry{Path: source, Version: "0.1.12", SHA256: "not-used"},
+	}
+	if err := writeManagedBinaryManifest(filepath.Join(escapeCache, "manifest.json"), escaped); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(context.Background(), []string{"binary", "status", "--cache-dir", escapeCache}); err == nil || !strings.Contains(err.Error(), "escapes managed cache") {
+		t.Fatalf("escaped manifest error = %v", err)
+	}
+}
+
+func TestCLI_ManagedBinaryHelpCleanExit(t *testing.T) {
+	for _, action := range []string{"install", "status", "rollback", "cleanup"} {
+		out := runCapture(t, "binary", action, "--help")
+		assertContains(t, out, "fairway binary "+action)
+	}
+}
+
 func TestServerLifecycleStatusRemovesStaleRecordAndRefusesPIDMismatch(t *testing.T) {
 	dir := t.TempDir()
 	pidFile := filepath.Join(dir, "server.pid.json")
