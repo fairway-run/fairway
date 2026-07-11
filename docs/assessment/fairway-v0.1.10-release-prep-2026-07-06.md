@@ -7,9 +7,10 @@ Task: FW-276
 ## Candidate
 
 - Version candidate: `v0.1.10`
-- Source SHA at preparation before FW-276 docs commit: `55cc67e`
-- Final release source SHA: refresh after FW-276 is reviewed, committed, and
-  pushed in the publish task.
+- Source SHA at initial preparation before FW-276 docs commit: `55cc67e`.
+- Shared-team repeat-pilot implementation SHA: `500af2b`.
+- Final release source SHA: record after this FW-285 refresh is reviewed,
+  committed, and pushed, before creating the release tag.
 - Previous released tag: `v0.1.9`
 - Release scope: Fairway changes after `v0.1.9` through FW-275, including
   dashboard performance, shared-team model/implementation pilots, disposable
@@ -36,6 +37,11 @@ Task: FW-276
   repeat-pilot recommendation before promotion.
 - FW-278 through FW-280: Fairway doctor diagnostics, lane runtime lifecycle
   commands, and agent-optimized output contracts.
+- FW-281 and FW-282: typed delivery-resource read models and CI write-mode
+  fixture isolation.
+- FW-283 and FW-284: managed small-team server lifecycle plus a versioned
+  clean-state operator/CI rehearsal that promotes bounded read-only operation
+  while preserving write, network, identity, and storage limits.
 
 ## Validation Packet
 
@@ -96,13 +102,16 @@ Required before tag/publish:
   store adapter or migration cutover is implemented.
 - Dashboard diagnostics remain intentionally explicit and can still be heavy on
   large stores.
-- The small-team pilot should be repeated by a non-authoring operator before
-  shared-team support is promoted.
+- Bounded read-only small-team operation is supported only with a loopback
+  Fairway origin on an operator-controlled host. Shared writes, non-loopback
+  origins, trusted-proxy verification, and Postgres runtime storage remain
+  preview or unsupported.
 
 ## Publish Blockers
 
-- FW-276 release-prep review must approve governance, ops, and security.
-- FW-276 release-prep commit must land before any publish task.
+- FW-285 refreshed release-prep review must approve governance, ops, and
+  security.
+- The FW-285 refresh commit must land before any publish task.
 - Main must be pushed to configured release remotes before tagging.
 - Release secrets and signing/notarization posture must be available to the
   release workflow.

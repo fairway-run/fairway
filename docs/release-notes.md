@@ -33,10 +33,11 @@ must preserve the rules in [Product boundaries](design/product-boundaries.md).
   guidance, Fairway doctor diagnostics, lane runtime lifecycle commands, and
   agent-optimized output contracts make local/shared operation easier to start,
   inspect, hand off, and automate.
-- A small-team shared Fairway pilot was recorded. It proves loopback read-only
-  status/task/report readback without hidden write authority and recommends a
-  repeat pilot with a non-authoring operator before shared-team mode is
-  promoted as supported.
+- Bounded read-only small-team operation is now supported on an
+  operator-controlled host. A manual pilot plus a clean-state CI rehearsal
+  prove config/doctor, backup/restore, managed lifecycle, status/task/report/
+  wait readback, write-disabled posture, timing, and cleanup. The same
+  versioned harness is available to operators and CI.
 
 ### Known Limits
 
@@ -51,8 +52,10 @@ must preserve the rules in [Product boundaries](design/product-boundaries.md).
   store, prove full command parity, or claim migration/cutover readiness.
 - Dashboard diagnostics can still be expensive on large stores; the default
   board path is fast, while full diagnostics remain intentionally explicit.
-- The small-team pilot was an architecture-control dry run. Promotion requires
-  a repeat pilot by a non-authoring operator on the lab host.
+- Supported small-team operation remains read-only with a loopback Fairway
+  origin. Remote viewers require a separately operated identity-aware proxy,
+  SSH tunnel, or VPN boundary; this release does not promote a non-loopback
+  origin or Fairway-verified trusted-proxy identity.
 
 ### Release Checklist
 

@@ -25,13 +25,17 @@ No unreleased changes yet.
 - Mac mini GitLab lab deployment runbook, Fairway doctor diagnostics, lane
   runtime lifecycle commands, agent-output contracts, and small-team shared
   pilot assessment.
+- Managed read-only server lifecycle commands and a clean-state operator/CI
+  rehearsal covering config diagnostics, backup/restore, API readback, timing,
+  write-disabled assertions, and cleanup.
 
 ### Changed
 
-- Shared-team support remains explicitly pilot/readiness scoped. This release
-  does not promote public exposure, trusted proxy deployment, dashboard writes,
-  provider-send, deploy, release, live-operation authority, or a production
-  Postgres runtime switch.
+- Bounded read-only small-team operation is supported on an operator-controlled
+  host with a loopback Fairway origin. Shared writes, non-loopback origins,
+  trusted proxy verification, dashboard writes, provider-send, deploy,
+  live-operation authority, and a production Postgres runtime switch remain
+  preview or unsupported.
 - Dashboard performance work keeps heavyweight diagnostics available while
   making the default board path suitable for routine operator use.
 
