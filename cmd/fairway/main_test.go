@@ -69,6 +69,34 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "db", "backup", "backup.db")
 }
 
+func TestCLI_WorkStartAndStatusCommonPath(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", "- id: T-001\n  title: Common path\n  role: backend\n")
+	runOK(t, "import", "tasks.yaml")
+	started := runCapture(t, "work", "start", "T-001", "--provider", "codex", "--backend", "codex-thread")
+	assertContains(t, started, "work started task=T-001 status=in_progress owner=backend session=work-t-001")
+	status := runCapture(t, "work", "status", "T-001", "--explain")
+	assertContains(t, status, "status=in_progress owner=backend sessions=1 checkpoints=1")
+	assertContains(t, status, "primitives: task_state agent_sessions task_checkpoints")
+	jsonStatus := runCapture(t, "--json", "work", "status", "T-001")
+	assertContains(t, jsonStatus, `"active_sessions": 1`)
+	if _, err := captureRun("work", "start"); err == nil || !strings.Contains(err.Error(), "explicit task id") {
+		t.Fatalf("missing task error=%v", err)
+	}
+}
+
 func TestCLI_DBRehearsal(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

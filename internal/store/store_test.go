@@ -45,6 +45,68 @@ func TestClaim_AllowsExactlyOneWinner(t *testing.T) {
 	}
 }
 
+func TestStartWorkAtomicallyRecordsTaskSessionAndCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Common path", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread", Status: "running"}, "Started common path in work-t-001", []string{"done"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "in_progress" || result.SessionID != "work-t-001" || result.CheckpointID == 0 || result.AlreadyActive {
+		t.Fatalf("result=%+v", result)
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil || task.Status != "in_progress" || task.Owner != "backend" {
+		t.Fatalf("task=%+v err=%v", task, err)
+	}
+	sessions, err := s.Sessions(ctx, false)
+	if err != nil || len(sessions) != 1 || sessions[0].TaskID != "T-001" {
+		t.Fatalf("sessions=%+v err=%v", sessions, err)
+	}
+	checkpoints, err := s.Checkpoints(ctx, "", true)
+	if err != nil || len(checkpoints) != 1 || checkpoints[0].State != "active" {
+		t.Fatalf("checkpoints=%+v err=%v", checkpoints, err)
+	}
+	second, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread"}, "Resumed common path", []string{"done"})
+	if err != nil || !second.AlreadyActive {
+		t.Fatalf("second=%+v err=%v", second, err)
+	}
+	if second.CheckpointID != result.CheckpointID {
+		t.Fatalf("repeat created checkpoint %d, want reused %d", second.CheckpointID, result.CheckpointID)
+	}
+	if err := s.SetStatus(ctx, "T-001", "blocked", "blocked for test", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "blocked"}, "must fail", []string{"done"}); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("blocked start err=%v, want invalid transition", err)
+	}
+}
+
+func TestStartWorkFailsClosedOnUnfinishedDependency(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{
+		{ID: "T-001", Title: "Dependency", Role: "backend"},
+		{ID: "T-002", Title: "Blocked child", Role: "backend", Dependencies: []string{"T-001"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.StartWork(ctx, "T-002", "backend", "main", Session{ID: "work-t-002"}, "start work-t-002", []string{"done"}); !errors.Is(err, ErrInvalidTransition) || !strings.Contains(err.Error(), "dependency T-001 is todo") {
+		t.Fatalf("dependency error=%v", err)
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-002")
+	if err != nil || task.Status != "todo" {
+		t.Fatalf("task=%+v err=%v", task, err)
+	}
+	sessions, err := s.Sessions(ctx, false)
+	if err != nil || len(sessions) != 0 {
+		t.Fatalf("sessions=%+v err=%v", sessions, err)
+	}
+}
+
 func TestMigrate_RecordsAppliedMigration(t *testing.T) {
 	s := newTestStore(t)
 	var count int

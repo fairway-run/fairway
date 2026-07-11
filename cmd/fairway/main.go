@@ -184,6 +184,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdLane(ctx, opts, args[1:])
 	case "session":
 		return cmdSession(ctx, opts, args[1:])
+	case "work":
+		return cmdWork(ctx, opts, args[1:])
 	case "reconcile":
 		return cmdReconcile(ctx, opts, args[1:])
 	case "coordinator":
@@ -6906,6 +6908,146 @@ func cmdSession(ctx context.Context, opts globalOptions, args []string) error {
 	default:
 		return fmt.Errorf("unknown session subcommand %q", args[0])
 	}
+}
+
+func cmdWork(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 {
+		return errors.New("work requires subcommand: start, status")
+	}
+	if isHelpOnly(args) {
+		subcommandUsage("work", "start|status")
+		return nil
+	}
+	switch args[0] {
+	case "start":
+		return cmdWorkStart(ctx, opts, args[1:])
+	case "status":
+		return cmdWorkStatus(ctx, opts, args[1:])
+	default:
+		return fmt.Errorf("unknown work subcommand %q", args[0])
+	}
+}
+
+func cmdWorkStart(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return errors.New("work start requires an explicit task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("work start", flag.ContinueOnError)
+	sessionID := fs.String("session-id", "", "stable provider session id")
+	role := fs.String("role", "", "task owner role; defaults to task role")
+	provider := fs.String("provider", "codex", "provider attachment")
+	backend := fs.String("backend", "codex-thread", "provider session backend")
+	externalRunID := fs.String("external-run-id", "", "external provider run id")
+	summary := fs.String("summary", "", "active checkpoint summary")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected work start arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		owner := strings.TrimSpace(*role)
+		if owner == "" {
+			owner = strings.TrimSpace(task.Definition.Role)
+		}
+		if owner == "" {
+			return errors.New("work start requires --role when the task has no role")
+		}
+		id := strings.TrimSpace(*sessionID)
+		if id == "" {
+			id = "work-" + strings.ToLower(strings.ReplaceAll(taskID, "_", "-"))
+		}
+		text := strings.TrimSpace(*summary)
+		if text == "" {
+			text = fmt.Sprintf("Started %s work in session %s", owner, id)
+		}
+		session := store.Session{ID: id, Role: owner, WorktreePath: root, Branch: fairwaygit.CurrentBranch(root), SessionBackend: *backend, Provider: *provider, TaskID: taskID, ExternalRunID: *externalRunID, Status: "running"}
+		result, err := s.StartWork(ctx, taskID, owner, session.Branch, session, text, cfg.States.Terminal)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(result)
+		}
+		fmt.Printf("work started task=%s status=%s owner=%s session=%s checkpoint=%d already_active=%t\n", result.TaskID, result.Status, result.Owner, result.SessionID, result.CheckpointID, result.AlreadyActive)
+		return nil
+	})
+}
+
+func cmdWorkStatus(ctx context.Context, opts globalOptions, args []string) error {
+	fs := flag.NewFlagSet("work status", flag.ContinueOnError)
+	explain := fs.Bool("explain", false, "show underlying Fairway primitives")
+	taskArg := ""
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		taskArg = args[0]
+		args = args[1:]
+	}
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected work status arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		taskID := taskArg
+		if taskID == "" {
+			var err error
+			taskID, err = inferCurrentTaskID(ctx, opts, s)
+			if err != nil {
+				return err
+			}
+			if taskID == "" {
+				return errors.New("work status requires a task id when current task inference is ambiguous")
+			}
+		}
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		sessions, err := s.Sessions(ctx, false)
+		if err != nil {
+			return err
+		}
+		activeSessions := 0
+		for _, session := range sessions {
+			if session.TaskID == taskID {
+				activeSessions++
+			}
+		}
+		checkpoints, err := s.Checkpoints(ctx, "", true)
+		if err != nil {
+			return err
+		}
+		checkpointCount := 0
+		for _, cp := range checkpoints {
+			if cp.TaskID == taskID {
+				checkpointCount++
+			}
+		}
+		row := struct {
+			TaskID      string `json:"task_id"`
+			Status      string `json:"status"`
+			Owner       string `json:"owner"`
+			Sessions    int    `json:"active_sessions"`
+			Checkpoints int    `json:"checkpoints"`
+			Evidence    int    `json:"evidence"`
+			Reviews     int    `json:"reviews"`
+		}{taskID, task.Status, task.Owner, activeSessions, checkpointCount, len(evidence), len(reviews)}
+		if opts.JSON {
+			return printJSON(row)
+		}
+		fmt.Printf("work task=%s status=%s owner=%s sessions=%d checkpoints=%d evidence=%d reviews=%d\n", row.TaskID, row.Status, row.Owner, row.Sessions, row.Checkpoints, row.Evidence, row.Reviews)
+		if *explain {
+			fmt.Println("primitives: task_state agent_sessions task_checkpoints task_evidence task_reviews")
+			fmt.Printf("inspect: fairway task-detail %s\n", taskID)
+		}
+		return nil
+	})
 }
 
 func cmdSessionUpsert(ctx context.Context, opts globalOptions, args []string) error {
@@ -17616,7 +17758,7 @@ func usage() {
 	fmt.Println("Evidence and review:")
 	fmt.Println("  record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
-	fmt.Println("  session, lane, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
+	fmt.Println("  work, session, lane, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
@@ -17656,6 +17798,7 @@ func printCommandHelp(command string) bool {
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
 		"wait":                       "fairway wait add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, acknowledge them, project wait state, and emit bounded wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
+		"work":                       "fairway work start <task-id> [--session-id <id>] [--role <role>] | fairway work status [<task-id>] [--explain]\n  Use the compact common path over durable task, session, and checkpoint records.",
 		"lane":                       "fairway lane start|status|logs|stop ...\n  Record and inspect local/tmux lane runtime lifecycle without launching providers or storing transcript content.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

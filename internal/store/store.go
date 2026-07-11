@@ -178,6 +178,15 @@ type Session struct {
 	EndReason       string `json:"end_reason"`
 }
 
+type WorkStartResult struct {
+	TaskID        string `json:"task_id"`
+	Status        string `json:"status"`
+	Owner         string `json:"owner"`
+	SessionID     string `json:"session_id"`
+	CheckpointID  int64  `json:"checkpoint_id"`
+	AlreadyActive bool   `json:"already_active"`
+}
+
 type Checkpoint struct {
 	ID            int64  `json:"id"`
 	TaskID        string `json:"task_id"`
@@ -1145,6 +1154,121 @@ WHERE project_id=? AND task_id=? AND status IN ('todo','blocked') AND claimant I
 	}
 	committed = true
 	return nil
+}
+
+// StartWork atomically makes a task active, attaches a provider session, and
+// records the active checkpoint using the existing Fairway records.
+func (s *Store) StartWork(ctx context.Context, taskID, owner, branch string, session Session, summary string, terminal []string) (WorkStartResult, error) {
+	if strings.TrimSpace(taskID) == "" || strings.TrimSpace(owner) == "" || strings.TrimSpace(session.ID) == "" {
+		return WorkStartResult{}, errors.New("task id, owner, and session id are required")
+	}
+	if strings.TrimSpace(summary) == "" {
+		return WorkStartResult{}, errors.New("work start checkpoint summary is required")
+	}
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return WorkStartResult{}, err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return WorkStartResult{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+	}()
+	var status, priorOwner, claimant, dependenciesJSON string
+	err = conn.QueryRowContext(ctx, `SELECT st.status, COALESCE(st.owner, ''), COALESCE(st.claimant, ''), COALESCE(d.dependencies, '[]') FROM task_state st JOIN task_definitions d ON d.project_id=st.project_id AND d.id=st.task_id WHERE st.project_id=? AND st.task_id=?`, s.projectID, taskID).Scan(&status, &priorOwner, &claimant, &dependenciesJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return WorkStartResult{}, ErrNotFound
+	}
+	if err != nil {
+		return WorkStartResult{}, err
+	}
+	alreadyActive := status == "in_progress"
+	if status != "todo" && !alreadyActive {
+		return WorkStartResult{}, fmt.Errorf("%w: work start requires todo or in_progress task, got %s", ErrInvalidTransition, status)
+	}
+	if alreadyActive && priorOwner != "" && priorOwner != owner {
+		return WorkStartResult{}, fmt.Errorf("%w: task is already active for owner %s", ErrAlreadyClaimed, priorOwner)
+	}
+	if !alreadyActive {
+		var dependencies []string
+		if err := json.Unmarshal([]byte(dependenciesJSON), &dependencies); err != nil {
+			return WorkStartResult{}, fmt.Errorf("decode task dependencies: %w", err)
+		}
+		terminalSet := map[string]bool{}
+		for _, value := range terminal {
+			terminalSet[value] = true
+		}
+		if len(terminalSet) == 0 {
+			terminalSet["done"] = true
+		}
+		for _, dependency := range dependencies {
+			var dependencyStatus string
+			err := conn.QueryRowContext(ctx, `SELECT status FROM task_state WHERE project_id=? AND task_id=?`, s.projectID, dependency).Scan(&dependencyStatus)
+			if errors.Is(err, sql.ErrNoRows) {
+				return WorkStartResult{}, fmt.Errorf("%w: dependency %s is missing", ErrInvalidTransition, dependency)
+			}
+			if err != nil {
+				return WorkStartResult{}, err
+			}
+			if !terminalSet[dependencyStatus] {
+				return WorkStartResult{}, fmt.Errorf("%w: dependency %s is %s", ErrInvalidTransition, dependency, dependencyStatus)
+			}
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if !alreadyActive {
+		actor := Actor()
+		res, err := conn.ExecContext(ctx, `UPDATE task_state SET status='in_progress', owner=?, claimant=?, branch=?, claimed_at=?, updated_at=? WHERE project_id=? AND task_id=? AND status='todo'`, owner, actor, branch, now, now, s.projectID, taskID)
+		if err := checkWriteResult(res, err); err != nil {
+			return WorkStartResult{}, err
+		}
+		if err := insertHistoryExec(ctx, conn, s.projectID, taskID, status, "in_progress", priorOwner, owner, branch, actor, "work start"); err != nil {
+			return WorkStartResult{}, err
+		}
+	}
+	if session.Status == "" {
+		session.Status = "running"
+	}
+	if session.StartedAt == "" {
+		session.StartedAt = now
+	}
+	session.LastHeartbeatAt = now
+	_, err = conn.ExecContext(ctx, `
+INSERT INTO agent_sessions
+  (project_id, id, role, lane, worktree_path, branch, session_backend, provider, session_name, task_id, pid, tmux_pane, transcript_path, monitor_kind, automation_id, external_run_id, poll_command, manual_until, status, started_at, last_heartbeat_at, ended_at, exit_code, end_reason)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+ON CONFLICT(project_id, id) DO UPDATE SET role=excluded.role, lane=excluded.lane, worktree_path=excluded.worktree_path, branch=excluded.branch, session_backend=excluded.session_backend, provider=excluded.provider, session_name=excluded.session_name, task_id=excluded.task_id, pid=excluded.pid, tmux_pane=excluded.tmux_pane, transcript_path=excluded.transcript_path, external_run_id=excluded.external_run_id, status='running', last_heartbeat_at=excluded.last_heartbeat_at, ended_at=NULL, exit_code=NULL, end_reason=NULL`,
+		s.projectID, session.ID, owner, session.Lane, session.WorktreePath, session.Branch, session.SessionBackend, session.Provider, session.SessionName, taskID, session.PID, session.TmuxPane, session.TranscriptPath, session.MonitorKind, session.AutomationID, session.ExternalRunID, session.PollCommand, session.ManualUntil, session.Status, session.StartedAt, session.LastHeartbeatAt)
+	if err != nil {
+		return WorkStartResult{}, err
+	}
+	var cpID int64
+	if alreadyActive {
+		err = conn.QueryRowContext(ctx, `SELECT id FROM task_checkpoints WHERE project_id=? AND task_id=? AND state='active' AND owner=? AND lower(summary) LIKE ? ORDER BY id DESC LIMIT 1`, s.projectID, taskID, owner, "%"+strings.ToLower(session.ID)+"%").Scan(&cpID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return WorkStartResult{}, err
+		}
+	}
+	if cpID == 0 {
+		res, err := conn.ExecContext(ctx, `INSERT INTO task_checkpoints (project_id, task_id, state, owner, summary, created_at) VALUES (?, ?, 'active', ?, ?, ?)`, s.projectID, taskID, owner, summary, now)
+		if err != nil {
+			return WorkStartResult{}, err
+		}
+		cpID, err = res.LastInsertId()
+		if err != nil {
+			return WorkStartResult{}, err
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return WorkStartResult{}, err
+	}
+	committed = true
+	return WorkStartResult{TaskID: taskID, Status: "in_progress", Owner: owner, SessionID: session.ID, CheckpointID: cpID, AlreadyActive: alreadyActive}, nil
 }
 
 func (s *Store) CurrentStatus(ctx context.Context, taskID string) (string, error) {

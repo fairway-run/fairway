@@ -1,5 +1,22 @@
 # CLI verb surface
 
+## Common work path
+
+`fairway work` is progressive disclosure over the existing task, session,
+checkpoint, evidence, and review records. It is not a second workflow or store.
+
+`work start` requires an explicit task ID. In one SQLite transaction it moves a
+`todo` task to `in_progress`, attaches or refreshes a stable provider session,
+and records an active checkpoint. Repeating the command for the same active
+owner/session is safe. Blocked and terminal tasks fail closed; they require the
+existing explicit status/reopen commands and their reasons or gates.
+
+`work status` gives the compact current task state and durable fact counts.
+Without a task ID it uses only unambiguous existing task/session environment
+inference. `--explain` names the underlying records and detailed inspection
+command. Neither command records evidence, synthesizes reviews, or authorizes
+merge, deploy, release, credentials, public exposure, or live operations.
+
 ```
 fairway init [--refresh-agent-contract]                # scaffold .fairway/config.toml + DB + .fairway/AGENTS.md
 fairway agent-guide [--path | --output <path>]          # print or write the embedded offline agent guide
@@ -25,6 +42,8 @@ fairway review checkout <task-id> [--source-role <role>] # create/reset named re
 fairway review-waits list [--blocking] [--task <task-id>] [--stale] # read-only review wait projection
 fairway review-waits wake [--task <task-id>] [--send]              # fixed-template wake prompts for parked provider threads
 fairway review-policy report [--profile <name>]                   # review profile overhead/outcome report
+fairway work start <task-id> [--session-id <id>] [--role <role>] [--provider <name>] [--backend <name>] [--external-run-id <id>] [--summary <text>]
+fairway work status [<task-id>] [--explain]
 fairway session upsert --role <role> [--id <id>] [--lane <lane>] [--backend <name>] [--provider <name>] [--task-id <id>] [--pid <pid>] [--monitor-kind <kind>] [--automation-id <id>] [--external-run-id <id>] [--poll-command <cmd>] [--manual-until <date-or-rfc3339>]
 fairway session status [--all]
 fairway session end <session-id> [--status <ended|failed|stale>] [--reason <text>] [--exit-code <n>]
