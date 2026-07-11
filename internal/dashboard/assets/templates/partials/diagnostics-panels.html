@@ -1,5 +1,6 @@
 {{define "diagnostics-panels"}}
 <section class="diagnostics-grid">
+{{if eq .DiagnosticPanel ""}}
 <article class="diagnostic-panel wide">
 <h2>Diagnostic Counters</h2>
 <section class="summary-strip" aria-label="Diagnostic counter summary">
@@ -10,6 +11,8 @@
 <div><b>{{.CoordinatorPlan.Summary.TopClassification}}</b><span>orchestration</span></div>
 </section>
 </article>
+{{end}}
+{{if or (eq .DiagnosticPanel "") (eq .DiagnosticPanel "coordination")}}
 <article class="diagnostic-panel wide">
 <h2>Coordination Intelligence</h2>
 <section class="summary-strip" aria-label="Coordination intelligence summary">
@@ -28,18 +31,24 @@
 {{range .Coordination.Memories}}<tr><td>{{.TrackID}} {{if .Title}}<span class="muted">{{.Title}}</span>{{end}}</td><td>{{if .Owner}}{{.Owner}}{{else}}missing{{end}}</td><td>{{.ReviewBy}}</td><td>{{.Disposition}}{{if .PromotionDebt}} / promotion debt{{end}}</td><td>{{.UpdatedAt}}</td><td>{{if .Stale}}stale{{else}}fresh{{end}}</td><td>{{.NextAction}}</td><td>{{.OpenBlocker}}</td></tr>{{else}}<tr><td colspan="8">no track memory rows</td></tr>{{end}}
 </tbody></table>
 </article>
+{{end}}
+{{if or (eq .DiagnosticPanel "") (eq .DiagnosticPanel "reconciliation")}}
 <article class="diagnostic-panel">
 <h2>Active Reconciliation</h2>
 <table data-sortable><thead><tr><th><button type="button" data-sort="text">Kind</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Session</button></th><th><button type="button" data-sort="text">Action</button></th><th><button type="button" data-sort="text">Reason</button></th></tr></thead><tbody>
 {{range .ActiveReport.Findings}}<tr><td>{{.Kind}}</td><td>{{if .TaskID}}<a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>{{end}}</td><td>{{.SessionID}}</td><td>{{.Action}}</td><td>{{.Reason}}</td></tr>{{else}}<tr><td colspan="5">no active reconciliation findings</td></tr>{{end}}
 </tbody></table>
 </article>
+{{end}}
+{{if or (eq .DiagnosticPanel "") (eq .DiagnosticPanel "closeout")}}
 <article class="diagnostic-panel">
 <h2>Lane Closeout</h2>
 <table data-sortable><thead><tr><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="number">Blockers</button></th><th><button type="button" data-sort="number">Warnings</button></th><th><button type="button" data-sort="text">Findings</button></th></tr></thead><tbody>
 {{range .CloseoutReports}}<tr><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td>{{.Branch}}</td><td>{{.Summary.Blockers}}</td><td>{{.Summary.Warnings}}</td><td>{{range .Findings}}<span class="chip">{{.Kind}}</span> {{end}}</td></tr>{{else}}<tr><td colspan="5">no lane closeout debt</td></tr>{{end}}
 </tbody></table>
 </article>
+{{end}}
+{{if or (eq .DiagnosticPanel "") (eq .DiagnosticPanel "audit")}}
 <article class="diagnostic-panel wide">
 <h2>Coverage Diagnostics</h2>
 <section class="summary-strip" aria-label="Coverage summary">
@@ -62,6 +71,8 @@
 {{range takeCILearningFindings .Audit.CILearning.Findings 8}}<tr><td>{{.FailureClass}}</td><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td>{{.EvidenceType}} {{if .ArtifactPath}}<code>{{.ArtifactPath}}</code>{{end}}</td><td>{{if .FollowUpTask}}<a href="/tasks/{{.FollowUpTask}}">{{.FollowUpTask}}</a>{{else}}<code>fairway add {{.RecommendedFollowUpTaskID}}</code>{{end}}</td><td>{{.ExpectedLocalReproduction}}</td></tr>{{else}}<tr><td colspan="5">no CI/deploy learning findings</td></tr>{{end}}
 </tbody></table>
 </article>
+{{end}}
+{{if or (eq .DiagnosticPanel "") (eq .DiagnosticPanel "reconciliation")}}
 <article class="diagnostic-panel">
 <h2>Sessions</h2>
 <table data-sortable><thead><tr><th><button type="button" data-sort="text">ID</button></th><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Status</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Backend</button></th><th><button type="button" data-sort="text">Monitor proof</button></th></tr></thead><tbody>
@@ -86,5 +97,6 @@
 {{range .Checkpoints}}<tr><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td><span class="status-pill {{statusClass .State}}">{{.State}}</span></td><td>{{.Owner}}</td><td>{{.TargetCloseBy}}</td><td>{{.Summary}}</td></tr>{{else}}<tr><td colspan="5">none</td></tr>{{end}}
 </tbody></table>
 </article>
+{{end}}
 </section>
 {{end}}

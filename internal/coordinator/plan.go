@@ -200,6 +200,30 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	if err != nil {
 		return Plan{}, err
 	}
+	taskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.Definition.ID)
+	}
+	evidenceByTask, err := s.EvidenceByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return Plan{}, err
+	}
+	handoffsByTask, err := s.HandoffsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return Plan{}, err
+	}
+	reviewsByTask, err := s.ReviewsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return Plan{}, err
+	}
+	allNotifications, err := s.Notifications(ctx, "")
+	if err != nil {
+		return Plan{}, err
+	}
+	notificationsByTask := make(map[string][]store.Notification)
+	for _, notification := range allNotifications {
+		notificationsByTask[notification.TaskID] = append(notificationsByTask[notification.TaskID], notification)
+	}
 	ready, err := s.Ready(ctx, "", cfg.States.Terminal)
 	if err != nil {
 		return Plan{}, err
@@ -307,14 +331,9 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 	}
 	completionHandbacksByTask := map[string][]completionhandback.Handback{}
 	for _, task := range tasks {
-		_, _, evidence, handoffs, _, err := s.TaskDetail(ctx, task.Definition.ID)
-		if err != nil {
-			return Plan{}, err
-		}
-		notifications, err := s.Notifications(ctx, task.Definition.ID)
-		if err != nil {
-			return Plan{}, err
-		}
+		evidence := evidenceByTask[task.Definition.ID]
+		handoffs := handoffsByTask[task.Definition.ID]
+		notifications := notificationsByTask[task.Definition.ID]
 		liveWindowStatus := liveWindowByTask[task.Definition.ID]
 		for _, handback := range completionhandback.RowsWithOptions(task.Definition.ID, handoffs, notifications, completionhandback.RowOptions{
 			AckTimeout:      ackTimeout,
@@ -479,11 +498,11 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 		case terminal[task.Status]:
 			plan.Summary.Complete++
 		}
-		detailTask, _, evidence, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
-		if err != nil {
-			return Plan{}, err
-		}
-		reviewPolicy, err := reviewPolicyEvaluation(ctx, cfg, s, detailTask, reviews)
+		detailTask := task
+		evidence := evidenceByTask[task.Definition.ID]
+		handoffs := handoffsByTask[task.Definition.ID]
+		reviews := reviewsByTask[task.Definition.ID]
+		reviewPolicy, err := reviewPolicyEvaluation(cfg, detailTask, reviews, taskByID, reviewsByTask)
 		if err != nil {
 			return Plan{}, err
 		}
@@ -513,10 +532,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 					plan.ReviewDebt = appendTaskRef(plan.ReviewDebt, taskRef(task))
 					addAction(&plan, 45, "review-debt", "sweep_historical_review_debt", reason, task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
 				} else {
-					notifications, err := s.Notifications(ctx, task.Definition.ID)
-					if err != nil {
-						return Plan{}, err
-					}
+					notifications := notificationsByTask[task.Definition.ID]
 					statuses := reviewstate.StatusesForTask(detailTask, handoffs, reviews, notifications)
 					waits := reviewstate.WaitsForTask(detailTask, handoffs, reviews, notifications, reviewstate.ReviewWaitOptions{
 						ProviderTargets: cfg.ProviderTargets,
@@ -564,10 +580,7 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 					addStop(&plan, "review-gated", reason, task.Definition.ID, task.Definition.Role)
 				}
 			} else {
-				notifications, err := s.Notifications(ctx, task.Definition.ID)
-				if err != nil {
-					return Plan{}, err
-				}
+				notifications := notificationsByTask[task.Definition.ID]
 				handback, ok := ReviewHandbackForTask(cfg, detailTask, evidence, handoffs, reviews, ReviewHandbackOptions{FreshFor: opts.ReviewHandbackFreshFor, Now: time.Now().UTC(), SuppressAcknowledged: true, Notifications: notifications})
 				if ok {
 					if len(handback.Blockers) > 0 {
@@ -667,14 +680,13 @@ func relatedReadyGroups(cfg config.Config, tasks []store.Task) []relatedReadyGro
 	return out
 }
 
-func reviewPolicyEvaluation(ctx context.Context, cfg config.Config, s *store.Store, task store.Task, reviews []store.Review) (reviewpolicy.Evaluation, error) {
+func reviewPolicyEvaluation(cfg config.Config, task store.Task, reviews []store.Review, tasksByID map[string]store.Task, reviewsByTask map[string][]store.Review) (reviewpolicy.Evaluation, error) {
 	var parent *store.Task
 	var parentReviews []store.Review
 	if strings.TrimSpace(task.Definition.ParentID) != "" {
-		parentTask, _, _, _, parentTaskReviews, err := s.TaskDetail(ctx, task.Definition.ParentID)
-		if err == nil {
+		if parentTask, ok := tasksByID[task.Definition.ParentID]; ok {
 			parent = &parentTask
-			parentReviews = parentTaskReviews
+			parentReviews = reviewsByTask[task.Definition.ParentID]
 		}
 	}
 	return reviewpolicy.Evaluate(cfg, reviewpolicy.Options{

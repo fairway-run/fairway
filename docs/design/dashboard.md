@@ -187,12 +187,18 @@ loaded handbacks, notifications, evidence, and live-window checkpoint. Task
 detail must not build the project-wide coordinator plan merely to select that
 task's actions.
 
-Heavy board diagnostics are lazy-loaded. `/board?tab=diagnostics` renders the
-normal board shell and a loading panel first, then fetches
-`/board/panels/diagnostics` for coordinator plan, active reconciliation,
-closeout, coverage, session, worktree, watcher, and checkpoint diagnostics. The
-panel endpoint is read-only, uses the same request filters, and exists only to
-move expensive diagnostic rendering out of the first page response.
+Heavy board diagnostics are progressively loaded. `/board?tab=diagnostics`
+renders the normal board shell and independent loading regions, then fetches
+`/board/panels/diagnostics?panel=coordination|reconciliation|closeout|audit`.
+Each request computes only its named heavy projection, so a slow coordinator,
+audit, or closeout read cannot hold the other panels. The aggregate endpoint
+without `panel` remains the no-JavaScript fallback. Panel endpoints are GET-only,
+read-only, use the same request filters, reject unknown panel names, and exist
+only to move expensive diagnostic rendering out of the first page response.
+Coordinator and audit panel construction use project-scoped batch fact readers;
+they must not hydrate every task through `TaskDetail`. The cold target for each
+panel on the current AI Cloud fixture is three seconds, while the shell remains
+available immediately and each panel reports failure independently.
 
 It includes:
 

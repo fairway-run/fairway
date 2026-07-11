@@ -67,10 +67,28 @@
 </section>
 {{if eq .Filters.Tab "diagnostics"}}
 {{if .DiagnosticsDeferred}}
-<section class="diagnostics-grid" data-lazy-panel data-src="{{boardDiagnosticsPanelHref .Filters}}" aria-live="polite">
+<section class="diagnostics-grid" data-lazy-panel data-src="{{boardDiagnosticsPanelHrefFor .Filters "coordination"}}" aria-live="polite">
 <article class="diagnostic-panel wide">
-<h2>Diagnostics</h2>
-<p class="muted lazy-panel-status">Loading coordinator, reconciliation, closeout, and coverage diagnostics...</p>
+<h2>Coordination Intelligence</h2>
+<p class="muted lazy-panel-status">Loading coordinator and wait diagnostics...</p>
+</article>
+</section>
+<section class="diagnostics-grid" data-lazy-panel data-src="{{boardDiagnosticsPanelHrefFor .Filters "reconciliation"}}" aria-live="polite">
+<article class="diagnostic-panel wide">
+<h2>Active Reconciliation</h2>
+<p class="muted lazy-panel-status">Loading reconciliation and runtime diagnostics...</p>
+</article>
+</section>
+<section class="diagnostics-grid" data-lazy-panel data-src="{{boardDiagnosticsPanelHrefFor .Filters "closeout"}}" aria-live="polite">
+<article class="diagnostic-panel wide">
+<h2>Lane Closeout</h2>
+<p class="muted lazy-panel-status">Loading closeout diagnostics...</p>
+</article>
+</section>
+<section class="diagnostics-grid" data-lazy-panel data-src="{{boardDiagnosticsPanelHrefFor .Filters "audit"}}" aria-live="polite">
+<article class="diagnostic-panel wide">
+<h2>Coverage Diagnostics</h2>
+<p class="muted lazy-panel-status">Loading coverage diagnostics...</p>
 <noscript><p class="muted">JavaScript is required for lazy diagnostics. Open <a href="{{boardDiagnosticsPanelHref .Filters}}">the diagnostics panel endpoint</a> directly.</p></noscript>
 </article>
 </section>

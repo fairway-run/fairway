@@ -332,6 +332,7 @@ type DashboardViewData struct {
 	CloseoutReports      []reconcile.CloseoutReport
 	Audit                AuditDiagnostics
 	DiagnosticsDeferred  bool
+	DiagnosticPanel      string
 	ReadOnly             bool
 	CSRFToken            string
 	MutableStates        []string
@@ -451,6 +452,11 @@ func (s *Server) board(w http.ResponseWriter, r *http.Request) {
 func (s *Server) boardDiagnosticsPanel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	panel := strings.TrimSpace(r.URL.Query().Get("panel"))
+	if panel != "" && panel != "coordination" && panel != "reconciliation" && panel != "closeout" && panel != "audit" {
+		http.Error(w, "unknown diagnostics panel", http.StatusNotFound)
 		return
 	}
 	timing := newDashboardTiming("board-diagnostics-panel", r)
@@ -633,6 +639,15 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		return DashboardViewData{}, err
 	}
 	filters := taskFiltersFromRequest(r)
+	diagnosticPanel := ""
+	if dashboardDiagnosticsPanelRequest(r) {
+		diagnosticPanel = strings.TrimSpace(r.URL.Query().Get("panel"))
+	}
+	allDiagnosticPanels := diagnosticPanel == ""
+	needCoordination := allDiagnosticPanels || diagnosticPanel == "coordination"
+	needReconciliation := allDiagnosticPanels || diagnosticPanel == "reconciliation"
+	needCloseout := allDiagnosticPanels || diagnosticPanel == "closeout"
+	needAudit := allDiagnosticPanels || diagnosticPanel == "audit"
 	diagnosticsDeferred := view == "board" && filters.Tab == "diagnostics" && !dashboardDiagnosticsPanelRequest(r)
 	boardFastPath := view == "board" && (filters.Tab != "diagnostics" || diagnosticsDeferred)
 	wallFastPath := view == "wall"
@@ -688,7 +703,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		return DashboardViewData{}, err
 	}
 	var activeReport reconcile.ActiveReport
-	if !boardFastPath {
+	if !boardFastPath && needReconciliation {
 		if err := timing.step("dashboard.active_reconcile", func() error {
 			var err error
 			activeReport, err = reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
@@ -706,7 +721,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		} else {
 			timing.add("dashboard.wall_fast_path", 0, "skipped=coordinator_plan,track_memories,closeout_reports,audit_diagnostics")
 		}
-	} else {
+	} else if needCoordination {
 		if err := timing.step("dashboard.coordinator_plan", func() error {
 			var err error
 			coordinatorPlan, err = coord.BuildPlan(r.Context(), s.cfg, s.store, coord.PlanOptions{
@@ -722,7 +737,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		}
 	}
 	var memories []store.TrackMemory
-	if !heavyDiagnosticsDeferred {
+	if !heavyDiagnosticsDeferred && needCoordination {
 		if err := timing.step("dashboard.track_memories", func() error {
 			var err error
 			memories, err = s.store.TrackMemories(r.Context())
@@ -732,7 +747,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		}
 	}
 	var closeoutReports []reconcile.CloseoutReport
-	if !heavyDiagnosticsDeferred {
+	if !heavyDiagnosticsDeferred && needCloseout {
 		if err := timing.step("dashboard.closeout_reports", func() error {
 			var err error
 			closeoutReports, err = s.dashboardCloseoutReports(r.Context(), tasks, 8, timing)
@@ -742,7 +757,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		}
 	}
 	var auditDiagnostics AuditDiagnostics
-	if view == "board" && filters.Tab == "diagnostics" && !diagnosticsDeferred {
+	if view == "board" && filters.Tab == "diagnostics" && !diagnosticsDeferred && needAudit {
 		_ = timing.step("dashboard.audit_diagnostics", func() error {
 			auditDiagnostics = s.auditDiagnostics(r.Context(), "")
 			return nil
@@ -794,6 +809,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		CloseoutReports:      closeoutReports,
 		Audit:                auditDiagnostics,
 		DiagnosticsDeferred:  diagnosticsDeferred,
+		DiagnosticPanel:      diagnosticPanel,
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 		CSRFToken:            s.csrfToken,
 		MutableStates:        dashboardMutableStates(s.cfg),
@@ -1179,11 +1195,20 @@ func boardWorkstreamsHref(filters TaskFilters, mode string) string {
 }
 
 func boardDiagnosticsPanelHref(filters TaskFilters) string {
+	return boardDiagnosticsPanelHrefFor(filters, "")
+}
+
+func boardDiagnosticsPanelHrefFor(filters TaskFilters, panel string) string {
 	href := boardTabHref(filters, "diagnostics")
+	values := url.Values{}
 	if strings.HasPrefix(href, "/board?") {
-		return "/board/panels/diagnostics?" + strings.TrimPrefix(href, "/board?")
+		values, _ = url.ParseQuery(strings.TrimPrefix(href, "/board?"))
 	}
-	return "/board/panels/diagnostics?tab=diagnostics"
+	values.Set("tab", "diagnostics")
+	if panel != "" {
+		values.Set("panel", panel)
+	}
+	return "/board/panels/diagnostics?" + values.Encode()
 }
 
 func boardPageHref(filters TaskFilters, page int) string {
@@ -3470,41 +3495,42 @@ func dashboardTemplateFuncs() template.FuncMap {
 			}
 			return len(tasks) - limit
 		},
-		"wallLaneTasks":             wallLaneTasks,
-		"wallMissingReviewDomains":  wallMissingReviewDomains,
-		"wallProviderClass":         wallProviderClass,
-		"wallActiveSessions":        wallActiveSessions,
-		"wallRoleActiveSession":     wallRoleActiveSession,
-		"wallSessionCheckpoint":     wallSessionCheckpoint,
-		"wallSessionTaskRole":       wallSessionTaskRole,
-		"wallTasksMoving":           wallTasksMoving,
-		"wallHandoffCount":          wallHandoffCount,
-		"wallDoneToday":             wallDoneToday,
-		"wallTaskHasProvider":       wallTaskHasProvider,
-		"wallRoleHref":              wallRoleHref,
-		"wallProjectRoleHref":       wallProjectRoleHref,
-		"wallLaneHref":              wallLaneHref,
-		"wallRoleActivity":          wallRoleActivity,
-		"boardRows":                 boardRows,
-		"boardTabHref":              boardTabHref,
-		"boardDiagnosticsPanelHref": boardDiagnosticsPanelHref,
-		"boardPageHref":             boardPageHref,
-		"boardExportHref":           boardExportHref,
-		"boardSortHref":             boardSortHref,
-		"boardSortState":            boardSortState,
-		"boardSortAria":             boardSortAria,
-		"boardColumns":              boardColumns,
-		"boardColumnsParam":         boardColumnsParam,
-		"boardVisibleColumns":       boardVisibleColumns,
-		"boardColumnCount":          boardColumnCount,
-		"boardTaskCell":             boardTaskCell,
-		"statusFilterValues":        statusFilterValues,
-		"statusSelected":            statusSelected,
-		"contains":                  containsString,
-		"statusClass":               safeDashboardClass,
-		"safeClass":                 safeDashboardClass,
-		"dashboardReadOnly":         dashboardReadOnly,
-		"dict":                      templateDict,
+		"wallLaneTasks":                wallLaneTasks,
+		"wallMissingReviewDomains":     wallMissingReviewDomains,
+		"wallProviderClass":            wallProviderClass,
+		"wallActiveSessions":           wallActiveSessions,
+		"wallRoleActiveSession":        wallRoleActiveSession,
+		"wallSessionCheckpoint":        wallSessionCheckpoint,
+		"wallSessionTaskRole":          wallSessionTaskRole,
+		"wallTasksMoving":              wallTasksMoving,
+		"wallHandoffCount":             wallHandoffCount,
+		"wallDoneToday":                wallDoneToday,
+		"wallTaskHasProvider":          wallTaskHasProvider,
+		"wallRoleHref":                 wallRoleHref,
+		"wallProjectRoleHref":          wallProjectRoleHref,
+		"wallLaneHref":                 wallLaneHref,
+		"wallRoleActivity":             wallRoleActivity,
+		"boardRows":                    boardRows,
+		"boardTabHref":                 boardTabHref,
+		"boardDiagnosticsPanelHref":    boardDiagnosticsPanelHref,
+		"boardDiagnosticsPanelHrefFor": boardDiagnosticsPanelHrefFor,
+		"boardPageHref":                boardPageHref,
+		"boardExportHref":              boardExportHref,
+		"boardSortHref":                boardSortHref,
+		"boardSortState":               boardSortState,
+		"boardSortAria":                boardSortAria,
+		"boardColumns":                 boardColumns,
+		"boardColumnsParam":            boardColumnsParam,
+		"boardVisibleColumns":          boardVisibleColumns,
+		"boardColumnCount":             boardColumnCount,
+		"boardTaskCell":                boardTaskCell,
+		"statusFilterValues":           statusFilterValues,
+		"statusSelected":               statusSelected,
+		"contains":                     containsString,
+		"statusClass":                  safeDashboardClass,
+		"safeClass":                    safeDashboardClass,
+		"dashboardReadOnly":            dashboardReadOnly,
+		"dict":                         templateDict,
 	}
 	return funcs
 }

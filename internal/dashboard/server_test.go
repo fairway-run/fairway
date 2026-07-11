@@ -76,7 +76,7 @@ func TestIndexRendersDashboardVisibility(t *testing.T) {
 	rec = httptest.NewRecorder()
 	server.board(rec, req)
 	body = rec.Body.String()
-	for _, want := range []string{"Loading coordinator, reconciliation, closeout, and coverage diagnostics", "Workstreams", "E-001"} {
+	for _, want := range []string{"Loading coordinator and wait diagnostics", "Loading reconciliation and runtime diagnostics", "Loading closeout diagnostics", "Loading coverage diagnostics", "Workstreams", "E-001"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("diagnostics body missing %q:\n%s", want, body)
 		}
@@ -141,10 +141,10 @@ func TestDashboardRoutes(t *testing.T) {
 	diagnosticsRec := httptest.NewRecorder()
 	server.board(diagnosticsRec, diagnosticsReq)
 	diagnosticsBody := diagnosticsRec.Body.String()
-	if !strings.Contains(diagnosticsBody, "Loading coordinator, reconciliation, closeout, and coverage diagnostics") {
+	if !strings.Contains(diagnosticsBody, "Loading coordinator and wait diagnostics") || !strings.Contains(diagnosticsBody, "Loading coverage diagnostics") {
 		t.Fatalf("/board diagnostics did not render lazy diagnostics placeholder:\n%s", diagnosticsBody)
 	}
-	if strings.Contains(diagnosticsBody, "Active Reconciliation") || strings.Contains(diagnosticsBody, "Lane Closeout") {
+	if strings.Contains(diagnosticsBody, "no active reconciliation findings") || strings.Contains(diagnosticsBody, "no lane closeout debt") {
 		t.Fatalf("/board diagnostics initial render included heavy panels:\n%s", diagnosticsBody)
 	}
 	if strings.Contains(diagnosticsBody, "monitor proof: 0") || strings.Contains(diagnosticsBody, "closeout debt: 0") {
@@ -180,6 +180,66 @@ func TestDashboardRoutes(t *testing.T) {
 	}
 	if got := wallRec.Header().Get("Location"); got != "/" {
 		t.Fatalf("/wall Location=%q, want /", got)
+	}
+}
+
+func TestDashboardDiagnosticsPanelsBuildIndependently(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend", Kind: "task"}}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	cases := []struct {
+		panel   string
+		want    string
+		present string
+		absent  []string
+	}{
+		{panel: "coordination", want: "Coordination Intelligence", present: "dashboard.coordinator_plan", absent: []string{"dashboard.active_reconcile", "dashboard.closeout_reports", "dashboard.audit_diagnostics"}},
+		{panel: "reconciliation", want: "Active Reconciliation", present: "dashboard.active_reconcile", absent: []string{"dashboard.coordinator_plan", "dashboard.closeout_reports", "dashboard.audit_diagnostics"}},
+		{panel: "closeout", want: "Lane Closeout", present: "dashboard.closeout_reports", absent: []string{"dashboard.coordinator_plan", "dashboard.active_reconcile", "dashboard.audit_diagnostics"}},
+		{panel: "audit", want: "Coverage Diagnostics", present: "dashboard.audit_diagnostics", absent: []string{"dashboard.coordinator_plan", "dashboard.active_reconcile", "dashboard.closeout_reports"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.panel, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/board/panels/diagnostics?tab=diagnostics&panel="+tc.panel, nil)
+			timing := newDashboardTiming("board-diagnostics-panel", req)
+			data, err := server.buildDashboardViewData(req, "board", timing)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body strings.Builder
+			if err := boardTemplate.ExecuteTemplate(&body, "diagnostics-panels", data); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(body.String(), tc.want) {
+				t.Fatalf("%s body missing %q: %s", tc.panel, tc.want, body.String())
+			}
+			blocks := map[string]bool{}
+			for _, block := range timing.blocks {
+				blocks[block.Name] = true
+			}
+			if !blocks[tc.present] {
+				t.Fatalf("%s timing missing %s: %+v", tc.panel, tc.present, timing.blocks)
+			}
+			for _, absent := range tc.absent {
+				if blocks[absent] {
+					t.Fatalf("%s unexpectedly executed %s: %+v", tc.panel, absent, timing.blocks)
+				}
+			}
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/board/panels/diagnostics?panel=unknown", nil)
+	rec := httptest.NewRecorder()
+	server.boardDiagnosticsPanel(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown panel status=%d, want 404", rec.Code)
 	}
 }
 

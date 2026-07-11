@@ -97,7 +97,14 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 	}
 	taskPattern := taskIDPattern(taskIDs)
 	pathCoverage := buildTaskPathCoverage(tasks)
-	evidenceByTask := map[string][]store.Evidence{}
+	evidenceByTask, err := s.EvidenceByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return WorkCoverageReport{}, err
+	}
+	reviewsByTask, err := s.ReviewsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return WorkCoverageReport{}, err
+	}
 	for _, commit := range commits {
 		mentioned := mentionedTaskIDs(commit.Subject+"\n"+commit.Body, taskPattern, tasks)
 		coveredTasks := tasksCoveringFiles(commit.ChangedFiles, pathCoverage)
@@ -129,11 +136,8 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 		}
 	}
 	for _, task := range tasks {
-		_, _, evidence, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
-		if err != nil {
-			return WorkCoverageReport{}, err
-		}
-		evidenceByTask[task.Definition.ID] = evidence
+		evidence := evidenceByTask[task.Definition.ID]
+		reviews := reviewsByTask[task.Definition.ID]
 		if len(evidence) > 0 && !isTerminalStatus(task.Status, cfg.States.Terminal) {
 			report.Findings = append(report.Findings, WorkCoverageFinding{
 				Kind:        "evidence_without_status_decision",
@@ -486,13 +490,23 @@ func BuildCILearningReport(ctx context.Context, cfg config.Config, s *store.Stor
 		}
 		tasks = []store.Task{task}
 	}
+	taskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.Definition.ID)
+	}
+	evidenceByTask, err := s.EvidenceByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return CILearningReport{}, err
+	}
+	reviewsByTask, err := s.ReviewsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return CILearningReport{}, err
+	}
 	allFollowUps := findLearningFollowUps(taskByID)
 	report := CILearningReport{OK: true, TaskID: opts.TaskID}
 	for _, task := range tasks {
-		_, _, evidence, _, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
-		if err != nil {
-			return CILearningReport{}, err
-		}
+		evidence := evidenceByTask[task.Definition.ID]
+		reviews := reviewsByTask[task.Definition.ID]
 		for i, ev := range evidence {
 			if !isFailedPipelineEvidence(ev) {
 				continue
