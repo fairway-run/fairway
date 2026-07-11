@@ -44,7 +44,11 @@ git -C "$repo_root" rev-parse HEAD >"$artifacts/source-sha.txt"
 "$binary" version >"$artifacts/version.txt"
 shasum -a 256 "$binary" >"$artifacts/binary-sha256.txt"
 "$binary" --config "$config" config validate >"$artifacts/config-validate.txt"
-"$binary" --config "$config" doctor --format json >"$artifacts/doctor.json"
+doctor_status=0
+"$binary" --config "$config" doctor --format json \
+  --dashboard-read-only "" --dashboard-full "" \
+  >"$artifacts/doctor.json" || doctor_status=$?
+printf '%s\n' "$doctor_status" >"$artifacts/doctor-exit-status.txt"
 "$binary" --config "$config" reconcile active --dry-run \
   >"$artifacts/reconcile-before.txt"
 "$binary" --config "$config" delivery report --since 168h --format json \

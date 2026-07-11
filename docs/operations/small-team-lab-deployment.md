@@ -24,6 +24,12 @@ reports/waits readback, verifies writes remain disabled, stops the process, and
 records bounded artifacts under `.fairway-pilot-artifacts`. CI runs the same
 harness on an independent runner and publishes the artifact packet.
 
+`doctor` output and its exit status are evidence, not a blanket gate for this
+rehearsal. A minimal CI runner can legitimately report missing `tmux`, Docker,
+or `psql`; those tools are required only for the lane, Postgres, or other
+capabilities named by the finding. Config, Git, Go, managed server lifecycle,
+read-model, backup/restore, and cleanup failures remain blocking.
+
 ## Boundary
 
 Supported in this runbook:

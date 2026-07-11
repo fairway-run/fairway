@@ -75,7 +75,8 @@ shasum -a 256 "$FAIRWAY_BIN" | tee "$FAIRWAY_ARTIFACTS/binary-sha256.txt"
 "$FAIRWAY_BIN" --config "$FAIRWAY_CONFIG" config validate \
   | tee "$FAIRWAY_ARTIFACTS/config-validate.txt"
 "$FAIRWAY_BIN" --config "$FAIRWAY_CONFIG" doctor --format json \
-  > "$FAIRWAY_ARTIFACTS/doctor.json"
+  > "$FAIRWAY_ARTIFACTS/doctor.json" || \
+  printf '%s\n' "$?" > "$FAIRWAY_ARTIFACTS/doctor-exit-status.txt"
 "$FAIRWAY_BIN" --config "$FAIRWAY_CONFIG" reconcile active --dry-run \
   | tee "$FAIRWAY_ARTIFACTS/reconcile-before.txt"
 "$FAIRWAY_BIN" --config "$FAIRWAY_CONFIG" delivery report --since 168h --format json \
@@ -85,6 +86,11 @@ shasum -a 256 "$FAIRWAY_BIN" | tee "$FAIRWAY_ARTIFACTS/binary-sha256.txt"
 Stop if the source SHA differs, config validation fails, reconciliation reports
 an unapproved finding, the selected address is already occupied, or the binary
 path is not operator-owned.
+
+Review `doctor.json` by capability. Missing `tmux`, Docker, or `psql` does not
+block a loopback read-only API pilot when lane runtime and Postgres rehearsal
+are outside the run. A config, Git, Go, database, or required lifecycle finding
+does block the run.
 
 ## Backup And Restore Proof
 
