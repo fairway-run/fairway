@@ -189,6 +189,14 @@ The common path starts opt-in. Compare it with the primitive path:
 Promotion requires evidence that effort falls without hiding state or weakening
 review, release, security, or operational boundaries.
 
+The first measured pilot is recorded in
+[`../assessment/fairway-common-path-pilot-2026-07-11.md`](../assessment/fairway-common-path-pilot-2026-07-11.md).
+It found lower lifecycle and closeout time with complete session/checkpoint/
+evidence coverage, but higher review/notification overhead and no labeled
+intent-to-diff false-positive sample. The resulting policy is to keep
+reversible-work deviation findings advisory and collect classifier outcomes
+before considering a blocking promotion.
+
 Decision-memory and intent-to-diff findings remain advisory for reversible work
 during the pilot. They become blocking only at existing consequential boundaries
 until measured evidence justifies broader promotion.
