@@ -10,7 +10,9 @@ permissions:
 
 jobs:
   goreleaser:
-    runs-on: macos-latest
+    # Pin the signing image. macos-latest moved to macOS 26 and Go 1.22 test
+    # binaries abort there with dyld "missing LC_UUID" before tests execute.
+    runs-on: macos-15
     env:
       HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
       MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
