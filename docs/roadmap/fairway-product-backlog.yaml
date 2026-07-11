@@ -5385,6 +5385,149 @@ tasks:
       - "The assessment captures dashboard_timing projection breakdowns, cache hit/miss behavior, DB row counts, contention, memory/CPU, and browser-visible usability against documented budgets and FW-250 through FW-254 baselines."
       - "Confirmed bottlenecks become bounded Fairway tasks with owning layer, reproduction, baseline, target, regression coverage, and no dashboard authority change; product defects remain separate from data/archive hygiene and deployment/runtime findings."
 
+  - id: FW-316
+    title: Bound dashboard SSE polling to incremental work and idle CPU budget
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-events
+    source_paths: [internal/dashboard/sse_events.go, internal/store]
+    target_paths: [internal/dashboard, internal/store, docs/design/dashboard.md]
+    review_domains: [backend, ops]
+    risk_level: high
+    migration_type: dashboard-sse-performance
+    dependencies: [FW-315]
+    acceptance_checks:
+      - "One idle /events client on the 1747-task AI Cloud fixture consumes under 5% CPU averaged over 30 seconds while preserving the documented under-1.5-second event latency budget."
+      - "Polling uses an incremental cursor or equivalent bounded read and does not recompute full review-wait/gate projections every second when no relevant facts changed."
+      - "Tests cover idle stream CPU/work counters, new-event delivery, reconnect cursor behavior, stale review-wait transitions, and no dashboard authority change."
+
+  - id: FW-317
+    title: Remove heavy coordinator and closeout work from dashboard wall first response
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-read-model
+    source_paths: [internal/dashboard, internal/coordinator, internal/closeout]
+    target_paths: [internal/dashboard, docs/design/dashboard.md]
+    review_domains: [backend, ui, ops]
+    risk_level: high
+    migration_type: dashboard-wall-fast-path
+    dependencies: [FW-315]
+    acceptance_checks:
+      - "Cold / on the 1747-task AI Cloud fixture completes under 2 seconds without an SSE contention load; warm response remains under 200 ms."
+      - "Coordinator plan and closeout debt remain visible through bounded lazy or cached read-only panels and skipped state is never rendered as a clean zero."
+      - "Regression records per-block timing and proves the wall first response does not execute the current 9-19 second coordinator projection or multi-second closeout loop."
+
+  - id: FW-318
+    title: Batch dashboard delivery reports and remove full task-detail loops
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-reports
+    source_paths: [internal/dashboard/reports.go, internal/deliveryreport, internal/store]
+    target_paths: [internal/dashboard, internal/deliveryreport, internal/store, docs/design/reports.md]
+    review_domains: [backend, ui, ops]
+    risk_level: high
+    migration_type: dashboard-report-batching
+    dependencies: [FW-315]
+    acceptance_checks:
+      - "Cold /reports on the 1747-task AI Cloud fixture completes under 3 seconds and warm response remains under 200 ms."
+      - "Reports facts, delivery, and rough-edge projections use bounded batch readers and no longer perform 1747 TaskDetail hydrations per render."
+      - "Tests cover report equivalence, projection call counts, concurrent singleflight behavior, and no dashboard mutation or authority change."
+
+  - id: FW-319
+    title: Split dashboard diagnostics into independently bounded progressive panels
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-diagnostics
+    source_paths: [internal/dashboard, internal/coordinator, internal/reconcile]
+    target_paths: [internal/dashboard, docs/design/dashboard.md]
+    review_domains: [backend, ui, ops]
+    risk_level: high
+    migration_type: dashboard-diagnostics-progressive-load
+    dependencies: [FW-315]
+    acceptance_checks:
+      - "Diagnostics shell remains under 200 ms and each heavy panel returns or exposes progress independently with a target under 3 seconds on the AI Cloud fixture."
+      - "Coordinator, audit, closeout, and reconciliation failures are isolated so a 10-second coordinator or 7-second audit projection does not hold the complete 1.2 MB diagnostics response."
+      - "No-JS fallbacks and tests preserve read-only visibility without adding dashboard send, approval, merge, deploy, or live authority."
+
+  - id: FW-320
+    title: Instrument and optimize dashboard task-detail read model
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-task-detail
+    source_paths: [internal/dashboard/server.go, internal/store]
+    target_paths: [internal/dashboard, internal/store, docs/design/dashboard.md]
+    review_domains: [backend, ui, ops]
+    risk_level: high
+    migration_type: dashboard-task-detail-performance
+    dependencies: [FW-315]
+    acceptance_checks:
+      - "Task detail for a high-evidence AI Cloud task completes under 1 second cold and warm on the 1747-task fixture."
+      - "dashboard_timing exposes named task-detail projection blocks and row/call counts so regressions are attributable."
+      - "Batching or bounded caching preserves exact review/evidence/wait/media semantics and invalidates on relevant mutation without changing authority."
+
+  - id: FW-321
+    title: Prevent static and unknown dashboard routes from running wall projections
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-routing
+    source_paths: [internal/dashboard/server.go, internal/dashboard/assets]
+    target_paths: [internal/dashboard, docs/design/dashboard.md]
+    review_domains: [backend, ui]
+    risk_level: medium
+    migration_type: dashboard-static-route-guard
+    dependencies: [FW-315]
+    acceptance_checks:
+      - "Requests such as /favicon.ico and unknown asset paths return a bounded static response or 404 under 50 ms and never invoke dashboardViewData."
+      - "Regression proves route matching does not fall through to the wall handler while valid wall, board, reports, task, event, and asset routes remain unchanged."
+
+  - id: FW-322
+    title: Define AI Cloud Fairway dataset archive and retention hygiene packet
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: data-hygiene
+    source_paths: [docs/design, internal/store]
+    target_paths: [docs/assessment, docs/design, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [governance, ops]
+    risk_level: medium
+    migration_type: dashboard-dataset-hygiene
+    dependencies: [FW-315]
+    acceptance_checks:
+      - "Packet classifies 1702 terminal tasks, 216 stale checkpoints, 245 old handoffs, 37 blocked tasks, and the 13 MB DB plus 14 MB WAL without deleting or rewriting evidence."
+      - "Recommendations separate archive/export, checkpoint and WAL maintenance, retention, and active read-model filtering, with reversible dry-run proof and restore validation."
+      - "No data cleanup runs under this task and no product latency defect is closed merely by reducing the fixture."
+
+  - id: FW-323
+    title: Benchmark and bound dual-dashboard SQLite and client contention
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: dashboard-runtime
+    source_paths: [internal/dashboard, docs/operations]
+    target_paths: [docs/assessment, docs/operations, internal/dashboard]
+    review_domains: [arch, backend, ops]
+    risk_level: high
+    migration_type: dashboard-runtime-contention
+    dependencies: [FW-315, FW-316]
+    acceptance_checks:
+      - "A repeatable harness measures two dashboard processes, one or more SSE clients, WAL state, cache isolation, CPU, RSS, and route latency on the same SQLite database."
+      - "After the SSE fix, one active read-only client causes less than 20 percent cold-route degradation on the local full dashboard and does not hold a CPU core while idle."
+      - "Recommendations distinguish SQLite deployment limits from product projection defects and do not switch stores, expose a public endpoint, or change dashboard authority."
+
   - id: FW-312
     title: Make latest review verdict ordering deterministic
     kind: task
