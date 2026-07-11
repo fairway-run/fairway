@@ -4817,3 +4817,58 @@ tasks:
       - "Release notes distinguish supported read-only small-team behavior from preview-only write, trusted-proxy, non-loopback, and Postgres runtime boundaries."
       - "Release-prep gates include tests, vet, diff check, config validation, deploy-mode clean/pushed workflow guard, GoReleaser check, local binary smoke, and active reconciliation."
       - "Task remains release preparation only; tag, publish, Homebrew update, dashboard restart, public exposure, and release declaration require separate reviewed tasks."
+
+  - id: FW-286
+    title: Publish Fairway v0.1.10 binary docs and Homebrew update
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - docs/assessment/fairway-v0.1.10-release-prep-2026-07-06.md
+      - docs/release-notes.md
+      - docs/release-highlights.md
+      - CHANGELOG.md
+      - .github/workflows/release.yml
+      - .goreleaser.yaml
+    target_paths:
+      - GitHub release v0.1.10
+      - fairway-run/homebrew-tap
+      - docs.fairway.run
+    review_domains:
+      - governance
+      - ops
+      - security
+    risk_level: critical
+    migration_type: release-publish
+    dependencies:
+      - FW-285
+    acceptance_checks:
+      - "Tag v0.1.10 is created at the reviewed clean and pushed source SHA and the normal release workflow passes."
+      - "GitHub release is public and signed/notarized assets plus checksums return HTTP 200."
+      - "Homebrew cask version and tap commit are updated, brew fetch passes, and fairway release verify passes."
+      - "Docs workflow passes and production Fairway docs host serves the v0.1.10 support boundary."
+
+  - id: FW-287
+    title: Restart Fairway dashboards and verify v0.1.10 readback
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: operations
+    source_paths:
+      - docs/operations/small-team-lab-deployment.md
+    target_paths:
+      - Fairway shared dashboard processes
+    review_domains:
+      - governance
+      - ops
+    risk_level: high
+    migration_type: dashboard-release-readback
+    dependencies:
+      - FW-286
+    acceptance_checks:
+      - "Shared read-only and local full dashboards run the released v0.1.10 binary with durable pid/log files."
+      - "Status reports version 0.1.10 and exact binary path for both instances."
+      - "Local probes pass and the public compatibility hostname preserves its Cloudflare Access boundary."
