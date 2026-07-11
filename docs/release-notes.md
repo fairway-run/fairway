@@ -10,6 +10,24 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.1.11
+
+### What Changed
+
+- Dashboard lifecycle status now reports binary and version from a versioned
+  managed-process identity record and verifies that record against the live
+  process command before reporting `running`.
+- Legacy integer-only pid files report `unknown` instead of substituting the
+  querying CLI's version and binary. Start, stop, and restart fail closed for
+  legacy, mismatched-process, or mismatched-listen records until the operator
+  verifies and replaces the process.
+
+### Upgrade Note
+
+Restart managed dashboards once with `v0.1.11` to replace legacy pid files
+with `fairway.dashboard-lifecycle.v1` JSON records. Verify the process path with
+`ps` or the operating system process inspector during that first restart.
+
 ## v0.1.10
 
 ### What Changed

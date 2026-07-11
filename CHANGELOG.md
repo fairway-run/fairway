@@ -9,6 +9,16 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
+## v0.1.11
+
+### Fixed
+
+- Dashboard lifecycle status no longer reports the querying CLI's version and
+  binary as the identity of an older running dashboard process.
+- Managed dashboards now use versioned JSON lifecycle records and fail closed
+  for legacy, mismatched-process, or mismatched-listen records before start,
+  stop, or restart signals a process.
+
 ## v0.1.10
 
 ### Added

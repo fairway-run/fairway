@@ -1,3 +1,6 @@
+- Dashboard lifecycle readback is now process-verifiable: managed JSON records
+  bind pid, listen address, binary, version, and mode flags, while legacy or
+  mismatched records report unknown and block signaling.
 - Larger Fairway stores are now easier to operate: route timing logs, batched
   review/evidence projections, the fast board path, snapshot caching, and
   lazy-loaded diagnostics turn previously multi-second dashboard paths into

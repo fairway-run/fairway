@@ -4895,3 +4895,35 @@ tasks:
       - "Dashboard status derives or verifies version and binary path from the live managed process rather than the invoking CLI binary."
       - "Status fails closed or reports unknown when legacy pid files cannot prove the process binary/version."
       - "Regression covers invoking a newer CLI against an older running dashboard process."
+
+  - id: FW-289
+    title: Publish Fairway v0.1.11 dashboard status correctness patch
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths:
+      - cmd/fairway/main.go
+      - cmd/fairway/main_test.go
+      - docs/design/dashboard.md
+      - docs/release-notes.md
+      - CHANGELOG.md
+    target_paths:
+      - GitHub release v0.1.11
+      - fairway-run/homebrew-tap
+      - docs.fairway.run
+      - Fairway dashboards
+    review_domains:
+      - backend
+      - governance
+      - ops
+      - security
+    risk_level: critical
+    migration_type: patch-release
+    dependencies:
+      - FW-288
+    acceptance_checks:
+      - "v0.1.11 contains the reviewed dashboard lifecycle identity fix and passes CI/release verification."
+      - "GitHub assets and Homebrew cask 0.1.11 are public and fetchable."
+      - "Both dashboards restart on v0.1.11 with JSON lifecycle records and independently verified process paths."
