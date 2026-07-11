@@ -29,7 +29,7 @@ if [[ -z "${FAIRWAY_BIN:-}" ]]; then
   (cd "$repo_root" && go build -o "$binary" ./cmd/fairway)
 fi
 
-git -C "$project" init -q
+git -C "$project" init -q -b main
 git -C "$project" config user.name "Fairway Pilot"
 git -C "$project" config user.email "pilot@example.invalid"
 
