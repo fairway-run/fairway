@@ -183,6 +183,32 @@ func TestDashboardRoutes(t *testing.T) {
 	}
 }
 
+func TestDashboardUnknownRoutesDoNotRenderWall(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	handler := server.handler()
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/favicon.ico", "/unknown", "/assets/missing.css"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		start := time.Now()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s status=%d body=%q, want 404", path, rec.Code, rec.Body.String())
+		}
+		if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
+			t.Fatalf("%s took %s, want bounded response under 50ms", path, elapsed)
+		}
+	}
+}
+
 func TestWallFastPathDefersCoordinatorAndCloseoutProjections(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")

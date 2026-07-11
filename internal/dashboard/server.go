@@ -147,7 +147,7 @@ func NewMulti(projects []ProjectStore) http.Handler {
 		}
 		_ = multiTemplate.Execute(w, struct{ Projects []projectView }{views})
 	})
-	mux.HandleFunc("/", server.wall)
+	mux.HandleFunc("/{$}", server.wall)
 	return mux
 }
 
@@ -406,6 +406,10 @@ func (d AuditDiagnostics) HighRiskCount() int {
 }
 
 func (s *Server) ListenAndServe(addr string) error {
+	return http.ListenAndServe(addr, s.handler())
+}
+
+func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", dashboardAssetHandler())
 	mux.HandleFunc("/board", s.board)
@@ -423,8 +427,8 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux.HandleFunc("/actions/bulk/evidence", s.bulkEvidence)
 	mux.HandleFunc("/actions/views/save", s.saveView)
 	mux.HandleFunc("/events", s.events)
-	mux.HandleFunc("/", s.index)
-	return http.ListenAndServe(addr, mux)
+	mux.HandleFunc("/{$}", s.index)
+	return mux
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {

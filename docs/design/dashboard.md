@@ -174,6 +174,11 @@ Diagnostics tab and panel. Slow-route logs identify the skipped work as
 `dashboard.wall_fast_path`; deferred values must not be presented as clean zero
 diagnostics.
 
+The wall handler is registered only for the exact root route. Unknown paths
+such as `/favicon.ico` and missing assets return a bounded `404` and must not
+fall through to wall projection construction. Single-project and multi-project
+dashboards use the same routing boundary.
+
 Heavy board diagnostics are lazy-loaded. `/board?tab=diagnostics` renders the
 normal board shell and a loading panel first, then fetches
 `/board/panels/diagnostics` for coordinator plan, active reconciliation,
