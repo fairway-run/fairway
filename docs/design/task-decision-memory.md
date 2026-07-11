@@ -169,8 +169,9 @@ task scope. A material addition must be one of:
 3. added to task scope through the normal reviewed task-definition update; or
 4. rejected and removed before closeout.
 
-`work close` must report unexplained material deviation as a blocker. It must
-not infer a reason from a transcript or synthesize a decision after the fact.
+`work close` may block unexplained material deviation only after measured
+promotion. It must not infer a reason from a transcript or synthesize a decision
+after the fact.
 
 ## Proportional enforcement
 
@@ -214,7 +215,8 @@ replace a missing decision or missing evidence.
 2. Add a first-class bounded task decision command and read model.
 3. Include current decisions in task detail, work status, and context packets.
 4. Add intent-to-diff deviation detection to work verification.
-5. Make unexplained material deviation a closeout gate after a measured pilot.
+5. Measure advisory classifications and promote a closeout gate only when the
+   pilot demonstrates acceptable precision and safety value.
 
 The pilot must measure useful decisions captured, authoring time, false-positive
 deviation findings, hollow-but-present decisions, stale memory, promotion debt,

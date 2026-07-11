@@ -121,9 +121,19 @@ func TestCLI_WorkVerifyAndCloseCommonPath(t *testing.T) {
 	runOK(t, "import", "tasks.yaml")
 	gitAddCommit(t, repo, "initial")
 	runOK(t, "work", "start", "T-001", "--role", "backend")
+	writeFile(t, "outside-scope.txt", "advisory deviation\n")
 	verified := runCapture(t, "--json", "work", "verify", "T-001", "--command-text", "go test ./...", "--result", "pass", "--artifact", "artifacts/test-summary.json", "--notes", "all packages passed")
 	assertContains(t, verified, `"evidence_id":`)
+	assertContains(t, verified, `"mode": "advisory"`)
+	assertContains(t, verified, `"unexplained_paths": 1`)
+	assertContains(t, verified, `"path": "outside-scope.txt"`)
 	assertContains(t, verified, `"authority_boundary":`)
+	if err := os.Remove("outside-scope.txt"); err != nil {
+		t.Fatal(err)
+	}
+	detailAfterVerify := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detailAfterVerify, "intent_diff_mode=advisory")
+	assertContains(t, detailAfterVerify, "unexplained_path_list=outside-scope.txt")
 	if _, err := captureRun("work", "verify", "T-001", "--command-text", strings.Repeat("x", maxWorkVerificationSummary+1), "--result", "pass"); err == nil || !strings.Contains(err.Error(), "bounded summary") {
 		t.Fatalf("oversized verify error=%v", err)
 	}
@@ -162,6 +172,7 @@ func TestCLI_TaskDecisionRecordsAndProjections(t *testing.T) {
 	runOK(t, "init")
 	writeFile(t, "tasks.yaml", "- id: T-001\n  title: Decision task\n  role: backend\n  risk_level: high\n")
 	runOK(t, "import", "tasks.yaml")
+	gitAddCommit(t, repo, "initial")
 	runOK(t, "work", "start", "T-001", "--role", "backend")
 	firstJSON := runCapture(t, "--json", "decision", "record", "T-001",
 		"--decision", "Centralize session authorization",
@@ -197,6 +208,16 @@ func TestCLI_TaskDecisionRecordsAndProjections(t *testing.T) {
 	runOK(t, "decision", "assess", "T-001", "--decision-id", fmt.Sprint(first.ID), "--quality", "accepted", "--reviewer", "arch", "--reason", "Concrete and fact-linked")
 	accepted := runCapture(t, "--json", "decision", "list", "T-001")
 	assertContains(t, accepted, `"quality_state": "accepted"`)
+	if err := os.MkdirAll("internal/session", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, "internal/session/new.go", "package session\n")
+	verified := runCapture(t, "--json", "work", "verify", "T-001", "--command-text", "go test ./internal/session", "--result", "pass")
+	assertContains(t, verified, `"decision_explained_paths": 1`)
+	assertContains(t, verified, `"status": "accepted_decision"`)
+	if err := os.RemoveAll("internal"); err != nil {
+		t.Fatal(err)
+	}
 	secondJSON := runCapture(t, "--json", "decision", "record", "T-001",
 		"--decision", "Preserve compatibility through a bounded adapter",
 		"--trigger", "Compatibility coverage found a legacy caller",

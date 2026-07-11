@@ -35,6 +35,16 @@ output remains in the referenced artifact or CI system. Command summaries are
 limited to 1024 bytes and notes to 4096 bytes so the common path cannot become
 a transcript or log store.
 
+Before recording the row, `work verify` compares current dirty and branch-diff
+paths with task `source_paths`/`target_paths` and `scope_added` paths from
+independently accepted current decisions. Text/JSON classify each path as
+`declared`, `accepted_decision`, or `unexplained` and name its coarse ownership
+domain. The evidence row stores bounded deterministic counts and unexplained
+path names for later precision/false-positive measurement. This is advisory for
+reversible work after the FW-295 pilot; it does not synthesize a rationale or
+block closeout. Existing consequential review, security, live, deploy, release,
+credential, public-exposure, migration, and irreversible gates remain blocking.
+
 `work close` evaluates the existing merge-ready policy, terminal evidence and
 handoff gates, and target-scoped active reconciliation findings before changing
 state. The expected `status_decision_required` finding for the task being

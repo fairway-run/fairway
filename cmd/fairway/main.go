@@ -7817,6 +7817,15 @@ type workCloseReport struct {
 	Closed            *store.WorkCloseResult    `json:"closed,omitempty"`
 }
 
+type workVerifyReport struct {
+	TaskID            string                     `json:"task_id"`
+	EvidenceID        int64                      `json:"evidence_id"`
+	Result            string                     `json:"result"`
+	ArtifactReference string                     `json:"artifact_reference,omitempty"`
+	ScopeEvaluation   fairwaygit.ScopeEvaluation `json:"scope_evaluation"`
+	AuthorityBoundary string                     `json:"authority_boundary"`
+}
+
 func cmdWorkVerify(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) || (len(args) > 1 && isHelpOnly(args[1:])) {
 		subcommandUsage("work verify", "<task-id> --command-text <summary> --result <pass|fail|partial|skipped|blocked> [--artifact <reference>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <bounded-summary>]")
@@ -7851,7 +7860,7 @@ func cmdWorkVerify(ctx context.Context, opts globalOptions, args []string) error
 	if *duration < 0 {
 		return errors.New("work verify --duration-seconds cannot be negative")
 	}
-	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
 		status, err := s.CurrentStatus(ctx, taskID)
 		if err != nil {
 			return err
@@ -7859,29 +7868,74 @@ func cmdWorkVerify(ctx context.Context, opts globalOptions, args []string) error
 		if status != "in_progress" {
 			return fmt.Errorf("work verify requires in_progress task, got %s", status)
 		}
+		task, _, _, _, _, err := s.TaskDetail(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		changedPaths, err := fairwaygit.ChangedScopeFiles(root, cfg.Fairway.MainBranch)
+		if err != nil {
+			return err
+		}
+		decisions, err := taskDecisions(ctx, s, task)
+		if err != nil {
+			return err
+		}
+		var acceptedScope []string
+		for _, decision := range decisions {
+			if decision.QualityState == "accepted" {
+				acceptedScope = append(acceptedScope, decision.ScopeAdded...)
+			}
+		}
+		declaredScope := append(append([]string{}, task.Definition.SourcePaths...), task.Definition.TargetPaths...)
+		scopeEvaluation := fairwaygit.EvaluateScope(changedPaths, declaredScope, acceptedScope)
+		verificationNotes := scopeVerificationNotes(strings.TrimSpace(*notes), scopeEvaluation)
 		var durationPtr *int
 		if *duration > 0 {
 			durationPtr = duration
 		}
-		ev := store.Evidence{CommandText: strings.TrimSpace(*commandText), Result: strings.TrimSpace(*result), ArtifactPath: strings.TrimSpace(*artifact), ArtifactType: strings.TrimSpace(*artifactType), DurationSeconds: durationPtr, Notes: strings.TrimSpace(*notes)}
+		ev := store.Evidence{CommandText: strings.TrimSpace(*commandText), Result: strings.TrimSpace(*result), ArtifactPath: strings.TrimSpace(*artifact), ArtifactType: strings.TrimSpace(*artifactType), DurationSeconds: durationPtr, Notes: verificationNotes}
 		id, err := s.RecordEvidenceWithID(ctx, taskID, ev)
 		if err != nil {
 			return err
 		}
-		row := struct {
-			TaskID            string `json:"task_id"`
-			EvidenceID        int64  `json:"evidence_id"`
-			Result            string `json:"result"`
-			ArtifactReference string `json:"artifact_reference,omitempty"`
-			AuthorityBoundary string `json:"authority_boundary"`
-		}{taskID, id, ev.Result, ev.ArtifactPath, "validation evidence does not create reviews, approvals, or merge, deploy, release, credential, public-exposure, or live-operation authority"}
+		row := workVerifyReport{TaskID: taskID, EvidenceID: id, Result: ev.Result, ArtifactReference: ev.ArtifactPath, ScopeEvaluation: scopeEvaluation, AuthorityBoundary: "scope classification is advisory for reversible work and does not create decisions, reviews, approvals, or merge, deploy, release, credential, public-exposure, or live-operation authority; existing consequential gates remain blocking"}
 		if opts.JSON {
 			return printJSON(row)
 		}
 		fmt.Printf("work verified task=%s evidence=%d result=%s\n", taskID, id, ev.Result)
+		fmt.Printf("intent_diff mode=%s changed=%d declared=%d accepted_decision=%d unexplained=%d\n", scopeEvaluation.Mode, scopeEvaluation.ChangedPaths, scopeEvaluation.DeclaredPaths, scopeEvaluation.DecisionExplained, scopeEvaluation.UnexplainedPaths)
+		for _, scopeRow := range scopeEvaluation.Rows {
+			if scopeRow.Status == "unexplained" {
+				fmt.Printf("- unexplained path=%s ownership_domain=%s next=fairway decision record %s --scope-added %s ...\n", scopeRow.Path, scopeRow.OwnershipDomain, taskID, scopeRow.Path)
+			}
+		}
 		fmt.Printf("authority_boundary: %s\n", row.AuthorityBoundary)
 		return nil
 	})
+}
+
+func scopeVerificationNotes(notes string, evaluation fairwaygit.ScopeEvaluation) string {
+	parts := []string{fmt.Sprintf("intent_diff_mode=%s changed_paths=%d declared_paths=%d decision_explained_paths=%d unexplained_paths=%d", evaluation.Mode, evaluation.ChangedPaths, evaluation.DeclaredPaths, evaluation.DecisionExplained, evaluation.UnexplainedPaths)}
+	var unexplained []string
+	for _, row := range evaluation.Rows {
+		if row.Status == "unexplained" {
+			unexplained = append(unexplained, row.Path)
+		}
+	}
+	if len(unexplained) > 0 {
+		parts = append(parts, "unexplained_path_list="+strings.Join(unexplained, ","))
+	}
+	if notes != "" {
+		parts = append([]string{notes}, parts...)
+	}
+	combined := strings.Join(parts, " ")
+	if len(combined) > maxWorkVerificationNotes {
+		if notes != "" {
+			return notes
+		}
+		return parts[0]
+	}
+	return combined
 }
 
 func cmdWorkClose(ctx context.Context, opts globalOptions, args []string) error {

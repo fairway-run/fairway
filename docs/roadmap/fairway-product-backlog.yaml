@@ -5189,7 +5189,7 @@ tasks:
     owning_domain: fairway
     owning_layer: workflow
     source_paths: [cmd/fairway/main.go, internal/git, internal/rules]
-    target_paths: [cmd/fairway, internal/git, internal/reviewpolicy, docs/design/cli.md]
+    target_paths: [cmd/fairway, internal/git, internal/reviewpolicy, docs/design/cli.md, docs/design/task-decision-memory.md, docs/roadmap/fairway-product-backlog.yaml]
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: intent-diff-deviation-gate
