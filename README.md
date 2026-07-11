@@ -145,6 +145,7 @@ Start here:
 - [Small-team autonomy operating model](docs/design/small-team-autonomy-operating-model.md) — how small AI Cloud-style lanes use Fairway for reversible work, grouped review, rough edges, and escalation boundaries
 - [Common-path automation](docs/design/common-path-automation.md) — progressive disclosure and a compact work lifecycle over existing Fairway primitives
 - [Task decision memory](docs/design/task-decision-memory.md) — curated material decisions and resumable context without transcript-as-authority
+- [Agent-native product interface](docs/design/agent-native-product-interface.md) — agents as primary operational users, humans as consequential authorities, and grounded code explanation
 - [Product boundaries](docs/design/product-boundaries.md) — what Fairway coordinates and what it deliberately does not do
 - [Backlog sources](docs/design/backlog-sources.md) — active backlog, archive, examples, and runtime DB authority
 - [Agent guide](docs/agent-guide.md) — practical command flow for agents using Fairway

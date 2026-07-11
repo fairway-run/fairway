@@ -5256,3 +5256,76 @@ tasks:
       - "Track memory has owner, review date, disposition, promotion debt, and tested durability requirements."
       - "Decision quality distinguishes draft, accepted, insufficient, and superseded rather than gating on presence alone."
       - "Reversible work remains advisory until pilot evidence justifies broader enforcement."
+
+  - id: FW-308
+    title: Define Fairway agent-native product and explainability contract
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product
+    source_paths: [docs/product.md, docs/governed-agentic-engineering.md, docs/design/task-decision-memory.md]
+    target_paths: [docs/design/agent-native-product-interface.md, README.md, docs/product.md]
+    review_domains: [arch, governance, ops, security]
+    risk_level: high
+    migration_type: agent-native-product-contract
+    acceptance_checks:
+      - "The product explicitly identifies agents as primary operational users and humans as consequential judgment authorities."
+      - "The design test requires replacement-agent continuation and human-defensible outcomes without transcript trust."
+      - "Explainability separates retrieved facts, model inference, unknowns, and reviewed provenance."
+
+  - id: FW-309
+    parent_id: FW-290
+    title: Implement grounded fairway explain code packet
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: explainability
+    source_paths: [internal/git, internal/store, internal/provenance]
+    target_paths: [cmd/fairway, internal/provenance, docs/design/cli.md]
+    review_domains: [arch, backend, governance, security]
+    risk_level: high
+    migration_type: explain-code-packet
+    dependencies: [FW-303, FW-304]
+    acceptance_checks:
+      - "Explain code resolves file, symbol, line, commit, or task entry points into cited task, diff, decision, contract, evidence, and review facts."
+      - "Packet labels recorded facts, conflicts, missing provenance, and bounded machine inference inputs without generating historical rationale."
+      - "Output is deterministic JSON or Markdown and excludes raw transcripts, secrets, prompts, and tool bodies."
+
+  - id: FW-310
+    parent_id: FW-290
+    title: Add advisory LLM narrative over grounded explain packets
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: explainability
+    source_paths: [internal/provenance, internal/config]
+    target_paths: [cmd/fairway, internal/config, docs/design]
+    review_domains: [arch, backend, governance, security]
+    risk_level: high
+    migration_type: explain-code-narrative
+    dependencies: [FW-309]
+    acceptance_checks:
+      - "An optional configured advisory provider turns a grounded explain packet into human-readable narrative with citations."
+      - "Every statement is labeled recorded, inferred, or unknown and generated text is never written back as accepted historical provenance."
+      - "Provider use is optional, privacy-bounded, and grants no task, review, merge, deploy, release, credential, or live-operation authority."
+
+  - id: FW-311
+    title: Prepare Fairway v0.1.12 agent-native common-path release
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths: [docs/release-notes.md, docs/release-highlights.md, CHANGELOG.md]
+    target_paths: [docs/assessment, GitHub-release-v0.1.12, fairway-run/homebrew-tap, docs.fairway.run]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: agent-native-release-prep
+    dependencies: [FW-293, FW-294, FW-295, FW-297, FW-298, FW-299, FW-300, FW-301, FW-303, FW-304, FW-306, FW-309, FW-310]
+    acceptance_checks:
+      - "All common-path, decision-memory, consumer-gap, and explainability tasks included in the release are done with reviewed evidence."
+      - "Release packet states implemented versus advisory behavior and does not claim deterministic LLM reproducibility."
+      - "CI, docs, release assets, Homebrew, version readback, and dashboard restart have explicit publish and verification tasks."

@@ -20,6 +20,10 @@ material reasoning needed after context compaction while keeping transcripts
 optional and non-authoritative.
 
 Fairway is the local-first coordination control plane for that model.
+The [agent-native product interface](design/agent-native-product-interface.md)
+defines agents as the primary operational users and humans as the authority for
+consequential judgment. It also defines grounded code-explanation packets and
+the optional advisory LLM narrative boundary.
 Traffic-control lanes were the first useful primitive: one lane, one role, one
 worktree, one visible task state. The product direction is broader but still
 bounded: Fairway coordinates the facts around multi-agent engineering work
