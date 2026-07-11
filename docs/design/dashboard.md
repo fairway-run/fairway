@@ -179,6 +179,14 @@ such as `/favicon.ico` and missing assets return a bounded `404` and must not
 fall through to wall projection construction. Single-project and multi-project
 dashboards use the same routing boundary.
 
+Task detail records named timing blocks for core facts, sessions, project task
+context, activity, usage, active reconciliation, review policy,
+completion-handback projection, decisions, task-scoped audit, and template
+rendering. Completion-handback actions are projected from the task's already
+loaded handbacks, notifications, evidence, and live-window checkpoint. Task
+detail must not build the project-wide coordinator plan merely to select that
+task's actions.
+
 Heavy board diagnostics are lazy-loaded. `/board?tab=diagnostics` renders the
 normal board shell and a loading panel first, then fetches
 `/board/panels/diagnostics` for coordinator plan, active reconciliation,

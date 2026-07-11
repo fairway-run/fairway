@@ -2522,54 +2522,76 @@ func evidenceIsFresh(ev store.Evidence, expiresAfter string, now time.Time) bool
 }
 
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {
+	timing := newDashboardTiming("task-detail", r)
+	defer timing.logIfSlow()
 	id := r.URL.Path[len("/tasks/"):]
+	start := time.Now()
 	task, transitions, evidence, handoffs, reviews, err := s.store.TaskDetail(r.Context(), id)
+	timing.add("task_detail.core", time.Since(start), fmt.Sprintf("transitions=%d evidence=%d handoffs=%d reviews=%d", len(transitions), len(evidence), len(handoffs), len(reviews)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	start = time.Now()
 	sessions, err := s.store.Sessions(r.Context(), false)
+	timing.add("task_detail.sessions", time.Since(start), fmt.Sprintf("rows=%d", len(sessions)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
 	tasks, err := s.store.AllTasks(r.Context())
+	timing.add("task_detail.tasks", time.Since(start), fmt.Sprintf("rows=%d", len(tasks)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	rollups := taskRollups(tasks, map[string]bool{"done": true})
+	start = time.Now()
 	activity, err := s.store.Activity(r.Context(), defaultActivityLimit)
+	timing.add("task_detail.activity", time.Since(start), fmt.Sprintf("rows=%d", len(activity)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
 	usageEvents, err := s.store.ProviderUsageForTask(r.Context(), id)
+	timing.add("task_detail.usage", time.Since(start), fmt.Sprintf("rows=%d", len(usageEvents)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
 	usageRollups, err := s.store.UsageRollups(r.Context(), store.UsageRollupOptions{GroupBy: "provider", TaskID: id})
+	timing.add("task_detail.usage_rollups", time.Since(start), fmt.Sprintf("rows=%d", len(usageRollups)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
 	batches, err := dashboardBatchesForTask(r.Context(), s.store, id)
+	timing.add("task_detail.batches", time.Since(start), fmt.Sprintf("rows=%d", len(batches)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
 	notifications, err := s.store.Notifications(r.Context(), id)
+	timing.add("task_detail.notifications", time.Since(start), fmt.Sprintf("rows=%d", len(notifications)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
 	activeReport, err := reconcile.Active(r.Context(), s.store, reconcile.ActiveOptions{Terminal: s.cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
+	timing.add("task_detail.active_reconcile", time.Since(start), fmt.Sprintf("findings=%d", len(activeReport.Findings)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
 	reviewPolicy, err := s.dashboardReviewPolicyEvaluation(r.Context(), task, reviews)
+	timing.add("task_detail.review_policy", time.Since(start), fmt.Sprintf("missing=%d", len(reviewPolicy.MissingReviewDomains)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2585,12 +2607,16 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reviewWaits := reviewstate.WaitsForTask(task, handoffs, reviews, notifications, reviewWaitOptions)
-	completionHandbacks, completionActions, err := s.completionHandbackProjection(r.Context(), task, handoffs, notifications, reviewWaitOptions.AckTimeout)
+	start = time.Now()
+	completionHandbacks, completionActions, err := s.completionHandbackProjection(r.Context(), task, evidence, handoffs, notifications, reviewWaitOptions.AckTimeout)
+	timing.add("task_detail.completion_handback", time.Since(start), fmt.Sprintf("handbacks=%d actions=%d", len(completionHandbacks), len(completionActions)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
 	decisions, err := s.store.TaskDecisions(r.Context(), id)
+	timing.add("task_detail.decisions", time.Since(start), fmt.Sprintf("rows=%d", len(decisions)))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2614,6 +2640,9 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		ActiveFindings:       activeFindingsForTask(activeReport.Findings, id),
 		DecisionAttention:    decisionAttention,
 	})
+	start = time.Now()
+	auditDiagnostics := s.auditDiagnostics(r.Context(), id)
+	timing.add("task_detail.audit", time.Since(start), "task_scoped=true")
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -2645,52 +2674,38 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		Rollup:               rollups[task.Definition.ID],
 		CSRFToken:            s.csrfToken,
 		States:               dashboardMutableStates(s.cfg),
-		Audit:                s.auditDiagnostics(r.Context(), id),
+		Audit:                auditDiagnostics,
 		ActiveFindings:       activeFindingsForTask(activeReport.Findings, id),
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 		Recommendation:       recommendation,
 	}
+	start = time.Now()
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
+	timing.add("template.task_detail", time.Since(start), "")
 }
 
-func (s *Server) completionHandbackProjection(ctx context.Context, task store.Task, handoffs []store.Handoff, notifications []store.Notification, ackTimeout time.Duration) ([]completionhandback.Handback, []coord.PlanAction, error) {
-	liveWindowPhase := ""
+func (s *Server) completionHandbackProjection(ctx context.Context, task store.Task, evidence []store.Evidence, handoffs []store.Handoff, notifications []store.Notification, ackTimeout time.Duration) ([]completionhandback.Handback, []coord.PlanAction, error) {
+	var liveWindowStatus livewindow.Status
 	checkpoints, err := s.store.Checkpoints(ctx, "", true)
 	if err != nil {
 		return nil, nil, err
 	}
 	for _, status := range livewindow.StatusesFromCheckpoints(checkpoints) {
 		if status.TaskID == task.Definition.ID {
-			liveWindowPhase = status.Phase
+			liveWindowStatus = status
 			break
 		}
-	}
-	_, _, evidence, _, _, err := s.store.TaskDetail(ctx, task.Definition.ID)
-	if err != nil {
-		return nil, nil, err
 	}
 	handbacks := completionhandback.RowsWithOptions(task.Definition.ID, handoffs, notifications, completionhandback.RowOptions{
 		Now:             time.Now().UTC(),
 		AckTimeout:      ackTimeout,
 		TaskStatus:      task.Status,
-		LiveWindowPhase: liveWindowPhase,
+		LiveWindowPhase: liveWindowStatus.Phase,
 		Superseded:      completionhandback.SupersedesFromEvidence(evidence),
 	})
-	plan, err := coord.BuildPlan(ctx, s.cfg, s.store, coord.PlanOptions{
-		StaleCheckpointAfter:   2 * time.Hour,
-		MonitorHandbackAfter:   2 * time.Hour,
-		NotificationAckTimeout: ackTimeout,
-		ReadyLimit:             5,
-		RecommendationLimit:    taskDetailCompletionActionLimit,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	var actions []coord.PlanAction
-	for _, action := range plan.Actions {
-		if action.TaskID == task.Definition.ID && action.Classification == "completion-handback" {
-			actions = append(actions, action)
-		}
+	actions := coord.CompletionHandbackActionsForTask(task, handbacks, liveWindowStatus, ackTimeout, time.Now().UTC())
+	if len(actions) > taskDetailCompletionActionLimit {
+		actions = actions[:taskDetailCompletionActionLimit]
 	}
 	return handbacks, actions, nil
 }

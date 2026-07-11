@@ -133,6 +133,52 @@ type ReviewDomainVerdict struct {
 	Commit   string `json:"commit,omitempty"`
 }
 
+// CompletionHandbackActionsForTask projects only the completion-handback
+// actions needed by task detail. It does not build the project coordinator
+// plan or mutate workflow state.
+func CompletionHandbackActionsForTask(task store.Task, handbacks []completionhandback.Handback, status livewindow.Status, ackTimeout time.Duration, now time.Time) []PlanAction {
+	var plan Plan
+	for _, handback := range handbacks {
+		if completionhandback.IsResolved(handback) {
+			continue
+		}
+		reason := fmt.Sprintf("completion handback %d to %s has no delivered or failed provider notification; task_status=%s completion_state=%s live_window_phase=%s next_action=%s",
+			handback.HandoffID,
+			handback.ToRole,
+			firstNonEmpty(handback.TaskStatus, "unknown"),
+			firstNonEmpty(handback.CompletionState, "unspecified"),
+			firstNonEmpty(handback.LiveWindowPhase, "none"),
+			handback.NextAction,
+		)
+		action := firstNonEmpty(handback.SuggestedAction, "deliver_or_record_completion_handback")
+		if handback.Stale {
+			reason += fmt.Sprintf("; stale_age=%s suggested_command=%s", handback.StaleAge, handback.SuggestedCommand)
+		}
+		addCompletionHandbackAction(&plan, 11, "completion-handback", action, reason, task.Definition.ID, handback.ToRole, handback, true)
+	}
+	if liveWindowCloseoutPhase(status.Phase) && !closeoutCoveredByCompletionHandback(status, handbacks) {
+		owner := firstNonEmpty(status.NextOwner, task.Definition.Role)
+		action := "record_closeout_completion_handback"
+		reason := fmt.Sprintf("live-window phase=%s needs completion handback to next owner=%s; task_status=%s next_action=%s",
+			status.Phase,
+			firstNonEmpty(owner, "unknown"),
+			firstNonEmpty(task.Status, "unknown"),
+			firstNonEmpty(status.NextAction, "record next decision"),
+		)
+		if staleAge := liveWindowStaleAge(status, ackTimeout, now); staleAge != "" {
+			action = "escalate_closeout_completion_handback"
+			reason += fmt.Sprintf("; stale_age=%s suggested_command=fairway record completion-handback %s --to %s --next-action %q --completion-state live-window-closeout --state thread_steered --provider <provider> --target <target>",
+				staleAge,
+				status.TaskID,
+				firstNonEmpty(owner, "<role>"),
+				firstNonEmpty(status.NextAction, "record next decision"),
+			)
+		}
+		addLiveWindowAction(&plan, 11, "completion-handback", action, reason, status.TaskID, owner, status, true)
+	}
+	return uniquePlanActions(plan.Actions)
+}
+
 type ReviewHandbackOptions struct {
 	FreshFor             time.Duration
 	Now                  time.Time

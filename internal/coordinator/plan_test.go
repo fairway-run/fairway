@@ -345,6 +345,32 @@ func TestBuildPlanReportsPendingCompletionHandback(t *testing.T) {
 	}
 }
 
+func TestCompletionHandbackActionsForTask(t *testing.T) {
+	task := store.Task{Definition: store.TaskDefinition{ID: "T-001", Role: "ops"}, Status: "blocked"}
+	pending := completionhandback.Handback{
+		TaskID:          "T-001",
+		HandoffID:       7,
+		ToRole:          "arch",
+		NextAction:      "choose follow-up",
+		TaskStatus:      "blocked",
+		DeliveryStatus:  "pending",
+		SuggestedAction: "deliver_or_record_completion_handback",
+	}
+	actions := CompletionHandbackActionsForTask(task, []completionhandback.Handback{pending}, livewindow.Status{}, time.Hour, time.Now().UTC())
+	if len(actions) != 1 || actions[0].TaskID != "T-001" || actions[0].Action != "deliver_or_record_completion_handback" || actions[0].CompletionHandback == nil {
+		t.Fatalf("pending handback actions=%+v", actions)
+	}
+	pending.DeliveryStatus = "delivered"
+	if got := CompletionHandbackActionsForTask(task, []completionhandback.Handback{pending}, livewindow.Status{}, time.Hour, time.Now().UTC()); len(got) != 0 {
+		t.Fatalf("resolved handback actions=%+v, want none", got)
+	}
+	status := livewindow.Status{TaskID: "T-001", Phase: "closeout_required", NextOwner: "arch", NextAction: "record decision"}
+	actions = CompletionHandbackActionsForTask(task, nil, status, time.Hour, time.Now().UTC())
+	if len(actions) != 1 || actions[0].Action != "record_closeout_completion_handback" || actions[0].LiveWindow == nil {
+		t.Fatalf("closeout actions=%+v", actions)
+	}
+}
+
 func TestBuildPlanBlocksReviewWaitOnMissingReviewerNotification(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)
