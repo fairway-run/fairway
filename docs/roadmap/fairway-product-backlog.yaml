@@ -4991,7 +4991,7 @@ tasks:
     owning_domain: fairway
     owning_layer: cli
     source_paths: [cmd/fairway/main.go, internal/store, internal/reviewpolicy]
-    target_paths: [cmd/fairway/main.go, cmd/fairway/main_test.go, docs/design/cli.md]
+    target_paths: [cmd/fairway/main.go, cmd/fairway/main_test.go, docs/design/cli.md, internal/store/store.go, internal/store/store_test.go]
     review_domains: [backend, governance, ops, security]
     risk_level: high
     migration_type: common-path-close

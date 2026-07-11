@@ -5162,96 +5162,10 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 		return fmt.Errorf("unexpected merge-ready arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
-		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, taskID)
+		report, err := evaluateMergeReady(ctx, cfg, root, s, taskID, *base)
 		if err != nil {
 			return err
 		}
-		if *base == "" {
-			*base = cfg.Fairway.MainBranch
-		}
-		gitStatus, err := fairwaygit.Check(root, *base)
-		if err != nil {
-			return err
-		}
-		report := mergeReadyReport{OK: true, TaskID: taskID, Git: gitStatus}
-		cleanliness := evaluateWorktreeCleanliness(gitStatus, localArtifactAllowlist(cfg, evidence))
-		report.AllowedArtifactPaths = cleanliness.AllowedArtifactPaths
-		report.DirtyPaths = cleanliness.DirtyPaths
-		if cleanliness.Dirty {
-			report.Issues = append(report.Issues, "worktree has uncommitted changes")
-		}
-		if *base != "" && !gitStatus.BaseAncestor {
-			report.Issues = append(report.Issues, fmt.Sprintf("HEAD is not based on %q", *base))
-		}
-		if cfg.Gates.RequireEvidenceBeforeDone {
-			ok, err := s.HasEvidence(ctx, taskID)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				report.Issues = append(report.Issues, "missing evidence")
-			}
-		}
-		if cfg.Gates.RequireReviewBeforeDone {
-			ok, err := s.HasApprovedReview(ctx, taskID)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				report.Issues = append(report.Issues, "missing approved review")
-			}
-		}
-		report.ReviewPolicy, err = reviewPolicyEvaluation(ctx, cfg, s, task, reviews, cleanliness.DirtyPaths)
-		if err != nil {
-			return err
-		}
-		report.MissingReviewDomains = report.ReviewPolicy.MissingReviewDomains
-		for _, domain := range report.MissingReviewDomains {
-			message := "missing approved review for domain " + domain + " (" + reviewPolicyDomainReason(report.ReviewPolicy, domain) + ")"
-			if report.ReviewPolicy.Mode == "advisory" {
-				report.Warnings = append(report.Warnings, "advisory review profile: "+message)
-			} else {
-				report.Issues = append(report.Issues, message)
-			}
-		}
-		if cfg.Gates.RequireHandoffBeforeMergeReady {
-			ok, err := s.HasHandoff(ctx, taskID)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				report.Issues = append(report.Issues, "missing handoff")
-			}
-		}
-		report.GateEvaluations = evaluateTaskProfileGates(cfg, task, evidence, time.Now().UTC())
-		for _, evaluation := range report.GateEvaluations {
-			if evaluation.Status != "missing" {
-				continue
-			}
-			message := mergeReadyGateMessage(evaluation)
-			if evaluation.Mode == "blocking" {
-				report.Issues = append(report.Issues, message)
-			} else {
-				report.Warnings = append(report.Warnings, message)
-			}
-		}
-		ruleEvaluations, err := ruleEvidenceEvaluations(cfg, root, task, evidence)
-		if err != nil {
-			return err
-		}
-		report.RuleEvaluations = ruleEvaluations
-		for _, evaluation := range ruleEvaluations {
-			if evaluation.Status != "missing" {
-				continue
-			}
-			message := ruleEvidenceMessage(evaluation)
-			if evaluation.Mode == "blocking" {
-				report.Issues = append(report.Issues, message)
-			} else {
-				report.Warnings = append(report.Warnings, message)
-			}
-		}
-		report.OK = len(report.Issues) == 0
 		if opts.JSON {
 			if err := printJSON(report); err != nil {
 				return err
@@ -5292,6 +5206,99 @@ func cmdMergeReady(ctx context.Context, opts globalOptions, args []string) error
 		}
 		return nil
 	})
+}
+
+func evaluateMergeReady(ctx context.Context, cfg config.Config, root string, s *store.Store, taskID, base string) (mergeReadyReport, error) {
+	task, _, evidence, _, reviews, err := s.TaskDetail(ctx, taskID)
+	if err != nil {
+		return mergeReadyReport{}, err
+	}
+	if base == "" {
+		base = cfg.Fairway.MainBranch
+	}
+	gitStatus, err := fairwaygit.Check(root, base)
+	if err != nil {
+		return mergeReadyReport{}, err
+	}
+	report := mergeReadyReport{OK: true, TaskID: taskID, Git: gitStatus}
+	cleanliness := evaluateWorktreeCleanliness(gitStatus, localArtifactAllowlist(cfg, evidence))
+	report.AllowedArtifactPaths = cleanliness.AllowedArtifactPaths
+	report.DirtyPaths = cleanliness.DirtyPaths
+	if cleanliness.Dirty {
+		report.Issues = append(report.Issues, "worktree has uncommitted changes")
+	}
+	if base != "" && !gitStatus.BaseAncestor {
+		report.Issues = append(report.Issues, fmt.Sprintf("HEAD is not based on %q", base))
+	}
+	if cfg.Gates.RequireEvidenceBeforeDone {
+		ok, err := s.HasEvidence(ctx, taskID)
+		if err != nil {
+			return mergeReadyReport{}, err
+		}
+		if !ok {
+			report.Issues = append(report.Issues, "missing evidence")
+		}
+	}
+	if cfg.Gates.RequireReviewBeforeDone {
+		ok, err := s.HasApprovedReview(ctx, taskID)
+		if err != nil {
+			return mergeReadyReport{}, err
+		}
+		if !ok {
+			report.Issues = append(report.Issues, "missing approved review")
+		}
+	}
+	report.ReviewPolicy, err = reviewPolicyEvaluation(ctx, cfg, s, task, reviews, cleanliness.DirtyPaths)
+	if err != nil {
+		return mergeReadyReport{}, err
+	}
+	report.MissingReviewDomains = report.ReviewPolicy.MissingReviewDomains
+	for _, domain := range report.MissingReviewDomains {
+		message := "missing approved review for domain " + domain + " (" + reviewPolicyDomainReason(report.ReviewPolicy, domain) + ")"
+		if report.ReviewPolicy.Mode == "advisory" {
+			report.Warnings = append(report.Warnings, "advisory review profile: "+message)
+		} else {
+			report.Issues = append(report.Issues, message)
+		}
+	}
+	if cfg.Gates.RequireHandoffBeforeMergeReady {
+		ok, err := s.HasHandoff(ctx, taskID)
+		if err != nil {
+			return mergeReadyReport{}, err
+		}
+		if !ok {
+			report.Issues = append(report.Issues, "missing handoff")
+		}
+	}
+	report.GateEvaluations = evaluateTaskProfileGates(cfg, task, evidence, time.Now().UTC())
+	for _, evaluation := range report.GateEvaluations {
+		if evaluation.Status != "missing" {
+			continue
+		}
+		message := mergeReadyGateMessage(evaluation)
+		if evaluation.Mode == "blocking" {
+			report.Issues = append(report.Issues, message)
+		} else {
+			report.Warnings = append(report.Warnings, message)
+		}
+	}
+	report.RuleEvaluations, err = ruleEvidenceEvaluations(cfg, root, task, evidence)
+	if err != nil {
+		return mergeReadyReport{}, err
+	}
+	for _, evaluation := range report.RuleEvaluations {
+		if evaluation.Status != "missing" {
+			continue
+		}
+		message := ruleEvidenceMessage(evaluation)
+		if evaluation.Mode == "blocking" {
+			report.Issues = append(report.Issues, message)
+		} else {
+			report.Warnings = append(report.Warnings, message)
+		}
+	}
+	report.OK = len(report.Issues) == 0
+	return report, nil
 }
 
 func cmdRouteReview(ctx context.Context, opts globalOptions, args []string) error {
@@ -6914,10 +6921,10 @@ func cmdSession(ctx context.Context, opts globalOptions, args []string) error {
 
 func cmdWork(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("work requires subcommand: start, status")
+		return errors.New("work requires subcommand: start, status, verify, close")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("work", "start|status")
+		subcommandUsage("work", "start|status|verify|close")
 		return nil
 	}
 	switch args[0] {
@@ -6925,6 +6932,10 @@ func cmdWork(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdWorkStart(ctx, opts, args[1:])
 	case "status":
 		return cmdWorkStatus(ctx, opts, args[1:])
+	case "verify":
+		return cmdWorkVerify(ctx, opts, args[1:])
+	case "close":
+		return cmdWorkClose(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown work subcommand %q", args[0])
 	}
@@ -7095,6 +7106,10 @@ func printTaskDecisions(decisions []store.TaskDecision) {
 }
 
 func cmdWorkStart(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) || (len(args) > 1 && isHelpOnly(args[1:])) {
+		subcommandUsage("work start", "<task-id> [--session-id <id>] [--role <role>] [--provider <name>] [--backend <name>] [--external-run-id <id>] [--summary <text>]")
+		return nil
+	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return errors.New("work start requires an explicit task id")
 	}
@@ -7148,6 +7163,10 @@ func cmdWorkStart(ctx context.Context, opts globalOptions, args []string) error 
 }
 
 func cmdWorkStatus(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) || (len(args) > 1 && isHelpOnly(args[1:])) {
+		subcommandUsage("work status", "[<task-id>] [--explain]")
+		return nil
+	}
 	fs := flag.NewFlagSet("work status", flag.ContinueOnError)
 	explain := fs.Bool("explain", false, "show underlying Fairway primitives")
 	taskArg := ""
@@ -7232,6 +7251,200 @@ func cmdWorkStatus(ctx context.Context, opts globalOptions, args []string) error
 		if *explain {
 			fmt.Println("primitives: task_state agent_sessions task_checkpoints task_evidence task_reviews task_decisions task_decision_assessments")
 			fmt.Printf("inspect: fairway task-detail %s\n", taskID)
+		}
+		return nil
+	})
+}
+
+const (
+	maxWorkVerificationSummary = 1024
+	maxWorkVerificationNotes   = 4096
+)
+
+type workCloseReport struct {
+	OK                bool                      `json:"ok"`
+	TaskID            string                    `json:"task_id"`
+	SessionID         string                    `json:"session_id,omitempty"`
+	CommitSHA         string                    `json:"commit_sha,omitempty"`
+	Blockers          []string                  `json:"blockers"`
+	MergeReady        mergeReadyReport          `json:"merge_ready"`
+	ReconcileFindings []reconcile.ActiveFinding `json:"reconcile_findings,omitempty"`
+	AuthorityBoundary string                    `json:"authority_boundary"`
+	Closed            *store.WorkCloseResult    `json:"closed,omitempty"`
+}
+
+func cmdWorkVerify(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) || (len(args) > 1 && isHelpOnly(args[1:])) {
+		subcommandUsage("work verify", "<task-id> --command-text <summary> --result <pass|fail|partial|skipped|blocked> [--artifact <reference>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <bounded-summary>]")
+		return nil
+	}
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return errors.New("work verify requires an explicit task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("work verify", flag.ContinueOnError)
+	commandText := fs.String("command-text", "", "bounded validation command or check summary")
+	result := fs.String("result", "", "validation result")
+	artifact := fs.String("artifact", "", "artifact reference; content is not stored")
+	artifactType := fs.String("artifact-type", "validation", "artifact type")
+	duration := fs.Int("duration-seconds", 0, "duration in seconds")
+	notes := fs.String("notes", "", "bounded result summary; raw output is not accepted")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected work verify arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*commandText) == "" {
+		return errors.New("work verify requires --command-text")
+	}
+	if len(*commandText) > maxWorkVerificationSummary {
+		return fmt.Errorf("work verify --command-text exceeds %d bytes; store a bounded summary and reference an artifact", maxWorkVerificationSummary)
+	}
+	if len(*notes) > maxWorkVerificationNotes {
+		return fmt.Errorf("work verify --notes exceeds %d bytes; store raw output externally and reference an artifact", maxWorkVerificationNotes)
+	}
+	if *duration < 0 {
+		return errors.New("work verify --duration-seconds cannot be negative")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		status, err := s.CurrentStatus(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		if status != "in_progress" {
+			return fmt.Errorf("work verify requires in_progress task, got %s", status)
+		}
+		var durationPtr *int
+		if *duration > 0 {
+			durationPtr = duration
+		}
+		ev := store.Evidence{CommandText: strings.TrimSpace(*commandText), Result: strings.TrimSpace(*result), ArtifactPath: strings.TrimSpace(*artifact), ArtifactType: strings.TrimSpace(*artifactType), DurationSeconds: durationPtr, Notes: strings.TrimSpace(*notes)}
+		id, err := s.RecordEvidenceWithID(ctx, taskID, ev)
+		if err != nil {
+			return err
+		}
+		row := struct {
+			TaskID            string `json:"task_id"`
+			EvidenceID        int64  `json:"evidence_id"`
+			Result            string `json:"result"`
+			ArtifactReference string `json:"artifact_reference,omitempty"`
+			AuthorityBoundary string `json:"authority_boundary"`
+		}{taskID, id, ev.Result, ev.ArtifactPath, "validation evidence does not create reviews, approvals, or merge, deploy, release, credential, public-exposure, or live-operation authority"}
+		if opts.JSON {
+			return printJSON(row)
+		}
+		fmt.Printf("work verified task=%s evidence=%d result=%s\n", taskID, id, ev.Result)
+		fmt.Printf("authority_boundary: %s\n", row.AuthorityBoundary)
+		return nil
+	})
+}
+
+func cmdWorkClose(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) || (len(args) > 1 && isHelpOnly(args[1:])) {
+		subcommandUsage("work close", "<task-id> [--session-id <id>] [--base <ref>] [--reason <text>]")
+		return nil
+	}
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return errors.New("work close requires an explicit task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("work close", flag.ContinueOnError)
+	sessionID := fs.String("session-id", "", "active session attached to the task; inferred only when unique")
+	base := fs.String("base", "", "merge-ready base ref")
+	reason := fs.String("reason", "work close gates passed", "terminal task and session reason")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected work close arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		report := workCloseReport{TaskID: taskID, AuthorityBoundary: "work close composes existing gates; it cannot create reviews or grant merge, deploy, release, credential, public-exposure, or live-operation authority"}
+		mergeReport, err := evaluateMergeReady(ctx, cfg, root, s, taskID, *base)
+		if err != nil {
+			return err
+		}
+		report.MergeReady = mergeReport
+		if !mergeReport.OK {
+			for _, issue := range mergeReport.Issues {
+				report.Blockers = append(report.Blockers, "merge-ready: "+issue)
+			}
+		}
+		activeReport, err := reconcile.Active(ctx, s, reconcile.ActiveOptions{Terminal: cfg.States.Terminal, StaleCheckpointAfter: 2 * time.Hour})
+		if err != nil {
+			return err
+		}
+		for _, finding := range activeReport.Findings {
+			if finding.TaskID != taskID {
+				continue
+			}
+			// The close command itself is the explicit status decision requested by
+			// this finding. Every other target-scoped reconciliation finding blocks.
+			if finding.Kind == "status_decision_required" {
+				continue
+			}
+			report.ReconcileFindings = append(report.ReconcileFindings, finding)
+			report.Blockers = append(report.Blockers, fmt.Sprintf("reconcile: %s: %s", finding.Kind, finding.Reason))
+		}
+		if err := validateTerminalGates(ctx, cfg, s, taskID); err != nil {
+			report.Blockers = append(report.Blockers, "terminal: "+err.Error())
+		}
+		sessions, err := s.Sessions(ctx, false)
+		if err != nil {
+			return err
+		}
+		var matching []store.Session
+		for _, session := range sessions {
+			if session.TaskID == taskID && (*sessionID == "" || session.ID == *sessionID) {
+				matching = append(matching, session)
+			}
+		}
+		switch len(matching) {
+		case 0:
+			report.Blockers = append(report.Blockers, "session: no active session attached to task")
+		case 1:
+			report.SessionID = matching[0].ID
+		default:
+			report.Blockers = append(report.Blockers, "session: multiple active sessions attached; pass --session-id")
+		}
+		current, err := s.CurrentStatus(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		stateCfg := state.Config{Allowed: cfg.States.Allowed, Terminal: cfg.States.Terminal, Transitions: cfg.States.Transitions}
+		if err := state.ValidateTransition(stateCfg, current, "done", false); err != nil {
+			report.Blockers = append(report.Blockers, "status: "+err.Error())
+		}
+		report.CommitSHA = fairwaygit.LastCommit(root)
+		if strings.TrimSpace(report.CommitSHA) == "" {
+			report.Blockers = append(report.Blockers, "git: no commit available for terminal association")
+		}
+		if len(report.Blockers) == 0 {
+			closed, err := s.CloseWork(ctx, taskID, report.SessionID, report.CommitSHA, strings.TrimSpace(*reason))
+			if err != nil {
+				return err
+			}
+			report.Closed = &closed
+			report.OK = true
+		}
+		if opts.JSON {
+			if err := printJSON(report); err != nil {
+				return err
+			}
+		} else if report.OK {
+			fmt.Printf("work closed task=%s status=done session=%s commit=%s\n", taskID, report.SessionID, report.CommitSHA)
+			fmt.Printf("authority_boundary: %s\n", report.AuthorityBoundary)
+		} else {
+			fmt.Printf("work_close: false\ntask: %s\n", taskID)
+			fmt.Println("blockers:")
+			for _, blocker := range report.Blockers {
+				fmt.Printf("- %s\n", blocker)
+			}
+			fmt.Printf("authority_boundary: %s\n", report.AuthorityBoundary)
+		}
+		if !report.OK {
+			return errors.New("work close failed")
 		}
 		return nil
 	})
@@ -18000,7 +18213,7 @@ func printCommandHelp(command string) bool {
 		"memory":                     "fairway memory show|update|append|packet|stale ...\n  Store curated track memory and render compact provider-independent packets.",
 		"wait":                       "fairway wait add|ack|list|tick|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, acknowledge them, project wait state, and emit bounded wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
-		"work":                       "fairway work start <task-id> [--session-id <id>] [--role <role>] | fairway work status [<task-id>] [--explain]\n  Use the compact common path over durable task, session, and checkpoint records.",
+		"work":                       "fairway work start <task-id> [--session-id <id>] [--role <role>] | fairway work status [<task-id>] [--explain] | fairway work verify <task-id> --command-text <summary> --result <result> | fairway work close <task-id> [--session-id <id>]\n  Use the compact common path over durable task, session, checkpoint, evidence, review, and reconciliation records.",
 		"lane":                       "fairway lane start|status|logs|stop ...\n  Record and inspect local/tmux lane runtime lifecycle without launching providers or storing transcript content.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

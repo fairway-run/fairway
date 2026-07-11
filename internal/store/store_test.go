@@ -107,6 +107,57 @@ func TestStartWorkFailsClosedOnUnfinishedDependency(t *testing.T) {
 	}
 }
 
+func TestCloseWorkAtomicallyEndsTaskAndSession(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Close", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread"}, "Started close test", []string{"done"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CloseWork(ctx, "T-001", "other-session", "abc123", "done"); err == nil {
+		t.Fatal("close with missing session succeeded")
+	}
+	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil || task.Status != "in_progress" {
+		t.Fatalf("failed close mutated task=%+v err=%v", task, err)
+	}
+	if err := s.UpsertSession(ctx, Session{ID: "work-t-001-second", Role: "backend", TaskID: "T-001", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CloseWork(ctx, "T-001", "work-t-001", "abc123", "done"); err == nil || !strings.Contains(err.Error(), "exactly one active session") {
+		t.Fatalf("multiple-session close error=%v", err)
+	}
+	if err := s.EndSession(ctx, "work-t-001-second", "ended", "test cleanup", nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.CloseWork(ctx, "T-001", "work-t-001", "abc123", "gates passed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "done" || result.CommitSHA != "abc123" {
+		t.Fatalf("result=%+v", result)
+	}
+	task, _, _, _, _, err = s.TaskDetail(ctx, "T-001")
+	if err != nil || task.Status != "done" || task.CommitSHA != "abc123" {
+		t.Fatalf("task=%+v err=%v", task, err)
+	}
+	sessions, err := s.Sessions(ctx, true)
+	if err != nil || len(sessions) != 2 {
+		t.Fatalf("sessions=%+v err=%v", sessions, err)
+	}
+	var closed Session
+	for _, session := range sessions {
+		if session.ID == "work-t-001" {
+			closed = session
+		}
+	}
+	if closed.Status != "ended" || closed.EndReason != "gates passed" {
+		t.Fatalf("closed session=%+v", closed)
+	}
+}
+
 func TestTaskDecisionsRecordAssessAndSupersede(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

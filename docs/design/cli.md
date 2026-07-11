@@ -20,6 +20,23 @@ inference. `--explain` names the underlying records and detailed inspection
 command. Neither command records evidence, synthesizes reviews, or authorizes
 merge, deploy, release, credentials, public exposure, or live operations.
 
+`work verify` records one bounded validation evidence row. It accepts a command
+or check summary, result, optional duration, bounded notes, and an artifact
+reference. It does not execute commands and has no raw-output input; command
+output remains in the referenced artifact or CI system. Command summaries are
+limited to 1024 bytes and notes to 4096 bytes so the common path cannot become
+a transcript or log store.
+
+`work close` evaluates the existing merge-ready policy, terminal evidence and
+handoff gates, and target-scoped active reconciliation findings before changing
+state. The expected `status_decision_required` finding for the task being
+closed is resolved by the command itself; every other finding remains a
+blocker. When all gates pass, Fairway marks the task `done` with the current
+commit and ends the unique attached provider session in one transaction. When
+any gate fails, neither record changes and the command reports exact blockers.
+It never synthesizes reviews or grants merge, deploy, release, credential,
+public-exposure, or live-operation authority.
+
 Material implementation choices use the task decision model documented in
 [`task-decision-memory.md`](task-decision-memory.md). Use `decision record` for
 a concise doer-drafted explanation and `decision assess` for an independent
@@ -71,6 +88,8 @@ fairway review-waits wake [--task <task-id>] [--send]              # fixed-templ
 fairway review-policy report [--profile <name>]                   # review profile overhead/outcome report
 fairway work start <task-id> [--session-id <id>] [--role <role>] [--provider <name>] [--backend <name>] [--external-run-id <id>] [--summary <text>]
 fairway work status [<task-id>] [--explain]
+fairway work verify <task-id> --command-text <summary> --result <pass|fail|partial|skipped|blocked> [--artifact <reference>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <bounded-summary>]
+fairway work close <task-id> [--session-id <id>] [--base <ref>] [--reason <text>]
 fairway decision record <task-id> --decision <text> --trigger <text> --alternative <text>... --chosen <text> --reason <text> [--scope-added <path-or-domain>]... --risk <text> --validation <ref>... --fact-ref <ref>... [--supersedes <id>]
 fairway decision assess <task-id> --decision-id <id> --quality <accepted|insufficient> --reviewer <identity> --reason <text>
 fairway decision list <task-id>

@@ -210,6 +210,13 @@ type WorkStartResult struct {
 	AlreadyActive bool   `json:"already_active"`
 }
 
+type WorkCloseResult struct {
+	TaskID    string `json:"task_id"`
+	Status    string `json:"status"`
+	SessionID string `json:"session_id"`
+	CommitSHA string `json:"commit_sha"`
+}
+
 type Checkpoint struct {
 	ID            int64  `json:"id"`
 	TaskID        string `json:"task_id"`
@@ -1301,6 +1308,73 @@ func (s *Store) CurrentStatus(ctx context.Context, taskID string) (string, error
 		return "", ErrNotFound
 	}
 	return status, err
+}
+
+// CloseWork commits the task and provider-session closeout as one lifecycle change.
+// All policy, review, evidence, git, and reconciliation gates are evaluated by
+// the caller before this method is invoked.
+func (s *Store) CloseWork(ctx context.Context, taskID, sessionID, commitSHA, reason string) (WorkCloseResult, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return WorkCloseResult{}, errors.New("work close session id is required")
+	}
+	if strings.TrimSpace(commitSHA) == "" {
+		return WorkCloseResult{}, errors.New("work close commit SHA is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return WorkCloseResult{}, err
+	}
+	defer tx.Rollback()
+	var status, owner, branch string
+	if err := tx.QueryRowContext(ctx, `SELECT status, COALESCE(owner,''), COALESCE(branch,'') FROM task_state WHERE project_id=? AND task_id=?`, s.projectID, taskID).Scan(&status, &owner, &branch); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return WorkCloseResult{}, ErrNotFound
+		}
+		return WorkCloseResult{}, err
+	}
+	if status != "in_progress" {
+		return WorkCloseResult{}, fmt.Errorf("work close requires in_progress task, got %s", status)
+	}
+	var sessionTask, sessionStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(task_id,''), status FROM agent_sessions WHERE project_id=? AND id=?`, s.projectID, sessionID).Scan(&sessionTask, &sessionStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return WorkCloseResult{}, fmt.Errorf("work close session %q not found", sessionID)
+		}
+		return WorkCloseResult{}, err
+	}
+	if sessionTask != taskID {
+		return WorkCloseResult{}, fmt.Errorf("work close session %q is attached to task %q, not %q", sessionID, sessionTask, taskID)
+	}
+	if sessionStatus != "starting" && sessionStatus != "running" {
+		return WorkCloseResult{}, fmt.Errorf("work close session %q is %s", sessionID, sessionStatus)
+	}
+	var activeSessions int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM agent_sessions WHERE project_id=? AND task_id=? AND status IN ('starting','running')`, s.projectID, taskID).Scan(&activeSessions); err != nil {
+		return WorkCloseResult{}, err
+	}
+	if activeSessions != 1 {
+		return WorkCloseResult{}, fmt.Errorf("work close requires exactly one active session for task %q, got %d", taskID, activeSessions)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := tx.ExecContext(ctx, `
+UPDATE task_state
+SET status='done', claimant=NULL, completed_at=?, commit_sha=?, updated_at=?
+WHERE project_id=? AND task_id=? AND status='in_progress'
+  AND (SELECT COUNT(*) FROM agent_sessions WHERE project_id=? AND task_id=? AND status IN ('starting','running'))=1`,
+		now, commitSHA, now, s.projectID, taskID, s.projectID, taskID)
+	if err := checkWriteResult(res, err); err != nil {
+		return WorkCloseResult{}, err
+	}
+	if err := insertHistory(ctx, tx, s.projectID, taskID, status, "done", owner, owner, branch, Actor(), reason); err != nil {
+		return WorkCloseResult{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE agent_sessions SET status='ended', ended_at=?, exit_code=0, end_reason=? WHERE project_id=? AND id=?`, now, reason, s.projectID, sessionID); err != nil {
+		return WorkCloseResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return WorkCloseResult{}, err
+	}
+	return WorkCloseResult{TaskID: taskID, Status: "done", SessionID: sessionID, CommitSHA: commitSHA}, nil
 }
 
 func (s *Store) HasEvidence(ctx context.Context, taskID string) (bool, error) {

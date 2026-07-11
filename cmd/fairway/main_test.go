@@ -103,6 +103,47 @@ func TestCLI_WorkStartAndStatusCommonPath(t *testing.T) {
 	assertContains(t, reconcile, "no active reconciliation findings")
 }
 
+func TestCLI_WorkVerifyAndCloseCommonPath(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", "- id: T-001\n  title: Common close\n  role: backend\n  review_domains: [arch]\n")
+	runOK(t, "import", "tasks.yaml")
+	gitAddCommit(t, repo, "initial")
+	runOK(t, "work", "start", "T-001", "--role", "backend")
+	verified := runCapture(t, "--json", "work", "verify", "T-001", "--command-text", "go test ./...", "--result", "pass", "--artifact", "artifacts/test-summary.json", "--notes", "all packages passed")
+	assertContains(t, verified, `"evidence_id":`)
+	assertContains(t, verified, `"authority_boundary":`)
+	if _, err := captureRun("work", "verify", "T-001", "--command-text", strings.Repeat("x", maxWorkVerificationSummary+1), "--result", "pass"); err == nil || !strings.Contains(err.Error(), "bounded summary") {
+		t.Fatalf("oversized verify error=%v", err)
+	}
+	blocked := runCaptureAllowError(t, "--json", "work", "close", "T-001")
+	assertContains(t, blocked, `"ok": false`)
+	assertContains(t, blocked, "missing approved review for domain arch")
+	status := runCapture(t, "work", "status", "T-001")
+	assertContains(t, status, "status=in_progress")
+	runOK(t, "record", "review", "T-001", "--reviewer", "arch", "--domain", "arch", "--verdict", "approve", "--reason", "verified")
+	closed := runCapture(t, "work", "close", "T-001")
+	assertContains(t, closed, "work closed task=T-001 status=done session=work-t-001")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "status: done")
+	sessions := runCapture(t, "session", "status", "--all")
+	assertContains(t, sessions, "work-t-001\tbackend\tended")
+	if _, err := captureRun("work", "verify", "T-001", "--command-text", "go test ./...", "--result", "pass"); err == nil || !strings.Contains(err.Error(), "requires in_progress") {
+		t.Fatalf("terminal verify error=%v", err)
+	}
+}
+
 func TestCLI_TaskDecisionRecordsAndProjections(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
