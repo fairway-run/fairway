@@ -56,6 +56,21 @@ The record contains the explanation a future maintainer needs. It does not store
 chain-of-thought, raw prompts, provider-private transcripts, raw tool bodies,
 credentials, tokens, or generated-content dumps.
 
+Decisions are doer-drafted explanations. They do not become authoritative merely
+because a required field is present. Their quality state is one of:
+
+| State | Meaning |
+|---|---|
+| `draft` | Recorded by the doer and available for continuation; not independently accepted. |
+| `accepted` | An applicable reviewer or grouped review found the explanation concrete and consistent with the diff and facts. |
+| `insufficient` | Present but generic, incomplete, contradicted by the diff, or missing material alternatives, risk, or proof. |
+| `superseded` | Replaced by a later linked decision while remaining in immutable history. |
+
+Review checks the trigger, credible alternatives when they existed, concrete
+reason, added scope, risk, and validation references. Generic statements such as
+"for maintainability" do not become accepted without explaining the actual
+boundary or tradeoff.
+
 ## When a decision is required
 
 Record a decision when work:
@@ -88,6 +103,36 @@ Task memory is refreshed at meaningful transitions: start, material decision,
 block/wait, handoff, verification, and closeout. Repeated progress narration is
 not retained.
 
+## Track memory lifecycle
+
+Track memory is the non-canonical middle tier and therefore requires a forcing
+function. Every active record has:
+
+```yaml
+owner: architecture
+review_by: 2026-08-01
+disposition: active
+promotion_target: docs/design/example.md
+source_facts:
+  - decision:123
+  - evidence:456
+```
+
+Allowed disposition states are `active`, `promote`, `archived`, and
+`superseded`. Reconciliation reports missing ownership or source facts, stale
+review dates, repeated decisions that may belong in canonical documentation,
+conflicting or superseded facts, memory referenced by no active work, and
+promotion debt by owner and age.
+
+Fairway recommends `refresh`, `promote`, `archive`, or `supersede`, but never
+deletes or promotes memory silently. A human or reviewed automation records the
+disposition and target. Promotion completes only when the canonical document is
+committed and linked.
+
+Track memory participates in Fairway backup, export, restore, and shared-store
+rehearsal. A local SQLite copy without tested recovery is not sufficient for
+irreplaceable cross-task context.
+
 ## Promotion between memory levels
 
 ```text
@@ -118,6 +163,20 @@ task scope. A material addition must be one of:
 
 `work close` must report unexplained material deviation as a blocker. It must
 not infer a reason from a transcript or synthesize a decision after the fact.
+
+## Proportional enforcement
+
+The first release is advisory for reversible work. It reports missing or
+insufficient decisions without blocking local iteration. Blocking applies only
+when an existing consequential profile already requires it, including security,
+live, production, deploy, release, credential, public-exposure, irreversible,
+or migration boundaries.
+
+A broader closeout gate is promoted only after the pilot shows useful decision
+quality, acceptable false-positive rates, improved resume or defect outcomes,
+and lower or neutral total process cost. If the pilot shows hollow records or
+closeout delay without outcome improvement, Fairway keeps the signal advisory
+and improves automation or trigger precision instead of adding ceremony.
 
 ## Transcript posture
 
@@ -150,6 +209,7 @@ replace a missing decision or missing evidence.
 5. Make unexplained material deviation a closeout gate after a measured pilot.
 
 The pilot must measure useful decisions captured, authoring time, false-positive
-deviation findings, defects discovered, context-resume quality, and closeout
-delay. If the model adds ceremony without improving these outcomes, keep it
-advisory and refine the trigger rules.
+deviation findings, hollow-but-present decisions, stale memory, promotion debt,
+defects discovered, context-resume quality, and closeout delay. If the model
+adds ceremony without improving these outcomes, keep it advisory and refine the
+trigger rules.

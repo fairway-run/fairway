@@ -5033,10 +5033,11 @@ tasks:
     review_domains: [governance, ops]
     risk_level: high
     migration_type: common-path-pilot
-    dependencies: [FW-293, FW-294]
+    dependencies: [FW-293, FW-294, FW-303, FW-306]
     acceptance_checks:
-      - "Pilot compares manual actions, elapsed time, review waits, defects caught, reopen/retry count, evidence completeness, and rollback confidence."
-      - "Promotion requires lower common-path effort without weaker consequential-boundary enforcement."
+      - "Pilot compares manual actions, authoring time, elapsed time, review waits, defects caught, reopen/retry count, evidence completeness, rollback confidence, and resume quality."
+      - "Pilot measures hollow-but-present decisions, false-positive deviations, stale memory, promotion debt, and closeout delay rather than decision presence alone."
+      - "Promotion requires lower common-path effort without weaker consequential-boundary enforcement; reversible work stays advisory when blocking adds ceremony without outcome improvement."
       - "Findings produce concrete automation or policy follow-ups rather than adding default ceremony."
 
   - id: FW-296
@@ -5174,9 +5175,10 @@ tasks:
     migration_type: task-decision-memory
     dependencies: [FW-302]
     acceptance_checks:
-      - "Fairway records structured task decisions using existing durable evidence/checkpoint primitives or one reviewed canonical model without storing raw transcripts."
-      - "Task detail, work status, and context packets expose current decisions, superseded decisions, scope additions, risks, and supporting fact references."
-      - "Decision text is privacy-bounded and cannot grant approval, merge, deploy, credential, release, or live-operation authority."
+      - "Fairway records structured doer-drafted task decisions using a privacy-bounded canonical model without storing raw transcripts."
+      - "Task detail, work status, and context packets expose current and superseded decisions, scope additions, risks, quality state, and supporting fact references."
+      - "Decision quality states distinguish draft, accepted, insufficient, and superseded; low-risk reversible work remains advisory while consequential decisions require independent acceptance."
+      - "Decision text cannot grant approval, merge, deploy, credential, release, or live-operation authority."
 
   - id: FW-304
     parent_id: FW-290
@@ -5191,11 +5193,12 @@ tasks:
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: intent-diff-deviation-gate
-    dependencies: [FW-293, FW-303]
+    dependencies: [FW-293, FW-303, FW-295]
     acceptance_checks:
       - "Work verify compares material changed paths and ownership domains with declared task scope and identifies unexplained additions."
-      - "Work close blocks unexplained material deviations but permits reviewed generated, mechanical, or explicitly accepted scope changes."
-      - "The gate uses git diff and structured decisions as authority; raw transcripts remain optional forensic references only."
+      - "Before pilot promotion, deviation findings are advisory for reversible work and blocking only at existing consequential boundaries."
+      - "After measured promotion, work close blocks unexplained material deviations but permits accepted generated, mechanical, or explicitly reviewed scope changes."
+      - "The gate uses git diff and accepted structured decisions as authority; raw transcripts remain optional forensic references only."
 
   - id: FW-305
     parent_id: FW-290
@@ -5214,3 +5217,42 @@ tasks:
     acceptance_checks:
       - "Custom work-start summary always retains a stable session identity that active reconciliation can match."
       - "Regression proves custom summary starts and repeats reconcile cleanly without duplicate lifecycle checkpoints."
+
+  - id: FW-306
+    parent_id: FW-290
+    title: Add track-memory lifecycle reconciliation promotion debt and durability proof
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: memory
+    source_paths: [internal/store, docs/design/task-decision-memory.md]
+    target_paths: [cmd/fairway, internal/store, internal/dashboard, docs/design]
+    review_domains: [arch, backend, governance, ops]
+    risk_level: high
+    migration_type: track-memory-lifecycle
+    dependencies: [FW-303]
+    acceptance_checks:
+      - "Every active track memory record has owner, review date, source facts, and disposition state."
+      - "Read-only reconciliation reports stale entries, missing ownership, conflicting or superseded facts, and promotion debt with previewed promote, refresh, archive, or supersede actions."
+      - "No memory is silently deleted or promoted; disposition is immutable and auditable, and canonical docs remain authoritative after promotion."
+      - "Backup, export, restore, and shared-store rehearsal prove track memory is recoverable after machine loss."
+
+  - id: FW-307
+    parent_id: FW-290
+    title: Harden decision-memory lifecycle and lightweight enforcement design
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: design
+    source_paths: [docs/design/task-decision-memory.md, docs/design/common-path-automation.md]
+    target_paths: [docs/design/task-decision-memory.md, docs/design/common-path-automation.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, governance, ops]
+    risk_level: high
+    migration_type: decision-memory-lifecycle-design
+    dependencies: [FW-302]
+    acceptance_checks:
+      - "Track memory has owner, review date, disposition, promotion debt, and tested durability requirements."
+      - "Decision quality distinguishes draft, accepted, insufficient, and superseded rather than gating on presence alone."
+      - "Reversible work remains advisory until pilot evidence justifies broader enforcement."

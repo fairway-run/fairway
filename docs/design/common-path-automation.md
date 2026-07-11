@@ -182,9 +182,16 @@ The common path starts opt-in. Compare it with the primitive path:
 | Defects caught and reopen/retry count | no regression |
 | Review wait on reversible work | lower |
 | Consequential-boundary bypasses | zero |
+| Hollow-but-present decisions | low and decreasing |
+| Stale track memory and promotion debt | bounded with named owners |
+| Decision authoring and closeout delay | lower than the value of defects or resume gaps prevented |
 
 Promotion requires evidence that effort falls without hiding state or weakening
 review, release, security, or operational boundaries.
+
+Decision-memory and intent-to-diff findings remain advisory for reversible work
+during the pilot. They become blocking only at existing consequential boundaries
+until measured evidence justifies broader promotion.
 
 ## Decision Memory
 
