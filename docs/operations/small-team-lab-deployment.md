@@ -10,6 +10,20 @@ live operations.
 Use this runbook when a small team needs one durable Fairway host with explicit
 paths, status readback, logs, backups, and rollback evidence.
 
+Before configuring a durable host, run the disposable lifecycle rehearsal from
+the Fairway source tree:
+
+```bash
+bash scripts/ci/small_team_readonly_pilot.sh
+```
+
+The harness creates a temporary Git repository and Fairway state, imports the
+product backlog, validates config and diagnostics, proves backup/restore,
+starts the managed loopback read-only API, exercises status/tasks/task detail/
+reports/waits readback, verifies writes remain disabled, stops the process, and
+records bounded artifacts under `.fairway-pilot-artifacts`. CI runs the same
+harness on an independent runner and publishes the artifact packet.
+
 ## Boundary
 
 Supported in this runbook:

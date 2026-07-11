@@ -18,6 +18,12 @@ authorize shared writes, trusted-proxy runtime promotion, non-loopback binding,
 public exposure, provider sends, approvals, merge, deploy, release, Homebrew,
 Postgres runtime cutover, or live operations.
 
+The repository also provides
+`scripts/ci/small_team_readonly_pilot.sh` as a clean-state, one-command
+rehearsal of the same lifecycle. CI runs that harness on an independent runner.
+The automated proof complements this operator packet; it does not claim that a
+write-capable or non-loopback team deployment is supported.
+
 ## Operator Inputs
 
 Set these paths for the selected host and project:

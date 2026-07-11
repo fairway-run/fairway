@@ -17,6 +17,14 @@ jobs:
       - run: gofmt -w cmd internal && git diff --exit-code
       - run: go test ./...
       - run: go vet ./...
+      - name: Rehearse small-team read-only lifecycle
+        run: |
+          FAIRWAY_PILOT_ARTIFACTS="$RUNNER_TEMP/fairway-small-team-pilot" \
+            bash scripts/ci/small_team_readonly_pilot.sh
+      - uses: actions/upload-artifact@v6
+        with:
+          name: fairway-small-team-readonly-pilot
+          path: ${{ runner.temp }}/fairway-small-team-pilot
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
