@@ -591,6 +591,17 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   objective, scope, acceptance, source facts, validation gates, evidence refs,
   review refs, and forbidden actions, but it does not authorize execution,
   review approval, merge, push, deploy, release, or dashboard mutation.
+- `explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--format packet|markdown|json]`
+  renders `fairway.explain-code.v1`, a deterministic grounded packet over
+  committed Git metadata and existing Fairway task, contract, decision,
+  evidence, and review references. File, line, commit, and task entry points
+  are supported; symbol resolution currently covers committed Go functions,
+  methods, types, constants, and variables. `packet` and `markdown` render the
+  same Markdown form. The packet labels recorded facts, conflicts, and missing
+  provenance separately and lists only cited references as bounded machine
+  inference inputs. It excludes source bodies, raw prompts, private
+  transcripts, raw tool bodies, generated-content dumps, and secret-like
+  values. It does not invent historical rationale or grant workflow authority.
 - `recipe extract|render|list` promotes completed tasks into reusable
   recipe/context packets. Recipes are JSON files, normally under
   `.fairway/recipes`, that reference source facts, evidence refs, validation

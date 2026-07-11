@@ -733,6 +733,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"provenance", "report", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "prompt-packet", "--help"}, "fairway provenance prompt-packet --task <task-id> [--format markdown|json]"},
 		{[]string{"provenance", "manifest", "--help"}, "fairway provenance manifest --path <file>... [--format text|json]"},
+		{[]string{"explain", "--help"}, "fairway explain code [<repo-path>]"},
+		{[]string{"explain", "code", "--help"}, "fairway explain code [<repo-path>]"},
 		{[]string{"recipe", "--help"}, "fairway recipe extract|render|list"},
 		{[]string{"recipe", "extract", "--help"}, "fairway recipe extract --task <task-id> --name <name>"},
 		{[]string{"recipe", "render", "--help"}, "fairway recipe render --recipe <path> --task <task-id>"},
@@ -2360,6 +2362,81 @@ func TestCLI_ProvenanceManifest(t *testing.T) {
 	assertContains(t, rejected, "privacy_rejected")
 	assertContains(t, rejected, "refusing suspicious evidence path artifacts/secret-token.json")
 	assertNotContains(t, rejected, "do-not-export")
+}
+
+func TestCLI_ExplainCodeGroundedPacket(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	gitInit(t, repo)
+	runOK(t, "init")
+	writeFile(t, "internal/example/run.go", "package example\n\nfunc Run() {}\n")
+	writeFile(t, "unowned.go", "package example\n")
+	runOK(t, "add", "EXPLAIN-001",
+		"--title", "Grounded explanation",
+		"--role", "backend",
+		"--target-paths", "internal/example",
+		"--source-paths", "docs/design/contract.md",
+		"--acceptance", "resolve cited task and git facts",
+		"--acceptance", `redact {"access_token":"json-secret"} before output`)
+	runOK(t, "decision", "record", "EXPLAIN-001",
+		"--decision", "Keep explanation packets deterministic",
+		"--trigger", "Generated rationale cannot be provenance",
+		"--alternative", "Store generated narrative",
+		"--chosen", "Render recorded facts only",
+		"--reason", "Independent consumers need stable cited inputs",
+		"--risk", "Missing provenance remains visible",
+		"--validation", "go test ./cmd/fairway",
+		"--fact-ref", "task:EXPLAIN-001")
+	runOK(t, "decision", "assess", "EXPLAIN-001", "--decision-id", "1", "--quality", "accepted", "--reviewer", "arch", "--reason", "Grounded and bounded")
+	runOK(t, "record", "evidence", "EXPLAIN-001", "--command-text", "go test ./... token=supersecret", "--result", "pass", "--artifact-type", "test", "--artifact", "artifacts/result.json?api_key=supersecret")
+	runOK(t, "record", "review", "EXPLAIN-001", "--domain", "backend", "--reviewer", "reviewer", "--verdict", "approve")
+	gitAddCommit(t, repo, "grounded source")
+
+	jsonOut := runCapture(t, "--json", "explain", "code", "internal/example/run.go", "--line", "3", "--symbol", "Run", "--task", "EXPLAIN-001")
+	assertContains(t, jsonOut, `"schema": "fairway.explain-code.v1"`)
+	assertContains(t, jsonOut, `"symbol_kind": "function"`)
+	assertContains(t, jsonOut, `"symbol_line": 3`)
+	assertContains(t, jsonOut, `"id": "EXPLAIN-001"`)
+	assertContains(t, jsonOut, `"quality_state": "accepted"`)
+	assertContains(t, jsonOut, `"ref": "evidence:EXPLAIN-001:1"`)
+	assertContains(t, jsonOut, `"ref": "review:EXPLAIN-001:1"`)
+	assertContains(t, jsonOut, `"conflicts": []`)
+	assertNotContains(t, jsonOut, "supersecret")
+	assertNotContains(t, jsonOut, "json-secret")
+	assertNotContains(t, jsonOut, "func Run()")
+
+	commitOnly := runCapture(t, "--json", "explain", "code", "--commit", "HEAD")
+	assertContains(t, commitOnly, `"id": "EXPLAIN-001"`)
+	taskOnly := runCapture(t, "--json", "explain", "code", "--task", "EXPLAIN-001")
+	assertContains(t, taskOnly, `"task_id": "EXPLAIN-001"`)
+	conflict := runCapture(t, "--json", "explain", "code", "unowned.go", "--task", "EXPLAIN-001")
+	assertContains(t, conflict, `"ref": "task:EXPLAIN-001:scope"`)
+	assertContains(t, conflict, "explicit task does not declare")
+
+	first := runCapture(t, "explain", "code", "internal/example/run.go", "--symbol", "Run", "--task", "EXPLAIN-001", "--format", "markdown")
+	second := runCapture(t, "explain", "code", "internal/example/run.go", "--symbol", "Run", "--task", "EXPLAIN-001", "--format", "markdown")
+	if first != second {
+		t.Fatal("grounded markdown packet is not deterministic")
+	}
+	assertContains(t, first, "# Fairway Grounded Code Packet")
+	assertContains(t, first, "## Missing Provenance")
+	assertContains(t, first, "## Bounded Machine Inference Inputs")
+	assertNotContains(t, first, "supersecret")
+
+	missing := runCapture(t, "--json", "explain", "code", "internal/example/run.go", "--symbol", "Missing", "--task", "EXPLAIN-001")
+	assertContains(t, missing, `"ref": "git:symbol:Missing"`)
+	assertContains(t, missing, "symbol \\\"Missing\\\" not found")
+	if err := run(context.Background(), []string{"explain", "code", "../outside", "--task", "EXPLAIN-001"}); err == nil || !strings.Contains(err.Error(), "within the repository") {
+		t.Fatalf("traversal error=%v", err)
+	}
 }
 
 func TestCLI_TaskRecipeExtractRender(t *testing.T) {

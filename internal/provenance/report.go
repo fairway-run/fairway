@@ -152,8 +152,9 @@ var secretPatterns = []struct {
 	repl string
 }{
 	{regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+`), `${1}<redacted>`},
-	{regexp.MustCompile(`(?i)(token|secret|password|api[_-]?key)=([^&\s]+)`), `${1}=<redacted>`},
-	{regexp.MustCompile(`(?i)(authorization:\s*)([^\s]+)`), `${1}<redacted>`},
+	{regexp.MustCompile(`(?i)((?:access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|ssh[_-]?private[_-]?key|api[_-]?key|token|secret|password|cookie|set-cookie)=)([^&\s"']+)`), `${1}<redacted>`},
+	{regexp.MustCompile(`(?i)("(?:access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|ssh[_-]?private[_-]?key|api[_-]?key|token|secret|password|cookie|set-cookie)"\s*:\s*")([^"]+)(")`), `${1}<redacted>${3}`},
+	{regexp.MustCompile(`(?i)((?:authorization|cookie|set-cookie):\s*)([^\r\n]+)`), `${1}<redacted>`},
 }
 
 func Build(ctx context.Context, cfg config.Config, configPath string, s *store.Store, opts Options) (Report, error) {

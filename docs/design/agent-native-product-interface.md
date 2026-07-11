@@ -77,6 +77,24 @@ Fairway resolves the code location to a grounded packet containing:
 The deterministic packet is useful without an LLM and is the authority supplied
 to any explanation provider.
 
+The first executable slice is:
+
+```bash
+fairway explain code packages/platform/iam/session_store.go \
+  --line 142 \
+  --symbol LookupSession \
+  --format packet
+```
+
+It resolves the selected committed path, line blame, commit file set, and Go
+symbol metadata, then maps those facts to existing Fairway task scope,
+acceptance contracts, structured decisions, evidence references, and review
+references. JSON uses schema `fairway.explain-code.v1`; `packet` and `markdown`
+produce the same deterministic Markdown. The command reports conflicts and
+missing provenance instead of filling gaps. It does not emit source bodies or
+generate a narrative. Non-Go symbol resolution and optional advisory narrative
+generation remain later slices.
+
 ## LLM narrative boundary
 
 An optional configured advisory provider may turn the grounded packet into a

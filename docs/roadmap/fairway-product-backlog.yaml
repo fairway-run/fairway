@@ -5283,7 +5283,7 @@ tasks:
     owning_domain: fairway
     owning_layer: explainability
     source_paths: [internal/git, internal/store, internal/provenance]
-    target_paths: [cmd/fairway, internal/provenance, docs/design/cli.md]
+    target_paths: [cmd/fairway, internal/git, internal/provenance, docs/design/cli.md, docs/design/agent-native-product-interface.md, docs/roadmap/fairway-product-backlog.yaml]
     review_domains: [arch, backend, governance, security]
     risk_level: high
     migration_type: explain-code-packet

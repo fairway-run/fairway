@@ -98,6 +98,12 @@ func matchingScope(changed string, scopes []string) string {
 	return ""
 }
 
+// PathMatchesScope returns the normalized scope entry that covers repoPath.
+// It is shared by deterministic read models that need the same task-path rules.
+func PathMatchesScope(repoPath string, scopes []string) string {
+	return matchingScope(normalizeScopePath(repoPath), scopes)
+}
+
 func normalizedUniquePaths(values []string) []string {
 	seen := map[string]bool{}
 	for _, value := range values {

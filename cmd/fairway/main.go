@@ -138,6 +138,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdRoughEdge(ctx, opts, args[1:])
 	case "provenance":
 		return cmdProvenance(ctx, opts, args[1:])
+	case "explain":
+		return cmdExplain(ctx, opts, args[1:])
 	case "recipe":
 		return cmdRecipe(ctx, opts, args[1:])
 	case "dispatch-plan":
@@ -4782,6 +4784,140 @@ func cmdProvenance(ctx context.Context, opts globalOptions, args []string) error
 	default:
 		return fmt.Errorf("unknown provenance subcommand %q", args[0])
 	}
+}
+
+func cmdExplain(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		fmt.Println("fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--format packet|markdown|json]")
+		fmt.Println("  Render deterministic recorded facts, conflicts, missing provenance, and bounded inference inputs without generating historical rationale.")
+		return nil
+	}
+	if args[0] != "code" {
+		return fmt.Errorf("unknown explain subcommand %q", args[0])
+	}
+	return cmdExplainCode(ctx, opts, args[1:])
+}
+
+func cmdExplainCode(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--format packet|markdown|json]")
+		fmt.Println("  Resolve committed Git metadata and cited Fairway facts; source bodies and generated rationale are excluded.")
+		return nil
+	}
+	fs := flag.NewFlagSet("explain code", flag.ContinueOnError)
+	line := fs.Int("line", 0, "one-based source line")
+	symbol := fs.String("symbol", "", "committed Go symbol or Type.Method")
+	commit := fs.String("commit", "", "commit or ref; defaults to task commit or HEAD")
+	taskID := fs.String("task", "", "explicit Fairway task entry point")
+	format := fs.String("format", "packet", "packet, markdown, or json")
+	path := ""
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		path = args[0]
+		args = args[1:]
+	}
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected explain code arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "packet" && *format != "markdown" && *format != "json" {
+		return errors.New("--format must be packet, markdown, or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		packet, err := provenance.BuildExplainCode(ctx, cfg, root, root, s, provenance.ExplainCodeOptions{Path: path, Line: *line, Symbol: *symbol, Commit: *commit, TaskID: *taskID})
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(packet)
+		}
+		printExplainCodePacketMarkdown(packet)
+		return nil
+	})
+}
+
+func printExplainCodePacketMarkdown(packet provenance.ExplainCodePacket) {
+	fmt.Println("# Fairway Grounded Code Packet")
+	fmt.Println()
+	fmt.Printf("- schema: `%s`\n", packet.Schema)
+	fmt.Printf("- project: `%s`\n", markdownPacketValue(packet.Project))
+	fmt.Printf("- commit: `%s`\n", packet.Git.Commit)
+	if packet.Entry.Path != "" {
+		fmt.Printf("- path: `%s`\n", markdownPacketValue(packet.Entry.Path))
+	}
+	if packet.Entry.Line > 0 {
+		fmt.Printf("- line: `%d`\n", packet.Entry.Line)
+	}
+	if packet.Entry.Symbol != "" {
+		fmt.Printf("- symbol: `%s` (%s, line %d)\n", markdownPacketValue(packet.Entry.Symbol), firstNonEmpty(packet.Git.SymbolKind, "unresolved"), packet.Git.SymbolLine)
+	}
+	fmt.Println()
+	fmt.Println("## Recorded Facts")
+	if len(packet.Facts) == 0 {
+		fmt.Println("- none")
+	}
+	for _, fact := range packet.Facts {
+		fmt.Printf("- `%s` [%s] %s\n", markdownPacketValue(fact.Ref), fact.State, markdownPacketValue(fact.Summary))
+	}
+	fmt.Println()
+	fmt.Println("## Fairway Tasks")
+	if len(packet.Tasks) == 0 {
+		fmt.Println("- none")
+	}
+	for _, task := range packet.Tasks {
+		fmt.Printf("\n### %s\n\n", markdownPacketValue(task.ID))
+		fmt.Printf("- title: %s\n", markdownPacketValue(task.Title))
+		fmt.Printf("- status: `%s`; role: `%s`\n", task.Status, firstNonEmpty(task.Role, "unknown"))
+		if len(task.ScopeMatches) > 0 {
+			fmt.Printf("- scope matches: `%s`\n", strings.Join(task.ScopeMatches, "`, `"))
+		}
+		for _, contract := range task.Contracts {
+			fmt.Printf("- contract `%s`: %s\n", markdownPacketValue(contract.Ref), markdownPacketValue(contract.Text))
+		}
+		for _, decision := range task.Decisions {
+			fmt.Printf("- decision `%s` quality=%s current=%t: %s; chosen=%s; reason=%s\n", markdownPacketValue(decision.Ref), decision.QualityState, decision.Current, markdownPacketValue(decision.Decision), markdownPacketValue(decision.Chosen), markdownPacketValue(decision.Reason))
+		}
+		for _, evidence := range task.EvidenceRefs {
+			fmt.Printf("- evidence `%s` result=%s artifact=%s\n", markdownPacketValue(evidence.Ref), firstNonEmpty(evidence.Result, "unknown"), markdownPacketValue(firstNonEmpty(evidence.ArtifactPath, "none")))
+		}
+		for _, review := range task.ReviewRefs {
+			fmt.Printf("- review `%s` domain=%s verdict=%s reviewer=%s\n", markdownPacketValue(review.Ref), firstNonEmpty(review.Domain, "unspecified"), review.Verdict, markdownPacketValue(review.Reviewer))
+		}
+	}
+	printExplainIssuesMarkdown("Conflicts", packet.Conflicts)
+	printExplainIssuesMarkdown("Missing Provenance", packet.MissingProvenance)
+	fmt.Println()
+	fmt.Println("## Bounded Machine Inference Inputs")
+	if len(packet.MachineInferenceInputs) == 0 {
+		fmt.Println("- none")
+	}
+	for _, ref := range packet.MachineInferenceInputs {
+		fmt.Printf("- `%s`\n", markdownPacketValue(ref))
+	}
+	fmt.Println()
+	fmt.Println("## Boundary")
+	fmt.Printf("- privacy: raw prompts, private transcripts, raw tool bodies, source bodies, secrets, and generated-content dumps are excluded\n")
+	fmt.Printf("- authority: %s\n", markdownPacketValue(packet.AuthorityBoundary))
+}
+
+func printExplainIssuesMarkdown(title string, issues []provenance.ExplainIssue) {
+	fmt.Println()
+	fmt.Printf("## %s\n", title)
+	if len(issues) == 0 {
+		fmt.Println("- none")
+		return
+	}
+	for _, issue := range issues {
+		fmt.Printf("- `%s`: %s\n", markdownPacketValue(issue.Ref), markdownPacketValue(issue.Summary))
+	}
+}
+
+func markdownPacketValue(value string) string {
+	value = strings.ReplaceAll(value, "\r", " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "`", "'")
+	return value
 }
 
 func cmdProvenanceReport(ctx context.Context, opts globalOptions, args []string) error {
@@ -19495,7 +19631,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, binary, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -19542,6 +19678,7 @@ func printCommandHelp(command string) bool {
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
+		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--format packet|markdown|json]\n  Render a deterministic grounded packet without generating historical rationale.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
 		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",

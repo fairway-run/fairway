@@ -342,7 +342,7 @@ func commits(root string, rangeArg string) ([]Commit, error) {
 }
 
 func changedFilesForCommit(root, sha string) ([]string, error) {
-	out, err := output(root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha)
+	out, err := output(root, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", sha)
 	if err != nil {
 		return nil, err
 	}
