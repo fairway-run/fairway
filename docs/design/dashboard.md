@@ -165,6 +165,15 @@ clear the cache before redirecting. The cache never stores POST bodies, never
 adds dashboard write authority, and does not change the underlying Fairway DB as
 the source of truth.
 
+The wall route also has a first-response fast path. It retains tasks, health,
+sessions, checkpoints, activity, gates, ready state, missing-review status, and
+the active-reconciliation banner used by the wall template, but it does not
+compute coordinator plan, track-memory, closeout, or audit projections that the
+wall does not render. Those read-only diagnostics remain available from the
+Diagnostics tab and panel. Slow-route logs identify the skipped work as
+`dashboard.wall_fast_path`; deferred values must not be presented as clean zero
+diagnostics.
+
 Heavy board diagnostics are lazy-loaded. `/board?tab=diagnostics` renders the
 normal board shell and a loading panel first, then fetches
 `/board/panels/diagnostics` for coordinator plan, active reconciliation,

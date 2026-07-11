@@ -183,6 +183,40 @@ func TestDashboardRoutes(t *testing.T) {
 	}
 }
 
+func TestWallFastPathDefersCoordinatorAndCloseoutProjections(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend", Kind: "task"}}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	timing := newDashboardTiming("wall", req)
+	data, err := server.buildDashboardViewData(req, "wall", timing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.CoordinatorPlan.Summary.TopClassification != "wall fast path" {
+		t.Fatalf("coordinator classification = %q", data.CoordinatorPlan.Summary.TopClassification)
+	}
+	seen := map[string]bool{}
+	for _, block := range timing.blocks {
+		seen[block.Name] = true
+	}
+	if !seen["dashboard.wall_fast_path"] || !seen["dashboard.active_reconcile"] {
+		t.Fatalf("wall timing blocks = %#v", timing.blocks)
+	}
+	for _, skipped := range []string{"dashboard.coordinator_plan", "dashboard.track_memories", "dashboard.closeout_reports", "dashboard.audit_diagnostics"} {
+		if seen[skipped] {
+			t.Fatalf("wall fast path executed %s: %#v", skipped, timing.blocks)
+		}
+	}
+}
+
 func TestReportsRetrospectiveSeparatesDeliveryAndBookkeeping(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

@@ -631,6 +631,8 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 	filters := taskFiltersFromRequest(r)
 	diagnosticsDeferred := view == "board" && filters.Tab == "diagnostics" && !dashboardDiagnosticsPanelRequest(r)
 	boardFastPath := view == "board" && (filters.Tab != "diagnostics" || diagnosticsDeferred)
+	wallFastPath := view == "wall"
+	heavyDiagnosticsDeferred := boardFastPath || wallFastPath
 	var activity []store.Activity
 	if err := timing.step("dashboard.activity", func() error {
 		var err error
@@ -692,10 +694,14 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		}
 	}
 	var coordinatorPlan coord.Plan
-	if boardFastPath {
-		coordinatorPlan.Summary.TopClassification = "board fast path"
+	if heavyDiagnosticsDeferred {
+		coordinatorPlan.Summary.TopClassification = view + " fast path"
 		coordinatorPlan.Summary.TopReason = "Open Diagnostics for coordinator plan, waits, active reconcile, and closeout detail."
-		timing.add("dashboard.board_fast_path", 0, "skipped=active_reconcile,coordinator_plan,track_memories,closeout_reports,audit_diagnostics")
+		if boardFastPath {
+			timing.add("dashboard.board_fast_path", 0, "skipped=active_reconcile,coordinator_plan,track_memories,closeout_reports,audit_diagnostics")
+		} else {
+			timing.add("dashboard.wall_fast_path", 0, "skipped=coordinator_plan,track_memories,closeout_reports,audit_diagnostics")
+		}
 	} else {
 		if err := timing.step("dashboard.coordinator_plan", func() error {
 			var err error
@@ -712,7 +718,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		}
 	}
 	var memories []store.TrackMemory
-	if !boardFastPath {
+	if !heavyDiagnosticsDeferred {
 		if err := timing.step("dashboard.track_memories", func() error {
 			var err error
 			memories, err = s.store.TrackMemories(r.Context())
@@ -722,7 +728,7 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		}
 	}
 	var closeoutReports []reconcile.CloseoutReport
-	if !boardFastPath {
+	if !heavyDiagnosticsDeferred {
 		if err := timing.step("dashboard.closeout_reports", func() error {
 			var err error
 			closeoutReports, err = s.dashboardCloseoutReports(r.Context(), tasks, 8, timing)
