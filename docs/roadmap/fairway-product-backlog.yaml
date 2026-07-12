@@ -5838,3 +5838,286 @@ tasks:
     acceptance_checks:
       - "The public release reference uses MDX-compatible Markdown link syntax and renders as a working external link."
       - "The local Docusaurus production build and the exact pushed Docs Portal workflow pass before closeout."
+
+  - id: FW-340
+    title: Establish Fairway Sovereign Deployment Ready program
+    kind: epic
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-assurance
+    source_paths: [cmd/fairway, internal, scripts, docs, examples, .github, .goreleaser.yaml]
+    target_paths: [cmd/fairway, internal, scripts, docs, examples, .github, .goreleaser.yaml, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-deployment-readiness-epic
+    acceptance_checks:
+      - "Fairway defines versioned disconnected, sovereign-connected, restricted-data, and customer-managed deployment profiles with explicit assumptions, responsibilities, supported capabilities, and non-goals."
+      - "Sovereign Deployment Ready is an evidence-backed Fairway product claim for named profiles, not a claim of Common Criteria, EUCC, FIPS, ISO, CUI, export-control, or national-scheme certification."
+      - "The program covers enforceable network isolation, offline distribution, identity, cryptography, audit integrity, supply-chain assurance, hardened deployment, assessor evidence, independent rehearsal, vulnerability response, and external assessment."
+
+  - id: FW-341
+    title: Define sovereign threat model control baseline and claims taxonomy
+    kind: docs
+    parent_id: FW-340
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-control-baseline
+    source_paths: [docs/product.md, docs/design/product-boundaries.md, docs/design/shared-team-operating-model.md, docs/design/supply-chain-provenance.md]
+    target_paths: [docs/security/sovereign-deployment-ready.md, docs/security/sovereign-threat-model.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-control-baseline
+    dependencies: [FW-333]
+    acceptance_checks:
+      - "The threat model covers disconnected and sovereign-connected operation, malicious artifacts, compromised build infrastructure, operator and reviewer impersonation, insider misuse, evidence tampering, rollback, backup loss, adapter escape, and data-boundary failure."
+      - "A control baseline maps applicable Fairway responsibilities to NIST SSDF, NIST 800-53 or 800-171 families, EU CRA technical documentation, and product-evaluation inputs without presenting those mappings as certification."
+      - "Claims are classified as implemented, validated, independently assessed, externally certified, customer responsibility, or out of scope, and every public sovereign claim must name its exact profile and evidence version."
+
+  - id: FW-342
+    title: Implement enforceable network-isolated Fairway runtime profile
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-runtime-isolation
+    source_paths: [cmd/fairway, internal/config, internal/dashboard, examples/session-adapters, docs/config-reference.md]
+    target_paths: [cmd/fairway, internal/config, internal/dashboard, examples/session-adapters, docs/config-reference.md, docs/security]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: network-isolated-runtime
+    dependencies: [FW-341]
+    acceptance_checks:
+      - "A named sovereign-offline profile fails closed on outbound DNS, HTTP, telemetry, update, external notifier, remote provider, remote identity, and remote asset dependencies while retaining explicitly allowed loopback or local-socket operation."
+      - "Fairway doctor and capability readiness report every configured network dependency and prove that ordinary task, evidence, review, report, dashboard, backup, restore, and verification paths operate without external network access."
+      - "Automated egress-deny tests cover direct and adapter-mediated network attempts, redirects, proxy environment variables, DNS resolution, and accidental remote assets without weakening existing local trust boundaries."
+
+  - id: FW-343
+    title: Build signed offline Fairway installation update and rollback bundle
+    kind: task
+    parent_id: FW-340
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-offline-distribution
+    source_paths: [.goreleaser.yaml, .github, scripts, website, docs/governance/release.md]
+    target_paths: [.goreleaser.yaml, .github, scripts, docs/operations, docs/security]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: signed-offline-distribution
+    dependencies: [FW-342, FW-347, FW-348]
+    acceptance_checks:
+      - "One versioned offline bundle contains supported platform binaries, local documentation, configuration examples, hardened deployment material, checksums, signatures, SBOM, VEX, provenance, licenses, and an inventory manifest without requiring a package registry or CDN."
+      - "A small offline verifier validates bundle completeness, artifact digests, signatures, source and builder identity, policy version, and rollback target before installation and fails closed on substitution or missing evidence."
+      - "Disconnected install, upgrade, rollback, backup compatibility, and cleanup rehearsals pass from removable-media-style input with exact binary/config/data-path/version readback."
+
+  - id: FW-344
+    title: Add sovereign identity and command authorization profile
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-identity-authorization
+    source_paths: [internal/config, internal/dashboard, internal/store, cmd/fairway, docs/design/shared-team-server-api.md]
+    target_paths: [internal/config, internal/dashboard, internal/store, cmd/fairway, docs/security, docs/config-reference.md]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-identity-authorization
+    dependencies: [FW-341]
+    acceptance_checks:
+      - "Supported sovereign profiles bind every shared read or write action to cryptographically verified customer-controlled identity and reject unverified proxy headers, anonymous shared access, and identity fallback."
+      - "Command-scoped roles, project scope, separation of duties, session expiry, revocation, and explicit dual-control requirements for consequential actions are machine-readable and fail closed."
+      - "Negative tests cover missing or stale proof, role and project confusion, actor spoofing, replay, self-review, break-glass expiry, and audit attribution without adding dashboard approval, deploy, release, credential, or live authority."
+
+  - id: FW-345
+    title: Define customer-controlled encryption key and FIPS posture
+    kind: task
+    parent_id: FW-340
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-cryptography
+    source_paths: [internal/store, internal/config, docs/design/schema.md, docs/design/shared-team-deployment-operations.md]
+    target_paths: [internal/config, cmd/fairway, docs/security, docs/config-reference.md, docs/operations]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-cryptography-boundary
+    dependencies: [FW-341]
+    acceptance_checks:
+      - "Each sovereign profile identifies encryption-in-transit, at-rest, backup, evidence-export, and signing boundaries plus the customer or platform owner for every key."
+      - "Fairway uses customer-approved platform or validated cryptographic modules and never claims that Fairway itself is FIPS 140-3 validated unless the exact evaluated module and configuration are documented."
+      - "Capability checks fail readiness when required encryption, key custody, rotation, recovery, or approved-module proof is absent; no bespoke cryptographic primitive is introduced."
+
+  - id: FW-346
+    title: Add tamper-evident sovereign audit export and retention controls
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-audit-integrity
+    source_paths: [internal/store, internal/audit, internal/provenance, cmd/fairway, docs/design/schema.md]
+    target_paths: [internal/store, internal/audit, internal/provenance, cmd/fairway, docs/security, docs/design/schema.md]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: tamper-evident-audit-export
+    dependencies: [FW-341]
+    acceptance_checks:
+      - "Audit export cryptographically binds ordered records to actor, action, project, task, policy, source version, and trusted time metadata and detects deletion, insertion, reordering, database rollback, or export substitution."
+      - "Customer-controlled signing, rotation, verification, external WORM or SIEM export, retention, legal hold, backup, restore, and verification-failure procedures are documented and rehearsed."
+      - "The design preserves Fairway's existing source-of-truth boundaries, stores no raw prompts, transcripts, tool bodies, credentials, or secrets, and does not describe a hash chain as an external certification."
+
+  - id: FW-347
+    title: Produce machine-verifiable Fairway release assurance bundle
+    kind: task
+    parent_id: FW-340
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-release-assurance
+    source_paths: [.github, .goreleaser.yaml, internal/provenance, cmd/fairway, docs/design/supply-chain-provenance.md]
+    target_paths: [.github, .goreleaser.yaml, internal/provenance, cmd/fairway, docs/security, docs/governance/release.md]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-release-assurance-bundle
+    dependencies: [FW-341]
+    acceptance_checks:
+      - "Every candidate release produces checksums, detached signatures, SPDX or CycloneDX SBOM, VEX, dependency and license inventory, source and build provenance, builder identity, build recipe, test summary, and vulnerability disposition."
+      - "Offline and connected verification enforce artifact digest, signature, provenance subject, trusted builder, expected source revision, policy version, and required evidence completeness rather than merely displaying metadata."
+      - "The bundle states its measured SLSA properties without overclaiming a level, reproducibility, dependency trust, or certification that the build system has not independently demonstrated."
+
+  - id: FW-348
+    title: Package hardened Fairway sovereign deployment baselines
+    kind: task
+    parent_id: FW-340
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-deployment-hardening
+    source_paths: [scripts, examples, docs/operations, docs/design/shared-team-deployment-operations.md]
+    target_paths: [scripts, examples, docs/operations, docs/security]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-deployment-hardening
+    dependencies: [FW-342, FW-344, FW-345, FW-346]
+    acceptance_checks:
+      - "Versioned single-host, managed-service, and container or orchestration baselines use least privilege, explicit data paths, rootless execution where supported, local assets, network allowlists, read-only filesystems where practical, and customer secret stores."
+      - "Baselines include service identity, firewall, SELinux or AppArmor guidance, configuration signing, drift detection, backup/restore, key recovery, status/version/log readback, resource budgets, upgrade, rollback, and disaster recovery."
+      - "A validator reports deviations from the selected baseline without silently changing the system, and no baseline grants dashboard send, approval, merge, deploy, release, credential, or live-operation authority."
+
+  - id: FW-349
+    title: Produce sovereign assessor control matrix and evidence package
+    kind: docs
+    parent_id: FW-340
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-assessor-evidence
+    source_paths: [docs/security, docs/design, docs/governance, docs/assessment, internal/provenance]
+    target_paths: [docs/security, docs/assessment, examples/oscal]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-assessor-evidence-package
+    dependencies: [FW-341, FW-344, FW-345, FW-346, FW-347, FW-348]
+    acceptance_checks:
+      - "The assessor package includes architecture and data flows, threat model, security target draft, control responsibility matrix, secure development lifecycle, vulnerability process, privacy/data inventory, configuration baselines, test strategy, known gaps, and evidence index."
+      - "Applicable NIST controls and assessment objectives are exported in human-readable and OSCAL-compatible form with implementation status, customer responsibility, evidence reference, profile, product version, and review date."
+      - "EU CRA and EUCC or Common Criteria readiness inputs are separated from certification claims, and unsupported ISO, SOC, CUI, national cloud, or regulatory statements fail the documentation claim guard."
+
+  - id: FW-350
+    title: Run independent disconnected sovereign deployment rehearsal
+    kind: task
+    parent_id: FW-340
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-rehearsal
+    source_paths: [scripts, docs/operations, docs/security, docs/assessment]
+    target_paths: [scripts, docs/assessment, docs/security]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-disconnected-rehearsal
+    dependencies: [FW-343, FW-349]
+    acceptance_checks:
+      - "A non-authoring operator installs and verifies Fairway in a disposable environment with DNS and outbound network denied, no pre-existing caches, and only the signed offline bundle plus documented trust roots."
+      - "The rehearsal covers identity, authorization failures, ordinary task/evidence/review workflows, dashboard readback, audit verification, backup/restore, upgrade/rollback, key loss recovery, tampered bundle rejection, and clean disposal."
+      - "The packet records exact commands, artifacts, timings, resource use, stop conditions, defects, residual risks, and promote, repeat-with-fixes, or block recommendation without self-certifying external compliance."
+
+  - id: FW-351
+    title: Complete Fairway jurisdiction and export-control applicability review
+    kind: docs
+    parent_id: FW-340
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-jurisdiction-review
+    source_paths: [docs/security, docs/product.md, docs/governance/release.md, .goreleaser.yaml]
+    target_paths: [docs/security, docs/assessment, docs/governance/release.md]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: jurisdiction-export-applicability
+    dependencies: [FW-341, FW-349]
+    acceptance_checks:
+      - "Qualified review records the product and distribution applicability of EU CRA, EUCC or Common Criteria, NIST CUI procurement, FIPS cryptographic-module requirements, national sovereign-cloud schemes, and other explicitly targeted markets."
+      - "US export classification records the applicable ECCN or EAR99 rationale, encryption ENC or reporting decision, release-channel implications, restricted-party and destination screening ownership, and counsel or specialist sign-off without exposing private legal advice."
+      - "The result selects concrete target assessments, defers irrelevant certifications with reasons, and prevents public or procurement claims beyond the reviewed jurisdiction, version, configuration, and organizational scope."
+
+  - id: FW-352
+    title: Commission independent Fairway sovereign security assessment
+    kind: task
+    parent_id: FW-340
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-independent-assessment
+    source_paths: [docs/security, docs/assessment, cmd/fairway, internal, scripts]
+    target_paths: [docs/assessment, docs/security, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-independent-security-assessment
+    dependencies: [FW-350, FW-351]
+    acceptance_checks:
+      - "An independent qualified assessor performs architecture review, secure code review, penetration testing, authorization abuse testing, supply-chain verification, offline escape testing, audit tamper testing, and deployment-baseline assessment against the named profile."
+      - "Findings are severity-ranked, reproducible, assigned, remediated or explicitly accepted by authorized owners, retested, and linked to a bounded public summary that exposes no exploit-enabling secrets."
+      - "The assessor states what was and was not evaluated; Fairway does not convert a penetration test, control mapping, or readiness review into a certification claim."
+
+  - id: FW-353
+    title: Add restricted-environment vulnerability advisory and LTS patch channel
+    kind: task
+    parent_id: FW-340
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-vulnerability-response
+    source_paths: [SECURITY.md, .github, scripts, docs/governance/release.md, docs/security]
+    target_paths: [SECURITY.md, .github, scripts, docs/security, docs/governance/release.md]
+    review_domains: [governance, ops, security]
+    risk_level: critical
+    migration_type: restricted-vulnerability-response
+    dependencies: [FW-343, FW-347]
+    acceptance_checks:
+      - "Fairway publishes machine-readable and human-readable security advisories, affected versions, VEX updates, severity, mitigations, fixed versions, and offline patch-bundle identifiers without requiring an installation to contact the public internet."
+      - "A documented LTS and end-of-support policy defines patch timelines, emergency signing and release, disconnected notification delivery, customer acknowledgement, rollback, and superseded trust-root handling."
+      - "A rehearsal delivers and verifies one synthetic advisory and offline patch through the restricted channel while preserving customer-controlled import and deployment authority."
+
+  - id: FW-354
+    title: Prepare Fairway Sovereign Deployment Ready release packet
+    kind: task
+    parent_id: FW-340
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-readiness-release
+    source_paths: [docs/security, docs/assessment, docs/release-notes.md, docs/release-highlights.md, CHANGELOG.md, .goreleaser.yaml]
+    target_paths: [docs/security, docs/assessment, docs/release-notes.md, docs/release-highlights.md, CHANGELOG.md]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-readiness-release-packet
+    dependencies: [FW-350, FW-351, FW-352, FW-353]
+    acceptance_checks:
+      - "The release packet identifies the exact reviewed source, binaries, offline bundle, assurance bundle, supported sovereign profiles, customer responsibilities, independent assessment, known limits, rollback target, and evidence index."
+      - "A machine-checkable claim manifest permits Sovereign Deployment Ready only for the exact validated version and configurations and rejects certified, compliant, FIPS-validated, CUI-authorized, or jurisdiction-wide language without corresponding external evidence."
+      - "Full connected and disconnected release gates, independent reviews, artifact verification, install/upgrade/rollback rehearsal, public wording review, and clean/pushed workflow checks pass before any separate publish task is authorized."
