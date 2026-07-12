@@ -5,81 +5,115 @@ const sidebars = {
   docs: [
     {
       type: 'category',
-      label: 'Start Here',
+      label: 'Evaluate',
       items: [
-        'quickstart',
         'product',
-        'governed-agentic-engineering',
         'design/product-boundaries',
-        'design/backlog-sources',
-        'design/scope',
-        'design/concepts',
-        'release-notes',
-        'docs-portal'
+        'architecture',
+        'release-highlights'
       ]
     },
     {
       type: 'category',
-      label: 'Operators And Agents',
+      label: 'Get Started',
+      items: [
+        'quickstart',
+        'design/concepts'
+      ]
+    },
+    {
+      type: 'category',
+      label: 'Use Fairway',
       items: [
         'agent-guide',
         'design/dashboard',
-        'design/coordinator-loop',
+        'design/common-path-automation',
+        'design/task-decision-memory',
         'design/work-batch-model',
         'design/context-packets',
         'design/checkpoints',
+        'design/review-policy-profiles',
         'design/review-lanes',
         'design/review-wait-notification-model',
-        'design/session-launch',
-        'design/provider-usage-accounting',
-        'design/watchers'
+        'design/session-launch'
       ]
     },
     {
       type: 'category',
-      label: 'Configuration And Reference',
+      label: 'Operate',
       items: [
-        'config-reference',
-        'workstream-profile-guide',
-        'design/workstream-profiles',
-        'design/cli',
-        'design/schema',
-        'design/state-machine',
-        'design/hierarchy',
-        'design/worktrees',
-        'design/multi-project'
-      ]
-    },
-    {
-      type: 'category',
-      label: 'Governance',
-      items: [
-        'governance/README',
-        'governance/coding-standards',
-        'governance/testing',
-        'governance/review-guards',
-        'governance/commits',
+        'design/reports',
+        'design/environment-deploy-preflight',
+        'design/live-operation-control-room',
+        'operations/small-team-lab-deployment',
+        'design/shared-team-deployment-operations',
+        'design/dashboard-sharing',
+        'release-notes',
         'governance/release'
       ]
     },
     {
       type: 'category',
-      label: 'Design And Roadmap',
+      label: 'Integrate',
       items: [
-        'design/release-cuts',
-        'design/supply-chain-provenance',
-        'design/implementation-roadmap',
-        'design/regression-packets',
+        'workstream-profile-guide',
+        'design/provider-surface-capability-readiness',
+        'design/provider-notifications',
         'design/issue-tracker-integrations',
-        'design/postgres-adapter'
+        'design/rule-packs',
+        'design/postgres-adapter',
+        'design/trusted-proxy-identity-verification'
+      ]
+    },
+    {
+      type: 'category',
+      label: 'Understand',
+      items: [
+        'governed-agentic-engineering',
+        'design/agent-native-product-interface',
+        'design/coordination-intelligence',
+        'design/small-team-autonomy-operating-model',
+        'design/shared-team-operating-model',
+        'design/supply-chain-provenance',
+        'design/delivery-resources'
+      ]
+    },
+    {
+      type: 'category',
+      label: 'Reference',
+      items: [
+        'config-reference',
+        'design/cli',
+        'design/schema',
+        'design/state-machine',
+        'design/hierarchy',
+        'design/worktrees',
+        'design/multi-project',
+        'design/backlog-sources',
+        'design/workstream-profiles',
+        'design/regression-packets',
+        'design/watchers',
+        'design/provider-usage-accounting',
+        'design/implementation-roadmap',
+        'docs-portal',
+        {
+          type: 'category',
+          label: 'Governance',
+          items: [
+            'governance/README',
+            'governance/coding-standards',
+            'governance/testing',
+            'governance/review-guards',
+            'governance/commits'
+          ]
+        }
       ]
     },
     {
       type: 'category',
       label: 'Archive',
-      items: [
-        'archive/README'
-      ]
+      collapsed: true,
+      items: ['archive/README']
     }
   ]
 };

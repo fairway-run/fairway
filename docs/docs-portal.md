@@ -22,6 +22,42 @@ Use these paths when organizing the Docusaurus portal:
 | Integrator | integrations, configuration, CLI, provider capability readiness |
 | Provenance reader | supply-chain provenance, assessments, archive index |
 
+## Navigation Model
+
+The public sidebar is organized by reader intent rather than package names or
+internal feature vocabulary:
+
+| Journey | Reader question | Canonical first page |
+|---|---|---|
+| Evaluate | What problem does Fairway solve, and where does its authority stop? | [Product](product.md) |
+| Get started | Can I get one bounded result without learning the whole model? | [Quickstart](quickstart.md) |
+| Use Fairway | How do I run ordinary task, evidence, review, and handoff work? | [Agent guide](agent-guide.md) |
+| Operate | How do I run dashboards, reports, environments, and releases safely? | [Dashboard](design/dashboard.md) |
+| Integrate | How does Fairway compose with providers, trackers, profiles, and stores? | [Workstream profile guide](workstream-profile-guide.md) |
+| Understand | Why are the concepts and authority boundaries designed this way? | [Concepts](design/concepts.md) |
+| Reference | What is the exact command, config, schema, or policy contract? | [Configuration reference](config-reference.md) |
+
+The sidebar is intentionally curated. Focused design pages can remain reachable
+through links from their canonical owner without becoming top-level navigation.
+The dated
+[documentation inventory](assessment/fairway-documentation-inventory-2026-07-11.md)
+tracks every source artifact, including pages intentionally excluded from the
+common path.
+
+## Canonical Ownership
+
+- Product definition and claim status: `docs/product.md`.
+- First-value path: `docs/quickstart.md`.
+- Operational workflow: `docs/agent-guide.md`.
+- Concept definitions: `docs/design/concepts.md`.
+- Authority and trust boundaries: `docs/design/product-boundaries.md`.
+- Architecture: `docs/architecture.md`.
+- CLI, configuration, schema, and state lifecycle: their named reference pages.
+- Portal IA and publication: this page.
+
+Supporting pages must link to these owners rather than restating definitions.
+Dated assessments may support a claim, but do not replace its canonical owner.
+
 ## Public Content Rules
 
 - Keep Fairway's generic product path first.
@@ -52,6 +88,23 @@ The Docusaurus portal should expose:
 - release notes: current release candidate scope, known limits, and release
   checklist
 - archive: historical decision logs and adoption notes only
+
+Assessments are not a primary navigation category. Canonical pages and case
+studies may cite safe assessment artifacts, while raw dated evidence remains a
+repository-level provenance surface.
+
+## Consolidation Rule
+
+Before adding a page:
+
+1. identify its reader question and canonical subject owner;
+2. extend the canonical page when the question is already owned;
+3. add a supporting page only when the material has a distinct operational or
+   design contract;
+4. move superseded material to `docs/archive/` with provenance rather than
+   leaving two current definitions;
+5. update the documentation inventory and portal navigation when ownership
+   changes.
 
 ## Cloudflare Requirements
 
