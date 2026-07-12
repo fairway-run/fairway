@@ -20,7 +20,7 @@ Epic
 
 ## Problem
 
-GPUaaS stabilization showed that treating every granular Fairway task as a
+Consumer stabilization work showed that treating every granular Fairway task as a
 separate branch and CI run creates too many validation cycles. Watchers reduce
 human idle time, but they do not reduce runner CPU, memory, IO, GitLab queue
 pressure, duplicated codegen/frontend/build work, or reconciliation noise.

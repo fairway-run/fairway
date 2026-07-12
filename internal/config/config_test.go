@@ -56,7 +56,7 @@ func TestValidateRuleSources(t *testing.T) {
 	base := Defaults(t.TempDir())
 	base.RuleSources = []RuleSource{
 		{Name: "platform", Source: "path:../fairway-rules-platform", Mode: "advisory"},
-		{Name: "gpuaas", Source: "file:/opt/fairway-rules-gpuaas", Mode: "blocking"},
+		{Name: "service-platform", Source: "file:/opt/fairway-rules-service-platform", Mode: "blocking"},
 		{Name: "codeguard", Source: "github:fairway-run/fairway-rules-codeguard", Mode: "disabled", CommitSHA: strings.Repeat("a", 40), Checksum: "sha256:abc123"},
 	}
 	if err := Validate(base); err != nil {

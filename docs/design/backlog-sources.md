@@ -70,7 +70,7 @@ does not find the id.
 ## Cross-Program Mirror Tasks
 
 Product gaps may be discovered while Fairway is being used by another program,
-such as GPUaaS stabilization. In that case, the program backlog can carry a
+such as a consumer stabilization program. In that case, the program backlog can carry a
 mirror or dependency task explaining why the program needs the Fairway
 capability, but Fairway product implementation still belongs in the Fairway
 active backlog with an `FW-*` id.

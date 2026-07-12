@@ -1,7 +1,7 @@
 # Watchers
 
 Watcher work is long-running observation and triage: CI, deploy, release,
-smoke, environment recovery, visual regression, or drift monitoring. GPUaaS
+smoke, environment recovery, visual regression, or drift monitoring. Consumer use
 showed that monitoring is real work and needs an owner, success condition,
 failure condition, escalation rule, and evidence.
 

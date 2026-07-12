@@ -3,7 +3,7 @@
 Fairway is meant to shorten the build-use-learn loop for small autonomous
 lanes without moving real risk out of explicit control. The product capability
 is generic: task state, sessions, evidence, review profiles, waits, handbacks,
-reports, and dashboard projections. AI Cloud is one operating practice that
+reports, and dashboard projections. A small-team consumer is one operating practice that
 uses those capabilities for MFA drills, demos, docs portal updates, VM restore
 work, airgap/staging rehearsals, and release coordination.
 
@@ -42,7 +42,7 @@ Review ceremony without defect discovery is process overhead. `fairway delivery
 report` and `fairway review-policy report` should be used to challenge policies
 that add wait time without improving outcomes.
 
-## Fairway Capability Versus AI Cloud Practice
+## Fairway Capability Versus Consumer Practice
 
 Fairway product capabilities are reusable:
 
@@ -57,7 +57,7 @@ Fairway product capabilities are reusable:
 - workflow and reconcile guards catch dirty source, stale sessions, active
   evidence without closeout, and deploy-boundary gaps.
 
-AI Cloud practice is the local usage pattern:
+Consumer practice is the local usage pattern:
 
 - MFA drill packets use Fairway state for approval, execution handoff,
   rollback proof, closeout, follow-up assignment, and retry decisions;
@@ -215,7 +215,7 @@ support by itself; the recommendation is to repeat the pilot with a
 non-authoring operator on the Mac mini GitLab lab host before treating the mode
 as supported.
 
-## AI Cloud Examples
+## Consumer Examples
 
 MFA loop:
 : Use Fairway packets for exact live windows, approval readback, operator

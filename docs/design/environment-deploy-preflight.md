@@ -13,8 +13,8 @@ cluster credentials, and environment-specific proof commands.
   blockers before an approved window is consumed.
 - Record the owner, next action, and missed proof for every blocker as Fairway
   evidence or checkpoint state.
-- Keep the model reusable: no GPUaaS, AI Cloud, Kubernetes, Cloudflare, GitLab,
-  GitHub, or vendor-specific fields are required by Fairway.
+- Keep the model reusable: no consumer repository, infrastructure provider,
+  deployment system, or environment-specific fields are required by Fairway.
 
 ## Packet Shape
 

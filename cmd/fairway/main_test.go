@@ -4548,7 +4548,7 @@ func TestCLI_ReconcileActiveAllowsBoundedLiveOperationEvidence(t *testing.T) {
 		"--command-text", "admin readiness gate && pre-mutation validator",
 		"--result", "pass",
 		"--artifact-type", "live-operation-gate",
-		"--notes", "GPUaaS 21:15 pattern: gate evidence captured during bounded active operation.",
+		"--notes", "Bounded live-operation pattern: gate evidence captured during the approved active window.",
 	)
 
 	report := runCapture(t, "reconcile", "active", "--dry-run")
@@ -5027,12 +5027,14 @@ func TestCLI_AuditDocsBacklog(t *testing.T) {
 	runOK(t, "set-status", "FW-196", "done")
 	writeFile(t, "docs/design/coordination-intelligence.md", "FW-196 implements track memory.\n`fairway memory packet --track architecture-control`\n")
 	writeFile(t, "docs/design/uncovered-coordination.md", "Review waits need an operator command.\n`fairway review-waits list --blocking`\n")
+	writeFile(t, "docs/design/critical-flow.md", "A critical-flow needs a flow map before implementation and non-live preflight.\n")
 
-	report := runCapture(t, "audit", "docs-backlog", "--doc", "docs/design/coordination-intelligence.md", "--doc", "docs/design/uncovered-coordination.md")
+	report := runCapture(t, "audit", "docs-backlog", "--doc", "docs/design/coordination-intelligence.md", "--doc", "docs/design/uncovered-coordination.md", "--doc", "docs/design/critical-flow.md")
 	for _, want := range []string{
 		"docs_backlog_ok: false",
-		"docs_scanned=2",
+		"docs_scanned=3",
 		"docs_with_backlog_coverage=1",
+		"consumer_lessons=1",
 		"doc_only_capability",
 		"command_example_uncovered",
 		"docs/design/uncovered-coordination.md",
@@ -5040,6 +5042,9 @@ func TestCLI_AuditDocsBacklog(t *testing.T) {
 	} {
 		assertContains(t, report, want)
 	}
+	consumerJSON := runCapture(t, "--json", "audit", "docs-backlog", "--doc", "docs/design/critical-flow.md")
+	assertContains(t, consumerJSON, `"consumer_lessons": 1`)
+	assertContains(t, consumerJSON, `"gpuaas_lessons": 1`)
 
 	jsonReport := runCapture(t, "--json", "audit", "docs-backlog", "--doc", "docs/design/coordination-intelligence.md")
 	assertContains(t, jsonReport, `"docs_with_backlog_coverage": 1`)
@@ -6497,13 +6502,13 @@ func TestCLI_RegressionPacks(t *testing.T) {
 	runOK(t, "regression-pack", "show", "RP-001")
 }
 
-func TestCLI_GPUaaSParityFixtures(t *testing.T) {
+func TestCLI_ConsumerCompatibilityFixtures(t *testing.T) {
 	sourceRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
-	gpuaasConfigPath := filepath.Join(sourceRoot, "examples", "gpuaas-a-b-c-d-e-config.toml")
-	cfg, _, err := config.Load(gpuaasConfigPath)
+	compatibilityConfigPath := filepath.Join(sourceRoot, "examples", "gpuaas-a-b-c-d-e-config.toml")
+	cfg, _, err := config.Load(compatibilityConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6547,7 +6552,7 @@ func TestCLI_GPUaaSParityFixtures(t *testing.T) {
 
 	runOK(t, "init")
 	replaceInFile(t, ".fairway/config.toml", `task_id_pattern = "^[A-Z]+-[0-9]+$"`, `task_id_pattern = "^[A-Z][A-Z0-9-]*$"`)
-	writeFile(t, "gpuaas-queue.yaml", `version: 1
+	writeFile(t, "consumer-queue.yaml", `version: 1
 tasks:
   - id: A-DEMO-UAT-001
     title: Done dependency
@@ -6561,11 +6566,11 @@ tasks:
     role: B-ui
     depends_on: [A-DEMO-UAT-001]
 `)
-	runOK(t, "import", "gpuaas-queue.yaml", "--state-once")
+	runOK(t, "import", "consumer-queue.yaml", "--state-once")
 	ready := runCapture(t, "ready")
 	assertContains(t, ready, "B-DEMO-UAT-002")
 
-	runOK(t, "add", "T-001", "--title", "GPUaaS parity", "--role", "backend", "--notes", "carry context")
+	runOK(t, "add", "T-001", "--title", "Consumer compatibility", "--role", "backend", "--notes", "carry context")
 	contextPacket := runCapture(t, "packet", "context", "T-001", "--goal", "prove parity", "--owner", "backend", "--acceptance", "no missing fields")
 	assertContains(t, contextPacket, "# Context Packet: T-001")
 	assertContains(t, contextPacket, "## Goal")
@@ -6590,6 +6595,29 @@ tasks:
 	adoptionArtifact := runCapture(t, "adoption", "artifact", "--catalog", filepath.Join(sourceRoot, "examples", "gpuaas-regression-packs.yaml"), "--gap-limit", "1")
 	assertContains(t, adoptionArtifact, "# Fairway Adoption Artifact")
 	assertContains(t, adoptionArtifact, "## Gates")
+}
+
+func TestCLI_GenericStandaloneExamples(t *testing.T) {
+	sourceRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := config.Load(filepath.Join(sourceRoot, "examples", "fairway-config.toml")); err != nil {
+		t.Fatalf("load generic Fairway config: %v", err)
+	}
+
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	runOK(t, "regression-pack", "validate", filepath.Join(sourceRoot, "examples", "platform-regression-packs.yaml"))
 }
 
 func TestCLI_ProjectRegistry(t *testing.T) {
@@ -6735,6 +6763,15 @@ func TestDefaultAdoptionRouteSamplesUsesProfiles(t *testing.T) {
 	want := []string{"doc/api/openapi.yaml", "cmd/api/routes.go", "scripts/release/check.sh"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("route samples = %#v, want %#v", got, want)
+	}
+}
+
+func TestDefaultAdoptionRouteSamplesHasNoLegacyConsumerFallback(t *testing.T) {
+	cfg := config.Defaults("/tmp/repo")
+	cfg.Fairway.ProjectName = "gpuaas"
+	cfg.Roles = []config.Role{{Name: "A-backend"}}
+	if got := defaultAdoptionRouteSamples(cfg); len(got) != 0 {
+		t.Fatalf("route samples = %#v, want no implicit project-specific samples", got)
 	}
 }
 

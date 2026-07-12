@@ -1,7 +1,7 @@
 # Postgres Adapter
 
 SQLite is fairway's v1 default because most users coordinate agents on one
-machine. GPUaaS still proved that shared, multi-machine orchestration eventually
+machine. Consumer pilots still showed that shared, multi-machine coordination eventually
 needs a network-reachable queue store. Fairway should preserve that path without
 making operators learn a second workflow.
 
@@ -13,7 +13,7 @@ used as a shared team control plane, especially when several provider lanes,
 reviewers, dashboards, and operators write to the same project from different
 machines.
 
-FW-255 assessed the dashboard-performance and AI Cloud team-deployment pressure
+FW-255 assessed dashboard-performance and shared-team deployment pressure
 points and landed this decision:
 
 - keep SQLite as the local/single-user default,

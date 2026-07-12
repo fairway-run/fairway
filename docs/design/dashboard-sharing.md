@@ -17,23 +17,18 @@ Fairway owns:
 
 The user or project owns:
 
-- the public hostname, such as `fairway.core42.dev`;
+- the public hostname, such as `fairway.example.com`;
 - Cloudflare account, zone, Access application, and Tunnel connector;
 - allowed users, email domains, and identity provider choice;
 - operational teardown when sharing is no longer needed.
 
-`fairway.core42.dev` is only an example user/project hostname. It is not a
-Fairway product default.
-
-For the current Core42 AI Cloud dashboard-share naming work, prefer an
-AI Cloud-aligned Fairway hostname such as `fairway.aicloud.core42.dev` when the
-`aicloud.core42.dev` subdomain can be managed by the deployment owner. If that
-subdomain is not available, use a concrete neutral fallback such as
-`aicloud-fairway.core42.dev` in the existing zone. Keep any historical
-consumer-specific hostname, such as `fairway-gpuaas.core42.dev`, as a temporary
-compatibility alias until the new hostname has passing DNS, tunnel, and
-Access-policy evidence. See
-[Dashboard Share Hostname Release Plan](dashboard-share-hostname-release.md).
+`fairway.example.com` is only a placeholder for a deployment-owned hostname. It
+is not a Fairway product default. Existing consumer-named hostnames may remain
+temporary compatibility aliases until the deployment owner records passing
+DNS, proxy, access-policy, and rollback evidence. A historical consumer naming
+plan is retained in the
+[archive](../archive/dashboard-share-hostname-release.md); it is not standalone
+product guidance.
 
 ## Reference Config
 

@@ -142,8 +142,9 @@ release tag:
 
 For local/manual signing experiments, `.apple-app-specific.env` may hold local
 Apple credential material. It is ignored by git and must never be committed,
-printed in logs, pasted into task evidence, or shared with GPUaaS/Core42 domain
-secrets. CI should use the App Store Connect API key secrets above.
+printed in logs, pasted into task evidence, or shared with any consumer
+project's domain or deployment credentials. CI should use the App Store Connect
+API key secrets above.
 
 ## macOS signing and notarization baseline
 
@@ -407,7 +408,7 @@ never reuse a version number.
 ## Docs portal deployment
 
 The public Fairway docs portal should use separate Cloudflare credentials for
-`fairway.run`. Do not reuse Core42/Core42.dev Cloudflare API tokens.
+`fairway.run`. Do not reuse credentials from any consumer project or domain.
 
 Expected secret split:
 
@@ -434,7 +435,7 @@ token for routine GitHub Actions deploys.
 
 Local Fairway Cloudflare credentials may be stored in
 `.env.cloudflare.fairway-run`. The file is ignored by git and must not be
-printed, committed, or mixed with Core42/Core42.dev credentials.
+printed, committed, or mixed with consumer deployment credentials.
 
 ## Docs portal edge security
 
@@ -464,10 +465,10 @@ token, static-site, and public-content boundary decisions.
 
 ## Shared dashboard hostname updates
 
-Shared read-only dashboard hostnames are deployment-owned. A Core42 deployment
-may use a neutral hostname such as `fairway.aicloud.core42.dev` or
-`aicloud-fairway.core42.dev`, while temporarily keeping an older consumer-named
-hostname such as `fairway-gpuaas.core42.dev` as a compatibility alias.
+Shared read-only dashboard hostnames are deployment-owned. Use a neutral
+Fairway hostname under the deployment owner's domain, while temporarily keeping
+an older consumer-named hostname as a compatibility alias when migration
+evidence requires it.
 
 Changing that hostname does not require a GoReleaser or Homebrew cask change as
 long as Fairway does not embed the public dashboard URL in the binary,
@@ -481,7 +482,8 @@ docs/deployment release note item:
 - mention the neutral reference hostname in release notes only after the
   deployment owner is ready to advertise it.
 
-See [Dashboard Share Hostname Release Plan](../design/dashboard-share-hostname-release.md).
+Historical consumer hostname decisions remain in the
+[archived dashboard share plan](../archive/dashboard-share-hostname-release.md).
 
 ## Pre-1.0 distribution
 

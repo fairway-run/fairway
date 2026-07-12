@@ -1,6 +1,6 @@
 # Regression Packets
 
-GPUaaS added two quality surfaces after the queue existed: workflow regression
+Consumer projects added two quality surfaces after the queue existed: workflow regression
 packs and bug-fix review packets. Fairway keeps both as generated packet/catalog
 commands, not as a built-in test runner.
 

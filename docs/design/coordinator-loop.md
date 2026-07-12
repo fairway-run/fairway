@@ -1,7 +1,7 @@
 # Coordinator Loop
 
 Fairway should support the coordinator operating loop that proved useful in
-GPUaaS without making hidden decisions for the operator. The loop is a composed
+consumer projects without making hidden decisions for the operator. The loop is a composed
 status and preflight surface; it does not auto-claim, auto-merge, or mutate tasks
 unless the user runs the explicit task commands.
 
@@ -270,7 +270,7 @@ handoffs while preserving gaps that still need human delivery or review action.
 
 ## Why This Exists
 
-GPUaaS used separate `queue-*`, `agent-*`, and `orchestrator-*` helpers. The
+Early consumer tooling used separate `queue-*`, `agent-*`, and `orchestrator-*` helpers. The
 combined tick kept the coordinator from missing stale sessions, stale tracks, or
 missing evidence while dispatching parallel agents.
 

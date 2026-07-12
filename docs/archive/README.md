@@ -21,6 +21,8 @@ Archived material:
 - [GPUaaS extraction notes](gpuaas-extraction.md)
 - [GPUaaS parity runbook](gpuaas-parity-runbook.md)
 - [GPUaaS parity and gap assessment - 2026-05-29](gpuaas-parity-and-gap-assessment-2026-05-29.md)
+- [Historical implementation roadmap](implementation-roadmap.md)
+- [Historical dashboard-share hostname plan](dashboard-share-hostname-release.md)
 
 The dashboard redesign backlog YAML is retained in this directory as a
 source-only historical artifact. It is not an active queue and must not be

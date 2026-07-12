@@ -1,7 +1,7 @@
 # Context Packets
 
 Context packets are structured prompts for bounded agent work. They came from
-GPUaaS side-lane work where vague thread summaries caused scope drift,
+Consumer side-lane work where vague thread summaries caused scope drift,
 forgotten constraints, and weak handoffs.
 
 Fairway should support context packets as generated text artifacts. They do not

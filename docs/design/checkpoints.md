@@ -1,6 +1,6 @@
 # Checkpoints
 
-GPUaaS used `track_checkpoints` to keep side tracks, watcher work, and
+Early consumer workflows used `track_checkpoints` to keep side tracks, watcher work, and
 multi-day efforts from disappearing from the coordinator's working memory.
 Fairway replaces separate track tables with task hierarchy, but the checkpoint
 behavior is still useful.

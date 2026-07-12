@@ -25,7 +25,7 @@ tasks:
       - session launch supports a prompt-file based path or documented launcher convention
       - dry-run output shows provider command, prompt file, transcript path, and session metadata
       - launcher records a session without claiming a task
-      - docs explain how GPUaaS platform-foundation lanes should use the prompt-file path
+      - docs explain how platform-foundation lanes should use the prompt-file path
 
   - id: FW-102
     title: Add dashboard gate-readiness drill-down
@@ -62,11 +62,11 @@ tasks:
     source_paths:
       - internal
       - docs/design/postgres-adapter.md
-      - docs/design/implementation-roadmap.md
+      - docs/design/schema.md
     target_paths:
       - internal
       - docs/config-reference.md
-      - docs/design/implementation-roadmap.md
+      - docs/design/schema.md
     review_domains:
       - arch
       - governance
@@ -177,7 +177,7 @@ tasks:
       - dashboard summary ready count uses the same dependency-aware readiness evaluator as `fairway ready`
       - dashboard distinguishes open/todo backlog count from claimable ready count
       - dashboard tests cover a blocked-by-dependency task that is todo but not ready
-      - GPUaaS platform-foundation dashboard and `fairway --json ready` agree on claimable task count
+      - platform-foundation dashboard and `fairway --json ready` agree on claimable task count
 
   - id: FW-108
     title: Add provider-neutral tmux transcript and checkpoint bridge
@@ -212,7 +212,7 @@ tasks:
       - adapter captures or tails a transcript path that the dashboard and `task-detail` can surface without provider-specific APIs
       - adapter records an initial checkpoint when a task is associated and documents a cadence for fresh checkpoints on long-running lanes
       - session reconcile can mark missing tmux/PID sessions stale without changing task ownership
-      - docs include GPUaaS-style examples for Claude lanes that coordinate through Fairway state rather than provider chat
+      - docs include provider-neutral examples for Claude lanes that coordinate through Fairway state rather than provider chat
 
   - id: FW-109
     title: Add delegated provider session watcher adapter pattern

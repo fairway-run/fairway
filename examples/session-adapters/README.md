@@ -70,13 +70,13 @@ FAIRWAY_INITIAL_PROMPT="$(cat prompts/platform-map.md)" \
 examples/session-adapters/tmux.sh orchestrator PF-001
 ```
 
-For GPUaaS-style Claude lanes, use the Fairway role as the coordination owner
+For platform-foundation Claude lanes, use the Fairway role as the coordination owner
 and provider as an informational label:
 
 ```bash
 FAIRWAY_PROVIDER=claude \
 FAIRWAY_PROVIDER_COMMAND="claude" \
-FAIRWAY_TRANSCRIPT=".fairway/transcripts/gpuaas-D-arch-PF-001.log" \
+FAIRWAY_TRANSCRIPT=".fairway/transcripts/platform-architecture-PF-001.log" \
 examples/session-adapters/tmux.sh D-arch PF-001
 ```
 

@@ -101,7 +101,7 @@ capability.
 
 ## Regression Case
 
-The GPUaaS MFA drill loop exposed this requirement. One drill-operator surface
+A bounded identity-control drill loop exposed this requirement. One operator surface
 failed direct headed Chrome launch and CDP loopback before browser navigation,
 credential submission, or Keycloak mutation. A replacement operator-v2 surface
 passed a non-live direct headed Chrome launch probe with no navigation, no

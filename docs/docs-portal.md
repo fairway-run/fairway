@@ -5,8 +5,8 @@ accountability layer for agent-driven delivery. A reader should understand the
 accountability chain and complete one bounded work item before encountering
 lane, worktree, watcher, or shared-team mechanics.
 
-The portal must stand on public repository evidence. AI Cloud may appear as a
-clearly labeled internal case study, but private deployment context is not
+The portal must stand on public repository evidence. A named consumer may
+appear in a clearly labeled case study, but private deployment context is not
 required to understand or adopt Fairway.
 
 ## Audience Paths
@@ -121,7 +121,7 @@ Required credential separation:
 
 - Fairway Cloudflare token is stored locally in `.env.cloudflare.fairway-run`
   and in GitHub Actions secrets for CI.
-- Core42/Core42.dev credentials must not be reused.
+- Credentials from consumer projects or unrelated domains must not be reused.
 - Account-level Pages permission is separate from zone-level DNS permission.
 - Routine GitHub Actions deploys use `FAIRWAY_CLOUDFLARE_API_TOKEN`,
   `FAIRWAY_CLOUDFLARE_ACCOUNT_ID`, and `FAIRWAY_PAGES_PROJECT`.

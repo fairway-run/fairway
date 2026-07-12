@@ -48,8 +48,8 @@ Arch writes design notes in `docs/design/`. Implementation is handed off to `bac
 - Schema changes require a migration plan and a backup step.
 - State machine changes require both a default behavior and an opt-in config path (never break existing configs).
 - CLI surface changes require deprecation notes for ≥ 1 minor version before removal post-1.0.
-- Workstream profile changes must stay generic. GPUaaS / ARC may motivate an
-  example, but profile semantics should work for release-readiness,
+- Workstream profile changes must stay generic. Consumer projects may motivate
+  an example, but profile semantics should work for release-readiness,
   frontend-migration, service-extraction, SDK-readiness, and security-hardening
   tracks.
 - Tracker credential/storage policy requires arch sign-off before backend

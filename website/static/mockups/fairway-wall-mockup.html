@@ -322,7 +322,7 @@ body {
   </div>
   <div class="header-right">
     <select class="config-select" id="config-select" title="Pick a fairway config to preview">
-      <option value="gpuaas-backend">gpuaas-backend (7 lanes)</option>
+      <option value="platform-backend">platform-backend (7 lanes)</option>
       <option value="fairway-dogfood">fairway dogfood (5 lanes)</option>
       <option value="hackathon-demo">hackathon demo (3 lanes)</option>
     </select>
@@ -390,7 +390,7 @@ body {
 // Sample configs (in the real implementation these come from the server)
 // =========================
 const CONFIGS = {
-  'gpuaas-backend': {
+  'platform-backend': {
     providers: ['Claude', 'Codex', 'compass-agent'],
     lanes: [
       { role: 'orchestrator', provider: null, heart: 'idle',
@@ -810,7 +810,7 @@ function tick() {
   document.getElementById('ticker').appendChild(el);
 });
 
-render('gpuaas-backend');
+render('platform-backend');
 setTimeout(drawArc, 800);
 setInterval(drawArc, 4200);
 setInterval(tick, 3500);

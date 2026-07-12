@@ -1,6 +1,6 @@
 # Review Lanes
 
-Review lanes are role worktrees used for reviewing another lane's branch. GPUaaS
+Review lanes are role worktrees used for reviewing another lane's branch. Early consumer use
 found that detached `FETCH_HEAD` reviews are easy to lose and hard to repeat, so
 fairway should document named review branches as the default pattern.
 

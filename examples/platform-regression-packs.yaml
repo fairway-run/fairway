@@ -1,0 +1,24 @@
+version: 1
+updated_at: "2026-07-11"
+packs:
+  - id: api-contract
+    title: API contract and service smoke
+    owner: backend
+    target_environments: [local, ci, staging]
+    blocking:
+      local: false
+      ci: true
+      staging: true
+    required_seed_data:
+      - disposable test account or fixture identity
+      - service base URL
+    lowest_reliable_layer: integration
+    required_proof:
+      - contract validation passes
+      - authenticated health request returns the expected status
+    artifact_requirements:
+      - validation log
+    current_automation:
+      - scripts/ci/validate.sh
+    gaps:
+      - deployed browser coverage is tracked separately when applicable

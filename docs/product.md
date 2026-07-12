@@ -48,7 +48,7 @@ These labels are mandatory in public and canonical Fairway documentation.
 | Label | Meaning | Current Fairway examples |
 |---|---|---|
 | **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; workflow and merge-readiness checks; read-oriented dashboards; packets and reports; release packaging. |
-| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | AI Cloud provider replacement, review/release coordination, environment rehearsal, and local shared-dashboard operation documented under `docs/assessment/`. |
+| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, review/release coordination, environment rehearsal, and local shared-dashboard operation documented under `docs/assessment/`. |
 | **Experimental** | Implemented as an explicit pilot or advisory surface and not the default authority path. | Shared-team server/write pilots, advisory provider narratives, notifier adapters, Postgres compatibility rehearsal, and prototype operating profiles. |
 | **Planned** | Designed or tracked but not implemented as a supported runtime capability. | A production Postgres runtime adapter, broad tracker API adapters, and a reviewed shared-team production deployment path. |
 | **Non-goal** | Deliberately outside Fairway authority. | Autonomous approval, risk acceptance, merge, push, deploy, live mutation, credential custody, transcript-as-authority, or regulatory certification. |

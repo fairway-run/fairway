@@ -11,8 +11,8 @@ and shows gaps.
 ## Positioning
 
 ```text
-Governed agentic engineering = operating model
-Fairway = coordination control plane for that model
+Agent-driven delivery = engineering work performed with coding agents
+Fairway = engineering control and accountability layer
 Workstream profiles = project operating shape
 Rule packs = reusable operating knowledge
 Tasks = concrete work
@@ -20,7 +20,7 @@ Evidence = proof that rules/gates were handled
 ```
 
 This is broader than a secure-coding ruleset. Project CodeGuard is a useful
-security input, but GPUaaS/Fairway needs a wider model that also covers
+security input, but Fairway needs a wider model that also covers
 contract-first development, platform boundaries, CI/CD, UAT, deploy evidence,
 ops verification, provider sessions, worktrees, reviews, and release closeout.
 
@@ -97,11 +97,11 @@ fairway-rules-platform/
     fairway-rule-source.toml
 ```
 
-GPUaaS-specific rules live in the GPUaaS/product org, not in Fairway core and
+Project-specific rules live with the consuming product, not in Fairway core and
 not in the generic platform pack:
 
 ```text
-fairway-rules-gpuaas/
+fairway-rules-service-platform/
   schemas/
     rule.schema.yaml
   rules/
@@ -206,8 +206,8 @@ source = "path:../fairway-rules-platform"
 mode = "advisory"
 
 [[rule_sources]]
-name = "gpuaas"
-source = "path:../fairway-rules-gpuaas"
+name = "service-platform"
+source = "path:../fairway-rules-service-platform"
 mode = "disabled" # enable only after local path and vocabulary validation
 
 [[rule_sources]]
@@ -254,10 +254,10 @@ fairway-platform.core
 fairway-platform.delivery
 fairway-platform.security
 fairway-platform.fairway
-gpuaas.runtime
-gpuaas.operations
-gpuaas.platform
-gpuaas.security
+service-platform.runtime
+service-platform.operations
+service-platform.platform
+service-platform.security
 ```
 
 Fairway validation should list available groups and warn on profile references
@@ -277,7 +277,7 @@ rule_groups = [
   "fairway-platform.core",
   "fairway-platform.delivery",
   "fairway-platform.fairway",
-  "gpuaas.runtime"
+  "service-platform.runtime"
 ]
 ```
 
@@ -449,7 +449,7 @@ Before enabling a project rule source:
 7. Record the adoption decision as Fairway evidence or a governance checkpoint,
    including source path, mode, known warnings, and the command output used.
 
-GPUaaS and other projects should reference this checklist rather than assuming
+Consumer projects should reference this checklist rather than assuming
 remote fetch support or copying example paths that may not exist locally.
 
 ## Reference Rule Groups
@@ -472,9 +472,9 @@ rules:
 - worktree merge model and push intent;
 - review-domain independence and no self-approval.
 
-GPUaaS should then add domain-specific rules for node-agent, provider runtime,
-app runtime, terminal gateway, billing attribution, IAM hierarchy, MAAS/LXD,
-and GPU allocation isolation.
+A service platform should then add its own domain rules for runtime lifecycle,
+gateway behavior, billing attribution, identity hierarchy, infrastructure, and
+resource isolation.
 
 ## Public Model
 
@@ -487,6 +487,6 @@ Profiles bind rule packs to a project or track.
 Evidence proves that the selected rules were handled.
 ```
 
-This lets Fairway support GPUaaS, security review, docs, release engineering,
-and future projects without hardcoding one project's operating model into the
-core product.
+This lets Fairway support service platforms, security review, docs, release
+engineering, and future projects without hardcoding one project's operating
+model into the core product.

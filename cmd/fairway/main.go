@@ -2989,13 +2989,13 @@ func cmdAuditDocsBacklog(ctx context.Context, opts globalOptions, args []string)
 			return printJSON(report)
 		}
 		fmt.Printf("docs_backlog_ok: %t\n", report.OK)
-		fmt.Printf("summary: docs_scanned=%d docs_with_backlog_coverage=%d doc_only_capabilities=%d command_examples_uncovered=%d stale_completed_tasks=%d gpuaas_lessons=%d\n",
+		fmt.Printf("summary: docs_scanned=%d docs_with_backlog_coverage=%d doc_only_capabilities=%d command_examples_uncovered=%d stale_completed_tasks=%d consumer_lessons=%d\n",
 			report.Summary.DocsScanned,
 			report.Summary.DocsWithBacklogCoverage,
 			report.Summary.DocOnlyCapabilities,
 			report.Summary.CommandExamplesUncovered,
 			report.Summary.StaleCompletedTasks,
-			report.Summary.GPUaaSLessons)
+			report.Summary.ConsumerLessons)
 		if len(report.Docs) > 0 {
 			fmt.Println("docs:")
 			for _, doc := range report.Docs {
@@ -11441,21 +11441,6 @@ func defaultAdoptionRouteSamples(cfg config.Config) []string {
 	}
 	if len(samples) > 0 {
 		return samples
-	}
-	return gpuaasCompatibilityRouteSamples(cfg)
-}
-
-func gpuaasCompatibilityRouteSamples(cfg config.Config) []string {
-	// Compatibility path for early GPUaaS parity configs. Generic adoption should
-	// use [[workstream_profiles]].route_samples instead.
-	if strings.EqualFold(cfg.Fairway.ProjectName, "gpuaas") || config.RoleSet(cfg)["A-backend"] {
-		return []string{
-			"doc/api/openapi.draft.yaml",
-			"cmd/api/routes.go",
-			"packages/services/billing/service.go",
-			"cmd/node-agent/main.go",
-			"scripts/ci/contracts_validate.sh",
-		}
 	}
 	return nil
 }

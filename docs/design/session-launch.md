@@ -175,7 +175,7 @@ operators, not adapter trust-boundary parsing.
 
 ## Prompt-File Lane Example
 
-For GPUaaS-style platform-foundation lanes, keep the durable lane identity in
+For platform-foundation lanes, keep the durable lane identity in
 Fairway and make the prompt file the repeatable provider attachment:
 
 ```bash

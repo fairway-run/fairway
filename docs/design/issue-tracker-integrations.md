@@ -166,7 +166,7 @@ The first Plane task is not adapter code. It is a local setup and evaluation:
 
 - run Plane locally with documented Docker or compose steps,
 - create a Fairway evaluation workspace/project,
-- model representative GPUaaS/Fairway epics, tasks, follow-ups, cycles/modules,
+- model representative consumer/Fairway epics, tasks, follow-ups, cycles/modules,
   labels, and comments,
 - evaluate which Plane concepts map cleanly to Fairway tasks, parents,
   profiles, roles, review domains, evidence links, and follow-up taxonomy,

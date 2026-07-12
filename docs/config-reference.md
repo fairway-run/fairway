@@ -193,6 +193,11 @@ levels = [
 
 ## Section reference
 
+For a project-neutral starting point, copy
+[`examples/fairway-config.toml`](../examples/fairway-config.toml) and adjust the
+roles, routes, and profile samples. Consumer compatibility fixtures under
+`examples/` are regression inputs, not Fairway defaults.
+
 ### `[fairway]`
 
 | Key | Type | Default | Description |
@@ -201,7 +206,7 @@ levels = [
 | `db_path` | string | `.fairway/state.db` | SQLite DB path. Relative to repo root unless absolute. Fairway opens SQLite with WAL mode and a bounded 5s busy timeout so short local write bursts can wait for the current writer instead of failing immediately with `SQLITE_BUSY`. |
 | `queue_source` | string | `inline` | `inline` (DB-only task definitions), `yaml:<path>` or `json:<path>` (active backlog definition for import/reconciliation; runtime execution state still lives in the DB). |
 | `main_branch` | string | `main` | Base branch new worktree branches are created from. |
-| `task_id_pattern` | string | `^[A-Z]+-[0-9]+$` | Regex enforced for task IDs. GPUaaS parity configs use a wider pattern for legacy IDs such as `A-DEMO-UAT-001` and `A-PROV-REMOVE-SSH`. |
+| `task_id_pattern` | string | `^[A-Z]+-[0-9]+$` | Regex enforced for task IDs. Compatibility fixtures may use a wider pattern for legacy IDs such as `A-DEMO-UAT-001`; standalone projects should choose the narrowest pattern that fits their versioned backlog. |
 | `local_artifact_paths` | []string | `[]` | Optional repo-relative directories or files that may appear as untracked local evidence artifacts without making `merge-ready`, `workflow check`, or `workflow closeout` dirty. The dashboard evidence artifact viewer also uses this list as its allow-list: it only renders recorded evidence artifacts inside these roots, rejects traversal and symlink escapes, applies redaction before display truncation, and keeps raw path readback visible for local operators. Tracked source changes and arbitrary untracked files remain dirty. |
 
 ### `[dashboard]`
@@ -703,8 +708,8 @@ source = "path:../fairway-rules-platform"
 mode = "advisory"
 
 [[rule_sources]]
-name = "gpuaas"
-source = "path:../fairway-rules-gpuaas"
+name = "service-platform"
+source = "path:../fairway-rules-service-platform"
 mode = "disabled" # enable only after local path and vocabulary validation
 
 [[rule_sources]]
@@ -791,7 +796,7 @@ Tasks may carry profile-aware metadata in YAML/JSON imports and through
 | `migration_type` / `--migration-type` | string | Shape of the work, such as `facade`, `boundary-guard`, or `ownership-map`. |
 
 This metadata is intentionally generic. It powers architecture-aware
-coordination without making Fairway specific to GPUaaS, ARC, or any one repo.
+coordination without making Fairway specific to any one consumer repository.
 It also drives `fairway audit work-coverage`: changed files are matched against
 task `source_paths` and `target_paths`, and done tasks with `review_domains`
 are checked for matching approved review rows.

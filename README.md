@@ -128,8 +128,8 @@ disposition baseline is recorded in
 ## Status
 
 Fairway is an actively developed local-first product with released binaries and
-operational use in the AI Cloud repository. That use is a validated internal
-practice, not a claim of broad market adoption or regulatory compliance.
+documented internal consumer use. That evidence is not a claim of broad market
+adoption or regulatory compliance.
 
 ## License
 

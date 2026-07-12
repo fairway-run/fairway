@@ -51,8 +51,9 @@ and put Cloudflare Access, Tailscale, an internal reverse proxy, or another
 trusted access layer in front of it. See
 [dashboard-sharing.md](dashboard-sharing.md) for the Cloudflare Tunnel +
 Cloudflare Access One-Time PIN reference pattern and trust-boundary warnings.
-For Core42 hostname normalization and compatibility planning, see
-[dashboard-share-hostname-release.md](dashboard-share-hostname-release.md).
+For hostname migration principles, see [Dashboard sharing](dashboard-sharing.md).
+The dated consumer-specific plan remains in the
+[archive](../archive/dashboard-share-hostname-release.md).
 
 ## Flow
 
@@ -116,7 +117,7 @@ awareness.
 
 This release-safe wall capture uses a synthetic Fairway fixture. It illustrates
 the shared read-only coordination posture without exposing customer,
-production, or AI Cloud operational data.
+production, or consumer operational data.
 
 Accessibility expectations:
 
@@ -197,7 +198,7 @@ read-only, use the same request filters, reject unknown panel names, and exist
 only to move expensive diagnostic rendering out of the first page response.
 Coordinator and audit panel construction use project-scoped batch fact readers;
 they must not hydrate every task through `TaskDetail`. The cold target for each
-panel on the current AI Cloud fixture is three seconds, while the shell remains
+panel on the current large consumer fixture is three seconds, while the shell remains
 available immediately and each panel reports failure independently.
 
 It includes:
@@ -289,7 +290,7 @@ defined in [delivery-resources.md](delivery-resources.md).
 The reports view also includes an Owner Rough-Edge Queue projected from
 structured `rough-edge` evidence rows recorded by `fairway rough-edge add`.
 This queue is separate from the generic backlog table so product gaps found
-while using Fairway, AI Cloud dashboards, demos, UAT, docs portal flows, or
+while using Fairway, consumer dashboards, demos, UAT, docs portal flows, or
 release/status walkthroughs remain visible with owner, severity, fix-now/defer
 decision, expiry, summary, and linked artifact reference. The dashboard only
 displays the queue; it does not create tasks, acknowledge edges, send messages,

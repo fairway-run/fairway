@@ -20,8 +20,8 @@ Every row in every table carries a `project_id` column (see [schema.md](schema.m
 
 ```toml
 [[project]]
-name = "gpuaas"
-path = "/path/to/GPUasService"
+name = "service-platform"
+path = "/path/to/service-platform"
 # db_path optional; defaults to <path>/.fairway/state.db
 # config_path optional; recorded by fairway register for same-repo configs
 
@@ -44,7 +44,7 @@ Each project carries a `project_name`, used to label rows in the multi-project d
 
 ```toml
 [fairway]
-project_name = "gpuaas"      # default: basename of the repo root
+project_name = "service-platform" # default: basename of the repo root
 ```
 
 Names must be unique across the registry. `fairway register` refuses duplicate
@@ -55,9 +55,9 @@ their names and DB/config identities differ.
 For same-repo multi-config work, register each config explicitly:
 
 ```bash
-cd /path/to/GPUasService
-fairway --config .fairway/platform-foundation-config.toml register --name gpuaas-platform
-fairway --config .fairway/docusaurus-config.toml register --name gpuaas-docs
+cd /path/to/service-platform
+fairway --config .fairway/platform-config.toml register --name service-platform
+fairway --config .fairway/docs-config.toml register --name service-docs
 fairway projects
 fairway dashboard start --multi --read-only --listen 127.0.0.1:7878
 ```

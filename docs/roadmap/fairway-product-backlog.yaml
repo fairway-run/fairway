@@ -5637,22 +5637,23 @@ tasks:
       - "No new core term is introduced without a demonstrated user need, authority boundary, and relationship to existing terminology."
 
   - id: FW-329
-    title: Document Fairway integrations and adjacent product boundaries
+    title: Define Fairway ecosystem category and composition boundaries
     kind: docs
     parent_id: FW-324
     role: governance
     profile: fairway-adoption
     owning_domain: fairway
-    owning_layer: integrations-positioning
+    owning_layer: ecosystem-positioning
     source_paths: [docs/design/provider-surface-capability-readiness.md, docs/design/issue-tracker-integrations.md, docs/design/product-boundaries.md]
-    target_paths: [docs/integrations.md, docs/alternatives.md, README.md, website]
+    target_paths: [docs/integrations.md, docs/ecosystem.md, README.md, website]
     review_domains: [arch, governance]
     risk_level: medium
-    migration_type: integrations-and-alternatives
+    migration_type: ecosystem-category-and-integrations
     dependencies: [FW-325]
     acceptance_checks:
-      - "Docs show how Fairway composes with Codex, Claude Code, source control, CI/CD, issue trackers, and agent orchestrators using concrete supported paths."
-      - "An alternatives page compares product responsibilities and authority boundaries without misclassifying orchestration projects such as Bernstein as direct equivalents."
+      - "Docs define the ecosystem by durable responsibilities: coding agents, agent orchestrators, source control, CI/CD, issue systems, identity/security controls, and Fairway's independent engineering record and control layer."
+      - "The ecosystem page explains authority and composition boundaries without naming, ranking, or comparing individual products."
+      - "Specific product names appear only in implementation-specific adapter or integration instructions where they are necessary to use a supported capability."
       - "Implemented integrations are separated from recipes, design directions, and unsupported provider claims."
 
   - id: FW-330
@@ -5692,3 +5693,24 @@ tasks:
       - "Portal landing and navigation communicate product value, audience, first action, authority boundary, and proof before exposing detailed internal concepts."
       - "Quickstart, integrations, operating guide, architecture, reference, case study, release, and security/provenance content are reachable through tested user journeys on desktop and mobile widths."
       - "Local link/navigation/build checks and screenshot-backed visual review pass before publication, with version/source readback and rollback evidence recorded."
+
+  - id: FW-332
+    title: Remove GPUaaS-specific assumptions from standalone Fairway
+    kind: task
+    parent_id: FW-324
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product-portability
+    source_paths: [README.md, cmd/fairway, internal, docs, examples, agents, website]
+    target_paths: [README.md, cmd/fairway, internal, docs, examples, agents, website]
+    review_domains: [arch, backend, governance, ops]
+    risk_level: high
+    migration_type: gpuaas-reference-scrub
+    dependencies: [FW-325, FW-326]
+    acceptance_checks:
+      - "An inventory classifies every GPUaaS, GPUasService, and AI Cloud reference as core-product defect, reusable example, compatibility fixture, case study, assessment evidence, release history, or archive material."
+      - "Core Fairway code, defaults, help, configuration guidance, agent roles, portal navigation, and reusable examples do not assume GPUaaS repository names, paths, domains, hostnames, task prefixes, roles, or deployment topology."
+      - "Legitimate AI Cloud and GPUaaS references remain only in clearly labeled case studies, consumer examples, historical release material, assessments, or compatibility fixtures and do not define standalone product behavior."
+      - "Generic replacement fixtures and examples preserve regression coverage, while compatibility aliases or migrations are documented where removal would break existing consumers."
+      - "Repository-wide reference checks, tests, config validation, docs build/link validation, and a clean standalone initialization rehearsal pass before closeout."

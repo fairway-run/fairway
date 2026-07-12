@@ -53,6 +53,6 @@ The state machine applies uniformly to every node in the task tree (see [hierarc
 
 ## Rationale for shipping 4 states by default
 
-The 11-state model in GPUaaS's `Agent_Orchestrator_v2` doc is aspirational — never load-bearing in the Ruby store. Hardcoding it bakes in unvalidated distinctions (`merge_ready` vs `verified` vs `done` have no enforcement today). Config-driven states cost ~20 LOC of validation and let dogfooding decide whether the richer flow is worth the operator overhead.
+An earlier consumer orchestrator proposed an aspirational 11-state model that was never load-bearing in its store. Hardcoding it would bake in unvalidated distinctions (`merge_ready` vs `verified` vs `done` had no enforcement). Config-driven states let evidence from actual use determine whether a richer flow is worth the operator overhead.
 
 If three months of usage shows everyone configuring the same 11 states, those will be promoted to a built-in `[states] preset = "verified-merge"` so users do not have to copy the same TOML block.

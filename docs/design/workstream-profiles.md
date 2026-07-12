@@ -232,7 +232,7 @@ scanners still produce the reports.
 - Which profile gates are satisfied or missing for matching tasks?
 - What review routes and workstream samples are active?
 
-`fairway parity artifact` remains as a compatibility spelling for GPUaaS-style
+`fairway parity artifact` remains as a compatibility spelling for legacy consumer
 script-to-Fairway comparisons.
 
 ## Review Domains

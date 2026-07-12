@@ -1,6 +1,6 @@
 # Worktrees
 
-Fairway uses one git worktree per role, following the pattern established in GPUaaS but with paths and naming made configurable.
+Fairway can use one git worktree per role, with paths and naming controlled by project configuration.
 
 See [concepts.md](concepts.md) for the canonical distinction between role and
 lane. In short: a role is the configured responsibility; a lane is an active

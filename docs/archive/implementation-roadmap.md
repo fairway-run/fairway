@@ -1,4 +1,8 @@
-# Implementation Roadmap
+# Archived Implementation Roadmap
+
+> Historical planning and consumer-adoption record. The versioned Fairway
+> backlog and runtime DB own current work; this page does not define current
+> standalone product defaults or release scope.
 
 This is the working implementation ledger. `release-cuts.md` defines ship
 scope; this file tracks the fuller path from the current standalone prototype
@@ -107,7 +111,7 @@ to a useful v1.
    recorded as typed evidence, and readiness reports evaluate profile gates
    across a workstream. Multi-reviewer readiness now enforces task-level
    `review_domains` in `merge-ready`.
-2. Expand configurable [workstream profiles](workstream-profiles.md). The
+2. Expand configurable [workstream profiles](../design/workstream-profiles.md). The
    initial config shape now exists for profile metadata, route samples, named
    gates, packet templates, template profile scoping, and structured evidence
    requirements. Adoption artifacts now evaluate named gates against task
@@ -122,7 +126,7 @@ to a useful v1.
    shortcuts matter.
 6. Expand tracker integration from local links/dry-run reporting to provider
    adapters when credentials and API mapping are explicit.
-7. Promote [coordination intelligence](coordination-intelligence.md) from
+7. Promote [coordination intelligence](../design/coordination-intelligence.md) from
    design direction into backlog tasks: first-class track memory, generic
    wait/watch records, bounded wake delivery, advisory recommendation guards,
    known-failure routing, retry packet generation, and dashboard projections for

@@ -1,9 +1,9 @@
-# Compatibility fixture: historical five-lane GPUaaS mapping.
-# New projects should start from examples/fairway-config.toml. This file keeps
-# consumer compatibility coverage and does not define Fairway defaults.
+# Generic small-team Fairway configuration.
+# Copy to .fairway/config.toml, adjust roles and routes, then run
+# `fairway config validate` before importing work.
 
 [fairway]
-project_name = "gpuaas"
+project_name = "example-project"
 db_path = ".fairway/state.db"
 main_branch = "main"
 
@@ -29,45 +29,34 @@ checkpoint_stale_after = "24h"
 [[roles]]
 name = "backend"
 branch = "agent/backend"
-provider = "claude"
 
 [[roles]]
 name = "ui"
 branch = "agent/ui"
-provider = "codex"
 
 [[roles]]
 name = "ops"
 branch = "agent/ops"
-provider = "gemini"
 
 [[roles]]
-name = "arch"
-branch = "agent/arch"
-provider = "claude"
+name = "architecture"
+branch = "agent/architecture"
 
 [[roles]]
 name = "governance"
 branch = "agent/governance"
-provider = "claude"
-
-# Route reviews based on paths touched in the task's commits.
-# Order matters; first match wins.
-[[review_routes]]
-match = "doc/api/**"
-reviewer = "arch"
 
 [[review_routes]]
-match = "doc/governance/**"
+match = "internal/**"
+reviewer = "backend"
+
+[[review_routes]]
+match = "website/**"
+reviewer = "ui"
+
+[[review_routes]]
+match = "docs/**"
 reviewer = "governance"
-
-[[review_routes]]
-match = "ops/**"
-reviewer = "ops"
-
-[[review_routes]]
-match = "app/**"
-reviewer = "arch"
 
 [states]
 allowed = ["todo", "in_progress", "blocked", "done"]
@@ -80,15 +69,18 @@ require_handoff_before_merge_ready = false
 require_blocked_reason = true
 allow_force_without_reason = false
 
+[task_kinds]
+allowed = ["epic", "story", "task", "bug", "spike", "watch"]
+default = "task"
+
 [[workstream_profiles]]
 name = "platform-foundation"
 task_kinds = ["task", "bug"]
 dashboard_groups = ["platform work"]
-review_domains = ["arch", "backend", "governance", "ops"]
+review_domains = ["architecture", "backend", "governance", "ops"]
 route_samples = [
-  "doc/api/openapi.draft.yaml",
-  "cmd/api/routes.go",
-  "packages/services/billing/service.go",
-  "cmd/node-agent/main.go",
-  "scripts/ci/contracts_validate.sh",
+  "cmd/service/main.go",
+  "internal/service/handler.go",
+  "docs/architecture.md",
+  "scripts/ci/validate.sh",
 ]

@@ -6,7 +6,7 @@ replaceable execution or advisory attachments. They must not be the only place
 where task state, waiting conditions, handbacks, evidence, review status, or
 next action exists.
 
-This design captures the product requirements exposed by GPUaaS stabilization
+This design captures product requirements exposed by sustained consumer use
 and the June 2026 MFA drill loop: repeated coordination, retry, status polling,
 and wait handling should be deterministic Fairway/tool work, not expensive LLM
 chat work.

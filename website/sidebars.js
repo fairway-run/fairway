@@ -94,7 +94,6 @@ const sidebars = {
         'design/regression-packets',
         'design/watchers',
         'design/provider-usage-accounting',
-        'design/implementation-roadmap',
         'docs-portal',
         {
           type: 'category',

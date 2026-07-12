@@ -325,7 +325,7 @@ func TestActiveProviderSessionCompletedCheckpointIsClean(t *testing.T) {
 func TestActiveEvidenceCaptureWithBoundedLiveOperationWindowIsClean(t *testing.T) {
 	ctx := context.Background()
 	s := newReconcileTestStore(t)
-	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "LIVE-001", Title: "GPUaaS MFA live drill", Role: "ops"}}); err != nil {
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "LIVE-001", Title: "Bounded identity-control live drill", Role: "ops"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Claim(ctx, "LIVE-001", "ops", ""); err != nil {
@@ -354,9 +354,9 @@ func TestActiveEvidenceCaptureWithBoundedLiveOperationWindowIsClean(t *testing.T
 	if err := s.RecordEvidence(ctx, "LIVE-001", store.Evidence{
 		CommandText:  "admin readiness gate && pre-mutation validator",
 		Result:       "pass",
-		ArtifactPath: "/Users/subash/dev/GPUasService/.fairway/artifacts/iam-mfa-keycloak-live-drill-20260611/final_drill_blocked_summary_flow_helper_2115.md",
+		ArtifactPath: "/tmp/consumer-project/.fairway/artifacts/live-drill/final-blocked-summary.md",
 		ArtifactType: "live-operation-gate",
-		Notes:        "GPUaaS 21:15 pattern: gate evidence captured while bounded live operation remains active.",
+		Notes:        "Bounded live-operation pattern: gate evidence captured while the approved operation remains active.",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +409,7 @@ func TestActiveEvidenceCaptureStillRequiresBoundedFreshSession(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			s := newReconcileTestStore(t)
-			if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "LIVE-001", Title: "GPUaaS MFA live drill", Role: "ops"}}); err != nil {
+			if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "LIVE-001", Title: "Bounded identity-control live drill", Role: "ops"}}); err != nil {
 				t.Fatal(err)
 			}
 			if err := s.Claim(ctx, "LIVE-001", "ops", ""); err != nil {

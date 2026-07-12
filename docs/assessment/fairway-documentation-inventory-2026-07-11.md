@@ -83,14 +83,14 @@ Public and canonical pages must label substantive capability claims as **impleme
 | `docs/design/context-packets.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/coordination-intelligence.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/coordinator-loop.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
-| `docs/design/dashboard-share-hostname-release.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
+| `docs/archive/dashboard-share-hostname-release.md` | Archive | Historical consumer deployment plan | Retain for provenance and compatibility context; exclude from current standalone deployment guidance. |
 | `docs/design/dashboard-sharing.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/dashboard.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/delivery-resources.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/delivery-velocity-and-overhead.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/environment-deploy-preflight.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/hierarchy.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
-| `docs/design/implementation-roadmap.md` | Supporting | Product and operating context | Consolidate current planning into the backlog; archive historical roadmap detail with provenance. |
+| `docs/archive/implementation-roadmap.md` | Archive | Historical planning and adoption record | Retain for provenance; current planning belongs to the product backlog and runtime DB. |
 | `docs/design/issue-tracker-integrations.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/live-operation-control-room.md` | Supporting | Focused design reference | Retain as a focused reference; deduplicate definitions and link from concepts, architecture, or product boundaries. |
 | `docs/design/mockups/fairway-board-mockup.html` | Supporting | Design asset | Retain as labeled design exploration; do not present as current UI evidence. |

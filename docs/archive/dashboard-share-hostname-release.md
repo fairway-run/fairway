@@ -1,4 +1,8 @@
-# Dashboard Share Hostname Release Plan
+# Archived Dashboard Share Hostname Release Plan
+
+> Historical consumer deployment plan. Retained for provenance and compatibility
+> context; it does not define Fairway product defaults, current public hostnames,
+> or standalone deployment guidance.
 
 Fairway's shared dashboard feature is product-neutral. A consumer may expose the
 read-only dashboard through Cloudflare Access, Tailscale, Pomerium, or another

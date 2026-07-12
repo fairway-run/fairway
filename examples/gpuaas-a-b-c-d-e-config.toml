@@ -1,5 +1,6 @@
-# Exact GPUaaS lane mapping used for parity dry runs.
-# Copy to .fairway/config.toml in a disposable GPUaaS checkout, then run
+# Compatibility fixture: exact historical GPUaaS lane mapping used for parity
+# dry runs. New projects should use examples/fairway-config.toml.
+# Copy to .fairway/config.toml only in a disposable compatibility checkout, then run
 # `fairway config validate` before importing copied queue data.
 
 [fairway]

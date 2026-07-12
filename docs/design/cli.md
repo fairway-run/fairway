@@ -541,7 +541,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   command examples, and known coordination topics such as review waits,
   completion handbacks, live-operation control, track memory, safe iteration,
   process overhead, and repeated-work automation. Findings are advisory and do
-  not change task, review, merge-ready, or release state.
+  not change task, review, merge-ready, or release state. Text and current JSON
+  output use `consumer_lessons`; JSON also emits the deprecated
+  `gpuaas_lessons` compatibility key for one migration window.
 - `delivery report --since <duration> [--profile <name>] [--format text|json]`
   is a read-only delivery velocity and process overhead report. It uses existing
   task transitions, evidence, reviews, handoffs, notifications, and review-wait
@@ -688,7 +690,7 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - `adoption artifact` is the generic readiness report. It uses configured
   workstream profile `route_samples` when no `--route` flags are provided and
   reports named profile gates plus evidence-backed gate evaluation. `parity
-  artifact` remains a compatibility alias for GPUaaS-style comparisons.
+  artifact` remains a compatibility alias for legacy consumer comparisons.
 - `doctor` runs read-only local capability diagnostics before or during agent
   work. It reports config and DB path checks, git worktree state, stale
   `.git/index.lock` guidance, Go cache posture, required CLI tools, dashboard

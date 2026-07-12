@@ -217,7 +217,9 @@ type DocsBacklogSummary struct {
 	DocOnlyCapabilities      int `json:"doc_only_capabilities"`
 	CommandExamplesUncovered int `json:"command_examples_uncovered"`
 	StaleCompletedTasks      int `json:"stale_completed_tasks"`
-	GPUaaSLessons            int `json:"gpuaas_lessons"`
+	ConsumerLessons          int `json:"consumer_lessons"`
+	// Deprecated: retained for one compatibility window for existing JSON readers.
+	LegacyConsumerLessons int `json:"gpuaas_lessons,omitempty"`
 }
 
 type DocsBacklogDoc struct {
@@ -253,11 +255,11 @@ var defaultCoordinationDocPaths = []string{
 }
 
 type docsBacklogTopic struct {
-	Name     string
-	Terms    []string
-	TaskIDs  []string
-	GPUaaS   bool
-	Optional bool
+	Name           string
+	Terms          []string
+	TaskIDs        []string
+	ConsumerLesson bool
+	Optional       bool
 }
 
 var coordinationBacklogTopics = []docsBacklogTopic{
@@ -273,7 +275,7 @@ var coordinationBacklogTopics = []docsBacklogTopic{
 	{Name: "notification-lifecycle", Terms: []string{"notification lifecycle", "notification audit"}, TaskIDs: []string{"FW-203"}},
 	{Name: "completion-supersede", Terms: []string{"supersede", "superseded"}, TaskIDs: []string{"FW-204"}},
 	{Name: "wake-routability", Terms: []string{"routability", "provider target"}, TaskIDs: []string{"FW-205"}},
-	{Name: "critical-flow-governance", Terms: []string{"critical-flow", "flow map before implementation", "non-live preflight"}, TaskIDs: []string{"FW-208"}, GPUaaS: true},
+	{Name: "critical-flow-governance", Terms: []string{"critical-flow", "flow map before implementation", "non-live preflight"}, TaskIDs: []string{"FW-208"}, ConsumerLesson: true},
 	{Name: "review-profiles", Terms: []string{"review profile", "safe iteration", "safe-boundary", "causal reset"}, TaskIDs: []string{"FW-209"}},
 	{Name: "delivery-overhead", Terms: []string{"delivery velocity", "process overhead", "review usefulness"}, TaskIDs: []string{"FW-210"}},
 	{Name: "automation-candidates", Terms: []string{"automation candidate", "third time automate", "repeated deterministic work"}, TaskIDs: []string{"FW-211"}},
@@ -331,8 +333,9 @@ func BuildDocsBacklogReport(ctx context.Context, root string, s *store.Store, op
 			if !docHasTopic(text, topic) {
 				continue
 			}
-			if topic.GPUaaS {
-				report.Summary.GPUaaSLessons++
+			if topic.ConsumerLesson {
+				report.Summary.ConsumerLessons++
+				report.Summary.LegacyConsumerLessons++
 			}
 			if !hasAnyTaskID(covered, topic.TaskIDs) && !anyTaskExists(taskByID, topic.TaskIDs) {
 				report.Findings = append(report.Findings, DocsBacklogFinding{

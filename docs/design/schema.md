@@ -448,7 +448,7 @@ Index: `(project_id, batch_id, created_at)`.
 
 **Why does `agent_sessions` carry tmux pane?** So the dashboard can render a "click to attach" affordance. NULL when tmux is not in use.
 
-**Why evidence has both command text and artifact path.** GPUaaS showed that
+**Why evidence has both command text and artifact path.** Consumer use showed that
 completed work needs command-level proof even when there is no durable file
 artifact. Artifact paths remain optional references; large logs, screenshots,
 and transcripts stay out of the DB.

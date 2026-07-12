@@ -136,8 +136,9 @@ while agents are working so missing evidence is visible before `merge-ready` or
 For large tracks, group gates by evidence family and make the default dashboard
 exception-first: missing blocking gates should be visible immediately, passed
 gates should be rollups, and detailed gate rows should be used for drill-down.
-This is the pattern that kept the GPUaaS platform-foundation track readable:
-maps first, guard visibility second, facade implementation third.
+For a platform-foundation track, use maps first, guard visibility second, and
+facade implementation third. The sequence is generic; consumer repositories
+choose their own role and task names.
 
 ## Task Metadata
 
