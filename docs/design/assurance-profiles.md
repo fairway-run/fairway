@@ -13,6 +13,7 @@ JSON file validated with:
 ```bash
 fairway assurance profile validate examples/assurance-profiles/example-evidence-support.yaml
 fairway --json assurance profile validate examples/assurance-profiles/example-evidence-support.yaml
+fairway assurance evidence map --profile examples/assurance-profiles/example-evidence-support.yaml --task FW-355 --at 2026-07-12T12:00:00Z
 ```
 
 The example profile is deliberately not a standards mapping. Versioned starter
@@ -77,6 +78,29 @@ use, public-exposure changes, and live operations.
 FW-355 implements profile parsing and validation only. It does not evaluate a
 control, infer compliance, generate an assessor package, or write findings.
 Those read-only surfaces are split across FW-356 through FW-359.
+
+FW-356 adds the first deterministic read model with `assurance evidence map`.
+It projects existing task, evidence, review, and task-decision records into
+normalized fact references and evaluates only whether current, in-scope facts
+match each control's explicit evidence requirement. It does not persist mapped
+facts or control results.
+The optional `--at` argument fixes the evaluation clock. With the same profile,
+Fairway facts, and clock, JSON output is byte-stable; the selected clock is
+reported as `evaluated_at`.
+
+The projection excludes command text, notes, review reasons, decision
+rationale, artifact paths, and artifact contents. Each fact retains a stable
+Fairway reference, class, result, timestamp, actor or producer when recorded,
+project/task scope, applicability, freshness, state, and confidence boundary.
+Fact freshness is labeled `requirement_relative`; each control requirement
+evaluates its own `maximum_age` against `evaluated_at`, so one class can be
+stale for a strict control and current for a longer retention window.
+Stale, conflicting, superseded, unreviewed, out-of-scope, and external
+assessment facts remain visible and cannot satisfy a requirement. External
+assessment records are labeled as assertions requiring assessor validation.
+Controls marked `external_assessment_required` remain unsupported in this
+read model even when all product-side facts match; Fairway does not convert an
+external assertion into an assessor conclusion.
 
 Generated findings and packages remain assessment inputs. A certification or
 authorization may be recorded later only as explicit external evidence from the

@@ -632,6 +632,7 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 
 ```bash
 fairway assurance profile validate <path> [--format text|json]
+fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]
 ```
 
 The validator accepts one local YAML or JSON
@@ -641,6 +642,13 @@ Unknown fields and schemas, duplicate controls, remote or symlinked files,
 unsafe text, unsupported vocabularies, invalid freshness, and incomplete claim
 or action guards fail closed. Validation does not evaluate controls, infer
 compliance, mutate workflow, or grant certification or operational authority.
+The read-only evidence map projects existing task, evidence, review, and
+decision metadata into normalized references. It excludes source text and
+artifact contents and preserves stale, conflicting, superseded, unreviewed,
+out-of-scope, and externally asserted boundaries instead of upgrading them to
+supporting evidence. `--at` fixes the evaluation clock for reproducible
+freshness calculations and byte-stable JSON; without it, current UTC time is
+used and reported as `evaluated_at`.
 See [assurance profiles](assurance-profiles.md).
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic

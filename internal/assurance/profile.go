@@ -100,7 +100,11 @@ var allowedEvidenceClasses = stringSet(
 	"rehearsal", "exception", "external_assessment", "configuration",
 	"backup_restore", "vulnerability", "identity", "audit",
 )
-var allowedResults = stringSet("pass", "partial", "blocked", "fail", "approve", "changes", "verified")
+var allowedResults = stringSet(
+	"pass", "partial", "blocked", "fail", "approve", "changes", "verified",
+	"todo", "in_progress", "done", "cancelled",
+	"draft", "accepted", "insufficient", "superseded",
+)
 var requiredClaims = stringSet("certified", "compliant", "authorized")
 var requiredActions = stringSet(
 	"certify", "declare_compliance", "accept_risk", "approve", "mutate_workflow",

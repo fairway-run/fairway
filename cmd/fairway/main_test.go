@@ -2401,6 +2401,40 @@ func TestCLI_AssuranceProfileValidate(t *testing.T) {
 	}
 }
 
+func TestCLI_AssuranceEvidenceMap(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Assurance evidence", "--role", "backend")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass", "--artifact", "artifacts/test.json", "--artifact-type", "evidence")
+	profile := `{"schema":"fairway.assurance-profile.v1","id":"cli-map","version":"v1","title":"CLI map","description":"Organizes evidence only.","framework":{"id":"example","title":"Example","version":"v1","source":"https://example.invalid/framework"},"applicability":{"description":"Example projects."},"scope":{"types":["project"]},"controls":[{"id":"EX-1","title":"Evidence","objective":"Retain verification evidence.","responsibility":"product","assessment_objectives":["Inspect evidence references."],"evidence":[{"class":"evidence","minimum_count":1,"accepted_results":["pass"]}]}],"prohibited_claims":["certified","compliant","authorized"],"authority":{"mode":"evidence_only","prohibited_actions":["certify","declare_compliance","accept_risk","approve","mutate_workflow","merge","deploy","release","use_credentials","change_public_exposure","run_live_operation"]}}`
+	writeFile(t, "profile.json", profile)
+
+	text := runCapture(t, "assurance", "evidence", "map", "--profile", "profile.json", "--task", "T-001", "--at", "2026-07-12T12:00:00Z")
+	assertContains(t, text, "assurance_evidence_map: fairway.assurance-evidence-map.v1")
+	assertContains(t, text, "control EX-1 state=supported")
+	assertContains(t, text, "refs=evidence:T-001:1")
+	assertNotContains(t, text, "go test ./...")
+	assertNotContains(t, text, "artifacts/test.json")
+
+	jsonOut := runCapture(t, "--json", "assurance", "evidence", "map", "--profile", "profile.json", "--task", "T-001", "--at", "2026-07-12T12:00:00Z")
+	assertContains(t, jsonOut, `"schema": "fairway.assurance-evidence-map.v1"`)
+	assertContains(t, jsonOut, `"state": "supported"`)
+	assertContains(t, jsonOut, `"evaluated_at": "2026-07-12T12:00:00Z"`)
+	if repeated := runCapture(t, "--json", "assurance", "evidence", "map", "--profile", "profile.json", "--task", "T-001", "--at", "2026-07-12T12:00:00Z"); repeated != jsonOut {
+		t.Fatalf("fixed-clock assurance output changed:\nfirst=%s\nsecond=%s", jsonOut, repeated)
+	}
+	assertNotContains(t, jsonOut, "go test ./...")
+	assertNotContains(t, jsonOut, "artifacts/test.json")
+}
+
 func TestCLI_ExplainCodeGroundedPacket(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()

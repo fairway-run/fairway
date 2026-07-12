@@ -140,7 +140,7 @@ func run(ctx context.Context, args []string) error {
 	case "provenance":
 		return cmdProvenance(ctx, opts, args[1:])
 	case "assurance":
-		return cmdAssurance(opts, args[1:])
+		return cmdAssurance(ctx, opts, args[1:])
 	case "explain":
 		return cmdExplain(ctx, opts, args[1:])
 	case "recipe":
@@ -4789,11 +4789,22 @@ func cmdProvenance(ctx context.Context, opts globalOptions, args []string) error
 	}
 }
 
-func cmdAssurance(opts globalOptions, args []string) error {
+func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
 		fmt.Println("fairway assurance profile validate <path> [--format text|json]")
+		fmt.Println("fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]")
 		fmt.Println("  Validate a non-executable assurance profile that organizes evidence without granting certification or workflow authority.")
 		return nil
+	}
+	if args[0] == "evidence" {
+		if len(args) == 1 || isHelpOnly(args[1:]) {
+			fmt.Println("fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]")
+			return nil
+		}
+		if args[1] != "map" {
+			return fmt.Errorf("unknown assurance evidence subcommand %q", args[1])
+		}
+		return cmdAssuranceEvidenceMap(ctx, opts, args[2:])
 	}
 	if args[0] != "profile" {
 		return fmt.Errorf("unknown assurance subcommand %q", args[0])
@@ -4806,6 +4817,79 @@ func cmdAssurance(opts globalOptions, args []string) error {
 		return fmt.Errorf("unknown assurance profile subcommand %q", args[1])
 	}
 	return cmdAssuranceProfileValidate(opts, args[2:])
+}
+
+func cmdAssuranceEvidenceMap(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("assurance evidence map", flag.ContinueOnError)
+	profilePath := fs.String("profile", "", "local assurance profile path")
+	taskID := fs.String("task", "", "Fairway task id")
+	at := fs.String("at", "", "evaluation clock in RFC3339; defaults to current UTC time")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || strings.TrimSpace(*profilePath) == "" || strings.TrimSpace(*taskID) == "" {
+		return errors.New("assurance evidence map requires --profile and --task")
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	profile, err := assurance.LoadFile(*profilePath)
+	if err != nil {
+		return err
+	}
+	evaluatedAt := time.Now().UTC()
+	if strings.TrimSpace(*at) != "" {
+		evaluatedAt, err = time.Parse(time.RFC3339Nano, *at)
+		if err != nil {
+			return errors.New("--at must be RFC3339")
+		}
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		task, _, evidence, _, reviews, err := s.TaskDetail(ctx, *taskID)
+		if err != nil {
+			return err
+		}
+		decisions, err := s.TaskDecisions(ctx, *taskID)
+		if err != nil {
+			return err
+		}
+		sources := assurance.Sources{Task: assurance.TaskContext{Project: task.Project, TaskID: task.Definition.ID,
+			Kind: task.Definition.Kind, RiskLevel: task.Definition.RiskLevel, Tags: task.Definition.Tags,
+			Status: task.Status, UpdatedAt: task.UpdatedAt, CommitSHA: task.CommitSHA}}
+		for i, row := range evidence {
+			sources.Evidence = append(sources.Evidence, assurance.SourceEvidence{Index: i + 1, Result: row.Result, ArtifactType: row.ArtifactType, CreatedAt: row.CreatedAt})
+		}
+		for i, row := range reviews {
+			sources.Reviews = append(sources.Reviews, assurance.SourceReview{Index: i + 1, Domain: row.Domain, Verdict: row.Verdict, Reviewer: row.Reviewer, CreatedAt: row.CreatedAt})
+		}
+		for _, row := range decisions {
+			sources.Decisions = append(sources.Decisions, assurance.SourceDecision{ID: row.ID, QualityState: row.QualityState, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt})
+		}
+		mapped := assurance.MapEvidence(profile, sources, evaluatedAt)
+		if opts.JSON || *format == "json" {
+			return printJSON(mapped)
+		}
+		fmt.Printf("assurance_evidence_map: %s\n", mapped.Schema)
+		fmt.Printf("profile: %s@%s\n", mapped.ProfileID, mapped.ProfileVersion)
+		fmt.Printf("project: %s\n", mapped.Project)
+		fmt.Printf("task: %s\n", mapped.TaskID)
+		fmt.Printf("evaluated_at: %s\n", mapped.EvaluatedAt)
+		fmt.Printf("applicable: %t (%s)\n", mapped.Applicable, mapped.ApplicabilityNote)
+		fmt.Printf("facts: %d\n", len(mapped.Facts))
+		for _, control := range mapped.Controls {
+			fmt.Printf("control %s state=%s\n", control.ControlID, control.State)
+			for _, requirement := range control.Requirements {
+				fmt.Printf("  evidence class=%s state=%s matched=%d/%d refs=%s\n", requirement.Class, requirement.State, requirement.Matched, requirement.MinimumCount, strings.Join(requirement.FactReferences, ","))
+			}
+		}
+		fmt.Printf("authority_boundary: %s\n", mapped.AuthorityBoundary)
+		return nil
+	})
 }
 
 func cmdAssuranceProfileValidate(opts globalOptions, args []string) error {
@@ -19716,7 +19800,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|evidence map, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, binary, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -19763,7 +19847,7 @@ func printCommandHelp(command string) bool {
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
-		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\n  Validate non-executable assurance profiles that organize evidence without granting certification or workflow authority.",
+		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\n  Validate profiles and project existing Fairway facts without granting certification or workflow authority.",
 		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]\n  Render a deterministic grounded packet with an optional validated advisory narrative.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
