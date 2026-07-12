@@ -5959,8 +5959,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-audit-integrity
-    source_paths: [internal/store, internal/audit, internal/provenance, cmd/fairway, docs/design/schema.md]
-    target_paths: [internal/store, internal/audit, internal/provenance, cmd/fairway, docs/security, docs/design/schema.md]
+    source_paths: [internal/store/store.go, internal/audit, cmd/fairway/main.go, docs/design/schema.md, docs/security/sovereign-threat-model.md]
+    target_paths: [internal/store/store.go, internal/store/store_test.go, internal/audit/export.go, internal/audit/export_test.go, cmd/fairway/main.go, cmd/fairway/main_test.go, docs/design/cli.md, docs/design/schema.md, docs/security/sovereign-audit-integrity.md, docs/security/sovereign-deployment-ready.md, docs/operations/sovereign-audit-export.md, docs/roadmap/fairway-product-backlog.yaml, website/sidebars.js]
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: tamper-evident-audit-export

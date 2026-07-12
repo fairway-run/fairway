@@ -717,7 +717,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"packet", "retry", "--help"}, "fairway packet retry <task-id> --kind <preflight|live-operation>"},
 		{[]string{"contract", "--help"}, "fairway contract agent-output"},
 		{[]string{"contract", "agent-output", "--help"}, "fairway contract agent-output [--schema <schema-or-name>]"},
-		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
+		{[]string{"audit", "--help"}, "fairway audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
 		{[]string{"advisory", "--help"}, "fairway advisory adapters|validate <task-id>"},
 		{[]string{"advisory", "adapters", "--help"}, "fairway advisory adapters [--include-disabled]"},
 		{[]string{"advisory", "validate", "--help"}, "fairway advisory validate <task-id> --action <action>"},
@@ -761,7 +761,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"batch", "link", "--help"}, "fairway batch link <batch-id>"},
 		{[]string{"batch", "show", "--help"}, "fairway batch show <batch-id>"},
 		{[]string{"batch", "list", "--help"}, "fairway batch list"},
-		{[]string{"audit", "--help"}, "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
+		{[]string{"audit", "--help"}, "fairway audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
 		{[]string{"release", "--help"}, "fairway release verify"},
 		{[]string{"rules", "--help"}, "fairway rules validate <dir>|evidence-types|match <task-id>"},
 	} {
@@ -5279,6 +5279,59 @@ func TestCLI_AuditWorkCoverage(t *testing.T) {
 
 	durationReport := runCapture(t, "--json", "audit", "work-coverage", "--since-duration", "24h")
 	assertContains(t, durationReport, `"since_duration": "24h0m0s"`)
+}
+
+func TestCLI_AuditExportAndVerify(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	runOK(t, "init")
+	cfg, _, err := config.Load(".fairway/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.Open(context.Background(), ".fairway/state.db", cfg.Fairway.ProjectName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordAudit(context.Background(), store.AuditEvent{Actor: "operator-a", Action: "test.export", TaskID: "T-001", Detail: "authorization: Bearer SHOULD_NOT_EXPORT"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("time-proof.json", []byte("{\"source\":\"test-clock\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	public, private, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FAIRWAY_TEST_AUDIT_SIGNING_KEY", base64.StdEncoding.EncodeToString(private))
+	t.Setenv("FAIRWAY_TEST_AUDIT_PUBLIC_KEY", base64.StdEncoding.EncodeToString(public))
+	assertContains(t, runCapture(t, "audit", "export", "--help"), "fairway audit export")
+	assertContains(t, runCapture(t, "audit", "verify", "--help"), "fairway audit verify")
+	exported := runCapture(t, "audit", "export", "--out", "audit-export", "--policy", "policy-v1", "--source-version", "fairway:test", "--trusted-time-source", "test-clock", "--trusted-time-evidence", "time-proof.json", "--retention-policy", "retain-v1", "--legal-hold", "none", "--external-target", "worm:test/archive", "--signing-key-env", "FAIRWAY_TEST_AUDIT_SIGNING_KEY", "--genesis")
+	assertContains(t, exported, "records: 1")
+	verified := runCapture(t, "--json", "audit", "verify", "--dir", "audit-export", "--trusted-public-key-env", "FAIRWAY_TEST_AUDIT_PUBLIC_KEY")
+	assertContains(t, verified, `"ok": true`)
+	assertContains(t, verified, `"continuity_status": "genesis"`)
+	assertNotContains(t, verified, "SHOULD_NOT_EXPORT")
+	records, err := os.ReadFile("audit-export/records.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("audit-export/records.jsonl", append(records, []byte("substitution\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failed := runCaptureAllowError(t, "--json", "audit", "verify", "--dir", "audit-export", "--trusted-public-key-env", "FAIRWAY_TEST_AUDIT_PUBLIC_KEY")
+	assertContains(t, failed, `"ok": false`)
 }
 
 func TestCLI_AuditDocsBacklog(t *testing.T) {

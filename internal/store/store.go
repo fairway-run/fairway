@@ -373,6 +373,16 @@ type AuditEvent struct {
 	CreatedAt string
 }
 
+type AuditRecord struct {
+	ID        int64  `json:"id"`
+	ProjectID string `json:"project_id"`
+	Actor     string `json:"actor"`
+	Action    string `json:"action"`
+	TaskID    string `json:"task_id,omitempty"`
+	Detail    string `json:"-"`
+	CreatedAt string `json:"created_at"`
+}
+
 type ServerWriteRequest struct {
 	Actor          string
 	Role           string
@@ -2437,6 +2447,27 @@ ORDER BY id`, s.projectID, action)
 		events = append(events, ev)
 	}
 	return events, rows.Err()
+}
+
+func (s *Store) AuditRecords(ctx context.Context) ([]AuditRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, project_id, actor, action, COALESCE(task_id, ''), COALESCE(detail, ''), created_at
+FROM audit_events
+WHERE project_id=?
+ORDER BY id`, s.projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var records []AuditRecord
+	for rows.Next() {
+		var record AuditRecord
+		if err := rows.Scan(&record.ID, &record.ProjectID, &record.Actor, &record.Action, &record.TaskID, &record.Detail, &record.CreatedAt); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
 }
 
 func (s *Store) TrackerLinks(ctx context.Context) ([]TrackerLink, error) {

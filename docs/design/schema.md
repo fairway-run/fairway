@@ -172,7 +172,17 @@ evidence row, checkpoint, review, or superseding task note rather than editing
 or deleting historical evidence out of band. Fairway stores metadata and
 references here, not artifact contents. Use `fairway provenance manifest` to
 hash selected exported bundles or artifacts when a release/audit packet needs
-tamper-evidence.
+tamper-evidence. `fairway audit export` projects these existing rows in stable
+`id` order into `fairway.sovereign-audit-record.v1` JSONL. The export includes
+actor, action, project, task, created-at, and a SHA-256 of `detail`; raw detail
+content is not exported. Each row binds the previous row hash so the chain
+remains stable when export policy, Fairway version, or trusted-time source
+changes. A customer-signed
+`fairway.sovereign-audit-export.v1` manifest binds the record file, chain head,
+retention/legal-hold metadata, trusted-time evidence digest, source version,
+and either a genesis marker or the previous externally retained checkpoint.
+This is a derived export, not a second audit store, and does not mutate the
+`audit_events` source of truth.
 
 | Column | Type | Notes |
 |---|---|---|

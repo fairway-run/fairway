@@ -2996,10 +2996,14 @@ func splitRepeatedCSV(values []string) []string {
 
 func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("audit", "work-coverage|ci-learning|failure-routing|notifications|docs-backlog")
+		subcommandUsage("audit", "export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog")
 		return nil
 	}
 	switch args[0] {
+	case "export":
+		return cmdAuditExport(ctx, opts, args[1:])
+	case "verify":
+		return cmdAuditVerify(opts, args[1:])
 	case "work-coverage":
 		return cmdAuditWorkCoverage(ctx, opts, args[1:])
 	case "ci-learning":
@@ -3013,6 +3017,138 @@ func cmdAudit(ctx context.Context, opts globalOptions, args []string) error {
 	default:
 		return fmt.Errorf("unknown audit subcommand %q", args[0])
 	}
+}
+
+func cmdAuditExport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("audit export", "--out <dir> --policy <id> --source-version <version> --trusted-time-source <source> --trusted-time-evidence <path> --retention-policy <id> --legal-hold <none|active> --external-target <ref> --signing-key-env <name> (--genesis | --previous <dir> --previous-trusted-public-key-env <name>)")
+		return nil
+	}
+	fs := flag.NewFlagSet("audit export", flag.ContinueOnError)
+	out := fs.String("out", "", "new local export directory")
+	policyID := fs.String("policy", "", "audit policy identifier")
+	sourceVersion := fs.String("source-version", "", "exact Fairway/source version identifier")
+	timeSource := fs.String("trusted-time-source", "", "trusted time source identifier")
+	timeEvidence := fs.String("trusted-time-evidence", "", "local trusted time evidence file")
+	retentionPolicy := fs.String("retention-policy", "", "retention policy identifier")
+	legalHold := fs.String("legal-hold", "", "legal hold status: none or active")
+	externalTarget := fs.String("external-target", "", "external WORM/SIEM target reference")
+	signingKeyEnv := fs.String("signing-key-env", "", "environment variable containing an Ed25519 signing key")
+	genesis := fs.Bool("genesis", false, "create the first externally retained checkpoint")
+	previous := fs.String("previous", "", "previous externally retained audit export directory")
+	previousTrustedKeyEnv := fs.String("previous-trusted-public-key-env", "", "environment variable containing the previous checkpoint trusted public key")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected audit export arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*signingKeyEnv) == "" {
+		return errors.New("--signing-key-env is required")
+	}
+	signingKey := os.Getenv(*signingKeyEnv)
+	if strings.TrimSpace(signingKey) == "" {
+		return fmt.Errorf("audit signing key environment variable %s is not set", *signingKeyEnv)
+	}
+	if *genesis == (strings.TrimSpace(*previous) != "") {
+		return errors.New("exactly one of --genesis or --previous is required")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, root string, s *store.Store) error {
+		reference, digest, err := audit.LocalAuditEvidenceDigest(root, *timeEvidence)
+		if err != nil {
+			return err
+		}
+		records, err := s.AuditRecords(ctx)
+		if err != nil {
+			return err
+		}
+		exportOpts := audit.AuditExportOptions{Records: records, OutputDirectory: *out, GeneratedAt: time.Now().UTC(), PolicyID: *policyID,
+			SourceVersion: *sourceVersion, TrustedTimeSource: *timeSource, TrustedTimeEvidence: reference, TrustedTimeEvidenceSHA256: digest,
+			RetentionPolicy: *retentionPolicy, LegalHold: *legalHold, ExternalTarget: *externalTarget, SigningKeyBase64: signingKey, Genesis: *genesis}
+		if !*genesis {
+			if strings.TrimSpace(*previousTrustedKeyEnv) == "" {
+				return errors.New("--previous-trusted-public-key-env is required with --previous")
+			}
+			trusted := os.Getenv(*previousTrustedKeyEnv)
+			if strings.TrimSpace(trusted) == "" {
+				return fmt.Errorf("previous audit trusted public key environment variable %s is not set", *previousTrustedKeyEnv)
+			}
+			previousManifest, previousDigest, err := audit.VerifiedAuditCheckpoint(*previous, trusted)
+			if err != nil {
+				return err
+			}
+			exportOpts.Previous = &previousManifest
+			exportOpts.PreviousManifestSHA256 = previousDigest
+		}
+		manifest, err := audit.ExportAuditPackage(exportOpts)
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(manifest)
+		}
+		fmt.Printf("audit_export: %s\nproject: %s\nrecords: %d\nlast_record_id: %d\nchain_head: %s\nsigning_key_id: %s\ncontinuity: %s\nauthority_boundary: %s\n",
+			*out, manifest.ProjectID, manifest.RecordCount, manifest.LastRecordID, manifest.ChainHead, manifest.SigningKeyID, firstNonEmpty(manifest.PreviousManifestSHA256, "genesis"), manifest.AuthorityBoundary)
+		return nil
+	})
+}
+
+func cmdAuditVerify(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("audit verify", "--dir <path> --trusted-public-key-env <name> [--previous <dir> --previous-trusted-public-key-env <name>] [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("audit verify", flag.ContinueOnError)
+	directory := fs.String("dir", "", "audit export directory")
+	trustedKeyEnv := fs.String("trusted-public-key-env", "", "environment variable containing the pinned public key")
+	previous := fs.String("previous", "", "previous externally retained audit export directory")
+	previousTrustedKeyEnv := fs.String("previous-trusted-public-key-env", "", "environment variable containing the previous checkpoint public key")
+	format := fs.String("format", "text", "output format: text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected audit verify arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return fmt.Errorf("unsupported audit verify format %q", *format)
+	}
+	if strings.TrimSpace(*trustedKeyEnv) == "" {
+		return errors.New("--trusted-public-key-env is required")
+	}
+	trusted := os.Getenv(*trustedKeyEnv)
+	if strings.TrimSpace(trusted) == "" {
+		return fmt.Errorf("audit trusted public key environment variable %s is not set", *trustedKeyEnv)
+	}
+	previousTrusted := ""
+	if strings.TrimSpace(*previous) != "" {
+		if strings.TrimSpace(*previousTrustedKeyEnv) == "" {
+			return errors.New("--previous-trusted-public-key-env is required with --previous")
+		}
+		previousTrusted = os.Getenv(*previousTrustedKeyEnv)
+		if strings.TrimSpace(previousTrusted) == "" {
+			return fmt.Errorf("previous audit trusted public key environment variable %s is not set", *previousTrustedKeyEnv)
+		}
+	}
+	report, err := audit.VerifyAuditPackage(audit.AuditVerifyOptions{Directory: *directory, TrustedPublicKeyBase64: trusted, PreviousDirectory: *previous, PreviousTrustedPublicKeyBase64: previousTrusted})
+	if err != nil {
+		return err
+	}
+	if opts.JSON || *format == "json" {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("audit_verify_ok: %t\nproject: %s\nrecords: %d\nlast_record_id: %d\nchain_head: %s\nsignature_status: %s\ncontinuity_status: %s\ntrusted_time_status: %s\nauthority_boundary: %s\n",
+			report.OK, report.ProjectID, report.RecordCount, report.LastRecordID, report.ChainHead, report.SignatureStatus, report.ContinuityStatus, report.TrustedTimeStatus, report.AuthorityBoundary)
+		for _, issue := range report.Issues {
+			fmt.Printf("issue: %s\n", issue)
+		}
+	}
+	if !report.OK {
+		return errors.New("audit export verification failed")
+	}
+	return nil
 }
 
 func cmdAuditDocsBacklog(ctx context.Context, opts globalOptions, args []string) error {
@@ -20288,7 +20424,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export|verify, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export|verify, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, binary, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -20349,7 +20485,7 @@ func printCommandHelp(command string) bool {
 		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat|rehearsal ...\n  Manage the local Fairway database.",
-		"audit":                      "fairway audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog ...\n  Run advisory coverage, CI/deploy learning, known-failure routing, provider notification lifecycle, and docs-to-backlog reports.",
+		"audit":                      "fairway audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog ...\n  Export and verify signed sovereign audit checkpoints or run advisory coverage and lifecycle reports.",
 		"usage":                      "fairway usage report|cost-report [--by <provider|task|epic|role|day|kind|phase|model>]\n  Report provider-neutral usage attribution and advisory cost forecasts.",
 		"register":                   "fairway register [--name <name>]\n  Add the current project to the local Fairway registry.",
 		"unregister":                 "fairway unregister [<name>]\n  Remove a project from the local Fairway registry.",

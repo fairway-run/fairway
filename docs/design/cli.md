@@ -150,6 +150,8 @@ fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [-
 fairway audit ci-learning [--task-id <id>] [--template] # classify failed CI/deploy/smoke/UAT evidence and follow-up coverage
 fairway audit notifications [--task <task-id>] [--all] # read-only provider notification lifecycle audit across waits and handbacks
 fairway audit docs-backlog [--doc <path>]... # advisory coordination docs-to-backlog coverage audit
+fairway audit export --out <dir> --policy <id> --source-version <version> --trusted-time-source <source> --trusted-time-evidence <path> --retention-policy <id> --legal-hold <none|active> --external-target <ref> --signing-key-env <name> (--genesis | --previous <dir> --previous-trusted-public-key-env <name>)
+fairway audit verify --dir <path> --trusted-public-key-env <name> [--previous <dir> --previous-trusted-public-key-env <name>] [--format text|json]
 fairway advisory adapters [--include-disabled] # read-only configured advisory provider adapter list
 fairway advisory validate <task-id> --action <action> --target-role <role> --confidence <0..1> --rationale <text> --cited-fact <fact>... [--provider <adapter>] [--requires-human] [--risk-flag <flag>]... [--record-evidence]
 fairway notify notifiers [--include-disabled] # read-only configured external notifier list
@@ -787,6 +789,23 @@ See [assurance profiles](assurance-profiles.md).
   exact local certificate and validated-configuration evidence. Missing or
   unsafe evidence exits non-zero. The report states that Fairway is not FIPS
   140-3 validated and grants no certification or operational authority.
+- `audit export` reads the existing ordered `audit_events` facts and writes a
+  new local, mode-0700 directory containing canonical metadata-only JSONL, a
+  SHA-256 record chain, a signed manifest, and no raw audit detail. Customer
+  Ed25519 signing material is read only from the named environment variable.
+  Each export must declare either `--genesis` or a previously pinned and
+  verified checkpoint; the latter binds database continuity and detects
+  deletion, insertion, reordering, divergence, or rollback behind the retained
+  checkpoint. Trusted-time, retention, legal-hold, and external WORM/SIEM
+  target fields are signed metadata. The command does not transmit or retain
+  the package externally.
+- `audit verify` fails closed on unknown files, unsafe paths, malformed or
+  trailing JSON, record/file/chain/signature mismatch, an unpinned key, absent
+  trusted-time evidence binding, or missing previous-export continuity for a
+  non-genesis package. Key rotation is supported by pinning the current and
+  previous export keys independently. Verification proves package integrity
+  and continuity only; it is not certification, compliance, authorization, or
+  proof that an external retention system stored the package.
 - `dashboard` without a subcommand runs in the foreground. Use `dashboard start`,
   `dashboard stop`, `dashboard restart`, and `dashboard status` for a detached
   local dashboard. Detached lifecycle commands do not open a browser unless

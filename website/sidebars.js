@@ -49,7 +49,8 @@ const sidebars = {
             'security/sovereign-deployment-ready',
             'security/sovereign-threat-model',
             'security/sovereign-identity-authorization',
-            'security/sovereign-cryptography-key-posture'
+            'security/sovereign-cryptography-key-posture',
+            'security/sovereign-audit-integrity'
           ]
         }
       ]
@@ -63,6 +64,7 @@ const sidebars = {
         'design/live-operation-control-room',
         'operations/small-team-lab-deployment',
         'operations/sovereign-key-readiness',
+        'operations/sovereign-audit-export',
         'design/shared-team-deployment-operations',
         'design/dashboard-sharing',
         'release-notes',

@@ -46,6 +46,24 @@ func TestClaim_AllowsExactlyOneWinner(t *testing.T) {
 	}
 }
 
+func TestAuditRecordsReturnsOrderedProjectHistory(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.RecordAudit(ctx, AuditEvent{Actor: "actor-a", Action: "first", TaskID: "T-001", Detail: "private detail"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordAudit(ctx, AuditEvent{Actor: "actor-b", Action: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	records, err := s.AuditRecords(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || records[0].ID >= records[1].ID || records[0].ProjectID != "test" || records[0].Detail != "private detail" || records[1].Action != "second" {
+		t.Fatalf("records = %+v", records)
+	}
+}
+
 func TestStartWorkAtomicallyRecordsTaskSessionAndCheckpoint(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

@@ -148,6 +148,12 @@ are specified in
 `fairway readiness crypto` checks evidence completeness for the named modules
 and configurations; it does not validate a module or certify a deployment.
 
+Audit integrity, customer-controlled export signing, external retention, and
+rollback continuity are specified in
+[Sovereign Audit Integrity](sovereign-audit-integrity.md). A verified export is
+tamper evidence for the retained checkpoint, not proof of certification or of
+the external retention system's behavior.
+
 The task sequence FW-342 through FW-354 implements, rehearses, assesses, and
 packages this baseline. Until those tasks and their independent gates complete,
 the documents and starter profile are design inputs only.
