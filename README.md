@@ -117,6 +117,8 @@ actions.
 - [Concepts](docs/design/concepts.md): canonical concept map
 - [Agent guide](docs/agent-guide.md): complete operating workflow
 - [Architecture](docs/architecture.md): components and data flow
+- [Ecosystem](docs/ecosystem.md): responsibility and composition boundaries
+- [Integrations](docs/integrations.md): supported adapter and tool surfaces
 - [Product boundaries](docs/design/product-boundaries.md): authority and non-goals
 - [Configuration reference](docs/config-reference.md): exhaustive settings
 - [Public docs](https://fairway.run): published portal

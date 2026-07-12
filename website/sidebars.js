@@ -56,6 +56,8 @@ const sidebars = {
       type: 'category',
       label: 'Integrate',
       items: [
+        'ecosystem',
+        'integrations',
         'workstream-profile-guide',
         'design/provider-surface-capability-readiness',
         'design/provider-notifications',
