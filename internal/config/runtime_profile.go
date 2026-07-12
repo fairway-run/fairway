@@ -83,7 +83,11 @@ func RuntimeNetworkDependencies(cfg Config, lookupEnv func(string) (string, bool
 	rows = append(rows, dependency("server-listen", "listener", "shared-team server", serverMode, inactiveOrLocalStatus(!serverActive, IsLoopbackListen(cfg.Server.Listen)), "listen="+strings.TrimSpace(cfg.Server.Listen), profile == RuntimeProfileSovereignOffline && serverActive && !IsLoopbackListen(cfg.Server.Listen)))
 	identityMode := firstNonEmpty(strings.TrimSpace(cfg.Server.IdentityMode), "no_edge_local")
 	remoteIdentity := serverActive && identityMode == "trusted_proxy_read_only"
-	rows = append(rows, dependency("server-identity", "identity", "shared-team server identity", identityMode, inactiveOrRemoteStatus(!remoteIdentity), "identity_mode="+identityMode, profile == RuntimeProfileSovereignOffline && remoteIdentity))
+	identityStatus := "disabled"
+	if serverActive {
+		identityStatus = localOrRemoteStatus(!remoteIdentity)
+	}
+	rows = append(rows, dependency("server-identity", "identity", "shared-team server identity", identityMode, identityStatus, "identity_mode="+identityMode, profile == RuntimeProfileSovereignOffline && remoteIdentity))
 
 	for _, source := range cfg.RuleSources {
 		mode := firstNonEmpty(strings.TrimSpace(source.Mode), "advisory")

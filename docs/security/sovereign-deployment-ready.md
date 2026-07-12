@@ -136,6 +136,12 @@ legal and procurement requirements, and authorization decisions. A qualified
 assessor or certification body owns independent findings and certification
 outcomes.
 
+Shared API identity and command controls are specified in
+[Sovereign Identity And Command Authorization](sovereign-identity-authorization.md).
+The signed profile supplies cryptographic actor, scope, expiry, revocation,
+separation-of-duty, and dual-control evidence; it does not make Fairway an
+identity provider or certification authority.
+
 The task sequence FW-342 through FW-354 implements, rehearses, assesses, and
 packages this baseline. Until those tasks and their independent gates complete,
 the documents and starter profile are design inputs only.

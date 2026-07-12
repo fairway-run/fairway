@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/subashram/fairway/internal/identityproof"
 )
 
 const DefaultConfigPath = ".fairway/config.toml"
@@ -78,6 +79,15 @@ type ServerConfig struct {
 	TrustedProxyIssuerHeader   string   `toml:"trusted_proxy_issuer_header"`
 	TrustedProxyAudience       string   `toml:"trusted_proxy_audience"`
 	TrustedProxyAudienceHeader string   `toml:"trusted_proxy_audience_header"`
+	SovereignPublicKeyEnv      string   `toml:"sovereign_public_key_env"`
+	SovereignKeyID             string   `toml:"sovereign_key_id"`
+	SovereignIssuer            string   `toml:"sovereign_issuer"`
+	SovereignAudience          string   `toml:"sovereign_audience"`
+	SovereignRevocationFile    string   `toml:"sovereign_revocation_file"`
+	SovereignSessionMaxSeconds int      `toml:"sovereign_session_max_seconds"`
+	SovereignClockSkewSeconds  int      `toml:"sovereign_clock_skew_seconds"`
+	SovereignBreakGlassSeconds int      `toml:"sovereign_break_glass_max_seconds"`
+	SovereignDualControl       []string `toml:"sovereign_dual_control_commands"`
 }
 
 type WorktreesConfig struct {
@@ -288,6 +298,10 @@ func Defaults(root string) Config {
 			TrustedProxyProofHeader:    "X-Fairway-Proxy-Verified",
 			TrustedProxyIssuerHeader:   "X-Fairway-Proxy-Issuer",
 			TrustedProxyAudienceHeader: "X-Fairway-Proxy-Audience",
+			SovereignSessionMaxSeconds: 900,
+			SovereignClockSkewSeconds:  30,
+			SovereignBreakGlassSeconds: 300,
+			SovereignDualControl:       []string{"set:status", "record:review"},
 		},
 		Worktrees: WorktreesConfig{
 			Root:               "../worktrees",
@@ -428,8 +442,8 @@ func Validate(cfg Config) error {
 		if cfg.Server.ReadOnly {
 			return errors.New("[server] read_only must be false when mode = \"api-write-pilot\"")
 		}
-		if identityMode := strings.TrimSpace(cfg.Server.IdentityMode); identityMode != "api_token" {
-			return errors.New("[server] api-write-pilot requires identity_mode = \"api_token\"")
+		if identityMode := strings.TrimSpace(cfg.Server.IdentityMode); identityMode != "api_token" && identityMode != "sovereign_signed" {
+			return errors.New("[server] api-write-pilot requires identity_mode = \"api_token\" or \"sovereign_signed\"")
 		}
 	case "write", "shared_write":
 		return fmt.Errorf("[server] mode %q is not implemented; FW-271 supports append-only api-write-pilot only", cfg.Server.Mode)
@@ -441,11 +455,12 @@ func Validate(cfg Config) error {
 		identityMode = "no_edge_local"
 	}
 	switch identityMode {
-	case "no_edge_local", "trusted_proxy_read_only", "api_token", "service_account", "mtls_service_account":
+	case "no_edge_local", "trusted_proxy_read_only", "api_token", "service_account", "mtls_service_account", "sovereign_signed":
 	default:
 		return fmt.Errorf("[server] identity_mode %q is unsupported", cfg.Server.IdentityMode)
 	}
-	if cfg.Server.Enabled || serverMode == "read_only" || serverMode == "api-read-only" || serverMode == "api-write-pilot" || serverMode == "api_write_pilot" || serverMode == "write_pilot" {
+	serverActive := cfg.Server.Enabled || serverMode == "read_only" || serverMode == "api-read-only" || serverMode == "api-write-pilot" || serverMode == "api_write_pilot" || serverMode == "write_pilot"
+	if serverActive {
 		if len(cfg.Server.AllowedRoles) == 0 {
 			return errors.New("[server] allowed_roles must include at least viewer for read-only server mode")
 		}
@@ -476,6 +491,14 @@ func Validate(cfg Config) error {
 			}
 			if strings.TrimSpace(cfg.Server.TrustedProxyIdentityHeader) == "" || strings.TrimSpace(cfg.Server.TrustedProxyProofHeader) == "" {
 				return errors.New("[server] trusted proxy identity and proof headers are required")
+			}
+		}
+		if IsSovereignOffline(cfg) && identityMode != "sovereign_signed" {
+			return errors.New("[server] sovereign-offline shared API requires identity_mode = \"sovereign_signed\"; anonymous, proxy-header, token, and fallback identity are rejected")
+		}
+		if identityMode == "sovereign_signed" {
+			if err := validateSovereignServerIdentity(cfg); err != nil {
+				return err
 			}
 		}
 	}
@@ -1212,12 +1235,48 @@ func isServerWritePilotMode(mode string) bool {
 	}
 }
 
+func validateSovereignServerIdentity(cfg Config) error {
+	proofCfg := identityproof.Config{
+		PublicKeyEnv:         strings.TrimSpace(cfg.Server.SovereignPublicKeyEnv),
+		KeyID:                strings.TrimSpace(cfg.Server.SovereignKeyID),
+		Issuer:               strings.TrimSpace(cfg.Server.SovereignIssuer),
+		Audience:             strings.TrimSpace(cfg.Server.SovereignAudience),
+		Project:              strings.TrimSpace(cfg.Fairway.ProjectName),
+		RevocationFile:       strings.TrimSpace(cfg.Server.SovereignRevocationFile),
+		SessionMaxSeconds:    cfg.Server.SovereignSessionMaxSeconds,
+		ClockSkewSeconds:     cfg.Server.SovereignClockSkewSeconds,
+		BreakGlassMaxSeconds: cfg.Server.SovereignBreakGlassSeconds,
+	}
+	if err := identityproof.ValidateConfig(proofCfg, os.LookupEnv, os.ReadFile, os.Lstat); err != nil {
+		return fmt.Errorf("[server] %w", err)
+	}
+	if err := validateStringList("[server] sovereign_dual_control_commands", cfg.Server.SovereignDualControl); err != nil {
+		return err
+	}
+	for _, command := range cfg.Server.SovereignDualControl {
+		if command != "set:status" && command != "record:review" {
+			return fmt.Errorf("[server] sovereign_dual_control_commands contains unsupported command %q", command)
+		}
+	}
+	if isServerWritePilotMode(strings.TrimSpace(cfg.Server.Mode)) {
+		for _, command := range []string{"set:status", "record:review"} {
+			if !stringListContains(cfg.Server.SovereignDualControl, command) {
+				return fmt.Errorf("[server] sovereign_dual_control_commands must include %q for api-write-pilot", command)
+			}
+		}
+		if !stringListContains(cfg.Server.AllowedRoles, "authorizer") {
+			return errors.New("[server] allowed_roles must include authorizer for sovereign api-write-pilot dual control")
+		}
+	}
+	return nil
+}
+
 func validServerAppendOnlyWriteRole(role string) bool {
 	return role == "operator" || role == "coordinator" || role == "admin" || strings.HasPrefix(role, "adapter:")
 }
 
 func validServerRole(role string) bool {
-	if role == "viewer" || role == "operator" || role == "coordinator" || role == "admin" {
+	if role == "viewer" || role == "operator" || role == "coordinator" || role == "admin" || role == "authorizer" {
 		return true
 	}
 	return strings.HasPrefix(role, "reviewer:") || strings.HasPrefix(role, "adapter:")
@@ -1335,6 +1394,15 @@ trusted_proxy_issuer = ""
 trusted_proxy_issuer_header = "X-Fairway-Proxy-Issuer"
 trusted_proxy_audience = ""
 trusted_proxy_audience_header = "X-Fairway-Proxy-Audience"
+sovereign_public_key_env = ""
+sovereign_key_id = ""
+sovereign_issuer = ""
+sovereign_audience = ""
+sovereign_revocation_file = ""
+sovereign_session_max_seconds = 900
+sovereign_clock_skew_seconds = 30
+sovereign_break_glass_max_seconds = 300
+sovereign_dual_control_commands = ["set:status", "record:review"]
 
 [worktrees]
 root = "../worktrees"

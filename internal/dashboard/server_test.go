@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/identityproof"
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/store"
@@ -2591,6 +2594,257 @@ func TestReadOnlyAPITrustedProxyProofAndIssuer(t *testing.T) {
 	if goodRec.Code != http.StatusOK || strings.Contains(goodRec.Body.String(), "operator@example.test") {
 		t.Fatalf("good proxy status=%d body=%s", goodRec.Code, goodRec.Body.String())
 	}
+}
+
+func TestSovereignSignedAPIRequiresFreshScopedIdentity(t *testing.T) {
+	server, private, now := newSovereignAPITestServer(t, false)
+	handler := server.ReadOnlyAPIHandler()
+
+	missing := httptest.NewRecorder()
+	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
+	if missing.Code != http.StatusUnauthorized {
+		t.Fatalf("missing identity code=%d body=%s", missing.Code, missing.Body.String())
+	}
+
+	claims := sovereignSessionClaims(server, now, "viewer@example.test", "viewer", "session-viewer")
+	token := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, claims)
+	goodReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	goodReq.Header.Set("Authorization", "Bearer "+token)
+	goodRec := httptest.NewRecorder()
+	handler.ServeHTTP(goodRec, goodReq)
+	if goodRec.Code != http.StatusOK || strings.Contains(goodRec.Body.String(), token) {
+		t.Fatalf("signed read code=%d body=%s", goodRec.Code, goodRec.Body.String())
+	}
+	var status apiStatusResponse
+	if err := json.Unmarshal(goodRec.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if !status.Authorization.CryptographicIdentity || status.Authorization.IdentityFallback || !status.Authorization.RevocationRequired || status.Authorization.Project != "fairway-test" || len(status.Authorization.DualControlCommands) != 2 || status.Authorization.SessionMaxSeconds != 900 || status.Authorization.BreakGlassMaxSeconds != 300 {
+		t.Fatalf("authorization policy=%+v", status.Authorization)
+	}
+
+	for name, mutate := range map[string]func(*identityproof.Claims){
+		"wrong project": func(c *identityproof.Claims) { c.Project = "other-project" },
+		"expired": func(c *identityproof.Claims) {
+			c.IssuedAt = now.Add(-10 * time.Minute).Unix()
+			c.NotBefore = c.IssuedAt
+			c.ExpiresAt = now.Add(-time.Minute).Unix()
+		},
+		"stale": func(c *identityproof.Claims) {
+			c.IssuedAt = now.Add(-time.Hour).Unix()
+			c.NotBefore = c.IssuedAt
+			c.ExpiresAt = now.Add(time.Minute).Unix()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := claims
+			mutate(&candidate)
+			candidateToken := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, candidate)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+			req.Header.Set("Authorization", "Bearer "+candidateToken)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusUnauthorized || strings.Contains(rec.Body.String(), candidateToken) || strings.Contains(rec.Body.String(), candidate.Subject) {
+				t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	operatorClaims := sovereignSessionClaims(server, now, "operator@example.test", "operator", "session-operator")
+	operatorToken := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, operatorClaims)
+	roleReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	roleReq.Header.Set("Authorization", "Bearer "+operatorToken)
+	roleRec := httptest.NewRecorder()
+	handler.ServeHTTP(roleRec, roleReq)
+	if roleRec.Code != http.StatusForbidden || strings.Contains(roleRec.Body.String(), operatorToken) {
+		t.Fatalf("role confusion code=%d body=%s", roleRec.Code, roleRec.Body.String())
+	}
+
+	if err := os.WriteFile(server.cfg.Server.SovereignRevocationFile, []byte(`{"schema":"fairway.sovereign-revocations.v1","revoked_proof_ids":["session-viewer"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	revokedReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	revokedReq.Header.Set("Authorization", "Bearer "+token)
+	revokedRec := httptest.NewRecorder()
+	handler.ServeHTTP(revokedRec, revokedReq)
+	if revokedRec.Code != http.StatusUnauthorized || !strings.Contains(revokedRec.Body.String(), "revoked") || strings.Contains(revokedRec.Body.String(), token) {
+		t.Fatalf("revoked code=%d body=%s", revokedRec.Code, revokedRec.Body.String())
+	}
+}
+
+func TestSovereignSignedStatusRequiresBoundDistinctDualControlAndAudits(t *testing.T) {
+	ctx := context.Background()
+	server, private, now := newSovereignAPITestServer(t, true)
+	handler := server.ReadOnlyAPIHandler()
+	primaryClaims := sovereignSessionClaims(server, now, "operator@example.test", "operator", "session-operator")
+	primary := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, primaryClaims)
+	body := `{"project_id":"fairway-test","status":"in_progress","expected_status":"todo","reason":"bounded sovereign write"}`
+	payloadDigest := sovereignPayloadDigest(t, body, &apiStatusWriteRequest{})
+
+	missingReq := sovereignWriteRequest(http.MethodPost, "/api/v1/tasks/T-001/status", body, primary, "status-1", "")
+	missingRec := httptest.NewRecorder()
+	handler.ServeHTTP(missingRec, missingReq)
+	if missingRec.Code != http.StatusForbidden || strings.Contains(missingRec.Body.String(), primary) {
+		t.Fatalf("missing dual code=%d body=%s", missingRec.Code, missingRec.Body.String())
+	}
+
+	dualClaims := sovereignDualClaims(server, now, "authorizer@example.test", "dual-status-1", "set:status", "T-001", primaryClaims.ProofID, "status-1", payloadDigest)
+	dual := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, dualClaims)
+	goodReq := sovereignWriteRequest(http.MethodPost, "/api/v1/tasks/T-001/status", body, primary, "status-1", dual)
+	goodRec := httptest.NewRecorder()
+	handler.ServeHTTP(goodRec, goodReq)
+	if goodRec.Code != http.StatusCreated || strings.Contains(goodRec.Body.String(), primary) || strings.Contains(goodRec.Body.String(), dual) {
+		t.Fatalf("dual status code=%d body=%s", goodRec.Code, goodRec.Body.String())
+	}
+
+	replayReq := sovereignWriteRequest(http.MethodPost, "/api/v1/tasks/T-001/status", body, primary, "status-1", dual)
+	replayRec := httptest.NewRecorder()
+	handler.ServeHTTP(replayRec, replayReq)
+	if replayRec.Code != http.StatusOK || !strings.Contains(replayRec.Body.String(), `"replayed":true`) {
+		t.Fatalf("dual replay code=%d body=%s", replayRec.Code, replayRec.Body.String())
+	}
+
+	reboundReq := sovereignWriteRequest(http.MethodPost, "/api/v1/tasks/T-001/status", body, primary, "status-2", dual)
+	reboundRec := httptest.NewRecorder()
+	handler.ServeHTTP(reboundRec, reboundReq)
+	if reboundRec.Code != http.StatusForbidden || strings.Contains(reboundRec.Body.String(), dual) {
+		t.Fatalf("dual rebound code=%d body=%s", reboundRec.Code, reboundRec.Body.String())
+	}
+
+	audits, err := server.store.AuditEvents(ctx, "server.api.status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	primaryActor := "sovereign:" + identityFingerprint(primaryClaims.Subject)
+	secondaryActor := "sovereign:" + identityFingerprint(dualClaims.Subject)
+	if len(audits) != 1 || audits[0].Actor != primaryActor || !strings.Contains(audits[0].Detail, secondaryActor) || strings.Contains(audits[0].Detail, primary) || strings.Contains(audits[0].Detail, dual) {
+		t.Fatalf("audit=%+v, want primary and distinct dual-control attribution", audits)
+	}
+}
+
+func TestSovereignSignedReviewRejectsSpoofSelfReviewAndExpiredBreakGlass(t *testing.T) {
+	ctx := context.Background()
+	server, private, now := newSovereignAPITestServer(t, true)
+	handler := server.ReadOnlyAPIHandler()
+	reviewerClaims := sovereignSessionClaims(server, now, "reviewer@example.test", "reviewer:security", "session-reviewer")
+	reviewer := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, reviewerClaims)
+	reviewerActor := "sovereign:" + identityFingerprint(reviewerClaims.Subject)
+	if err := server.store.Claim(ctx, "T-001", reviewerActor, "review/security"); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"project_id":"fairway-test","domain":"security","verdict":"approve","reason":"independent review"}`
+	dualClaims := sovereignDualClaims(server, now, "authorizer@example.test", "dual-review-1", "record:review", "T-001", reviewerClaims.ProofID, "review-1", sovereignPayloadDigest(t, body, &apiReviewWriteRequest{}))
+	dual := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, dualClaims)
+	selfReq := sovereignWriteRequest(http.MethodPost, "/api/v1/tasks/T-001/reviews", body, reviewer, "review-1", dual)
+	selfRec := httptest.NewRecorder()
+	handler.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusBadRequest || !strings.Contains(selfRec.Body.String(), "reviewer cannot review their own task") || strings.Contains(selfRec.Body.String(), reviewer) {
+		t.Fatalf("self review code=%d body=%s", selfRec.Code, selfRec.Body.String())
+	}
+
+	spoofBody := `{"project_id":"fairway-test","domain":"security","verdict":"approve","reviewer":"external-person","reason":"spoof"}`
+	spoofClaims := sovereignSessionClaims(server, now, "admin@example.test", "admin", "session-admin")
+	spoofToken := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, spoofClaims)
+	spoofDualClaims := sovereignDualClaims(server, now, "authorizer@example.test", "dual-review-2", "record:review", "T-001", spoofClaims.ProofID, "review-2", sovereignPayloadDigest(t, spoofBody, &apiReviewWriteRequest{}))
+	spoofDual := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, spoofDualClaims)
+	spoofReq := sovereignWriteRequest(http.MethodPost, "/api/v1/tasks/T-001/reviews", spoofBody, spoofToken, "review-2", spoofDual)
+	spoofRec := httptest.NewRecorder()
+	handler.ServeHTTP(spoofRec, spoofReq)
+	if spoofRec.Code != http.StatusForbidden || strings.Contains(spoofRec.Body.String(), "external-person") || strings.Contains(spoofRec.Body.String(), spoofToken) {
+		t.Fatalf("spoof review code=%d body=%s", spoofRec.Code, spoofRec.Body.String())
+	}
+
+	breakGlass := sovereignSessionClaims(server, now.Add(-10*time.Minute), "incident@example.test", "admin", "break-glass-1")
+	breakGlass.Purpose = "break_glass"
+	breakGlass.Reason = "incident recovery"
+	breakGlass.ExpiresAt = now.Add(-time.Minute).Unix()
+	breakToken := signSovereignProof(t, private, server.cfg.Server.SovereignKeyID, breakGlass)
+	breakReq := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	breakReq.Header.Set("Authorization", "Bearer "+breakToken)
+	breakRec := httptest.NewRecorder()
+	handler.ServeHTTP(breakRec, breakReq)
+	if breakRec.Code != http.StatusUnauthorized || strings.Contains(breakRec.Body.String(), breakToken) || strings.Contains(breakRec.Body.String(), breakGlass.Reason) {
+		t.Fatalf("expired break glass code=%d body=%s", breakRec.Code, breakRec.Body.String())
+	}
+}
+
+func newSovereignAPITestServer(t *testing.T, write bool) (*Server, ed25519.PrivateKey, time.Time) {
+	t.Helper()
+	server := newReadOnlyAPITestServer(t)
+	public, private, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyEnv := "FAIRWAY_TEST_SOVEREIGN_API_KEY_" + strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	t.Setenv(keyEnv, base64.StdEncoding.EncodeToString(public))
+	revocations := filepath.Join(t.TempDir(), "revocations.json")
+	if err := os.WriteFile(revocations, []byte(`{"schema":"fairway.sovereign-revocations.v1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server.cfg.Server.IdentityMode = "sovereign_signed"
+	server.cfg.Server.SovereignPublicKeyEnv = keyEnv
+	server.cfg.Server.SovereignKeyID = "customer-key-1"
+	server.cfg.Server.SovereignIssuer = "https://identity.example.test"
+	server.cfg.Server.SovereignAudience = "fairway"
+	server.cfg.Server.SovereignRevocationFile = revocations
+	server.cfg.Server.SovereignSessionMaxSeconds = 900
+	server.cfg.Server.SovereignClockSkewSeconds = 0
+	server.cfg.Server.SovereignBreakGlassSeconds = 300
+	server.cfg.Server.SovereignDualControl = []string{"set:status", "record:review"}
+	server.cfg.Server.AllowedRoles = []string{"viewer", "operator", "admin", "reviewer:security", "authorizer"}
+	if write {
+		server.cfg.Server.Mode = "api-write-pilot"
+		server.cfg.Server.ReadOnly = false
+		server.cfg.Server.WriteEnabled = true
+	}
+	now := time.Unix(1_800_000_000, 0).UTC()
+	server.now = func() time.Time { return now }
+	return server, private, now
+}
+
+func sovereignSessionClaims(server *Server, now time.Time, subject, role, proofID string) identityproof.Claims {
+	return identityproof.Claims{Issuer: server.cfg.Server.SovereignIssuer, Audience: server.cfg.Server.SovereignAudience, Subject: subject, Project: server.cfg.Fairway.ProjectName, Role: role, Purpose: "session", ProofID: proofID, IssuedAt: now.Unix(), NotBefore: now.Unix(), ExpiresAt: now.Add(5 * time.Minute).Unix()}
+}
+
+func sovereignDualClaims(server *Server, now time.Time, subject, proofID, command, taskID, primaryProofID, idempotencyKey, payloadSHA256 string) identityproof.Claims {
+	return identityproof.Claims{Issuer: server.cfg.Server.SovereignIssuer, Audience: server.cfg.Server.SovereignAudience, Subject: subject, Project: server.cfg.Fairway.ProjectName, Role: "authorizer", Purpose: "dual_control", ProofID: proofID, IssuedAt: now.Unix(), NotBefore: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(), Command: command, TaskID: taskID, PrimaryProofID: primaryProofID, IdempotencyKey: idempotencyKey, PayloadSHA256: payloadSHA256}
+}
+
+func sovereignPayloadDigest(t *testing.T, body string, dest any) string {
+	t.Helper()
+	if err := json.Unmarshal([]byte(body), dest); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := apiPayloadDigest(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return digest
+}
+
+func signSovereignProof(t *testing.T, private ed25519.PrivateKey, keyID string, claims identityproof.Claims) string {
+	t.Helper()
+	header, err := json.Marshal(map[string]string{"alg": identityproof.ProofAlgorithm, "typ": identityproof.ProofType, "kid": keyID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload)
+	return input + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, []byte(input)))
+}
+
+func sovereignWriteRequest(method, path, body, primary, idempotencyKey, dual string) *http.Request {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+primary)
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+	if dual != "" {
+		req.Header.Set("X-Fairway-Dual-Control", dual)
+	}
+	return req
 }
 
 func TestDashboardReadOnlyBlocksMutationsAndRendersPages(t *testing.T) {

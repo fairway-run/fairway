@@ -121,6 +121,22 @@ func TestRuntimeNetworkDependenciesReportsDisabledRemoteEdges(t *testing.T) {
 	}
 }
 
+func TestRuntimeNetworkDependenciesReportsSovereignSignedIdentityAsLocal(t *testing.T) {
+	clearSovereignNetworkEnv(t)
+	cfg := sovereignSignedTestConfig(t, false)
+	rows := RuntimeNetworkDependencies(cfg, os.LookupEnv)
+	for _, row := range rows {
+		if row.ID != "server-identity" {
+			continue
+		}
+		if row.Mode != "sovereign_signed" || row.Status != "local" || row.Blocking {
+			t.Fatalf("server identity row = %+v, want local signed non-blocking identity", row)
+		}
+		return
+	}
+	t.Fatal("server-identity dependency row missing")
+}
+
 func TestIsLocalProvider(t *testing.T) {
 	for _, tc := range []struct {
 		provider string

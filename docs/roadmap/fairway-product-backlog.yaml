@@ -5921,8 +5921,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-identity-authorization
-    source_paths: [internal/config, internal/dashboard, internal/store, cmd/fairway, docs/design/shared-team-server-api.md]
-    target_paths: [internal/config, internal/dashboard, internal/store, cmd/fairway, docs/security, docs/config-reference.md]
+    source_paths: [internal/config, internal/dashboard, internal/store, internal/identityproof, cmd/fairway, docs/design/shared-team-server-api.md, docs/security/sovereign-threat-model.md]
+    target_paths: [internal/config, internal/dashboard, internal/store, internal/identityproof, cmd/fairway, docs/security, docs/config-reference.md, docs/design/shared-team-server-api.md, docs/roadmap/fairway-product-backlog.yaml, website/sidebars.js]
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-identity-authorization

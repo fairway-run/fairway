@@ -81,6 +81,7 @@ read-only API. The guard supports these configured identity modes:
 | `trusted_proxy_read_only` | Requires `trusted_proxy_verified = true`, a proof header, identity header, and optional issuer/audience header checks. Without verified proof, proxy identity is advisory and cannot authorize reads. |
 | `api_token` | Requires `Authorization: Bearer` to match the token in `api_token_env`; accepted token roles must also appear in `allowed_roles`, bearer proof uses constant-time comparison for equal-length values, and only a token fingerprint is used internally. |
 | `service_account` / `mtls_service_account` | Accepted config placeholders that fail closed at runtime until proof verification is implemented. |
+| `sovereign_signed` | Verifies a strict Ed25519-signed customer identity proof with exact key ID, issuer, audience, project, role, purpose, proof ID, issued/not-before/expiry times, and local revocation state. It has no anonymous, proxy-header, API-token, or identity fallback. |
 
 Authorization is command-scoped. FW-270 implements `read:api` for `viewer` and
 `admin` roles only, with allowed roles declared in `[server].allowed_roles`.
@@ -92,9 +93,9 @@ operation authority.
 
 FW-271 adds the first append-only write pilot. It is enabled only with
 `[server] mode = "api-write-pilot"`, `write_enabled = true`, and
-`identity_mode = "api_token"` using an append-only write role (`operator`,
-`coordinator`, `admin`, or `adapter:<name>`) that also appears in
-`allowed_roles`.
+`identity_mode = "api_token"` or `identity_mode = "sovereign_signed"` using an
+append-only write role (`operator`, `coordinator`, `admin`, or
+`adapter:<name>`) that also appears in `allowed_roles`.
 
 | Endpoint | Purpose |
 |---|---|
@@ -122,6 +123,25 @@ the authenticated token fingerprint is used. `admin` may explicitly supply a
 reviewer override for coordinator-recorded external review evidence, while the
 audit row still records the authenticated admin actor. Both write families use
 the same idempotency/audit ledger as FW-271.
+
+FW-344 adds the `sovereign_signed` authorization profile without expanding the
+write API. Every API read or write requires a customer-signed bounded session
+or break-glass proof. Signed claims are scoped to exactly one Fairway project,
+and configured command roles still apply. `set:status` and `record:review`
+require a second signed `authorizer` proof from a distinct subject. That proof
+is bound to the command, task, canonical payload SHA-256, primary proof ID, and `Idempotency-Key`; exact
+replay is handled by the existing idempotency ledger, while rebinding fails
+closed. Review identity cannot be overridden in this mode, and the existing
+self-review guard remains authoritative. Break-glass is short-lived, requires
+an explicit reason, and still requires dual control for consequential actions.
+
+`GET /api/v1/status` and the API index expose
+`fairway.server-authorization-policy.v1`: identity mode, project,
+cryptographic-identity and fallback posture, allowed roles, dual-control
+commands, bounded session and break-glass lifetimes, and the revocation
+requirement. They never expose proof values, identity subjects, keys,
+revocation contents, or credentials. See
+[Sovereign Identity And Command Authorization](../security/sovereign-identity-authorization.md).
 
 The write pilot rejects project-scope mismatches and payload text containing
 unsafe private-data markers such as raw prompt, transcript, raw tool body,

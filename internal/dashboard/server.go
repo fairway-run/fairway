@@ -44,6 +44,7 @@ type Server struct {
 	eventPollInterval       time.Duration
 	reviewWaitSweepInterval time.Duration
 	sseStats                *ssePollStats
+	now                     func() time.Time
 }
 
 type ssePollStats struct {
@@ -95,6 +96,7 @@ func NewWithRoot(s *store.Store, cfg config.Config, roles []string, worktrees []
 		eventPollInterval:       time.Second,
 		reviewWaitSweepInterval: reviewWaitEventSweepInterval(cfg),
 		sseStats:                &ssePollStats{},
+		now:                     time.Now,
 	}
 }
 

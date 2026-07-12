@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -695,9 +697,94 @@ func TestValidateRejectsWritePilotWithoutAPITokenIdentity(t *testing.T) {
 	cfg.Server.WriteEnabled = true
 	cfg.Server.IdentityMode = "trusted_proxy_read_only"
 	cfg.Server.TrustedProxyVerified = true
-	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "identity_mode = \"api_token\"") {
-		t.Fatalf("Validate write pilot identity err=%v, want api_token identity error", err)
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "api_token") || !strings.Contains(err.Error(), "sovereign_signed") {
+		t.Fatalf("Validate write pilot identity err=%v, want supported identity error", err)
 	}
+}
+
+func TestValidateSovereignSignedIdentityProfile(t *testing.T) {
+	cfg := sovereignSignedTestConfig(t, true)
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate sovereign signed identity error = %v", err)
+	}
+
+	readOnly := sovereignSignedTestConfig(t, false)
+	readOnly.Server.AllowedRoles = []string{"viewer"}
+	if err := Validate(readOnly); err != nil {
+		t.Fatalf("Validate sovereign read-only identity error = %v", err)
+	}
+}
+
+func TestValidateSovereignIdentityFailsClosed(t *testing.T) {
+	tests := []struct {
+		name  string
+		apply func(*Config)
+		want  string
+	}{
+		{name: "missing key env", apply: func(c *Config) { c.Server.SovereignPublicKeyEnv = "MISSING_SOVEREIGN_KEY" }, want: "not set"},
+		{name: "missing issuer", apply: func(c *Config) { c.Server.SovereignIssuer = "" }, want: "issuer"},
+		{name: "relative revocations", apply: func(c *Config) { c.Server.SovereignRevocationFile = "revocations.json" }, want: "absolute"},
+		{name: "missing authorizer", apply: func(c *Config) { c.Server.AllowedRoles = []string{"operator", "reviewer:security"} }, want: "authorizer"},
+		{name: "missing status dual control", apply: func(c *Config) { c.Server.SovereignDualControl = []string{"record:review"} }, want: "set:status"},
+		{name: "unsupported dual control", apply: func(c *Config) { c.Server.SovereignDualControl = []string{"set:status", "record:review", "deploy"} }, want: "unsupported command"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := sovereignSignedTestConfig(t, true)
+			tc.apply(&cfg)
+			err := Validate(cfg)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate error = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateSovereignOfflineServerRejectsIdentityFallback(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.Runtime.Profile = RuntimeProfileSovereignOffline
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	cfg.Server.IdentityMode = "api_token"
+	cfg.Server.APITokenEnv = "FAIRWAY_TEST_API_TOKEN"
+	t.Setenv("FAIRWAY_TEST_API_TOKEN", "secret")
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "sovereign_signed") {
+		t.Fatalf("Validate sovereign fallback error = %v", err)
+	}
+}
+
+func sovereignSignedTestConfig(t *testing.T, write bool) Config {
+	t.Helper()
+	public, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyEnv := "FAIRWAY_TEST_SOVEREIGN_PUBLIC_KEY_" + strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	t.Setenv(keyEnv, base64.StdEncoding.EncodeToString(public))
+	revocations := filepath.Join(t.TempDir(), "revocations.json")
+	if err := os.WriteFile(revocations, []byte(`{"schema":"fairway.sovereign-revocations.v1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Defaults(t.TempDir())
+	cfg.Runtime.Profile = RuntimeProfileSovereignOffline
+	cfg.Server.Enabled = true
+	cfg.Server.Mode = "read_only"
+	cfg.Server.ReadOnly = true
+	cfg.Server.IdentityMode = "sovereign_signed"
+	cfg.Server.AllowedRoles = []string{"viewer"}
+	cfg.Server.SovereignPublicKeyEnv = keyEnv
+	cfg.Server.SovereignKeyID = "customer-key-1"
+	cfg.Server.SovereignIssuer = "https://identity.example.test"
+	cfg.Server.SovereignAudience = "fairway"
+	cfg.Server.SovereignRevocationFile = revocations
+	if write {
+		cfg.Server.Mode = "api-write-pilot"
+		cfg.Server.ReadOnly = false
+		cfg.Server.WriteEnabled = true
+		cfg.Server.AllowedRoles = []string{"viewer", "operator", "reviewer:security", "authorizer"}
+	}
+	return cfg
 }
 
 func TestWorktreePathUsesTemplate(t *testing.T) {

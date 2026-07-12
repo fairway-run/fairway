@@ -47,7 +47,8 @@ const sidebars = {
             'assurance/compatibility',
             'design/assurance-packages',
             'security/sovereign-deployment-ready',
-            'security/sovereign-threat-model'
+            'security/sovereign-threat-model',
+            'security/sovereign-identity-authorization'
           ]
         }
       ]

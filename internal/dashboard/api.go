@@ -10,25 +10,44 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/subashram/fairway/internal/identityproof"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 )
 
 type apiStatusResponse struct {
-	Project           string `json:"project"`
-	Mode              string `json:"mode"`
-	ReadOnly          bool   `json:"read_only"`
-	WritesEnabled     bool   `json:"writes_enabled"`
-	DashboardReadOnly bool   `json:"dashboard_read_only"`
-	TrustedProxy      string `json:"trusted_proxy,omitempty"`
-	IdentityMode      string `json:"identity_mode"`
+	Project           string                 `json:"project"`
+	Mode              string                 `json:"mode"`
+	ReadOnly          bool                   `json:"read_only"`
+	WritesEnabled     bool                   `json:"writes_enabled"`
+	DashboardReadOnly bool                   `json:"dashboard_read_only"`
+	TrustedProxy      string                 `json:"trusted_proxy,omitempty"`
+	IdentityMode      string                 `json:"identity_mode"`
+	Authorization     apiAuthorizationPolicy `json:"authorization"`
 }
 
 type apiActor struct {
-	Subject string
-	Role    string
-	Source  string
+	Subject                 string
+	Role                    string
+	Source                  string
+	ProofID                 string
+	Purpose                 string
+	AuthorizedPayloadSHA256 string
+}
+
+type apiAuthorizationPolicy struct {
+	Schema                string   `json:"schema"`
+	IdentityMode          string   `json:"identity_mode"`
+	Project               string   `json:"project"`
+	CryptographicIdentity bool     `json:"cryptographic_identity"`
+	IdentityFallback      bool     `json:"identity_fallback"`
+	AllowedRoles          []string `json:"allowed_roles"`
+	DualControlCommands   []string `json:"dual_control_commands,omitempty"`
+	SessionMaxSeconds     int      `json:"session_max_seconds,omitempty"`
+	BreakGlassMaxSeconds  int      `json:"break_glass_max_seconds,omitempty"`
+	RevocationRequired    bool     `json:"revocation_required"`
 }
 
 type apiTaskRow struct {
@@ -169,6 +188,7 @@ func (s *Server) apiIndex(w http.ResponseWriter, r *http.Request) {
 		"read_only":       !s.apiWritePilotEnabled(),
 		"writes_enabled":  s.apiWritePilotEnabled(),
 		"available_paths": s.apiAvailablePaths(),
+		"authorization":   s.apiAuthorizationPolicy(),
 	})
 }
 
@@ -187,6 +207,7 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 		DashboardReadOnly: s.cfg.Dashboard.ReadOnly,
 		TrustedProxy:      s.cfg.Dashboard.TrustedProxy,
 		IdentityMode:      s.serverIdentityMode(),
+		Authorization:     s.apiAuthorizationPolicy(),
 	})
 }
 
@@ -268,7 +289,7 @@ func (s *Server) apiTaskEvidenceWrite(w http.ResponseWriter, r *http.Request) {
 	if !apiRequirePOSTJSON(w, r) {
 		return
 	}
-	actor, ok := s.apiAuthorizeCommand(w, r, "record:evidence")
+	actor, ok := s.apiAuthorizeCommand(w, r, "record:evidence", taskID)
 	if !ok {
 		return
 	}
@@ -290,6 +311,9 @@ func (s *Server) apiTaskEvidenceWrite(w http.ResponseWriter, r *http.Request) {
 	digest, err := apiPayloadDigest(payload)
 	if err != nil {
 		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !s.apiAuthorizedPayload(w, actor, "record:evidence", digest) {
 		return
 	}
 	result, err := s.store.RecordEvidenceWithIdempotency(r.Context(), taskID, store.Evidence{
@@ -326,7 +350,7 @@ func (s *Server) apiTaskCheckpointWrite(w http.ResponseWriter, r *http.Request) 
 	if !apiRequirePOSTJSON(w, r) {
 		return
 	}
-	actor, ok := s.apiAuthorizeCommand(w, r, "record:checkpoint")
+	actor, ok := s.apiAuthorizeCommand(w, r, "record:checkpoint", taskID)
 	if !ok {
 		return
 	}
@@ -348,6 +372,9 @@ func (s *Server) apiTaskCheckpointWrite(w http.ResponseWriter, r *http.Request) 
 	digest, err := apiPayloadDigest(payload)
 	if err != nil {
 		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !s.apiAuthorizedPayload(w, actor, "record:checkpoint", digest) {
 		return
 	}
 	result, err := s.store.RecordCheckpointWithIdempotency(r.Context(), store.Checkpoint{
@@ -384,7 +411,7 @@ func (s *Server) apiTaskStatusWrite(w http.ResponseWriter, r *http.Request) {
 	if !apiRequirePOSTJSON(w, r) {
 		return
 	}
-	actor, ok := s.apiAuthorizeCommand(w, r, "set:status")
+	actor, ok := s.apiAuthorizeCommand(w, r, "set:status", taskID)
 	if !ok {
 		return
 	}
@@ -410,6 +437,9 @@ func (s *Server) apiTaskStatusWrite(w http.ResponseWriter, r *http.Request) {
 	digest, err := apiPayloadDigest(payload)
 	if err != nil {
 		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !s.apiAuthorizedPayload(w, actor, "set:status", digest) {
 		return
 	}
 	writeReq := store.ServerWriteRequest{
@@ -467,7 +497,7 @@ func (s *Server) apiTaskReviewWrite(w http.ResponseWriter, r *http.Request) {
 	if !apiRequirePOSTJSON(w, r) {
 		return
 	}
-	actor, ok := s.apiAuthorizeCommand(w, r, "record:review")
+	actor, ok := s.apiAuthorizeCommand(w, r, "record:review", taskID)
 	if !ok {
 		return
 	}
@@ -493,6 +523,10 @@ func (s *Server) apiTaskReviewWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	reviewer := actor.Subject
 	if override := strings.TrimSpace(payload.Reviewer); override != "" {
+		if s.serverIdentityMode() == "sovereign_signed" {
+			apiError(w, http.StatusForbidden, errors.New("forbidden: sovereign signed review identity cannot be overridden"))
+			return
+		}
 		if actor.Role != "admin" {
 			apiError(w, http.StatusForbidden, errors.New("forbidden: reviewer override requires admin role"))
 			return
@@ -506,6 +540,9 @@ func (s *Server) apiTaskReviewWrite(w http.ResponseWriter, r *http.Request) {
 	digest, err := apiPayloadDigest(payload)
 	if err != nil {
 		apiError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !s.apiAuthorizedPayload(w, actor, "record:review", digest) {
 		return
 	}
 	result, err := s.store.RecordReviewWithIdempotency(r.Context(), taskID, store.Review{
@@ -665,7 +702,7 @@ func (s *Server) apiAuthorizeRead(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func (s *Server) apiAuthorizeCommand(w http.ResponseWriter, r *http.Request, command string) (apiActor, bool) {
+func (s *Server) apiAuthorizeCommand(w http.ResponseWriter, r *http.Request, command, taskID string) (apiActor, bool) {
 	actor, err := s.apiActor(r)
 	if err != nil {
 		status := http.StatusUnauthorized
@@ -690,7 +727,45 @@ func (s *Server) apiAuthorizeCommand(w http.ResponseWriter, r *http.Request, com
 		apiError(w, http.StatusForbidden, fmt.Errorf("forbidden: role %q cannot execute %s", actor.Role, command))
 		return apiActor{}, false
 	}
+	if s.serverIdentityMode() == "sovereign_signed" && s.sovereignCommandRequiresDualControl(command) {
+		secondary, err := s.sovereignDualControlActor(r)
+		if err != nil {
+			apiError(w, http.StatusForbidden, err)
+			return apiActor{}, false
+		}
+		if secondary.Subject == actor.Subject ||
+			secondary.ProofID == actor.ProofID ||
+			secondary.Role != "authorizer" ||
+			!s.apiRoleAllowed(secondary.Role) ||
+			secondary.Purpose != "dual_control" ||
+			secondary.Source == "" {
+			apiError(w, http.StatusForbidden, errors.New("forbidden: dual control requires a distinct verified authorizer"))
+			return apiActor{}, false
+		}
+		proof, err := s.verifySovereignToken(strings.TrimSpace(r.Header.Get("X-Fairway-Dual-Control")))
+		if err != nil ||
+			proof.Claims.Command != command ||
+			proof.Claims.TaskID != taskID ||
+			proof.Claims.PrimaryProofID != actor.ProofID ||
+			proof.Claims.IdempotencyKey != strings.TrimSpace(r.Header.Get("Idempotency-Key")) {
+			apiError(w, http.StatusForbidden, errors.New("forbidden: dual-control proof is not bound to this command, task, primary proof, and idempotency key"))
+			return apiActor{}, false
+		}
+		actor.Source += "+dual:" + secondary.Subject
+		actor.AuthorizedPayloadSHA256 = proof.Claims.PayloadSHA256
+	}
 	return actor, true
+}
+
+func (s *Server) apiAuthorizedPayload(w http.ResponseWriter, actor apiActor, command, digest string) bool {
+	if s.serverIdentityMode() != "sovereign_signed" || !s.sovereignCommandRequiresDualControl(command) {
+		return true
+	}
+	if actor.AuthorizedPayloadSHA256 != digest {
+		apiError(w, http.StatusForbidden, errors.New("forbidden: dual-control proof does not authorize this payload"))
+		return false
+	}
+	return true
 }
 
 func (s *Server) apiActor(r *http.Request) (apiActor, error) {
@@ -701,11 +776,84 @@ func (s *Server) apiActor(r *http.Request) (apiActor, error) {
 		return s.apiTokenActor(r)
 	case "trusted_proxy_read_only":
 		return s.trustedProxyActor(r)
+	case "sovereign_signed":
+		return s.sovereignSignedActor(r)
 	case "service_account", "mtls_service_account":
 		return apiActor{}, fmt.Errorf("unimplemented: identity mode %q is configured as a fail-closed placeholder", s.serverIdentityMode())
 	default:
 		return apiActor{}, fmt.Errorf("unsupported identity mode")
 	}
+}
+
+func (s *Server) sovereignSignedActor(r *http.Request) (apiActor, error) {
+	const prefix = "Bearer "
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, prefix) {
+		return apiActor{}, errors.New("missing_identity: signed bearer proof is required")
+	}
+	proof, err := s.verifySovereignToken(strings.TrimSpace(strings.TrimPrefix(header, prefix)))
+	if err != nil {
+		return apiActor{}, err
+	}
+	if proof.Claims.Purpose != "session" && proof.Claims.Purpose != "break_glass" {
+		return apiActor{}, errors.New("invalid_identity: primary proof must be a bounded session or break-glass proof")
+	}
+	return apiActor{
+		Subject: "sovereign:" + identityFingerprint(proof.Claims.Subject),
+		Role:    proof.Claims.Role,
+		Source:  "sovereign_signed:key=" + identityFingerprint(proof.KeyID) + ",proof=" + identityFingerprint(proof.Claims.ProofID),
+		ProofID: proof.Claims.ProofID,
+		Purpose: proof.Claims.Purpose,
+	}, nil
+}
+
+func (s *Server) sovereignDualControlActor(r *http.Request) (apiActor, error) {
+	token := strings.TrimSpace(r.Header.Get("X-Fairway-Dual-Control"))
+	if token == "" {
+		return apiActor{}, errors.New("forbidden: a signed dual-control proof is required")
+	}
+	proof, err := s.verifySovereignToken(token)
+	if err != nil {
+		return apiActor{}, errors.New("forbidden: dual-control proof verification failed")
+	}
+	return apiActor{
+		Subject: "sovereign:" + identityFingerprint(proof.Claims.Subject),
+		Role:    proof.Claims.Role,
+		Source:  "sovereign_signed:key=" + identityFingerprint(proof.KeyID) + ",proof=" + identityFingerprint(proof.Claims.ProofID),
+		ProofID: proof.Claims.ProofID,
+		Purpose: proof.Claims.Purpose,
+	}, nil
+}
+
+func (s *Server) verifySovereignToken(token string) (identityproof.Proof, error) {
+	now := time.Now().UTC()
+	if s.now != nil {
+		now = s.now().UTC()
+	}
+	return identityproof.Verify(token, s.sovereignIdentityConfig(), now, nil)
+}
+
+func (s *Server) sovereignIdentityConfig() identityproof.Config {
+	return identityproof.Config{
+		PublicKeyEnv:         strings.TrimSpace(s.cfg.Server.SovereignPublicKeyEnv),
+		KeyID:                strings.TrimSpace(s.cfg.Server.SovereignKeyID),
+		Issuer:               strings.TrimSpace(s.cfg.Server.SovereignIssuer),
+		Audience:             strings.TrimSpace(s.cfg.Server.SovereignAudience),
+		Project:              strings.TrimSpace(s.cfg.Fairway.ProjectName),
+		RevocationFile:       strings.TrimSpace(s.cfg.Server.SovereignRevocationFile),
+		SessionMaxSeconds:    s.cfg.Server.SovereignSessionMaxSeconds,
+		ClockSkewSeconds:     s.cfg.Server.SovereignClockSkewSeconds,
+		BreakGlassMaxSeconds: s.cfg.Server.SovereignBreakGlassSeconds,
+	}
+}
+
+func (s *Server) sovereignCommandRequiresDualControl(command string) bool {
+	for _, required := range s.cfg.Server.SovereignDualControl {
+		if required == command {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) apiTokenActor(r *http.Request) (apiActor, error) {
@@ -801,6 +949,25 @@ func (s *Server) apiAvailablePaths() []string {
 	return paths
 }
 
+func (s *Server) apiAuthorizationPolicy() apiAuthorizationPolicy {
+	policy := apiAuthorizationPolicy{
+		Schema:                "fairway.server-authorization-policy.v1",
+		IdentityMode:          s.serverIdentityMode(),
+		Project:               s.cfg.Fairway.ProjectName,
+		IdentityFallback:      s.serverIdentityMode() == "no_edge_local",
+		AllowedRoles:          append([]string(nil), s.cfg.Server.AllowedRoles...),
+		CryptographicIdentity: s.serverIdentityMode() == "sovereign_signed",
+	}
+	if s.serverIdentityMode() == "sovereign_signed" {
+		policy.IdentityFallback = false
+		policy.DualControlCommands = append([]string(nil), s.cfg.Server.SovereignDualControl...)
+		policy.SessionMaxSeconds = s.cfg.Server.SovereignSessionMaxSeconds
+		policy.BreakGlassMaxSeconds = s.cfg.Server.SovereignBreakGlassSeconds
+		policy.RevocationRequired = true
+	}
+	return policy
+}
+
 func (s *Server) apiRoleAllowed(role string) bool {
 	for _, allowed := range s.cfg.Server.AllowedRoles {
 		if allowed == role {
@@ -884,6 +1051,10 @@ func apiIdempotencyKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 func (s *Server) apiProjectScopeOK(w http.ResponseWriter, got string) bool {
 	got = strings.TrimSpace(got)
+	if s.serverIdentityMode() == "sovereign_signed" && got == "" {
+		apiError(w, http.StatusForbidden, errors.New("forbidden: sovereign signed writes require explicit project scope"))
+		return false
+	}
 	if got == "" || got == s.cfg.Fairway.ProjectName {
 		return true
 	}
@@ -949,6 +1120,11 @@ func (s *Server) apiTaskStateConflict(w http.ResponseWriter, conflict store.Task
 func tokenFingerprint(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])[:12]
+}
+
+func identityFingerprint(identity string) string {
+	sum := sha256.Sum256([]byte(identity))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 func constantTimeTokenEqual(got, want string) bool {

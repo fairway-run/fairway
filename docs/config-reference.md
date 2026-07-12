@@ -44,7 +44,7 @@ listen = "127.0.0.1:7880"
 mode = "disabled"                      # disabled | read_only
 read_only = true
 write_enabled = false                  # write-capable server mode is not implemented
-identity_mode = "no_edge_local"        # no_edge_local | trusted_proxy_read_only | api_token | service_account | mtls_service_account
+identity_mode = "no_edge_local"        # no_edge_local | trusted_proxy_read_only | api_token | service_account | mtls_service_account | sovereign_signed
 allowed_roles = ["viewer"]             # command-scoped roles allowed by the read-only API
 api_token_env = ""                     # env var containing token for identity_mode = "api_token"
 api_token_role = "viewer"
@@ -55,6 +55,15 @@ trusted_proxy_issuer = ""
 trusted_proxy_issuer_header = "X-Fairway-Proxy-Issuer"
 trusted_proxy_audience = ""
 trusted_proxy_audience_header = "X-Fairway-Proxy-Audience"
+sovereign_public_key_env = ""           # base64 Ed25519 public key; required for sovereign_signed
+sovereign_key_id = ""
+sovereign_issuer = ""
+sovereign_audience = ""
+sovereign_revocation_file = ""          # absolute private local fairway.sovereign-revocations.v1 JSON
+sovereign_session_max_seconds = 900
+sovereign_clock_skew_seconds = 30
+sovereign_break_glass_max_seconds = 300
+sovereign_dual_control_commands = ["set:status", "record:review"]
 
 [worktrees]
 root = "../worktrees"
@@ -272,7 +281,7 @@ restore, dashboard, and read-only API paths, use the
 | `mode` | string | `disabled` | Supported values are `disabled`, `read_only`/`api-read-only`, and `api-write-pilot`. The write pilot exposes evidence/checkpoint append endpoints plus FW-272 guarded status/review endpoints. |
 | `read_only` | bool | `true` | Must be `true` for read-only mode and `false` for `api-write-pilot`. The dashboard remains read-only when the server write pilot is enabled. |
 | `write_enabled` | bool | `false` | Must be `true` with `mode = "api-write-pilot"` and false otherwise. It enables the FW-271 append-only evidence/checkpoint API pilot and FW-272 guarded status/review write pilot. |
-| `identity_mode` | string | `no_edge_local` | FW-270 identity source for the read-only API. Supported values are `no_edge_local`, `trusted_proxy_read_only`, `api_token`, `service_account`, and `mtls_service_account`. Service-account and mTLS modes are placeholders that fail closed until proof verification is implemented. |
+| `identity_mode` | string | `no_edge_local` | Identity source for the shared API. Supported values are `no_edge_local`, `trusted_proxy_read_only`, `api_token`, `service_account`, `mtls_service_account`, and `sovereign_signed`. Service-account and mTLS modes remain fail-closed placeholders. `sovereign_signed` verifies customer-signed Ed25519 session proofs and is required for any active server under `[runtime] profile = "sovereign-offline"`; it has no anonymous, proxy-header, API-token, or identity fallback. |
 | `allowed_roles` | []string | `["viewer"]` | Command-scoped roles accepted by the server guard. Supported role strings are `viewer`, `operator`, `reviewer:<domain>`, `coordinator`, `adapter:<name>`, and `admin`; the FW-270 read API authorizes only `viewer` and `admin` for `read:api`. |
 | `api_token_env` | string | `""` | Environment variable containing the API token for `identity_mode = "api_token"`. Raw token values must not be committed or recorded as evidence. Runtime proof uses bounded error responses and constant-time comparison for equal-length bearer values. |
 | `api_token_role` | string | `viewer` | Role assigned to accepted API-token requests. It must be a supported server role and must also appear in `allowed_roles`, so misconfigured token roles fail closed. Use `viewer` for the FW-270 read-only API. Use `operator`, `coordinator`, `admin`, or `adapter:<name>` for the FW-271 append-only write pilot. Use `operator`, `coordinator`, or `admin` for guarded status writes; use `reviewer:<domain>` or `admin` for guarded review writes. |
@@ -283,6 +292,15 @@ restore, dashboard, and read-only API paths, use the
 | `trusted_proxy_issuer_header` | string | `X-Fairway-Proxy-Issuer` | Header containing the issuer value checked against `trusted_proxy_issuer`. |
 | `trusted_proxy_audience` | string | `""` | Optional expected audience for trusted proxy read-only mode. |
 | `trusted_proxy_audience_header` | string | `X-Fairway-Proxy-Audience` | Header containing the audience value checked against `trusted_proxy_audience`. |
+| `sovereign_public_key_env` | string | `""` | Environment variable containing the customer's base64-encoded 32-byte Ed25519 public verification key. The private key is never configured in Fairway. Active `sovereign_signed` mode fails config validation if this variable is absent or invalid. |
+| `sovereign_key_id` | string | `""` | Exact customer key identifier required in the signed proof header. Key substitution fails closed. Rotation and overlap must be handled as an explicit customer change; this first profile accepts one active verification key. |
+| `sovereign_issuer` | string | `""` | Exact issuer required in every signed proof. |
+| `sovereign_audience` | string | `""` | Exact audience required in every signed proof. |
+| `sovereign_revocation_file` | string | `""` | Absolute path to a bounded private regular JSON file using schema `fairway.sovereign-revocations.v1`. It can revoke proof IDs, subjects, or key IDs and is read for every request. Missing, malformed, symlinked, group-readable, or world-readable state fails closed. |
+| `sovereign_session_max_seconds` | integer | `900` | Maximum signed session lifetime, from 60 through 86400 seconds. Proofs also require bounded `iat`, `nbf`, and `exp` claims. |
+| `sovereign_clock_skew_seconds` | integer | `30` | Allowed clock skew from 0 through 300 seconds. It does not extend the configured maximum session lifetime. |
+| `sovereign_break_glass_max_seconds` | integer | `300` | Maximum `break_glass` proof lifetime, from 30 through 900 seconds and no longer than the normal session maximum. Break-glass requires an `admin` role and reason and does not bypass dual control or any deployment, release, credential, public-exposure, or live-operation boundary. |
+| `sovereign_dual_control_commands` | string array | `["set:status", "record:review"]` | Machine-readable consequential-command policy. Sovereign write mode requires both commands and an `authorizer` role. A distinct signed authorizer proof must be bound to command, task, canonical payload SHA-256, primary proof ID, and `Idempotency-Key`; exact replay returns the existing idempotent result and rebinding fails closed. |
 
 `fairway server --read-only` serves a read-only JSON API skeleton at
 `/api/v1/status`, `/api/v1/tasks`, `/api/v1/tasks/<task-id>`, and
