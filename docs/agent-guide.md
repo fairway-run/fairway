@@ -4,6 +4,10 @@ Fairway is built for coding agents working in parallel. This guide is the
 operator-facing contract for an agent that is already inside a repo with
 Fairway configured.
 
+Canonical definitions live in [Concepts](design/concepts.md). This guide uses
+those terms procedurally and does not create alternate meanings for task,
+session, decision, evidence, review, role, lane, or promotion.
+
 If Fairway is not configured yet, stop here and use the
 [quickstart](quickstart.md). It proves one bounded task, decision, evidence row,
 closeout, and readback before introducing the advanced coordination model on
