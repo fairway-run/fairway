@@ -5714,3 +5714,58 @@ tasks:
       - "Legitimate AI Cloud and GPUaaS references remain only in clearly labeled case studies, consumer examples, historical release material, assessments, or compatibility fixtures and do not define standalone product behavior."
       - "Generic replacement fixtures and examples preserve regression coverage, while compatibility aliases or migrations are documented where removal would break existing consumers."
       - "Repository-wide reference checks, tests, config validation, docs build/link validation, and a clean standalone initialization rehearsal pass before closeout."
+
+  - id: FW-333
+    title: Perform independent post-v0.1.12 release readiness review
+    kind: task
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release-readiness
+    source_paths: [README.md, cmd/fairway, internal, docs, examples, website, scripts]
+    target_paths: [docs/assessment, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, backend, governance, ops, security, ui]
+    risk_level: critical
+    migration_type: independent-release-readiness-review
+    dependencies: [FW-324, FW-331, FW-332]
+    acceptance_checks:
+      - "The complete v0.1.12-to-HEAD delta is reviewed for correctness, compatibility, authority changes, security/privacy regressions, operational behavior, documentation claims, and release scope."
+      - "A clean validation packet covers full Go tests and vet, config/workflow/reconcile guards, portal build and dependency audit, release tooling, clean first-value rehearsal, and public desktop/mobile portal readback."
+      - "GPUaaS and AI Cloud references are verified as classified compatibility, case-study, assessment, release-history, or archive material rather than hidden standalone defaults."
+      - "The assessment names material blockers, accepted residual risks, version recommendation, rollback boundary, and an explicit release or hold verdict tied to the reviewed source SHA."
+
+  - id: FW-334
+    title: Prepare Fairway v0.1.13 integrated release packet
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release-preparation
+    source_paths: [CHANGELOG.md, docs/release-notes.md, docs/release-highlights.md, .goreleaser.yaml, docs/assessment]
+    target_paths: [CHANGELOG.md, docs/release-notes.md, docs/release-highlights.md, .goreleaser.yaml, docs/assessment]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: v0.1.13-release-preparation
+    dependencies: [FW-333]
+    acceptance_checks:
+      - "The v0.1.13 changelog, release notes, highlights, package description, exact source SHA, runtime/docs scope, known limits, rollback boundary, and verification checklist are complete and consistent with the canonical product narrative."
+      - "Release metadata contains no stale coordination-control-plane category, unsupported compliance/adoption claim, or promotion of shared-write/trusted-proxy/non-loopback/Postgres runtime previews."
+      - "Full code, integration, race, release, first-value, portal, and clean/pushed workflow gates pass on the reviewed candidate SHA."
+
+  - id: FW-335
+    title: Publish and verify Fairway v0.1.13
+    kind: task
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release-publication
+    source_paths: [.goreleaser.yaml, docs/release-notes.md, docs/release-highlights.md, docs/assessment]
+    target_paths: [docs/assessment]
+    review_domains: [governance, ops, security]
+    risk_level: critical
+    migration_type: v0.1.13-release-publication
+    dependencies: [FW-334]
+    acceptance_checks:
+      - "The annotated v0.1.13 tag points to the authorized reviewed SHA and the normal release workflow publishes signed/notarized binary assets without moving an existing tag."
+      - "GitHub release, checksums, asset HTTP status, Homebrew cask/tap commit, brew fetch, installed version, public docs, and release verification readbacks pass."
+      - "Rollback reference remains v0.1.12, and dashboard restart/version readback is either completed under a separate reviewed task or explicitly deferred."
