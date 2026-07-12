@@ -1,188 +1,125 @@
 # Product
 
-## Vision
+## Product Definition
 
-Fairway is the smallest tool that makes governed agentic engineering practical:
-2-6 coding agents can work in parallel while task ownership, evidence, reviews,
-handoffs, sessions, readiness, and risk stay visible.
+Fairway is the engineering control and accountability layer for agent-driven
+software delivery.
 
-The operating model is
-[governed agentic engineering](governed-agentic-engineering.md): agents can do
-substantial implementation work, but evidence, review, ownership, promotion,
-and human comprehension remain first-class engineering controls.
-For small teams using Fairway in AI Cloud-style loops, see the
-[Small-team autonomy operating model](design/small-team-autonomy-operating-model.md).
-The [common-path automation model](design/common-path-automation.md) makes
-routine reversible work compact while preserving the underlying task, session,
-checkpoint, evidence, review, and promotion records.
-The [task decision memory model](design/task-decision-memory.md) preserves the
-material reasoning needed after context compaction while keeping transcripts
-optional and non-authoritative.
+It keeps accountable intent, material decisions, evidence, independent
+judgment, and promotion state durable while coding agents and engineering tools
+perform the work. The result is a replaceable-provider workflow: a provider can
+stop, a context window can compact, or an orchestrator can change without
+turning chat history into the system of record.
 
-Fairway is the local-first coordination control plane for that model.
-The [agent-native product interface](design/agent-native-product-interface.md)
-defines agents as the primary operational users and humans as the authority for
-consequential judgment. It also defines grounded code-explanation packets and
-the optional advisory LLM narrative boundary.
-Traffic-control lanes were the first useful primitive: one lane, one role, one
-worktree, one visible task state. The product direction is broader but still
-bounded: Fairway coordinates the facts around multi-agent engineering work
-without becoming the system that performs or approves that work.
-For teams that outgrow one local coordination host, the
-[Shared-team operating model](design/shared-team-operating-model.md) defines
-when a shared Fairway control plane is justified and what authority boundaries
-must stay intact.
+Fairway is local-first. Its default product shape is one Go binary, one SQLite
+execution store, a CLI, and read-oriented dashboards. Coordination primitives
+such as sessions, checkpoints, handoffs, waits, notifications, lanes, and
+worktrees support the accountability model; they do not define the category.
 
-The benchmark: a solo developer with three Claude lanes and one Codex lane open
-should never lose track of which agent is doing what, why a task is stuck, which
-evidence exists, or who is blocking whom.
+## The Product Promise
+
+For every bounded work item, a team should be able to determine:
+
+- **Intent:** owner, scope, acceptance, risk, and current state.
+- **Decision:** the material choice, alternatives, rationale, and cited facts.
+- **Evidence:** commands and safe artifact references that support or contradict
+  the current claim.
+- **Judgment:** required review, recorded verdicts, and unresolved waits.
+- **Promotion:** whether the work remains local and reversible or has satisfied
+  the explicit controls for merge, release, deploy, or live execution.
+
+Generated rationale, provider transcripts, and advisory recommendations may
+help a person reason. They are not provenance, approval, or risk acceptance.
+
+## Who It Is For
+
+- Individual engineers using more than one coding-agent session.
+- Small teams that need shared visibility without handing approval authority to
+  a dashboard or orchestrator.
+- Reviewers and operators who need to see missing evidence, stale work, and
+  promotion blockers without reconstructing provider conversations.
+- Platform teams that want a provider-neutral execution record alongside their
+  existing source control, CI/CD, and planning systems.
+
+## Capability And Claim Inventory
+
+These labels are mandatory in public and canonical Fairway documentation.
+
+| Label | Meaning | Current Fairway examples |
+|---|---|---|
+| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; workflow and merge-readiness checks; read-oriented dashboards; packets and reports; release packaging. |
+| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | AI Cloud provider replacement, review/release coordination, environment rehearsal, and local shared-dashboard operation documented under `docs/assessment/`. |
+| **Experimental** | Implemented as an explicit pilot or advisory surface and not the default authority path. | Shared-team server/write pilots, advisory provider narratives, notifier adapters, Postgres compatibility rehearsal, and prototype operating profiles. |
+| **Planned** | Designed or tracked but not implemented as a supported runtime capability. | A production Postgres runtime adapter, broad tracker API adapters, and a reviewed shared-team production deployment path. |
+| **Non-goal** | Deliberately outside Fairway authority. | Autonomous approval, risk acceptance, merge, push, deploy, live mutation, credential custody, transcript-as-authority, or regulatory certification. |
+
+The dated [documentation inventory](assessment/fairway-documentation-inventory-2026-07-11.md)
+assigns every existing page a canonical or supporting role. Dated assessments
+are evidence inputs, not evergreen product authority.
+
+## How Fairway Fits
+
+| System | Owns | Fairway contribution |
+|---|---|---|
+| Coding agent or IDE | Code generation, investigation, provider interaction | Bounded task packet, durable attachment, checkpoint, evidence, and handback state |
+| Git and forge | Source history, branches, pull requests, remote collaboration | Worktree/branch posture, commit evidence, promotion and merge-readiness checks |
+| CI/CD | Build, test, package, deploy, release execution | Monitor state, evidence references, failure routing, release/deploy preflight and handback |
+| Issue tracker | Roadmap, stakeholder planning, backlog discussion | Import/link/export context while retaining execution truth in Fairway |
+| Agent orchestrator | Provider scheduling and steering | Deterministic next actions, waits, packets, capability checks, and authority guards |
+| Identity proxy | Authentication and access policy | Read-only/shared boundary metadata and fail-closed configuration; no replacement for the proxy |
+
+Fairway composes with these systems. It does not claim to replace them.
 
 ## Principles
 
-1. **Local-first.** Single binary, SQLite, no network required for any core feature. The dashboard binds to localhost by default.
-2. **Config over code.** Roles, branches, states, review routing, and gates are TOML. Changing them does not require a rebuild.
-3. **The DB is the runtime source of truth.** Backlog files define task shape;
-   the DB owns claims, status, evidence, sessions, reviews, checkpoints, and
-   handbacks. No hidden sync loop.
-4. **The CLI is feature-complete.** Anything you can do in the dashboard, you can do from the CLI. The dashboard is a view, not a privileged surface.
-5. **Boringly portable.** Pure Go, no CGO, single binary, works the same on macOS / Linux / Windows.
-6. **Hospitable defaults.** A new user gets value from `fairway init` + `fairway dashboard` before they touch a config file.
-7. **Context over hardcoded agents.** Borrowed from Poiesis: durable docs, task notes, contracts, acceptance checks, and evidence make agents specialized; fairway does not need provider-specific agent classes.
-8. **Profiles over project-specific workflow.** Workstream profiles can define
-   task kinds, packet templates, review domains, evidence expectations, and
-   dashboard grouping without baking one product's process into core.
-9. **Rule packs over copied process docs.** Reusable operating knowledge belongs
-   in versioned rule-pack repositories, such as
-   `fairway-run/fairway-rules-platform`. Project/domain-specific rules belong
-   in that project's own rule-pack repository. Fairway core owns loading,
-   matching, evidence, dashboard, and closeout behavior; it does not hardcode
-   one project's rules.
-10. **Automate the repeated checks.** The operating model should stay short.
-   Repeated rules such as commit boundaries, push/CI signal, deploy-run
-   tracking, and active-session reconciliation should become CLI guards and
-   dashboard findings.
-11. **Promotion is explicit.** Provider and thread branches are local scratch by
-    default. Remote push is a recorded promotion action with intent, normally
-    performed by the orchestrator or reviewer/merge lane after local
-    verification.
-12. **Deterministic coordination before advisory intelligence.** Fairway should
-    compute routine next actions, waits, handbacks, live-window phase, failure
-    routing, and session state from durable facts before asking an LLM or human
-    to interpret them. See
-    [Coordination intelligence](design/coordination-intelligence.md).
+1. **Accountability before automation.** Every consequential action has a named
+   actor, boundary, and evidence expectation.
+2. **Evidence before assertion.** Command results and safe artifacts support
+   claims; generated summaries do not become proof by repetition.
+3. **Independent judgment stays independent.** Review routing and inheritance
+   cannot silently waive live, production, security, release, credential, or
+   public-exposure boundaries.
+4. **Promotion is explicit.** Local reversible work and remote or live action
+   are different states with different controls.
+5. **Deterministic state before advisory intelligence.** Fairway computes
+   routine next actions from durable facts before asking a model or person to
+   interpret exceptions.
+6. **Local-first by default.** Core work requires no hosted Fairway service.
+7. **Configurable policy, stable product grammar.** Projects configure roles,
+   profiles, routes, and gates without hardcoding one consumer taxonomy into
+   core.
+8. **Provider-neutral records.** Provider sessions are replaceable attachments;
+   the task, decision, evidence, and review record is durable.
+9. **Progressive disclosure.** A common reversible path stays short; advanced
+   coordination and consequential gates appear when the work requires them.
+10. **No hidden authority.** A dashboard, adapter, watcher, recommendation, or
+    notification does not silently gain approval, merge, deploy, or live-action
+    authority.
 
-## What "done" looks like for v1.0
+## Source Of Truth
 
-A user can:
+Versioned backlog and profile files define intended task shape. The Fairway DB
+owns runtime claims, status, sessions, checkpoints, decisions, evidence,
+reviews, waits, handbacks, and notifications. Git, CI/CD, issue trackers, and
+provider systems remain authoritative for the facts they execute or host.
 
-- `brew tap fairway-run/tap && brew install --cask fairway`
-- `fairway init` in any git repo
-- Edit five lines of TOML to name their roles
-- `fairway worktree setup` to create the lanes
-- `fairway import tasks.yaml` to seed work
-- `fairway dashboard` to watch agents work
-- Run their day from the CLI with the dashboard always informative
+Fairway links those facts; it does not overwrite their ownership.
 
-…without reading more than the quickstart.
+## Direction
 
-## Roadmap
+Current product work focuses on making the accountability chain easier to
+adopt, strengthening shared-team boundaries without abandoning local-first
+operation, and measuring whether process improves speed, quality, or safety.
 
-Scope for each cut is locked in [release-cuts.md](design/release-cuts.md). The
-roadmap below is directional; release cuts decide what code must be green before
-each version ships.
+The versioned [product backlog](roadmap/fairway-product-backlog.yaml) records
+planned work. Release scope and implemented behavior are reported in
+[release notes](release-notes.md), not predicted here as dated version promises.
 
-### v0.1 — week 1
-- Repo skeleton, schema, state machine, config, dashboard.
-- Read-only dashboard.
-- CLI verbs: `init`, `import`, `ready`, `claim`, `set-status`, `record evidence|handoff|review`, `task-detail`, `config validate`, `dashboard`, `version`.
+## Non-Goals
 
-### v0.2 — week 2–3
-- Session lifecycle (PID, tmux, heartbeats).
-- Worktree commands.
-- Reports (status / health / timing / dispatch).
-- Review routing, merge readiness, and git consistency checks.
-- Coordinator tick, context packets, watcher packets, review checkout, task checkpoints, regression packs, and bug-fix packets.
+Fairway is not a workflow/DAG engine, CI runner, issue tracker, IAM provider,
+LLM gateway, credential store, artifact signer, compliance certification
+system, or autonomous engineering manager. It does not silently claim,
+approve, merge, push, deploy, release, or mutate live environments.
 
-### v0.3
-- Dashboard mutations for claim/status (with CSRF, audit).
-- TUI mode (`fairway tui`) for SSH / headless use.
-- Generic workstream profile track: profile config, declarative packet
-  templates, named readiness gates, dashboard grouping, task ownership
-  metadata, and structured guard evidence. Profile gates and task metadata have
-  started landing, the dashboard now has an initial profile/kind grouping, and
-  dashboard filters over profile metadata; configured packet templates can
-  render packets, guard reports can be recorded as typed evidence, and
-  readiness reports summarize profile gates. Merge readiness also honors
-  task-level review domains. Workflow checks now flag dirty docs/code,
-  unpushed commits, deploy-run prerequisites, and active reconciliation
-  findings, while release-run packets and release verification guard public
-  release, asset, and Homebrew readiness. Provider usage attribution records
-  normalized counts from adapters and rolls them up by task/lane/provider for
-  retrospective planning, without pricing or provider API polling. OTel usage
-  ingestion, Codex `exec --json` mapping, Claude Code OTel mapping, and work
-  batches now cover the first production lessons from GPUaaS stabilization:
-  usage should be attributed without reading provider-private state, and
-  multiple granular tasks should be validated as one batch when they share a
-  branch, CI run, and proof surface. Remote push intent guards now keep
-  disposable provider branches local by default and report unintentional remote
-  branches as closeout debt. GPUaaS / ARC remains the adoption example, not the
-  core product shape.
-
-### v1.0
-- Stable schema. Migrations guaranteed forward-compatible.
-- Homebrew tap.
-- Postgres adapter (likely), with compatibility harness first.
-- Issue tracker adapter design and import/link/export prototype, with Plane,
-  Jira, and Linear as first targets. Plane is the local open-source evaluation
-  target for product/external-team collaboration and adapter semantics; its
-  local evaluation runbook comes before the provider-neutral tracker adapter
-  contract.
-
-### Beyond v1
-- Multi-repo federation.
-- Webhooks / event emission.
-- Deeper issue tracker integrations for Plane, Jira, Linear, GitHub Issues, and
-  similar planning tools.
-
-## Anti-goals
-
-These will never be in fairway:
-
-- Auto-claiming or silently moving work between lanes.
-- Auto-approving reviews or waiving required review domains.
-- Auto-merging branches, auto-pushing commits, or auto-deploying releases.
-- Destructive branch, worktree, remote, or state cleanup without an explicit
-  operator command.
-- A workflow / DAG engine.
-- An IAM / permissions system.
-- An LLM provider runtime or credential/proxy abstraction. Optional advisory
-  adapters may exist only as bounded, replaceable, non-authoritative inputs
-  validated against Fairway state and policy.
-- A CI runner.
-- A SaaS hosted offering.
-- An autonomous approval, merge, deploy, or cleanup engine.
-- A transcript, prompt, secret, generated-content, cookie, or
-  provider-credential store by default.
-- A cost gate for task completion, review, merge readiness, or release
-  promotion. Provider usage accounting is advisory planning telemetry.
-- A product-specific task taxonomy hardcoded into core.
-
-If a feature pushes toward any of those, it goes in a different tool.
-
-The durable boundary rules are defined in
-[Product boundaries](design/product-boundaries.md). The active backlog source
-rules are defined in [Backlog sources](design/backlog-sources.md). The
-coordination-intelligence direction is defined in
-[Coordination intelligence](design/coordination-intelligence.md).
-
-## Competing approaches considered
-
-| Approach | Why not for fairway |
-|---|---|
-| Pure shell scripts (status quo in GPUaaS) | No state machine, no audit trail, no dashboard. |
-| Poiesis-style provider workflow engine | Useful contract/review/QA lessons, but too coupled to LLM execution. Fairway coordinates agents; it does not run them. |
-| Plane / Jira / Linear / Notion | Planning and stakeholder tools, not execution stores for agent sessions, worktrees, evidence, handoffs, reviews, and merge readiness. Fairway integrates with them while keeping local execution state in its DB. |
-| Temporal / Cadence | Massive overkill; not designed for human-paced coordination. |
-| Custom Kanban app | Does not dispatch to worktrees, does not track sessions. |
-
-Fairway sits between "shell scripts" and "issue tracker" — closer to the former in weight, closer to the latter in affordances.
+The durable rules are in [Product boundaries](design/product-boundaries.md).

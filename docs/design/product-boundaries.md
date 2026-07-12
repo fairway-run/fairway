@@ -1,13 +1,28 @@
 # Product Boundaries
 
-Fairway supports governed agentic engineering: high-delegation software
-delivery where agents can do real work while ownership, evidence, review,
-promotion, and human accountability remain explicit. Fairway is the
-coordination control plane for that operating model. It keeps execution state
-visible, auditable, and reviewable. It is not an autonomous workflow engine.
+Fairway is the engineering control and accountability layer for agent-driven
+delivery. It keeps accountable intent, material decisions, evidence,
+independent judgment, and promotion state explicit while agents and external
+engineering systems perform the work.
 
-This page defines the product boundary so orchestration, adapters, usage
-accounting, and dashboard features do not drift into hidden decision-making.
+Coordination is a Fairway capability, not a transfer of authority. Sessions,
+lanes, handoffs, waits, notifications, dashboards, and orchestrators can make
+work visible and resumable. They do not become approval, risk acceptance,
+merge, deploy, release, credential, or live-operation authority.
+
+This page is the canonical product boundary. Other docs link here instead of
+restating or weakening it.
+
+## Responsibility And Authority
+
+| Surface | May do | Must not imply |
+|---|---|---|
+| CLI and store | Record explicit task, decision, evidence, review, and promotion facts | That recording a claim proves or approves it |
+| Dashboard | Read and explain current Fairway state | Privileged approval, send, merge, deploy, or live authority |
+| Coordinator and watchers | Compute deterministic waits, reminders, and bounded next actions | Autonomous ownership transfer or consequential execution |
+| Provider adapter | Attach a provider session and report bounded metadata or delivery proof | That provider output is provenance, approval, or policy |
+| Reviewer | Record an attributable verdict within configured scope | Authority outside the review domain or over external systems |
+| Human operator | Execute explicitly authorized external action and record evidence | That Fairway itself performed or authorized the action |
 
 ## Fairway Will Do
 

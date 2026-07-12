@@ -1,7 +1,13 @@
 # Public Docs Portal
 
-Fairway's public docs portal should make the product understandable without any
-GPUaaS, Core42, or private-track context.
+Fairway's public docs portal presents the product as the engineering control and
+accountability layer for agent-driven delivery. A reader should understand the
+accountability chain and complete one bounded work item before encountering
+lane, worktree, watcher, or shared-team mechanics.
+
+The portal must stand on public repository evidence. AI Cloud may appear as a
+clearly labeled internal case study, but private deployment context is not
+required to understand or adopt Fairway.
 
 ## Audience Paths
 
@@ -9,15 +15,23 @@ Use these paths when organizing the Docusaurus portal:
 
 | Audience | First docs |
 |---|---|
-| New user | README, quickstart, product, governed agentic engineering, concepts |
-| Agent/operator | agent guide, dashboard, workflow guards, checkpoints, context packets, review lanes |
+| New user | README, quickstart, product, concepts |
+| Evaluator | product, product boundaries, architecture, evidence-backed case study |
+| Agent/operator | agent guide, dashboard, workflow guards, checkpoints, context packets |
 | Maintainer | architecture, coding standards, testing, release |
-| Evaluator | product boundaries, backlog sources, scope, workstream profile guide, adoption artifact flow |
-| Provenance reader | archive index |
+| Integrator | integrations, configuration, CLI, provider capability readiness |
+| Provenance reader | supply-chain provenance, assessments, archive index |
 
 ## Public Content Rules
 
 - Keep Fairway's generic product path first.
+- Lead with intent, decisions, evidence, independent judgment, and promotion;
+  introduce coordination mechanics only when the journey needs them.
+- Label substantive claims as implemented, validated practice, experimental,
+  planned, or non-goal.
+- Treat external reviews and generated narrative as input, not authority or
+  provenance.
+- Avoid unsupported compliance, certification, adoption, or market claims.
 - Keep repo-specific adoption material under archive/provenance navigation, not
   the main getting-started path.
 - Do not publish secrets, local env values, customer names, private deployment
@@ -29,9 +43,10 @@ Use these paths when organizing the Docusaurus portal:
 
 The Docusaurus portal should expose:
 
-- home page: what Fairway is, why it exists, install path, dashboard screenshots
-- docs: quickstart, product, governed agentic engineering, product boundaries,
-  backlog sources, agent guide, workstream profiles, dashboard, release notes
+- home page: accountable product promise, audience, first action, authority
+  boundary, and evidence-backed proof
+- docs: quickstart, product, concepts, product boundaries, agent guide,
+  integrations, case study, workstream profiles, dashboard, release notes
 - reference: config reference, CLI surface, schema, state machine
 - governance: release, testing, coding standards, review guards
 - release notes: current release candidate scope, known limits, and release
