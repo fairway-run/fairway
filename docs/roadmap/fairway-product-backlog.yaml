@@ -5543,3 +5543,152 @@ tasks:
     acceptance_checks:
       - "Review readers order append-only rows by durable row id so latest verdict is deterministic even when timestamps tie or the wall clock moves backward."
       - "Coordinator review completion handback tests pass repeatedly for changes-then-approved and approved-then-changes sequences."
+
+  - id: FW-324
+    title: Reframe Fairway product narrative and documentation
+    kind: epic
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product-documentation
+    source_paths: [README.md, docs, website]
+    target_paths: [README.md, docs, website, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, governance, ui]
+    risk_level: medium
+    migration_type: product-narrative-docs-epic
+    acceptance_checks:
+      - "Fairway is consistently presented as the engineering control and accountability layer for agent-driven delivery, with coordination as a capability rather than the category definition."
+      - "The public documentation has a short path for adopters and progressive disclosure for advanced operating-model concepts."
+      - "Claims, comparisons, examples, and case studies distinguish implemented capability, validated practice, planned work, and explicit non-goals."
+
+  - id: FW-325
+    title: Establish evidence-backed Fairway positioning and claims
+    kind: docs
+    parent_id: FW-324
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product-positioning
+    source_paths: [README.md, docs/product.md, docs/design/product-boundaries.md, docs/design/agent-native-product-interface.md]
+    target_paths: [README.md, docs/product.md, docs/design/product-boundaries.md, docs/docs-portal.md]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: evidence-backed-positioning
+    acceptance_checks:
+      - "The primary narrative leads with accountable intent, decisions, evidence, independent judgment, and promotion rather than worktrees or lane mechanics."
+      - "A claim inventory labels implemented, validated, experimental, planned, and non-goal statements and removes unsupported compliance or market claims."
+      - "The narrative explains how Fairway composes with coding agents, source control, CI/CD, issue trackers, and orchestrators without claiming to replace them."
+
+  - id: FW-326
+    title: Redesign Fairway documentation information architecture
+    kind: docs
+    parent_id: FW-324
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: docs-information-architecture
+    source_paths: [docs, website]
+    target_paths: [docs/docs-portal.md, docs, website]
+    review_domains: [governance, ui]
+    risk_level: medium
+    migration_type: docs-information-architecture
+    dependencies: [FW-325]
+    acceptance_checks:
+      - "Navigation separates evaluate, get started, use, operate, integrate, understand, and reference journeys instead of mirroring internal feature vocabulary."
+      - "Every current document is classified as canonical, supporting reference, assessment/evidence, release material, or archive candidate, with one named canonical owner per subject."
+      - "Duplicate and superseded narratives have merge/archive dispositions so the rewrite reduces document and concept duplication rather than adding another layer."
+
+  - id: FW-327
+    title: Prove the five-minute Fairway first-value path
+    kind: task
+    parent_id: FW-324
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: onboarding
+    source_paths: [README.md, docs/quickstart.md, docs/agent-guide.md, cmd/fairway]
+    target_paths: [README.md, docs/quickstart.md, docs/agent-guide.md, docs/assessment]
+    review_domains: [backend, governance, ops, ui]
+    risk_level: medium
+    migration_type: first-value-onboarding
+    dependencies: [FW-325]
+    acceptance_checks:
+      - "A new adopter can install or run Fairway, initialize a repository, complete one bounded work item, and inspect its decision/evidence record in five minutes without learning the full vocabulary."
+      - "A clean-environment rehearsal records commands, elapsed time, confusion points, defaults, artifacts, cleanup, and a pass/fail recommendation."
+      - "Advanced concepts remain discoverable through progressive links and do not interrupt the common path unless a consequential boundary requires them."
+
+  - id: FW-328
+    title: Consolidate Fairway concepts into a progressive operating guide
+    kind: docs
+    parent_id: FW-324
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: concept-model
+    source_paths: [docs/design, docs/agent-guide.md, docs/governed-agentic-engineering.md]
+    target_paths: [docs/design/concepts.md, docs/agent-guide.md, docs/governed-agentic-engineering.md, docs/archive]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: concept-consolidation
+    dependencies: [FW-326, FW-327]
+    acceptance_checks:
+      - "The minimum vocabulary needed for common work is explicitly separated from advanced coordination, shared-team, release, and forensic concepts."
+      - "Overlapping concept documents are consolidated or cross-referenced to one canonical definition; superseded material moves to archive with provenance."
+      - "No new core term is introduced without a demonstrated user need, authority boundary, and relationship to existing terminology."
+
+  - id: FW-329
+    title: Document Fairway integrations and adjacent product boundaries
+    kind: docs
+    parent_id: FW-324
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: integrations-positioning
+    source_paths: [docs/design/provider-surface-capability-readiness.md, docs/design/issue-tracker-integrations.md, docs/design/product-boundaries.md]
+    target_paths: [docs/integrations.md, docs/alternatives.md, README.md, website]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: integrations-and-alternatives
+    dependencies: [FW-325]
+    acceptance_checks:
+      - "Docs show how Fairway composes with Codex, Claude Code, source control, CI/CD, issue trackers, and agent orchestrators using concrete supported paths."
+      - "An alternatives page compares product responsibilities and authority boundaries without misclassifying orchestration projects such as Bernstein as direct equivalents."
+      - "Implemented integrations are separated from recipes, design directions, and unsupported provider claims."
+
+  - id: FW-330
+    title: Publish an evidence-backed AI Cloud Fairway case study
+    kind: docs
+    parent_id: FW-324
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: case-study
+    source_paths: [docs/assessment, docs/release-notes.md, docs/design/task-decision-memory.md]
+    target_paths: [docs/case-studies/ai-cloud.md, website]
+    review_domains: [governance, ops]
+    risk_level: medium
+    migration_type: adopter-case-study
+    dependencies: [FW-325, FW-327]
+    acceptance_checks:
+      - "The case study explains the AI Cloud problem, operating model, representative workflows, measured outcomes, defects or process gaps found, and known limitations."
+      - "Every quantitative claim links to durable Fairway or repository evidence and avoids presenting internal activity volume as customer value."
+      - "The case study includes concrete examples of provider replacement, context recovery, decision/evidence readback, review, release, and environment rehearsal."
+
+  - id: FW-331
+    title: Rebuild and publish the Fairway documentation portal narrative
+    kind: docs
+    parent_id: FW-324
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: docs-portal
+    source_paths: [README.md, docs, website]
+    target_paths: [website, docs/docs-portal.md, README.md]
+    review_domains: [governance, ui, ops]
+    risk_level: high
+    migration_type: docs-portal-rebuild
+    dependencies: [FW-326, FW-328, FW-329, FW-330]
+    acceptance_checks:
+      - "Portal landing and navigation communicate product value, audience, first action, authority boundary, and proof before exposing detailed internal concepts."
+      - "Quickstart, integrations, operating guide, architecture, reference, case study, release, and security/provenance content are reachable through tested user journeys on desktop and mobile widths."
+      - "Local link/navigation/build checks and screenshot-backed visual review pass before publication, with version/source readback and rollback evidence recorded."
