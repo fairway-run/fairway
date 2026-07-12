@@ -98,6 +98,30 @@ func TestLoadProfileRejectsUnknownFieldsAndUnsafeFiles(t *testing.T) {
 	}
 }
 
+func TestListDirectoryIsSortedAndFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	writeAssuranceFile(t, dir, "b.yaml", strings.Replace(validProfileYAML, "id: example-assurance", "id: b-profile", 1))
+	writeAssuranceFile(t, dir, "a.yaml", strings.Replace(validProfileYAML, "id: example-assurance", "id: a-profile", 1))
+	reports, err := ListDirectory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 2 || reports[0].ProfileID != "a-profile" || reports[1].ProfileID != "b-profile" {
+		t.Fatalf("reports=%+v", reports)
+	}
+	writeAssuranceFile(t, dir, "bad.yaml", "schema: unexpected\n")
+	if _, err := ListDirectory(dir); err == nil || !strings.Contains(err.Error(), "invalid assurance profile bad.yaml") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func writeAssuranceFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 const validProfileYAML = `schema: fairway.assurance-profile.v1
 id: example-assurance
 version: v1

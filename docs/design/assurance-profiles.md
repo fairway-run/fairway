@@ -13,7 +13,9 @@ JSON file validated with:
 ```bash
 fairway assurance profile validate examples/assurance-profiles/example-evidence-support.yaml
 fairway --json assurance profile validate examples/assurance-profiles/example-evidence-support.yaml
+fairway assurance profiles list --dir examples/assurance-profiles
 fairway assurance evidence map --profile examples/assurance-profiles/example-evidence-support.yaml --task FW-355 --at 2026-07-12T12:00:00Z
+fairway assurance readiness --profile examples/assurance-profiles/example-evidence-support.yaml --scope task_set --scope-id assurance-core --task FW-355 --at 2026-07-12T12:00:00Z
 ```
 
 The example profile is deliberately not a standards mapping. Versioned starter
@@ -101,6 +103,31 @@ assessment records are labeled as assertions requiring assessor validation.
 Controls marked `external_assessment_required` remain unsupported in this
 read model even when all product-side facts match; Fairway does not convert an
 external assertion into an assessor conclusion.
+
+## Readiness and gaps
+
+FW-357 builds a scope-level report over normalized maps. Requirements are
+evaluated across the selected project, task set, or release scope, rather than
+requiring every individual task to contain the minimum evidence count. The
+project scope always selects the complete configured project. Task-set and
+release scopes require an explicit scope identifier and task list. The
+stable status vocabulary is:
+
+- `satisfied_by_recorded_evidence`
+- `partial`
+- `missing`
+- `stale`
+- `conflicting`
+- `customer_responsibility`
+- `external_assessment_required`
+- `exception_recorded`
+- `not_applicable_with_rationale`
+
+The report never emits `compliant` or `certified` as a control status. A gap
+names the control and evidence class, responsible party, next evidence action,
+recorded source references, freshness rule, and assessor boundary. Gap output
+is read-only and does not automatically create tasks, accept exceptions, or
+change control state.
 
 Generated findings and packages remain assessment inputs. A certification or
 authorization may be recorded later only as explicit external evidence from the

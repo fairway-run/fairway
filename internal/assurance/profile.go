@@ -170,6 +170,45 @@ func LoadFile(path string) (Profile, error) {
 	return profile, nil
 }
 
+func ListDirectory(dir string) ([]ValidationReport, error) {
+	if strings.TrimSpace(dir) == "" || strings.Contains(dir, "://") {
+		return nil, errors.New("assurance profile directory must be a local path")
+	}
+	info, err := os.Lstat(filepath.Clean(dir))
+	if err != nil {
+		return nil, fmt.Errorf("read assurance profile directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return nil, errors.New("assurance profile directory must be a non-symlink directory")
+	}
+	entries, err := os.ReadDir(filepath.Clean(dir))
+	if err != nil {
+		return nil, fmt.Errorf("read assurance profile directory: %w", err)
+	}
+	var reports []ValidationReport
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".json" && ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		profile, err := LoadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return nil, fmt.Errorf("invalid assurance profile %s: %w", entry.Name(), err)
+		}
+		reports = append(reports, Report(profile))
+	}
+	sort.Slice(reports, func(i, j int) bool {
+		if reports[i].ProfileID != reports[j].ProfileID {
+			return reports[i].ProfileID < reports[j].ProfileID
+		}
+		return reports[i].ProfileVersion < reports[j].ProfileVersion
+	})
+	return reports, nil
+}
+
 func Validate(profile Profile) error {
 	if profile.Schema != ProfileSchema {
 		return fmt.Errorf("unsupported assurance profile schema %q", profile.Schema)

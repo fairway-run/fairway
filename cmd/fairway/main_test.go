@@ -2433,6 +2433,36 @@ func TestCLI_AssuranceEvidenceMap(t *testing.T) {
 	}
 	assertNotContains(t, jsonOut, "go test ./...")
 	assertNotContains(t, jsonOut, "artifacts/test.json")
+
+	if err := os.MkdirAll("profiles", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, "profiles/profile.json", profile)
+	profiles := runCapture(t, "assurance", "profiles", "list", "--dir", "profiles")
+	assertContains(t, profiles, "assurance_profiles: 1")
+	assertContains(t, profiles, "cli-map@v1")
+
+	readiness := runCapture(t, "assurance", "readiness", "--profile", "profile.json", "--scope", "project", "--at", "2026-07-12T12:00:00Z")
+	assertContains(t, readiness, "assurance_readiness: fairway.assurance-readiness.v1")
+	assertContains(t, readiness, "control EX-1 status=satisfied_by_recorded_evidence")
+	assertContains(t, readiness, "gaps: 0")
+	assertNotContains(t, readiness, "go test ./...")
+	assertNotContains(t, readiness, "artifacts/test.json")
+
+	readinessJSON := runCapture(t, "--json", "assurance", "readiness", "--profile", "profile.json", "--scope", "project", "--at", "2026-07-12T12:00:00Z")
+	assertContains(t, readinessJSON, `"schema": "fairway.assurance-readiness.v1"`)
+	assertContains(t, readinessJSON, `"status": "satisfied_by_recorded_evidence"`)
+	assertNotContains(t, readinessJSON, `"status": "certified"`)
+	assertNotContains(t, readinessJSON, `"status": "compliant"`)
+
+	err = run(context.Background(), []string{"assurance", "readiness", "--profile", "profile.json", "--scope", "project", "--task", "T-001"})
+	if err == nil || !strings.Contains(err.Error(), "project scope covers the configured project") {
+		t.Fatalf("unexpected project subset error: %v", err)
+	}
+	err = run(context.Background(), []string{"assurance", "readiness", "--profile", "profile.json", "--scope", "task_set", "--task", "T-001"})
+	if err == nil || !strings.Contains(err.Error(), "require --scope-id") {
+		t.Fatalf("unexpected missing scope id error: %v", err)
+	}
 }
 
 func TestCLI_ExplainCodeGroundedPacket(t *testing.T) {

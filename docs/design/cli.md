@@ -632,7 +632,9 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 
 ```bash
 fairway assurance profile validate <path> [--format text|json]
+fairway assurance profiles list --dir <path> [--format text|json]
 fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]
+fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]
 ```
 
 The validator accepts one local YAML or JSON
@@ -649,6 +651,20 @@ out-of-scope, and externally asserted boundaries instead of upgrading them to
 supporting evidence. `--at` fixes the evaluation clock for reproducible
 freshness calculations and byte-stable JSON; without it, current UTC time is
 used and reported as `evaluated_at`.
+`profiles list` validates every YAML/JSON profile in one local, non-symlinked
+directory and fails closed if any candidate profile is invalid. `readiness`
+aggregates normalized facts across an explicit project, task-set, or release
+scope and reports only `satisfied_by_recorded_evidence`, `partial`, `missing`,
+`stale`, `conflicting`, `customer_responsibility`,
+`external_assessment_required`, `exception_recorded`, or
+`not_applicable_with_rationale`. Gap rows name the control, evidence class,
+owner, bounded next evidence action, source references, freshness rule, and
+assessor boundary. These commands never create remediation tasks or infer a
+certification or compliance result.
+Project scope always covers every task in the configured Fairway project and
+rejects task subsets. Task-set and release scopes require a stable `--scope-id`
+and at least one explicit `--task`, preventing partial evidence from being
+presented as an unidentified release or project-wide result.
 See [assurance profiles](assurance-profiles.md).
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic
