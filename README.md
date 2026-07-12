@@ -44,9 +44,9 @@ fairway dashboard
 ```
 
 Continue with the [quickstart](docs/quickstart.md) to complete one bounded work
-item and inspect its evidence and decision record. The later FW-327 rehearsal
-owns the measured five-minute claim; this page does not assume it before that
-evidence exists.
+item and inspect its evidence and decision record. The clean-repository
+rehearsal completed the command path in less than one second of machine
+execution and documented the Git baseline and bootstrap-commit prerequisites.
 
 ## The Accountability Chain
 

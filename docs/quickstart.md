@@ -1,345 +1,141 @@
 # Quickstart
 
-This is a runnable local flow for trying Fairway in a repository with a small
-set of agent lanes.
+This path creates one complete Fairway control record in an existing Git
+repository. It introduces only the vocabulary needed for the first result:
+work, decision, evidence, and closeout.
 
-Public docs: [fairway.run](https://fairway.run).
+The path was rehearsed from a clean temporary repository on 2026-07-11. The
+commands completed in less than one second of machine execution after the
+binary and repository baseline were available. The full evidence, failed
+attempts, defaults, and cleanup proof are in the
+[five-minute assessment](assessment/fairway-five-minute-first-value-2026-07-11.md).
 
-## Install
+## Prerequisites
 
-Tagged releases publish signed/notarized macOS artifacts and update the
-Homebrew cask:
+- Git repository with a committed `main` branch.
+- Fairway installed or built from the current source.
+
+Install the current release on macOS:
 
 ```bash
 brew tap fairway-run/tap
-brew install --cask fairway            # macOS
-# or download from the releases page
+brew install --cask fairway
+fairway version
 ```
 
-Until the first tagged release is cut, install from source:
+Or run the current source:
 
 ```bash
 go install github.com/fairway-run/fairway/cmd/fairway@latest
-# or, from a checkout:
-make install
+fairway version
 ```
 
-## Bootstrap a repo
+## 1. Initialize Fairway
+
+From the repository root:
 
 ```bash
-cd /path/to/your/repo
 fairway init
-$EDITOR .fairway/config.toml
+git add .fairway/.gitignore .fairway/AGENTS.md .fairway/config.toml
+git commit -m "chore: initialize Fairway"
+fairway doctor
 ```
 
-A minimal config:
+`fairway init` creates local configuration, an ignored SQLite DB, and the
+agent breadcrumb. Commit the generated control files before completing work;
+`fairway work close` fails closed on an uncommitted worktree.
 
-```toml
-[fairway]
-main_branch = "main"
+`fairway doctor` should report `doctor_ok: true`. Follow a failing diagnostic
+before continuing. Warnings name their owner and suggested command.
 
-[[roles]]
-name = "backend"
-branch = "agent/backend"
-
-[[roles]]
-name = "ui"
-branch = "agent/ui"
-
-[[roles]]
-name = "orchestrator"
-branch = "agent/orchestrator"
-```
-
-For architecture, release, migration, or security tracks, add a workstream
-profile. Profiles are optional; they give Fairway names for task kinds,
-dashboard groups, review domains, adoption route samples, readiness gates, and
-packet template fields without baking one project's workflow into the binary.
-
-```toml
-[[workstream_profiles]]
-name = "platform-foundation"
-task_kinds = ["architecture-map", "boundary-guard", "facade"]
-dashboard_groups = ["architecture maps", "boundary guards", "facades"]
-review_domains = ["architecture", "security"]
-route_samples = ["doc/api/openapi.yaml", "cmd/api/routes.go"]
-
-[[workstream_profiles.gates]]
-name = "security-review"
-mode = "advisory"
-task_kinds = ["facade"]
-evidence_type = "security-review"
-required_evidence_count = 1
-accepted_results = ["pass", "partial"]
-artifact_required = true
-
-[[packet_templates]]
-profiles = ["platform-foundation"]
-name = "architecture-map"
-required_fields = ["scope", "current_owner", "target_owner", "migration_risk", "acceptance"]
-optional_fields = ["source_doc"]
-```
-
-Validate after changing config:
+## 2. Create And Start One Work Item
 
 ```bash
-fairway config validate
+fairway add FV-001 \
+  --title "Verify the local Fairway control record" \
+  --role operator
+
+fairway work start FV-001 \
+  --session-id first-value \
+  --role operator \
+  --provider shell \
+  --backend shell \
+  --summary "Complete the first bounded Fairway record"
 ```
 
-Before closing a task, handoff, deploy, or UAT run, use the workflow guard:
+The task is the accountable intent. The session is the replaceable execution
+attachment. Nothing has been approved, merged, deployed, or released.
+
+## 3. Record A Material Decision
 
 ```bash
-fairway workflow check
-fairway workflow check --mode deploy --require-clean --require-pushed
+fairway decision record FV-001 \
+  --decision "Keep first-value proof in Fairway" \
+  --trigger "The setup check needs a durable rationale" \
+  --alternative "Leave the result only in shell history" \
+  --chosen "Record the decision and verification in the local Fairway DB" \
+  --reason "The next operator can inspect the claim without provider chat" \
+  --risk "Local metadata only; no external action" \
+  --validation "fairway task-detail FV-001" \
+  --fact-ref "task:FV-001"
 ```
 
-The first command warns about dirty docs/code, unpushed commits, and active
-Fairway reconciliation findings. The deploy mode requires clean pushed source
-so CI has a chance to run before deploy evidence is recorded.
+The decision explains a choice. It is not approval, provenance for an external
+fact, or authority to perform a consequential action.
 
-When several granular tasks share the same implementation and validation
-surface, create a work batch before editing. Tasks stay granular for ownership
-and review, while the batch owns the branch, worktree, CI/deploy run, and
-shared proof:
+## 4. Verify And Close
+
+For this setup task, the passing doctor result is the evidence:
 
 ```bash
-fairway batch create BATCH-001 \
-  --title "registry operator read models" \
-  --task OPS-001 \
-  --task OPS-002 \
-  --branch codex/registry-ops-readmodels \
-  --validation-command "go test ./cmd/fairway ./internal/store" \
-  --review-domain backend \
-  --review-domain governance
+fairway work verify FV-001 \
+  --command-text "fairway doctor" \
+  --result pass
+
+fairway work close FV-001 --session-id first-value
 ```
 
-After the shared validation passes, map the batch evidence to member tasks:
+`work close` composes the existing workflow, evidence, review, and
+merge-readiness checks. It does not create missing review or grant promotion
+authority.
+
+## 5. Inspect The Record
 
 ```bash
-fairway batch evidence BATCH-001 \
-  --command-text "go test ./..." \
-  --result pass \
-  --artifact dist/ci-123.log \
-  --artifact-type ci
+fairway task-detail FV-001
 ```
 
-For provider usage attribution, prefer provider-supported OTel or structured
-JSON surfaces over private provider state. The session adapters under
-`examples/session-adapters/` include the generic OTel bridge plus Codex and
-Claude Code usage mappings.
+The readback should show:
 
-## Set up lanes
+- status `done`;
+- the `fairway doctor` evidence row;
+- the recorded decision and its authority boundary;
+- the `todo -> in_progress -> done` history.
 
-```bash
-fairway worktree setup
-```
+That is the first value: another operator or provider can recover what was
+intended, decided, checked, and closed without reading this shell session.
 
-Creates the configured branches (off `main_branch`) and checks them out into the configured worktree root.
-
-## Define tasks
-
-Create tasks via YAML import:
-
-```bash
-fairway import tasks.yaml
-```
-
-`tasks.yaml`:
-
-```yaml
-- id: T-001
-  title: Wire up /v1/orders endpoint
-  role: backend
-  profile: service-extraction
-  owning_domain: orders
-  owning_layer: api
-  source_paths: ["internal/orders"]
-  target_paths: ["cmd/api/routes/orders.go"]
-  review_domains: ["architecture", "backend"]
-  risk_level: medium
-  migration_type: endpoint
-  notes: |
-    Returns the user's recent orders.
-    Acceptance:
-      - integration test passes
-      - p95 < 100ms
-  acceptance_checks:
-    - "go test ./internal/orders/..."
-- id: T-002
-  title: Build the orders list page
-  role: ui
-  dependencies: [T-001]
-```
-
-## Run the dashboard
-
-If you are installing from a local checkout, `make install` writes
-`~/.local/bin/fairway` by default. Override with
-`make install PREFIX=/opt/homebrew` or `make install BINDIR=/some/bin` when
-needed.
+## Optional: Open The Dashboard
 
 ```bash
 fairway dashboard
 ```
 
-Opens `http://127.0.0.1:7878`. Leave it open on a second monitor.
+The dashboard opens on loopback by default. Shared/public access, detached
+lifecycle, multi-project mode, and identity-aware proxy setup are advanced
+operator topics, not first-run requirements.
 
-![Fairway read-only dashboard wall](/img/dashboard/fairway-dashboard-wall.png)
+## What To Learn Next
 
-The screenshot above is from a synthetic release-safe fixture. It shows the
-shared read-only coordination wall without exposing customer, production, or AI
-Cloud operational data. Read-only dashboard sharing is for visibility; task
-mutation remains a CLI/local-worktree action.
+Choose the next page by need:
 
-Open `/reports` when the question is retrospective rather than live: what
-finished today, what was only monitor/deploy bookkeeping, which lanes moved
-work, which CI/deploy/UAT runs need follow-up, and what export should go into a
-handoff.
+- Run normal work: [Agent guide](agent-guide.md)
+- Understand the minimum model: [Concepts](design/concepts.md)
+- Configure roles, routes, and profiles: [Configuration reference](config-reference.md)
+- Operate the dashboard: [Dashboard](design/dashboard.md)
+- Understand authority limits: [Product boundaries](design/product-boundaries.md)
+- Set up multiple roles or worktrees: [Worktrees](design/worktrees.md)
+- Run a small-team host: [Small-team lab deployment](operations/small-team-lab-deployment.md)
 
-![Fairway reports with delivery resources](/img/dashboard/fairway-dashboard-reports.png)
-
-For an operator dashboard that should survive the launching terminal or agent
-thread, use the detached lifecycle commands:
-
-```bash
-fairway dashboard start
-fairway dashboard status
-fairway dashboard restart
-fairway dashboard stop
-```
-
-Detached mode writes `.fairway/dashboard.pid` and `.fairway/dashboard.log` by
-default. `dashboard status`, `start`, and `restart` also print the Fairway
-version and binary path, which is useful when replacing a long-running dashboard
-with a freshly built or released binary:
-
-```bash
-fairway --json dashboard status
-fairway dashboard restart --listen 127.0.0.1:7878 --read-only --no-open
-fairway dashboard status
-```
-
-For a repo with more than one Fairway config, register each config by name
-before starting a multi-project read-only dashboard:
-
-```bash
-fairway --config .fairway/platform-config.toml register --name platform
-fairway --config .fairway/docs-config.toml register --name docs
-fairway dashboard start --multi --read-only --listen 127.0.0.1:7878 --no-open
-fairway dashboard status --multi --listen 127.0.0.1:7878
-```
-
-The registry keeps same-path projects separate when their DB/config identities
-differ. Use `/projects` to confirm the dashboard is reading the expected DB for
-each project.
-
-If a sandboxed desktop surface cannot stop the old listener, perform the
-stop/restart from the approved tmux or SSH operator lane and record the status
-readback as Fairway evidence.
-
-For a Mac mini, GitLab lab host, or similar small-team control-room machine,
-use the [small-team lab deployment runbook](operations/small-team-lab-deployment.md)
-to set explicit binary, config, DB, pid, log, backup, restore, dashboard, and
-read-only API paths before sharing the dashboard with a team.
-
-## A typical loop
-
-In the backend worktree:
-
-```bash
-fairway ready                 # what is available for me?
-fairway claim T-001
-# ... do the work, commit ...
-fairway record evidence T-001 --command-text "go test ./..." --result pass --artifact internal/orders/orders_test.go --artifact-type test
-fairway set-status T-001 done
-fairway route review T-001 --path internal/orders/orders.go
-fairway merge-ready T-001
-```
-
-If the task's kind belongs to a configured workstream profile, `merge-ready`
-also evaluates that profile's gates. Missing `blocking` profile gates fail the
-check; missing advisory/report-only gates are printed as warnings.
-
-In the UI worktree:
-
-```bash
-fairway ready                 # T-002 is now ready (T-001 reached done)
-fairway claim T-002
-fairway record handoff T-002 --to backend --payload "Need an example payload for /v1/orders before finalizing the form."
-```
-
-## What you see in the dashboard
-
-- The track summary shows total, ready, in-progress, blocked, done, and
-  workstream counts.
-- Workstream progress cards group tasks by profile and kind when profile
-  metadata is present.
-- Profile gate readiness shows whether evidence-backed gates are satisfied
-  across the track, with links to missing tasks.
-- The lanes strip updates within a second of each transition.
-- The activity feed shows the chain: claim -> evidence -> done; claim ->
-  handoff, with kind and row-count filters for busy tracks.
-- Task tables are bounded by a row limit so large queues stay usable; narrow
-  filters or raise the table limit when you need more detail.
-- Reports default to the local current day, preserve filters in the URL, and
-  export Markdown, JSON, or CSV for the same date range and filters shown in the
-  browser.
-- Health badges flag the unacknowledged handoff to backend after one hour.
-
-Long-running side work should use packets and checkpoints:
-
-```bash
-fairway packet context T-001 --goal "finish API contract" --owner backend --acceptance "tests pass"
-fairway checkpoint record T-001 --state active --owner backend --summary "waiting on API fixture"
-fairway checkpoint status
-```
-
-See [coordinator-loop.md](design/coordinator-loop.md),
-[context-packets.md](design/context-packets.md), and
-[checkpoints.md](design/checkpoints.md).
-
-For architecture-heavy workstreams, start from the generic
-[`examples/platform-foundation-queue.yaml`](../examples/platform-foundation-queue.yaml)
-fixture to see profile-aware task metadata in context. For planning or
-documentation tasks, prefer an `orchestrator` owner with architecture,
-governance, security, ops, or frontend listed as review domains. That keeps
-coordination ownership separate from review approval and avoids self-review
-when review routes point back to the architecture lane.
-
-## Adoption Readiness
-
-When you are trying Fairway in an existing project, generate an adoption
-artifact before switching your team over:
-
-```bash
-fairway adoption artifact --catalog examples/regression-packs.yaml
-fairway --json adoption artifact --route cmd/api/routes.go
-```
-
-The artifact summarizes task counts, ready work, configured gates, workstream
-profile gates, evidence-backed gate evaluation, review-route samples,
-regression-pack validation, health, and evidence gaps. If no `--route` flags are
-provided, Fairway samples paths from the configured `route_samples`. See
-[workstream-profile-guide.md](workstream-profile-guide.md) for profile design
-guidance.
-
-If the project does not have regression packs yet, either add a tiny catalog for
-the workstream or omit `--catalog` and treat the regression-pack section as
-future coverage. The adoption artifact is still useful for profile gates,
-review routes, evidence gaps, and worktree health.
-
-## Adoption References
-
-Fairway is generic, but it was hardened against real multi-agent stabilization
-work. The example configs remain useful when you want a larger reference
-configuration with architecture, ops, frontend, backend, and governance lanes.
-
-Use
-[`examples/gpuaas-a-b-c-d-e-config.toml`](../examples/gpuaas-a-b-c-d-e-config.toml)
-for the exact A/B/C/D/E lane mapping, platform-foundation workstream profile,
-named advisory gates, packet templates, and
-[`examples/gpuaas-regression-packs.yaml`](../examples/gpuaas-regression-packs.yaml)
-to verify Fairway accepts GPUaaS-style per-environment regression blocking.
-
-Historical adoption notes are kept in [archive/](archive/README.md), not the
-main getting-started path.
+Do not add worktrees, shared servers, provider adapters, review matrices, or
+release gates to the first path unless the work actually crosses that boundary.

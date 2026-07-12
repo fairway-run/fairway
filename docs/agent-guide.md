@@ -4,6 +4,12 @@ Fairway is built for coding agents working in parallel. This guide is the
 operator-facing contract for an agent that is already inside a repo with
 Fairway configured.
 
+If Fairway is not configured yet, stop here and use the
+[quickstart](quickstart.md). It proves one bounded task, decision, evidence row,
+closeout, and readback before introducing the advanced coordination model on
+this page. Do not make a new adopter learn sessions, lanes, worktrees, watchers,
+or shared-team operation before that first result.
+
 ## Cold Start In Consumer Repos
 
 When `fairway init` is run in a consumer repository, it writes
