@@ -5840,21 +5840,21 @@ tasks:
       - "The local Docusaurus production build and the exact pushed Docs Portal workflow pass before closeout."
 
   - id: FW-340
-    title: Establish Fairway Sovereign Deployment Ready program
+    title: Build Fairway certification evidence accelerator and sovereign reference profile
     kind: epic
     role: arch
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-assurance
     source_paths: [cmd/fairway, internal, scripts, docs, examples, .github, .goreleaser.yaml]
-    target_paths: [cmd/fairway, internal, scripts, docs, examples, .github, .goreleaser.yaml, docs/roadmap/fairway-product-backlog.yaml]
+    target_paths: [cmd/fairway, internal/assurance, scripts, docs, examples, .github, .goreleaser.yaml, docs/roadmap/fairway-product-backlog.yaml]
     review_domains: [arch, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-deployment-readiness-epic
     acceptance_checks:
-      - "Fairway defines versioned disconnected, sovereign-connected, restricted-data, and customer-managed deployment profiles with explicit assumptions, responsibilities, supported capabilities, and non-goals."
-      - "Sovereign Deployment Ready is an evidence-backed Fairway product claim for named profiles, not a claim of Common Criteria, EUCC, FIPS, ISO, CUI, export-control, or national-scheme certification."
-      - "The program covers enforceable network isolation, offline distribution, identity, cryptography, audit integrity, supply-chain assurance, hardened deployment, assessor evidence, independent rehearsal, vulnerability response, and external assessment."
+      - "Fairway provides reusable versioned assurance profiles, deterministic evidence mapping, readiness and gap reporting, assessor-ready package generation, and offline verification for consumer projects."
+      - "Generated packages distinguish recorded evidence, customer responsibility, external assessment, exceptions, and missing proof and never grant or imply certification, compliance, authorization, approval, risk acceptance, merge, deploy, release, credential, public-exposure, or live-operation authority."
+      - "Fairway's disconnected, sovereign-connected, restricted-data, and customer-managed deployment profiles are the first reference implementation and dogfood package, not a substitute for accredited external certification."
 
   - id: FW-341
     title: Define sovereign threat model control baseline and claims taxonomy
@@ -5869,7 +5869,7 @@ tasks:
     review_domains: [arch, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-control-baseline
-    dependencies: [FW-333]
+    dependencies: [FW-333, FW-355]
     acceptance_checks:
       - "The threat model covers disconnected and sovereign-connected operation, malicious artifacts, compromised build infrastructure, operator and reviewer impersonation, insider misuse, evidence tampering, rollback, backup loss, adapter escape, and data-boundary failure."
       - "A control baseline maps applicable Fairway responsibilities to NIST SSDF, NIST 800-53 or 800-171 families, EU CRA technical documentation, and product-evaluation inputs without presenting those mappings as certification."
@@ -5983,7 +5983,7 @@ tasks:
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-release-assurance-bundle
-    dependencies: [FW-341]
+    dependencies: [FW-341, FW-358, FW-359]
     acceptance_checks:
       - "Every candidate release produces checksums, detached signatures, SPDX or CycloneDX SBOM, VEX, dependency and license inventory, source and build provenance, builder identity, build recipe, test summary, and vulnerability disposition."
       - "Offline and connected verification enforce artifact digest, signature, provenance subject, trusted builder, expected source revision, policy version, and required evidence completeness rather than merely displaying metadata."
@@ -6021,7 +6021,7 @@ tasks:
     review_domains: [arch, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-assessor-evidence-package
-    dependencies: [FW-341, FW-344, FW-345, FW-346, FW-347, FW-348]
+    dependencies: [FW-341, FW-344, FW-345, FW-346, FW-347, FW-348, FW-360]
     acceptance_checks:
       - "The assessor package includes architecture and data flows, threat model, security target draft, control responsibility matrix, secure development lifecycle, vulnerability process, privacy/data inventory, configuration baselines, test strategy, known gaps, and evidence index."
       - "Applicable NIST controls and assessment objectives are exported in human-readable and OSCAL-compatible form with implementation status, customer responsibility, evidence reference, profile, product version, and review date."
@@ -6040,7 +6040,7 @@ tasks:
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-disconnected-rehearsal
-    dependencies: [FW-343, FW-349]
+    dependencies: [FW-343, FW-349, FW-361]
     acceptance_checks:
       - "A non-authoring operator installs and verifies Fairway in a disposable environment with DNS and outbound network denied, no pre-existing caches, and only the signed offline bundle plus documented trust roots."
       - "The rehearsal covers identity, authorization failures, ordinary task/evidence/review workflows, dashboard readback, audit verification, backup/restore, upgrade/rollback, key loss recovery, tampered bundle rejection, and clean disposal."
@@ -6116,8 +6116,141 @@ tasks:
     review_domains: [arch, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-readiness-release-packet
-    dependencies: [FW-350, FW-351, FW-352, FW-353]
+    dependencies: [FW-350, FW-351, FW-352, FW-353, FW-361]
     acceptance_checks:
       - "The release packet identifies the exact reviewed source, binaries, offline bundle, assurance bundle, supported sovereign profiles, customer responsibilities, independent assessment, known limits, rollback target, and evidence index."
       - "A machine-checkable claim manifest permits Sovereign Deployment Ready only for the exact validated version and configurations and rejects certified, compliant, FIPS-validated, CUI-authorized, or jurisdiction-wide language without corresponding external evidence."
       - "Full connected and disconnected release gates, independent reviews, artifact verification, install/upgrade/rollback rehearsal, public wording review, and clean/pushed workflow checks pass before any separate publish task is authorized."
+
+  - id: FW-355
+    title: Define reusable assurance profile schema and authority contract
+    kind: task
+    parent_id: FW-340
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: assurance-profile-schema
+    source_paths: [internal/config, internal/rules, internal/provenance, docs/design/supply-chain-provenance.md, docs/design/product-boundaries.md]
+    target_paths: [internal/assurance, cmd/fairway, examples/assurance-profiles, docs/design/assurance-profiles.md, docs/design/cli.md]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: assurance-profile-schema
+    dependencies: [FW-333]
+    acceptance_checks:
+      - "A versioned YAML or JSON assurance profile defines framework source and version, applicability, scope, controls, assessment objectives, accepted evidence classes, freshness, responsibility, external-assessment requirements, and prohibited claims."
+      - "Profile validation is deterministic, rejects unknown schema versions, duplicate controls, unsafe paths or text, unsupported status or responsibility values, and any embedded command or executable content."
+      - "The authority contract states that profiles and generated findings organize evidence only and cannot certify, declare compliance, accept risk, approve work, mutate workflow, or grant merge, deploy, release, credential, public-exposure, or live-operation authority."
+
+  - id: FW-356
+    title: Add deterministic assurance evidence normalization and control mapping
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: assurance-evidence-read-model
+    source_paths: [internal/store, internal/provenance, internal/evidencemodel, internal/reviewpolicy, internal/assurance]
+    target_paths: [internal/assurance, internal/store, cmd/fairway, docs/design/assurance-profiles.md]
+    review_domains: [arch, backend, governance, security]
+    risk_level: high
+    migration_type: assurance-evidence-normalization
+    dependencies: [FW-355]
+    acceptance_checks:
+      - "A deterministic read model maps existing Fairway task, decision, evidence, review, CI, release, provenance, rehearsal, exception, and external-assessment references to normalized evidence facts without adding a second evidence or control-result store."
+      - "Each mapped fact retains source reference, result, timestamp, actor or producer, project and task scope, profile applicability, freshness, and confidence boundary while excluding raw prompts, transcripts, tool bodies, credentials, secrets, and artifact contents by default."
+      - "Conflicting, missing, stale, superseded, unreviewed, out-of-scope, and externally asserted facts remain visible and cannot be upgraded to satisfied by summary text or generated narrative."
+
+  - id: FW-357
+    title: Add assurance profile readiness and certification gap reports
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: assurance-readiness-report
+    source_paths: [internal/assurance, cmd/fairway, internal/dashboard]
+    target_paths: [internal/assurance, cmd/fairway, cmd/fairway/main_test.go, docs/design/cli.md, docs/design/assurance-profiles.md]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: high
+    migration_type: assurance-readiness-gap-report
+    dependencies: [FW-356]
+    acceptance_checks:
+      - "Read-only commands list profiles and report control status for a project, task set, release, or supplied evidence scope using stable text and JSON contracts."
+      - "Statuses are limited to satisfied-by-recorded-evidence, partial, missing, stale, conflicting, customer-responsibility, external-assessment-required, exception-recorded, and not-applicable-with-rationale; compliant and certified are never inferred."
+      - "Gap rows name the control, missing or stale proof, owner, next evidence action, source references, freshness, and assessor boundary without mutating task state or automatically creating work."
+
+  - id: FW-358
+    title: Generate deterministic assessor-ready assurance packages
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: assurance-package-export
+    source_paths: [internal/assurance, internal/provenance, cmd/fairway, docs/design/supply-chain-provenance.md]
+    target_paths: [internal/assurance, cmd/fairway, examples/assurance-profiles, docs/design/assurance-packages.md, docs/design/cli.md]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: assessor-ready-assurance-package
+    dependencies: [FW-357]
+    acceptance_checks:
+      - "A bounded command exports a deterministic package containing manifest, scope and boundaries, control matrix, evidence index, decisions, reviews, provenance references, exceptions, customer responsibilities, external-assessment requirements, gaps, and verification instructions."
+      - "The package supports JSON, Markdown or CSV control views and an OSCAL-compatible export boundary while storing references and redacted summaries rather than arbitrary artifact content."
+      - "Repeated export from the same profile and Fairway state is byte-stable apart from explicitly versioned creation metadata, and unsafe paths, secret-like values, unsupported schemas, or generated certification claims fail closed."
+
+  - id: FW-359
+    title: Add offline assurance package verification and claim guards
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: assurance-package-verification
+    source_paths: [internal/assurance, internal/provenance, cmd/fairway]
+    target_paths: [internal/assurance, cmd/fairway, docs/design/assurance-packages.md, docs/design/cli.md]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: assurance-package-verification
+    dependencies: [FW-358]
+    acceptance_checks:
+      - "Offline verification checks package schema, profile identity and digest, manifest and file digests, scope, source state, evidence references, freshness, required sections, exception linkage, and optional external signatures without contacting a network service."
+      - "Verification fails closed on tampering, missing required evidence, unknown profile or package schema, unsafe paths, stale evidence outside profile policy, and claims of certified, compliant, authorized, or FIPS-validated status without explicit external evidence."
+      - "Verification output distinguishes package integrity from control sufficiency and external certification and never writes findings back into Fairway automatically."
+
+  - id: FW-360
+    title: Publish starter assurance profiles and custom profile authoring kit
+    kind: task
+    parent_id: FW-340
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: assurance-profile-library
+    source_paths: [internal/assurance, examples/assurance-profiles, docs/design/assurance-profiles.md]
+    target_paths: [examples/assurance-profiles, docs/assurance, docs/design/assurance-profiles.md, docs/config-reference.md]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: assurance-profile-library
+    dependencies: [FW-355, FW-357, FW-359]
+    acceptance_checks:
+      - "Versioned starter profiles organize evidence for NIST SSDF, NIST 800-171 assessment support, EU CRA technical documentation, software supply-chain assurance, and Fairway Sovereign Deployment Ready while linking authoritative framework sources and exact versions."
+      - "Profiles clearly separate complete control catalogs from bounded starter mappings, product responsibilities from customer responsibilities, and certification-body evidence from Fairway-recorded engineering evidence."
+      - "An authoring guide, schema validation fixtures, profile diff command or report, and compatibility policy let consumers create reviewed custom profiles without executable rules, hidden authority, or silent profile updates."
+
+  - id: FW-361
+    title: Pilot Fairway assurance packages with sovereign and AI Cloud evidence
+    kind: task
+    parent_id: FW-340
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: assurance-package-pilot
+    source_paths: [examples/assurance-profiles, docs/assessment, docs/case-studies/ai-cloud.md, docs/security]
+    target_paths: [docs/assessment, docs/assurance, docs/case-studies/ai-cloud.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: assurance-package-pilot
+    dependencies: [FW-341, FW-360]
+    acceptance_checks:
+      - "Fairway generates one package for its Sovereign Deployment Ready reference profile and one bounded AI Cloud consumer package using existing durable evidence without importing private transcripts, credentials, secrets, or raw artifact bodies."
+      - "An independent reviewer measures evidence collection time, mapped and unmapped controls, stale or conflicting evidence, false satisfaction findings, package usability, manual assessor work remaining, and whether the package materially shortens readiness work."
+      - "The pilot produces promote, repeat-with-fixes, or block recommendations for each profile and does not advertise certification, compliance, authorization, or customer outcomes beyond the measured evidence."
