@@ -38,6 +38,7 @@ type PackageManifest struct {
 	ProfileID         string                `json:"profile_id"`
 	ProfileVersion    string                `json:"profile_version"`
 	ProfileSHA256     string                `json:"profile_sha256"`
+	Project           string                `json:"project"`
 	Scope             string                `json:"scope"`
 	ScopeID           string                `json:"scope_id"`
 	TaskIDs           []string              `json:"task_ids"`
@@ -67,6 +68,7 @@ type packageScope struct {
 	ProfileVersion    string   `json:"profile_version"`
 	FrameworkID       string   `json:"framework_id"`
 	FrameworkVersion  string   `json:"framework_version"`
+	Project           string   `json:"project"`
 	Scope             string   `json:"scope"`
 	ScopeID           string   `json:"scope_id"`
 	TaskIDs           []string `json:"task_ids"`
@@ -132,9 +134,14 @@ func ExportPackage(opts PackageOptions) (PackageManifest, error) {
 		return PackageManifest{}, err
 	}
 	profileDigest := sha256.Sum256(files["profile.json"])
+	project, err := packageProject(opts.Maps)
+	if err != nil {
+		_ = os.RemoveAll(outputDirectory)
+		return PackageManifest{}, err
+	}
 	manifest := PackageManifest{Schema: PackageManifestSchema, PackageVersion: "v1", CreatedAt: opts.CreatedAt.UTC().Format(time.RFC3339Nano),
 		ProfileID: opts.Profile.ID, ProfileVersion: opts.Profile.Version, ProfileSHA256: hex.EncodeToString(profileDigest[:]),
-		Scope: opts.Readiness.Scope, ScopeID: opts.Readiness.ScopeID, TaskIDs: append([]string(nil), opts.Readiness.TaskIDs...),
+		Project: project, Scope: opts.Readiness.Scope, ScopeID: opts.Readiness.ScopeID, TaskIDs: append([]string(nil), opts.Readiness.TaskIDs...),
 		Signed:            strings.TrimSpace(opts.SigningKeyBase64) != "",
 		AuthorityBoundary: "assessor-ready evidence package only; not certification, compliance, authorization, approval, or risk acceptance"}
 	if len(signingKey) > 0 {
@@ -185,7 +192,7 @@ func buildPackageFiles(opts PackageOptions) (map[string][]byte, error) {
 	files["profile.json"], _ = stableJSON(opts.Profile)
 	files["readiness.json"], _ = stableJSON(opts.Readiness)
 	scope := packageScope{Schema: "fairway.assurance-package-scope.v1", ProfileID: opts.Profile.ID, ProfileVersion: opts.Profile.Version,
-		FrameworkID: opts.Profile.Framework.ID, FrameworkVersion: opts.Profile.Framework.Version, Scope: opts.Readiness.Scope,
+		FrameworkID: opts.Profile.Framework.ID, FrameworkVersion: opts.Profile.Framework.Version, Project: firstMapProject(opts.Maps), Scope: opts.Readiness.Scope,
 		ScopeID: opts.Readiness.ScopeID, TaskIDs: append([]string(nil), opts.Readiness.TaskIDs...), EvaluatedAt: opts.Readiness.EvaluatedAt,
 		AuthorityBoundary: opts.Readiness.AuthorityBoundary}
 	files["scope.json"], _ = stableJSON(scope)
@@ -203,28 +210,43 @@ func buildPackageFiles(opts PackageOptions) (map[string][]byte, error) {
 	for _, class := range []string{"decision", "review", "provenance", "exception"} {
 		files[class+"s.json"], _ = stableJSON(packageReferenceGroup{Schema: "fairway.assurance-" + class + "-references.v1", Facts: factsByClass(allFacts, class)})
 	}
-	responsibilities := packageResponsibilities{Schema: "fairway.assurance-responsibilities.v1"}
-	for _, control := range opts.Profile.Controls {
-		switch control.Responsibility {
-		case "customer":
-			responsibilities.CustomerControls = append(responsibilities.CustomerControls, control.ID)
-		case "shared":
-			responsibilities.SharedControls = append(responsibilities.SharedControls, control.ID)
-		}
-		if control.ExternalAssessmentRequired {
-			responsibilities.ExternalAssessmentControls = append(responsibilities.ExternalAssessmentControls, control.ID)
-		}
-	}
+	responsibilities := packageResponsibilitiesForProfile(opts.Profile)
 	files["responsibilities.json"], _ = stableJSON(responsibilities)
-	boundary := oscalBoundary{Schema: "fairway.oscal-control-map.v1", NotOSCALDocument: true,
-		Boundary: "mapping input only; transform and validate with an authoritative OSCAL toolchain before assessor use"}
-	for _, control := range opts.Readiness.Controls {
-		boundary.Controls = append(boundary.Controls, oscalBoundaryControl{ControlID: control.ControlID, FairwayStatus: control.Status,
-			EvidenceReferences: control.SourceReferences, AssessorBoundary: control.AssessorBoundary})
-	}
+	boundary := oscalBoundaryForReadiness(opts.Readiness)
 	files["oscal-control-map.json"], _ = stableJSON(boundary)
-	files["VERIFY.md"] = []byte("# Verify this assurance package\n\nThis exporter does not yet include a Fairway package-verification command. In an offline environment, parse `manifest.json`, recompute SHA-256 for every listed file, compare `profile_sha256` with the packaged `profile.json`, and confirm the scope and task list against the intended assessment boundary. For a signed package, recompute SHA-256 over the exact `manifest.json` bytes, confirm it matches `signature.json.manifest_sha256`, confirm the public-key fingerprint matches `manifest.json.signing_key_id`, and verify the Ed25519 signature over the manifest digest with an independent trusted tool. Package integrity is separate from control sufficiency and any external certification decision.\n")
+	files["VERIFY.md"] = verificationInstructions()
 	return files, nil
+}
+
+func packageProject(maps []EvidenceMap) (string, error) {
+	project := ""
+	for _, mapped := range maps {
+		value := strings.TrimSpace(mapped.Project)
+		if value == "" {
+			return "", errors.New("assurance package source project is missing")
+		}
+		if project == "" {
+			project = value
+		} else if project != value {
+			return "", errors.New("assurance package cannot mix source projects")
+		}
+		for _, fact := range mapped.Facts {
+			if fact.Project != value {
+				return "", errors.New("assurance package fact project does not match source project")
+			}
+		}
+	}
+	if project == "" {
+		return "", errors.New("assurance package requires at least one source project")
+	}
+	return project, nil
+}
+
+func firstMapProject(maps []EvidenceMap) string {
+	if len(maps) == 0 {
+		return ""
+	}
+	return maps[0].Project
 }
 
 func preparePackageDirectory(path string) (string, error) {
@@ -344,6 +366,36 @@ func factsByClass(facts []EvidenceFact, class string) []EvidenceFact {
 		}
 	}
 	return selected
+}
+
+func packageResponsibilitiesForProfile(profile Profile) packageResponsibilities {
+	responsibilities := packageResponsibilities{Schema: "fairway.assurance-responsibilities.v1"}
+	for _, control := range profile.Controls {
+		switch control.Responsibility {
+		case "customer":
+			responsibilities.CustomerControls = append(responsibilities.CustomerControls, control.ID)
+		case "shared":
+			responsibilities.SharedControls = append(responsibilities.SharedControls, control.ID)
+		}
+		if control.ExternalAssessmentRequired {
+			responsibilities.ExternalAssessmentControls = append(responsibilities.ExternalAssessmentControls, control.ID)
+		}
+	}
+	return responsibilities
+}
+
+func oscalBoundaryForReadiness(readiness ReadinessReport) oscalBoundary {
+	boundary := oscalBoundary{Schema: "fairway.oscal-control-map.v1", NotOSCALDocument: true,
+		Boundary: "mapping input only; transform and validate with an authoritative OSCAL toolchain before assessor use"}
+	for _, control := range readiness.Controls {
+		boundary.Controls = append(boundary.Controls, oscalBoundaryControl{ControlID: control.ControlID, FairwayStatus: control.Status,
+			EvidenceReferences: control.SourceReferences, AssessorBoundary: control.AssessorBoundary})
+	}
+	return boundary
+}
+
+func verificationInstructions() []byte {
+	return []byte("# Verify this assurance package\n\nRun `fairway assurance package verify --dir <package-directory>` in an offline environment. A signed package requires trust pinning for overall success: place the expected base64 Ed25519 public key in an environment variable and add `--trusted-public-key-env <name>`. Verification checks schemas, all manifest file digests, profile identity/digest, scope/task source state, evidence references/freshness, exception linkage, view consistency, claim guards, and the optional signature. Output separates package integrity, recorded-evidence sufficiency, signature trust, and external certification. Verification is read-only and does not write findings to Fairway.\n")
 }
 
 func markdownCell(value string) string {

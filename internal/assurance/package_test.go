@@ -17,11 +17,11 @@ func TestExportPackageDeterministicSignedAndMetadataOnly(t *testing.T) {
 	report := BuildReadiness(profile, "task_set", []EvidenceMap{{TaskID: "T-1", Applicable: true, EvaluatedAt: "2026-07-12T12:00:00Z",
 		Facts: []EvidenceFact{{Reference: "evidence:T-1:1", Class: "evidence", Result: "pass", Timestamp: "2026-07-12T11:00:00Z", State: "current"}}}})
 	report.ScopeID = "assurance-core"
-	maps := []EvidenceMap{{TaskID: "T-1", Applicable: true, EvaluatedAt: report.EvaluatedAt,
+	maps := []EvidenceMap{{Project: "demo", TaskID: "T-1", Applicable: true, EvaluatedAt: report.EvaluatedAt,
 		Facts: []EvidenceFact{
-			{Reference: "evidence:T-1:1", Class: "evidence", Result: "pass", Timestamp: "2026-07-12T11:00:00Z", State: "current"},
-			{Reference: "decision:T-1:1", Class: "decision", Result: "accepted", Timestamp: "2026-07-12T10:00:00Z", State: "current"},
-			{Reference: "review:T-1:arch:1", Class: "review", Result: "approve", Timestamp: "2026-07-12T10:30:00Z", State: "current"},
+			{Reference: "evidence:T-1:1", Class: "evidence", Result: "pass", Timestamp: "2026-07-12T11:00:00Z", Project: "demo", TaskID: "T-1", State: "current"},
+			{Reference: "decision:T-1:1", Class: "decision", Result: "accepted", Timestamp: "2026-07-12T10:00:00Z", Project: "demo", TaskID: "T-1", State: "current"},
+			{Reference: "review:T-1:arch:1", Class: "review", Result: "approve", Timestamp: "2026-07-12T10:30:00Z", Project: "demo", TaskID: "T-1", State: "current"},
 		}}}
 	seed := make([]byte, ed25519.SeedSize)
 	for i := range seed {
@@ -58,8 +58,8 @@ func TestExportPackageDeterministicSignedAndMetadataOnly(t *testing.T) {
 	if !strings.Contains(joined, `"not_oscal_document": true`) {
 		t.Fatal("missing OSCAL compatibility boundary")
 	}
-	if strings.Contains(string(firstFiles["VERIFY.md"]), "fairway assurance package verify") {
-		t.Fatal("package references an unimplemented verifier command")
+	if !strings.Contains(string(firstFiles["VERIFY.md"]), "fairway assurance package verify") {
+		t.Fatal("package is missing offline verifier instructions")
 	}
 
 	var signature PackageSignature
@@ -93,6 +93,10 @@ func TestExportPackageFailsClosed(t *testing.T) {
 	profile = mappingProfile()
 	if _, err := ExportPackage(PackageOptions{Profile: profile, Readiness: report, OutputDirectory: filepath.Join(base, "key"), CreatedAt: time.Now(), SigningKeyBase64: "SHOULD_NOT_RENDER"}); err == nil || strings.Contains(err.Error(), "SHOULD_NOT_RENDER") {
 		t.Fatalf("key error=%v", err)
+	}
+	maps := []EvidenceMap{{Project: "one", TaskID: "T-1"}, {Project: "two", TaskID: "T-2"}}
+	if _, err := ExportPackage(PackageOptions{Profile: profile, Readiness: report, Maps: maps, OutputDirectory: filepath.Join(base, "mixed"), CreatedAt: time.Now()}); err == nil || !strings.Contains(err.Error(), "cannot mix source projects") {
+		t.Fatalf("mixed project error=%v", err)
 	}
 }
 

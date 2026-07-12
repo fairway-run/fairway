@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -2480,6 +2481,21 @@ func TestCLI_AssuranceEvidenceMap(t *testing.T) {
 	}
 	assertNotContains(t, string(manifestData), "go test ./...")
 	assertNotContains(t, string(manifestData), "artifacts/test.json")
+	publicKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	t.Setenv("FAIRWAY_TEST_ASSURANCE_PUBLIC_KEY", base64.StdEncoding.EncodeToString(publicKey))
+	verified := runCapture(t, "assurance", "package", "verify", "--dir", "assurance-package", "--trusted-public-key-env", "FAIRWAY_TEST_ASSURANCE_PUBLIC_KEY")
+	assertContains(t, verified, "integrity_ok: true")
+	assertContains(t, verified, "control_sufficiency: sufficient_recorded_evidence")
+	assertContains(t, verified, "signature_status: verified_pinned")
+	assertContains(t, verified, "external_certification: not_evaluated")
+	assertContains(t, verified, "overall_ok: true")
+
+	if err := os.WriteFile("assurance-package/controls.json", []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failed := runCaptureAllowError(t, "assurance", "package", "verify", "--dir", "assurance-package")
+	assertContains(t, failed, "integrity_ok: false")
+	assertContains(t, failed, "overall_ok: false")
 }
 
 func TestCLI_ExplainCodeGroundedPacket(t *testing.T) {

@@ -636,6 +636,7 @@ fairway assurance profiles list --dir <path> [--format text|json]
 fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]
 fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]
 fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]
+fairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]
 ```
 
 The validator accepts one local YAML or JSON
@@ -672,6 +673,12 @@ indexes, responsibilities, gaps, verification instructions, and an explicit
 OSCAL bridge boundary. Optional Ed25519 signing reads a base64 key from the
 named environment variable; key material is not accepted in argv or written to
 the package. See [assurance packages](assurance-packages.md).
+`package verify` operates entirely on the local package. It validates strict
+schemas, manifest digests, profile/scope/source-state consistency, evidence
+references and freshness, exception linkage, fixed views, claim guards, and
+optional Ed25519 signatures. The report keeps `integrity_ok`,
+`control_sufficiency`, `signature_status`, and `external_certification`
+separate and never writes findings back into Fairway.
 See [assurance profiles](assurance-profiles.md).
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic

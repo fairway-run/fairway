@@ -43,7 +43,7 @@ names and does not copy artifact content:
 - `signature.json`: optional Ed25519 signature over the manifest digest;
 - `profile.json`: the exact canonical validated profile used for the export;
 - `readiness.json`: the complete bounded scope-level readiness/gap report;
-- `scope.json`: profile, framework, scope, tasks, clock, and authority boundary;
+- `scope.json`: profile, framework, producing project, scope, tasks, clock, and authority boundary;
 - `controls.json`, `controls.md`, and `controls.csv`: equivalent control views;
 - `evidence-index.json`: normalized metadata references only;
 - `decisions.json`, `reviews.json`, `provenances.json`, and `exceptions.json`:
@@ -53,10 +53,24 @@ names and does not copy artifact content:
 - `oscal-control-map.json`: an explicit bridge boundary, not an OSCAL document;
 - `VERIFY.md`: offline verification instructions.
 
-In the FW-358 exporter slice, `VERIFY.md` gives manual digest, scope, profile,
-key-fingerprint, and Ed25519 verification steps and does not name a Fairway
-verifier that has not shipped. FW-359 owns the offline verifier command and
-will replace that temporary manual boundary once implemented.
+`VERIFY.md` names the offline verifier delivered by FW-359:
+
+```bash
+fairway assurance package verify --dir /tmp/fairway-assurance-package
+fairway assurance package verify --dir /tmp/fairway-assurance-package \
+  --trusted-public-key-env FAIRWAY_ASSURANCE_PUBLIC_KEY
+```
+
+The trust pin is a base64 Ed25519 public key read from the named environment
+variable. It is never accepted directly in argv. A signed package without the
+expected key is reported as `verified_unpinned` and fails overall verification;
+the self-contained public key proves signature consistency, not signer trust.
+
+Verification distinguishes package integrity, recorded-evidence sufficiency,
+signature trust, and external certification. A cryptographically intact but
+unpinned or unexpected key does not become trusted. Missing, stale,
+conflicting, customer-owned, exception, or external-assessment-required proof
+fails overall verification without being mislabeled as file tampering.
 
 No command text, notes, review reasons, decision rationale, artifact paths,
 artifact bodies, prompts, transcripts, raw tool bodies, credentials, or secrets
@@ -68,6 +82,10 @@ authoritative OSCAL toolchain before assessor use.
 The same profile, Fairway state, selected scope, and `--at` clock produce the
 same bytes. `created_at` is explicit versioned package metadata and therefore
 changes only when the caller changes `--at`.
+
+All selected task maps and normalized facts must carry the same non-empty
+Fairway project identity. Export and verification reject cross-project mixing;
+multi-project evidence must be packaged as separate assessment scopes.
 
 Export fails closed for invalid profile/package schemas, unsafe output paths,
 existing output directories, malformed signing keys, and profile text that
