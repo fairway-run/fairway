@@ -179,6 +179,14 @@ Expected GitHub secrets:
 The workflow builds on docs/site changes, uploads the static build as an
 artifact, and deploys `website/build` to Cloudflare Pages from `main`.
 
+Before publication, verify the homepage and the seven reader journeys at both
+desktop and mobile widths. The homepage must lead with accountable intent,
+decisions, evidence, independent judgment, and explicit promotion; it must not
+revert to describing Fairway primarily through lanes, worktrees, or provider
+coordination. Capture screenshot evidence from the built portal, verify that
+the dashboard image is labeled as product evidence, and check the first action,
+case study, product-boundary, and integration links directly.
+
 ## Security Headers
 
 Cloudflare Pages receives headers from `website/static/_headers`.

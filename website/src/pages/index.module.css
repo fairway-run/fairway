@@ -1,34 +1,65 @@
 .hero {
-  background: #f6f8fb;
-  border-bottom: 1px solid #dbe2ea;
+  background-image: url('/img/dashboard/fairway-dashboard-wall.png');
+  background-position: center 22%;
+  background-size: cover;
+  border-bottom: 1px solid #ccd6df;
+  min-height: min(720px, calc(100vh - 60px));
+  position: relative;
+}
+
+.heroShade {
+  background: rgba(246, 248, 251, 0.92);
+  inset: 0;
+  position: absolute;
 }
 
 .heroInner {
   margin: 0 auto;
-  max-width: 980px;
-  padding: 72px 24px 64px;
+  max-width: 1180px;
+  padding: clamp(54px, 9vh, 96px) 28px 64px;
+  position: relative;
 }
 
 .logo {
   display: block;
   height: auto;
   margin-bottom: 28px;
-  width: 220px;
+  width: 188px;
 }
 
 .hero h1 {
-  color: #172033;
-  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  color: #14202b;
+  font-size: clamp(3.8rem, 7vw, 6.8rem);
   letter-spacing: 0;
-  line-height: 1.02;
+  line-height: 0.94;
   margin: 0 0 18px;
-  max-width: 760px;
+}
+
+.kicker,
+.sectionHeading > span,
+.proofCopy > span,
+.startBand > div > span,
+.authority span {
+  color: #9b3f35;
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.kicker {
+  color: #244c5a;
+  font-size: 1rem;
+  margin-bottom: 14px;
 }
 
 .lede {
-  color: #536175;
-  font-size: 1.18rem;
-  line-height: 1.7;
+  color: #394a59;
+  font-size: 1.28rem;
+  line-height: 1.65;
+  margin: 0;
   max-width: 760px;
 }
 
@@ -36,7 +67,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 28px;
+  margin-top: 30px;
 }
 
 .primary {
@@ -44,47 +75,254 @@
   border-color: #244c5a;
 }
 
-.features {
-  display: grid;
-  gap: 18px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.heroBoundary {
+  border-left: 3px solid #9b3f35;
+  color: #536575;
+  font-size: 0.96rem;
+  line-height: 1.55;
+  margin: 34px 0 0;
+  max-width: 720px;
+  padding-left: 16px;
+}
+
+.accountability {
   margin: 0 auto;
-  max-width: 1120px;
-  padding: 42px 24px;
+  max-width: 1240px;
+  padding: 74px 28px 82px;
 }
 
-.feature {
-  border: 1px solid #dbe2ea;
-  border-radius: 8px;
-  padding: 22px;
+.sectionHeading {
+  max-width: 760px;
 }
 
-.feature h3 {
-  color: #172033;
-  margin-top: 0;
+.sectionHeading h2,
+.proofCopy h2,
+.startBand h2,
+.authority h2 {
+  color: #172531;
+  font-size: clamp(2rem, 4vw, 3.15rem);
+  letter-spacing: 0;
+  line-height: 1.12;
+  margin: 0 0 18px;
 }
 
-.feature p {
-  color: #5e6c80;
+.sectionHeading p,
+.proofCopy p,
+.startBand p,
+.authority p {
+  color: #5a6a78;
+  font-size: 1.04rem;
+  line-height: 1.7;
+}
+
+.steps {
+  border-bottom: 1px solid #d7dfe6;
+  border-top: 1px solid #d7dfe6;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 42px;
+}
+
+.step {
+  border-right: 1px solid #d7dfe6;
+  min-width: 0;
+  padding: 28px 22px 30px;
+}
+
+.step:last-child {
+  border-right: 0;
+}
+
+.stepNumber {
+  color: #9b3f35;
+  display: block;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+  margin-bottom: 30px;
+}
+
+.step h3 {
+  color: #172531;
+  font-size: 1.05rem;
+  margin: 0 0 10px;
+}
+
+.step p {
+  color: #657481;
+  font-size: 0.9rem;
   line-height: 1.6;
-  margin-bottom: 0;
+  margin: 0;
+}
+
+.productProof {
+  align-items: center;
+  background: #eef2f4;
+  display: grid;
+  gap: 48px;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  padding: 72px max(28px, calc((100vw - 1184px) / 2));
+}
+
+.textLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.textLinks a {
+  font-weight: 700;
+}
+
+.dashboardFigure {
+  margin: 0;
+  min-width: 0;
+}
+
+.dashboardFigure img {
+  background: #fff;
+  border: 1px solid #cbd4dc;
+  border-radius: 6px;
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.dashboardFigure figcaption {
+  color: #657481;
+  font-size: 0.8rem;
+  margin-top: 10px;
+}
+
+.startBand {
+  display: grid;
+  gap: 56px;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
+  margin: 0 auto;
+  max-width: 1184px;
+  padding: 82px 28px;
 }
 
 .install {
-  margin: 0 auto 56px;
-  max-width: 960px;
-  padding: 0 24px;
+  align-self: center;
+  background: #172531;
+  border-radius: 6px;
+  color: #f7fafb;
+  overflow: hidden;
+}
+
+.installHeader {
+  align-items: center;
+  border-bottom: 1px solid #38505e;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 18px 22px;
+}
+
+.installHeader a {
+  color: #9ed0dd;
+  font-size: 0.9rem;
 }
 
 .install pre {
-  background: #172033;
-  border-radius: 8px;
-  color: #f8fbfd;
-  padding: 22px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: #f7fafb;
+  margin: 0;
+  overflow-x: auto;
+  padding: 24px 22px 28px;
 }
 
-@media (max-width: 840px) {
-  .features {
+.authority {
+  align-items: end;
+  background: #f5e9e6;
+  border-top: 1px solid #e2c9c3;
+  display: grid;
+  gap: 34px;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 0.8fr) auto;
+  padding: 66px max(28px, calc((100vw - 1184px) / 2));
+}
+
+.authority h2,
+.authority p {
+  margin-bottom: 0;
+}
+
+@media (max-width: 960px) {
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .step,
+  .step:last-child {
+    border-bottom: 1px solid #d7dfe6;
+    border-right: 1px solid #d7dfe6;
+  }
+
+  .productProof,
+  .startBand,
+  .authority {
     grid-template-columns: 1fr;
+  }
+
+  .authority {
+    align-items: start;
+  }
+}
+
+@media (max-width: 620px) {
+  .heroInner {
+    padding: 48px 20px 54px;
+  }
+
+  .hero h1 {
+    font-size: 3.8rem;
+  }
+
+  .lede {
+    font-size: 1.08rem;
+  }
+
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions a {
+    text-align: center;
+    width: 100%;
+  }
+
+  .accountability,
+  .startBand {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .accountability {
+    padding-top: 30px;
+  }
+
+  .steps {
+    grid-template-columns: 1fr;
+  }
+
+  .step,
+  .step:last-child {
+    border-right: 0;
+  }
+
+  .productProof,
+  .authority {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .installHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
   }
 }

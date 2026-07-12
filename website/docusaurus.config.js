@@ -3,7 +3,7 @@
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Fairway',
-  tagline: 'Governed Agentic Engineering',
+  tagline: 'Engineering control for agent-driven delivery',
   favicon: 'img/logo.svg',
   url: 'https://fairway.run',
   baseUrl: '/',
@@ -47,11 +47,11 @@ const config = {
           src: 'img/logo.svg'
         },
         items: [
-          { to: '/docs/quickstart', label: 'Docs', position: 'left' },
-          { to: '/docs/governed-agentic-engineering', label: 'Model', position: 'left' },
-          { to: '/docs/agent-guide', label: 'Agent Guide', position: 'left' },
-          { to: '/docs/design/dashboard', label: 'Dashboard', position: 'left' },
-          { to: '/docs/config-reference', label: 'Reference', position: 'left' },
+          { to: '/docs/quickstart', label: 'Get Started', position: 'left' },
+          { to: '/docs/product', label: 'Product', position: 'left' },
+          { to: '/docs/case-studies/ai-cloud', label: 'Case Study', position: 'left' },
+          { to: '/docs/agent-guide', label: 'Use Fairway', position: 'left' },
+          { to: '/docs/integrations', label: 'Integrate', position: 'left' },
           {
             href: 'https://github.com/fairway-run/fairway',
             label: 'GitHub',
@@ -63,22 +63,21 @@ const config = {
         style: 'light',
         links: [
           {
-            title: 'Start',
+            title: 'Evaluate',
             items: [
               { label: 'Quickstart', to: '/docs/quickstart' },
               { label: 'Product', to: '/docs/product' },
-              { label: 'Governed Agentic Engineering', to: '/docs/governed-agentic-engineering' },
               { label: 'Product Boundaries', to: '/docs/design/product-boundaries' },
-              { label: 'Backlog Sources', to: '/docs/design/backlog-sources' }
+              { label: 'AI Cloud Case Study', to: '/docs/case-studies/ai-cloud' }
             ]
           },
           {
-            title: 'Operate',
+            title: 'Use and Operate',
             items: [
               { label: 'Agent Guide', to: '/docs/agent-guide' },
               { label: 'Dashboard', to: '/docs/design/dashboard' },
               { label: 'Workstream Profiles', to: '/docs/workstream-profile-guide' },
-              { label: 'Review Lanes', to: '/docs/design/review-lanes' }
+              { label: 'Integrations', to: '/docs/integrations' }
             ]
           },
           {
