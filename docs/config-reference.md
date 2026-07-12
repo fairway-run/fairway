@@ -193,6 +193,14 @@ levels = [
 
 ## Section reference
 
+Assurance profiles are versioned local YAML or JSON inputs, not a Fairway
+configuration section. Keep them under a reviewed project directory and pass
+their paths explicitly to `fairway assurance ...`. See the
+[starter catalog](assurance/starter-profiles.md),
+[authoring guide](assurance/authoring.md), and
+[compatibility policy](assurance/compatibility.md). Fairway does not fetch or
+silently update profiles from framework URLs.
+
 For a project-neutral starting point, copy
 [`examples/fairway-config.toml`](../examples/fairway-config.toml) and adjust the
 roles, routes, and profile samples. Consumer compatibility fixtures under

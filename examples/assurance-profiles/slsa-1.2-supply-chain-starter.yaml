@@ -1,0 +1,71 @@
+schema: fairway.assurance-profile.v1
+id: slsa-1.2-supply-chain-starter
+version: v1
+title: SLSA 1.2 software supply-chain evidence starter
+description: Bounded evidence organizer for selected SLSA 1.2 source and build concepts; it does not assign or attest a SLSA level.
+framework:
+  id: slsa
+  title: Supply-chain Levels for Software Artifacts
+  version: 1.2
+  source: https://slsa.dev/spec/v1.2/
+applicability:
+  description: Software-producing projects preparing source, build, provenance, and verification references for independent evaluation.
+scope:
+  types: [project, task_set, release]
+controls:
+  - id: BUILD-L1-PROVENANCE
+    title: Build provenance exists
+    objective: Retain provenance tied to an exact release artifact and source revision.
+    responsibility: product
+    assessment_objectives:
+      - Inspect provenance and release references for identity, completeness, and exact artifact scope.
+    evidence:
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: release
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: BUILD-L2-AUTHENTIC-PROVENANCE
+    title: Authenticated hosted-build provenance
+    objective: Retain CI and signed provenance references suitable for independent authenticity verification.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect hosted-build identity, provenance signature, and consumer verification references.
+    evidence:
+      - class: ci
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [pass]
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified]
+  - id: BUILD-L3-HARDENED-BUILDER
+    title: Hardened build platform assessment
+    objective: Keep hardened-builder assessment outside Fairway's self-asserted engineering evidence.
+    responsibility: external_assessor
+    assessment_objectives:
+      - Obtain an independent assessment reference for the exact builder and SLSA 1.2 criteria.
+    evidence:
+      - class: external_assessment
+        minimum_count: 1
+        accepted_results: [verified]
+    external_assessment_required: true
+  - id: SOURCE-PROVENANCE
+    title: Source change provenance and review
+    objective: Retain source revision, accountable review, and provenance references.
+    responsibility: product
+    assessment_objectives:
+      - Inspect source provenance and independent review references without assigning a source level.
+    evidence:
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: review
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [approve]
+prohibited_claims: [certified, compliant, authorized]
+authority:
+  mode: evidence_only
+  prohibited_actions: [certify, declare_compliance, accept_risk, approve, mutate_workflow, merge, deploy, release, use_credentials, change_public_exposure, run_live_operation]

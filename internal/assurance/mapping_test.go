@@ -1,9 +1,33 @@
 package assurance
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestStarterProfileUnresolvedFactsRemainGaps(t *testing.T) {
+	profile, err := LoadFile(filepath.Join("..", "..", "examples", "assurance-profiles", "nist-ssdf-1.1-starter.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	mapped := MapEvidence(profile, Sources{
+		Task:    TaskContext{Project: "demo", TaskID: "T-1", Status: "done", UpdatedAt: now.Format(time.RFC3339Nano)},
+		Reviews: []SourceReview{{Domain: "security", Verdict: "changes", Reviewer: "independent", CreatedAt: now.Format(time.RFC3339Nano)}},
+		Evidence: []SourceEvidence{
+			{Result: "fail", ArtifactType: "vulnerability", CreatedAt: now.Format(time.RFC3339Nano)},
+			{Result: "partial", ArtifactType: "evidence", CreatedAt: now.Format(time.RFC3339Nano)},
+		},
+		Decisions: []SourceDecision{{ID: 1, QualityState: "accepted", CreatedBy: "owner", CreatedAt: now.Format(time.RFC3339Nano)}},
+	}, now)
+	report := BuildReadiness(profile, "project", []EvidenceMap{mapped})
+	for _, control := range report.Controls {
+		if control.Status == "satisfied_by_recorded_evidence" {
+			t.Fatalf("unresolved facts satisfied starter control %s: %+v", control.ControlID, report)
+		}
+	}
+}
 
 func TestMapEvidencePreservesBoundaries(t *testing.T) {
 	profile := mappingProfile()

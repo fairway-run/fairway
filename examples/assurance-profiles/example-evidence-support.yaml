@@ -26,11 +26,11 @@ controls:
       - class: evidence
         minimum_count: 1
         maximum_age: 720h
-        accepted_results: [pass, partial]
+        accepted_results: [pass]
       - class: review
         minimum_count: 1
         maximum_age: 720h
-        accepted_results: [approve, changes]
+        accepted_results: [approve]
 prohibited_claims:
   - certified
   - compliant

@@ -738,6 +738,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"assurance", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
 		{[]string{"assurance", "profile", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
 		{[]string{"assurance", "profile", "validate", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
+		{[]string{"assurance", "profile", "diff", "--help"}, "fairway assurance profile diff --from <path> --to <path> [--format text|json]"},
 		{[]string{"explain", "--help"}, "fairway explain code [<repo-path>]"},
 		{[]string{"explain", "code", "--help"}, "fairway explain code [<repo-path>]"},
 		{[]string{"recipe", "--help"}, "fairway recipe extract|render|list"},
@@ -2401,6 +2402,17 @@ func TestCLI_AssuranceProfileValidate(t *testing.T) {
 	if strings.Contains(err.Error(), "SHOULD_NOT_RENDER") {
 		t.Fatalf("error echoed private input: %v", err)
 	}
+
+	next := strings.Replace(profile, `"version":"v1"`, `"version":"v2"`, 1)
+	next = strings.Replace(next, `"controls":[`, `"controls":[{"id":"EX-2","title":"Additional evidence","objective":"Retain additional verification evidence.","responsibility":"product","assessment_objectives":["Inspect additional evidence references."],"evidence":[{"class":"review","minimum_count":1,"accepted_results":["approve"]}]},`, 1)
+	writeFile(t, "profile-v2.json", next)
+	diff := runCapture(t, "assurance", "profile", "diff", "--from", "profile.json", "--to", "profile-v2.json")
+	assertContains(t, diff, "assurance_profile_diff: fairway.assurance-profile-diff.v1")
+	assertContains(t, diff, "classification: additive")
+	assertContains(t, diff, "change: path=controls.EX-2 kind=added compatibility=additive")
+	jsonDiff := runCapture(t, "--json", "assurance", "profile", "diff", "--from", "profile.json", "--to", "profile-v2.json")
+	assertContains(t, jsonDiff, `"classification": "additive"`)
+	assertContains(t, jsonDiff, `"requires_review": true`)
 }
 
 func TestCLI_AssuranceEvidenceMap(t *testing.T) {

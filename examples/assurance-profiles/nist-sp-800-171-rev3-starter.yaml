@@ -1,0 +1,75 @@
+schema: fairway.assurance-profile.v1
+id: nist-sp-800-171-rev3-starter
+version: v1
+title: NIST SP 800-171 Rev. 3 assessment-support starter
+description: Bounded evidence organizer for selected Rev. 3 requirements; it is not the complete requirement catalog, a CUI scope decision, or an assessment result.
+framework:
+  id: nist-sp-800-171
+  title: Protecting Controlled Unclassified Information in Nonfederal Systems and Organizations
+  version: rev3-final-2024-05
+  source: https://csrc.nist.gov/pubs/sp/800/171/r3/final
+applicability:
+  description: Projects whose customer has separately established the applicable CUI system boundary and assessment method.
+scope:
+  types: [project, task_set, release]
+controls:
+  - id: 03.01.01
+    title: Account Management
+    objective: Organize identity configuration and audit references for the customer-defined system boundary.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect configured identities, lifecycle evidence, and accountable audit references using the applicable SP 800-171A Rev. 3 procedures.
+    evidence:
+      - class: identity
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [verified, pass]
+      - class: audit
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [verified, pass]
+    external_assessment_required: true
+  - id: 03.04.01
+    title: Baseline Configuration
+    objective: Retain configuration-baseline and independent review references for the selected boundary.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect versioned configuration references and review evidence; customer-specific parameters remain customer-owned.
+    evidence:
+      - class: configuration
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [verified, pass]
+      - class: review
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [approve]
+  - id: 03.14.01
+    title: Flaw Remediation
+    objective: Retain vulnerability findings and remediation verification references.
+    responsibility: product
+    assessment_objectives:
+      - Inspect current vulnerability results, remediation evidence, and unresolved findings.
+    evidence:
+      - class: vulnerability
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [verified, pass]
+      - class: evidence
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [pass]
+  - id: PROFILE-CUI-SCOPE
+    title: Customer-defined CUI applicability and boundary
+    objective: Preserve the adopting organization's CUI applicability, boundary, contractual, and assessment-method decision as an explicit gap.
+    responsibility: customer
+    assessment_objectives:
+      - Obtain the customer-approved scope and applicable organization-defined parameters before interpreting requirement evidence.
+    evidence:
+      - class: decision
+        minimum_count: 1
+        accepted_results: [accepted]
+prohibited_claims: [certified, compliant, authorized]
+authority:
+  mode: evidence_only
+  prohibited_actions: [certify, declare_compliance, accept_risk, approve, mutate_workflow, merge, deploy, release, use_credentials, change_public_exposure, run_live_operation]

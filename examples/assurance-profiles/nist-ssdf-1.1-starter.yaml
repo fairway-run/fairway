@@ -1,0 +1,76 @@
+schema: fairway.assurance-profile.v1
+id: nist-ssdf-1.1-starter
+version: v1
+title: NIST SSDF 1.1 evidence starter
+description: Bounded starter mapping for selected SSDF 1.1 practices; it is not the complete SSDF catalog or an assessment result.
+framework:
+  id: nist-sp-800-218
+  title: NIST Secure Software Development Framework
+  version: 1.1-final-2022-02
+  source: https://csrc.nist.gov/pubs/sp/800/218/final
+applicability:
+  description: Software-producing projects preparing selected secure-development evidence against the final SSDF 1.1 publication; the SSDF 1.2 draft is not silently included.
+scope:
+  types: [project, task_set, release]
+controls:
+  - id: PO.1
+    title: Define security requirements for software development
+    objective: Retain scoped security requirements and material engineering decisions.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect current requirements, decisions, ownership, and independent review references for the selected scope.
+    evidence:
+      - class: decision
+        minimum_count: 1
+        maximum_age: 8760h
+        accepted_results: [accepted]
+      - class: review
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [approve]
+  - id: PO.2
+    title: Define roles and responsibilities
+    objective: Retain accountable task ownership and review evidence for secure-development work.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect task ownership and independent review records without inferring organizational authorization.
+    evidence:
+      - class: task
+        minimum_count: 1
+        accepted_results: [done]
+      - class: review
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [approve]
+  - id: PS.3
+    title: Archive and protect release provenance
+    objective: Retain release and provenance references for delivered software.
+    responsibility: product
+    assessment_objectives:
+      - Inspect immutable source, build, artifact, and release references for the selected release.
+    evidence:
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: release
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: RV.1
+    title: Identify and confirm vulnerabilities
+    objective: Retain current vulnerability and verification evidence for the selected scope.
+    responsibility: product
+    assessment_objectives:
+      - Inspect vulnerability findings, disposition, and verification evidence.
+    evidence:
+      - class: vulnerability
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [verified, pass]
+      - class: evidence
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [pass]
+prohibited_claims: [certified, compliant, authorized]
+authority:
+  mode: evidence_only
+  prohibited_actions: [certify, declare_compliance, accept_risk, approve, mutate_workflow, merge, deploy, release, use_credentials, change_public_exposure, run_live_operation]

@@ -4792,6 +4792,7 @@ func cmdProvenance(ctx context.Context, opts globalOptions, args []string) error
 func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
 		fmt.Println("fairway assurance profile validate <path> [--format text|json]")
+		fmt.Println("fairway assurance profile diff --from <path> --to <path> [--format text|json]")
 		fmt.Println("fairway assurance profiles list --dir <path> [--format text|json]")
 		fmt.Println("fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]")
 		fmt.Println("fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]")
@@ -4843,12 +4844,58 @@ func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error 
 	}
 	if len(args) == 1 || isHelpOnly(args[1:]) {
 		fmt.Println("fairway assurance profile validate <path> [--format text|json]")
+		fmt.Println("fairway assurance profile diff --from <path> --to <path> [--format text|json]")
 		return nil
+	}
+	if args[1] == "diff" {
+		return cmdAssuranceProfileDiff(opts, args[2:])
 	}
 	if args[1] != "validate" {
 		return fmt.Errorf("unknown assurance profile subcommand %q", args[1])
 	}
 	return cmdAssuranceProfileValidate(opts, args[2:])
+}
+
+func cmdAssuranceProfileDiff(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway assurance profile diff --from <path> --to <path> [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("assurance profile diff", flag.ContinueOnError)
+	fromPath := fs.String("from", "", "previous local assurance profile path")
+	toPath := fs.String("to", "", "proposed local assurance profile path")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || strings.TrimSpace(*fromPath) == "" || strings.TrimSpace(*toPath) == "" {
+		return errors.New("assurance profile diff requires --from and --to")
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	from, err := assurance.LoadFile(*fromPath)
+	if err != nil {
+		return fmt.Errorf("load from profile: %w", err)
+	}
+	to, err := assurance.LoadFile(*toPath)
+	if err != nil {
+		return fmt.Errorf("load to profile: %w", err)
+	}
+	report, err := assurance.DiffProfiles(from, to)
+	if err != nil {
+		return err
+	}
+	if opts.JSON || *format == "json" {
+		return printJSON(report)
+	}
+	fmt.Printf("assurance_profile_diff: %s\n", report.Schema)
+	fmt.Printf("from_profile: %s@%s\nto_profile: %s@%s\nclassification: %s\ncompatible: %t\nrequires_review: %t\n", report.FromProfileID, report.FromVersion, report.ToProfileID, report.ToVersion, report.Classification, report.Compatible, report.RequiresReview)
+	for _, change := range report.Changes {
+		fmt.Printf("change: path=%s kind=%s compatibility=%s summary=%s\n", change.Path, change.Kind, change.Compatibility, change.Summary)
+	}
+	fmt.Printf("authority_boundary: %s\n", report.Boundary)
+	return nil
 }
 
 func cmdAssurancePackageVerify(opts globalOptions, args []string) error {
@@ -20154,7 +20201,7 @@ func printCommandHelp(command string) bool {
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
-		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\nfairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]\nfairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]\n  Validate profiles, project facts, export bounded assessor evidence, and verify packages offline without granting certification or workflow authority.",
+		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profile diff --from <path> --to <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\nfairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]\nfairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]\n  Validate and compare profiles, project facts, export bounded assessor evidence, and verify packages offline without granting certification or workflow authority.",
 		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]\n  Render a deterministic grounded packet with an optional validated advisory narrative.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",

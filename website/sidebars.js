@@ -36,7 +36,18 @@ const sidebars = {
         'design/review-policy-profiles',
         'design/review-lanes',
         'design/review-wait-notification-model',
-        'design/session-launch'
+        'design/session-launch',
+        {
+          type: 'category',
+          label: 'Assurance evidence',
+          items: [
+            'design/assurance-profiles',
+            'assurance/starter-profiles',
+            'assurance/authoring',
+            'assurance/compatibility',
+            'design/assurance-packages'
+          ]
+        }
       ]
     },
     {

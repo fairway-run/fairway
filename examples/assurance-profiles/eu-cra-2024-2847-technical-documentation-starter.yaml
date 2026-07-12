@@ -1,0 +1,77 @@
+schema: fairway.assurance-profile.v1
+id: eu-cra-2024-2847-technical-documentation-starter
+version: v1
+title: EU Cyber Resilience Act technical-documentation starter
+description: Bounded evidence organizer for selected Regulation EU 2024/2847 technical-documentation topics; it is not legal advice, a complete requirements mapping, or a conformity determination.
+framework:
+  id: eu-regulation-2024-2847
+  title: Cyber Resilience Act
+  version: 2024-2847-oj-2024-11-20
+  source: https://eur-lex.europa.eu/eli/reg/2024/2847/oj
+applicability:
+  description: Product teams preparing selected engineering references after a qualified party determines product scope, role, classification, dates, and conformity route.
+scope:
+  types: [project, task_set, release]
+controls:
+  - id: CRA-ARTICLE-13
+    title: Manufacturer engineering obligations
+    objective: Retain secure-development decisions, reviews, and release references for a product with digital elements.
+    responsibility: product
+    assessment_objectives:
+      - Inspect scoped engineering decisions, independent reviews, and release records without inferring legal conformity.
+    evidence:
+      - class: decision
+        minimum_count: 1
+        accepted_results: [accepted]
+      - class: review
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [approve]
+      - class: release
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: CRA-ANNEX-I-PART-II
+    title: Vulnerability handling evidence
+    objective: Retain vulnerability, remediation, and disclosure-process evidence references.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect current vulnerability findings and the customer/product responsibility boundary for handling and reporting.
+    evidence:
+      - class: vulnerability
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [verified, pass]
+      - class: evidence
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [pass]
+  - id: CRA-ANNEX-VII
+    title: Technical documentation references
+    objective: Organize version, configuration, provenance, and verification references for technical documentation preparation.
+    responsibility: product
+    assessment_objectives:
+      - Inspect exact product version, configuration, provenance, test, and known-gap references selected for documentation.
+    evidence:
+      - class: configuration
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: evidence
+        minimum_count: 1
+        accepted_results: [pass]
+  - id: PROFILE-CRA-SCOPE-AND-CONFORMITY-ROUTE
+    title: Product scope and conformity route
+    objective: Preserve the qualified product classification, economic-operator role, applicable dates, and conformity route as customer evidence.
+    responsibility: customer
+    assessment_objectives:
+      - Obtain a qualified scope and route decision before using this starter mapping for assessment preparation.
+    evidence:
+      - class: decision
+        minimum_count: 1
+        accepted_results: [accepted]
+prohibited_claims: [certified, compliant, authorized]
+authority:
+  mode: evidence_only
+  prohibited_actions: [certify, declare_compliance, accept_risk, approve, mutate_workflow, merge, deploy, release, use_credentials, change_public_exposure, run_live_operation]

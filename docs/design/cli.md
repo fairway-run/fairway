@@ -632,6 +632,7 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 
 ```bash
 fairway assurance profile validate <path> [--format text|json]
+fairway assurance profile diff --from <path> --to <path> [--format text|json]
 fairway assurance profiles list --dir <path> [--format text|json]
 fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]
 fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]
@@ -646,6 +647,10 @@ Unknown fields and schemas, duplicate controls, remote or symlinked files,
 unsafe text, unsupported vocabularies, invalid freshness, and incomplete claim
 or action guards fail closed. Validation does not evaluate controls, infer
 compliance, mutate workflow, or grant certification or operational authority.
+`profile diff` compares two valid profiles and reports stable changed paths,
+compatibility classification, and whether accountable review is required. A
+compatible or additive report does not approve adoption; same-version content
+changes and reduced assessment or authority boundaries are breaking.
 The read-only evidence map projects existing task, evidence, review, and
 decision metadata into normalized references. It excludes source text and
 artifact contents and preserves stale, conflicting, superseded, unreviewed,

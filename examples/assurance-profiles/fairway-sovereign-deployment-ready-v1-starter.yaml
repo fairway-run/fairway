@@ -1,0 +1,100 @@
+schema: fairway.assurance-profile.v1
+id: fairway-sovereign-deployment-ready-v1-starter
+version: v1
+title: Fairway Sovereign Deployment Ready reference starter
+description: Draft bounded reference profile for organizing Fairway sovereign-deployment evidence; it does not grant a certification, authorization, or jurisdiction-wide claim.
+framework:
+  id: fairway-sovereign-deployment-ready
+  title: Fairway Sovereign Deployment Ready reference model
+  version: v1-starter
+  source: https://docs.fairway.run/assurance/starter-profiles
+applicability:
+  description: Fairway releases and deployments preparing evidence for disconnected or restricted-technology environments; the adopting organization defines its exact boundary and governing requirements.
+scope:
+  types: [project, task_set, release]
+controls:
+  - id: SDR-BOUNDARY
+    title: Deployment and data boundary
+    objective: Retain the exact connected or disconnected topology, data paths, prohibited egress, and configuration decisions.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect bounded configuration and accepted architecture decisions for the exact deployment scope.
+    evidence:
+      - class: configuration
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [verified, pass]
+      - class: decision
+        minimum_count: 1
+        accepted_results: [accepted]
+  - id: SDR-PROVENANCE
+    title: Verifiable release provenance
+    objective: Retain exact source, build, artifact, and release provenance for offline verification.
+    responsibility: product
+    assessment_objectives:
+      - Inspect release and provenance references, package digests, and verification results for the exact version.
+    evidence:
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: release
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: SDR-OFFLINE-REHEARSAL
+    title: Disconnected installation and operation rehearsal
+    objective: Retain bounded rehearsal and verification evidence from the intended disconnected operating mode.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect installation, verification, operation, rollback, and cleanup evidence without treating rehearsal as production authorization.
+    evidence:
+      - class: rehearsal
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [pass]
+      - class: evidence
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [pass]
+  - id: SDR-IDENTITY-AND-AUDIT
+    title: Accountable local identity and audit boundary
+    objective: Retain identity, least-privilege, and metadata-only audit references for the deployment.
+    responsibility: customer
+    assessment_objectives:
+      - Obtain customer evidence for operator identity, local access policy, audit retention, and separation of duties.
+    evidence:
+      - class: identity
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: audit
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: SDR-RECOVERY
+    title: Backup restore and rollback proof
+    objective: Retain current backup, restore, rollback, and recovery rehearsal references.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect successful restore and rollback evidence for the exact supported data and deployment model.
+    evidence:
+      - class: backup_restore
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [pass]
+      - class: rehearsal
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [pass]
+  - id: SDR-INDEPENDENT-ASSESSMENT
+    title: Independent boundary assessment
+    objective: Keep any sovereign, restricted-technology, or certification conclusion with the qualified external authority.
+    responsibility: external_assessor
+    assessment_objectives:
+      - Obtain an assessment reference naming the exact product version, configuration, deployment boundary, criteria, and assessor.
+    evidence:
+      - class: external_assessment
+        minimum_count: 1
+        accepted_results: [verified]
+    external_assessment_required: true
+prohibited_claims: [certified, compliant, authorized]
+authority:
+  mode: evidence_only
+  prohibited_actions: [certify, declare_compliance, accept_risk, approve, mutate_workflow, merge, deploy, release, use_credentials, change_public_exposure, run_live_operation]

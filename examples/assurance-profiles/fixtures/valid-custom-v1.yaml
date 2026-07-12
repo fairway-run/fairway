@@ -1,0 +1,28 @@
+schema: fairway.assurance-profile.v1
+id: custom-assurance-starter
+version: v1
+title: Custom assurance starter fixture
+description: Minimal valid fixture for testing a reviewed custom evidence profile.
+framework:
+  id: customer-framework
+  title: Customer Framework
+  version: v1
+  source: https://example.invalid/customer-framework/v1
+applicability:
+  description: Customer-selected project scope.
+scope:
+  types: [project]
+controls:
+  - id: CF-1
+    title: Verification evidence
+    objective: Retain bounded verification references.
+    responsibility: shared
+    assessment_objectives: [Inspect evidence references and accountable review.]
+    evidence:
+      - class: evidence
+        minimum_count: 1
+        accepted_results: [pass]
+prohibited_claims: [certified, compliant, authorized]
+authority:
+  mode: evidence_only
+  prohibited_actions: [certify, declare_compliance, accept_risk, approve, mutate_workflow, merge, deploy, release, use_credentials, change_public_exposure, run_live_operation]

@@ -18,9 +18,12 @@ fairway assurance evidence map --profile examples/assurance-profiles/example-evi
 fairway assurance readiness --profile examples/assurance-profiles/example-evidence-support.yaml --scope task_set --scope-id assurance-core --task FW-355 --at 2026-07-12T12:00:00Z
 ```
 
-The example profile is deliberately not a standards mapping. Versioned starter
-profiles for named frameworks are owned by `FW-360` and require authoritative
-source/version review.
+The example profile is deliberately not a standards mapping. Fairway also
+ships [versioned starter profiles](../assurance/starter-profiles.md) for a
+small, explicitly incomplete selection of objectives from named sources. The
+[authoring guide](../assurance/authoring.md) and
+[compatibility policy](../assurance/compatibility.md) define how custom
+profiles are reviewed and versioned.
 
 ## Contract
 
@@ -74,6 +77,12 @@ Validation rejects:
 The required authority boundary prohibits certification, compliance declaration,
 risk acceptance, approval, workflow mutation, merge, deploy, release, credential
 use, public-exposure changes, and live operations.
+
+`assurance profile diff` compares two valid profile files and classifies stable
+changed paths as metadata-only, additive, or breaking. It treats same-version
+content changes, framework changes, control removals or edits, narrowed scopes,
+and reduced claim or action guards as breaking. The report is review input
+only; it does not approve an update or infer framework equivalence.
 
 ## Status and authority
 

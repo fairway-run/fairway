@@ -1,0 +1,20 @@
+schema: fairway.assurance-profile.v1
+id: invalid-unknown-field
+version: v1
+title: Invalid unknown-field fixture
+description: This fixture must fail closed.
+framework:
+  id: customer-framework
+  title: Customer Framework
+  version: v1
+  source: https://example.invalid/customer-framework/v1
+applicability:
+  description: Test only.
+scope:
+  types: [project]
+controls: []
+executable_rule: prohibited
+prohibited_claims: [certified, compliant, authorized]
+authority:
+  mode: evidence_only
+  prohibited_actions: [certify, declare_compliance, accept_risk, approve, mutate_workflow, merge, deploy, release, use_credentials, change_public_exposure, run_live_operation]

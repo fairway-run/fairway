@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+func mustLoadProfileYAML(t *testing.T, data string) Profile {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "profile.yaml")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return profile
+}
+
 func TestLoadProfileValidYAMLAndJSON(t *testing.T) {
 	dir := t.TempDir()
 	yamlPath := filepath.Join(dir, "profile.yaml")
@@ -95,6 +109,65 @@ func TestLoadProfileRejectsUnknownFieldsAndUnsafeFiles(t *testing.T) {
 	}
 	if _, err := LoadFile("https://example.com/profile.yaml"); err == nil || !strings.Contains(err.Error(), "local file") {
 		t.Fatalf("unexpected remote error: %v", err)
+	}
+}
+
+func TestStarterProfilesAndAuthoringFixtures(t *testing.T) {
+	root := filepath.Join("..", "..", "examples", "assurance-profiles")
+	reports, err := ListDirectory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 6 {
+		t.Fatalf("starter profile count=%d want 6: %#v", len(reports), reports)
+	}
+	if _, err := LoadFile(filepath.Join(root, "fixtures", "valid-custom-v1.yaml")); err != nil {
+		t.Fatalf("valid authoring fixture: %v", err)
+	}
+	for _, report := range reports {
+		profilePath := ""
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			candidate, err := LoadFile(filepath.Join(root, entry.Name()))
+			if err == nil && candidate.ID == report.ProfileID {
+				profilePath = filepath.Join(root, entry.Name())
+				break
+			}
+		}
+		if profilePath == "" {
+			t.Fatalf("starter profile path not found for %s", report.ProfileID)
+		}
+		profile, err := LoadFile(profilePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validatePackageClaims(profile); err != nil {
+			t.Fatalf("starter profile %s cannot be packaged: %v", report.ProfileID, err)
+		}
+		for _, control := range profile.Controls {
+			for _, requirement := range control.Evidence {
+				for _, result := range requirement.AcceptedResults {
+					switch result {
+					case "changes", "partial", "blocked", "fail", "todo", "in_progress", "cancelled", "insufficient":
+						t.Fatalf("starter profile %s control %s accepts unresolved result %s", profile.ID, control.ID, result)
+					}
+				}
+			}
+		}
+	}
+	for name, want := range map[string]string{
+		"invalid-unknown-field.yaml": "field executable_rule not found",
+		"invalid-authority.yaml":     "required prohibited action \"approve\" is missing",
+	} {
+		if _, err := LoadFile(filepath.Join(root, "fixtures", name)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("invalid authoring fixture %s error=%v want %q", name, err, want)
+		}
 	}
 }
 
