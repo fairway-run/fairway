@@ -5865,7 +5865,7 @@ tasks:
     owning_domain: fairway
     owning_layer: sovereign-control-baseline
     source_paths: [docs/product.md, docs/design/product-boundaries.md, docs/design/shared-team-operating-model.md, docs/design/supply-chain-provenance.md]
-    target_paths: [docs/security/sovereign-deployment-ready.md, docs/security/sovereign-threat-model.md, docs/roadmap/fairway-product-backlog.yaml]
+    target_paths: [docs/security/sovereign-deployment-ready.md, docs/security/sovereign-threat-model.md, docs/roadmap/fairway-product-backlog.yaml, website/sidebars.js]
     review_domains: [arch, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-control-baseline

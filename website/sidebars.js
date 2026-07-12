@@ -45,7 +45,9 @@ const sidebars = {
             'assurance/starter-profiles',
             'assurance/authoring',
             'assurance/compatibility',
-            'design/assurance-packages'
+            'design/assurance-packages',
+            'security/sovereign-deployment-ready',
+            'security/sovereign-threat-model'
           ]
         }
       ]
