@@ -5517,8 +5517,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: dashboard-runtime
-    source_paths: [internal/dashboard, docs/operations]
-    target_paths: [docs/assessment, docs/operations, internal/dashboard]
+    source_paths: [internal/dashboard, docs/operations, scripts/dashboard-contention-benchmark.sh]
+    target_paths: [docs/assessment, docs/operations, internal/dashboard, scripts/dashboard-contention-benchmark.sh]
     review_domains: [arch, backend, ops]
     risk_level: high
     migration_type: dashboard-runtime-contention
