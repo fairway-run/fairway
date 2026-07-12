@@ -17,6 +17,7 @@ const DefaultConfigPath = ".fairway/config.toml"
 
 type Config struct {
 	Fairway             FairwayConfig           `toml:"fairway"`
+	Runtime             RuntimeConfig           `toml:"runtime"`
 	Dashboard           DashboardConfig         `toml:"dashboard"`
 	Server              ServerConfig            `toml:"server"`
 	Worktrees           WorktreesConfig         `toml:"worktrees"`
@@ -38,6 +39,10 @@ type Config struct {
 	ProviderModelPrices []ProviderModelPrice    `toml:"provider_model_prices"`
 	AdvisoryAdapters    []AdvisoryAdapter       `toml:"advisory_provider_adapters"`
 	ExternalNotifiers   []ExternalNotifier      `toml:"external_notifiers"`
+}
+
+type RuntimeConfig struct {
+	Profile string `toml:"profile"`
 }
 
 type FairwayConfig struct {
@@ -266,6 +271,7 @@ func Defaults(root string) Config {
 			MainBranch:    "main",
 			TaskIDPattern: `^[A-Z]+-[0-9]+$`,
 		},
+		Runtime: RuntimeConfig{Profile: RuntimeProfileStandard},
 		Dashboard: DashboardConfig{
 			Listen:       "127.0.0.1:7878",
 			AutoOpen:     true,
@@ -380,6 +386,9 @@ func Validate(cfg Config) error {
 		return fmt.Errorf("[fairway] task_id_pattern is invalid: %w", err)
 	}
 	if err := validateConsumerReadiness(cfg.ConsumerReadiness); err != nil {
+		return err
+	}
+	if err := validateRuntimeProfile(cfg); err != nil {
 		return err
 	}
 	switch strings.TrimSpace(cfg.Dashboard.TrustedProxy) {
@@ -1299,6 +1308,9 @@ db_path = ".fairway/state.db"
 queue_source = "inline"
 main_branch = "main"
 task_id_pattern = "^[A-Z]+-[0-9]+$"
+
+[runtime]
+profile = "standard"
 
 [dashboard]
 listen = "127.0.0.1:7878"

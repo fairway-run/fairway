@@ -143,7 +143,7 @@ fairway batch list
 fairway dispatch-plan [--role <role>] [--limit <n>]
 fairway git-check [--base <ref>]
 fairway preflight [--role <role>] [--base <ref>]       # validate current worktree before ready/claim
-fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json] # read-only local capability diagnostics
+fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json] # read-only local capability and runtime-network diagnostics
 fairway workflow check [--mode <task|close|deploy>] [--task-id <id>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
 fairway workflow closeout <task-id> [--dry-run] [--apply] [--preserve-branch-reason <reason>] # report lane branch/worktree/session closeout debt
 fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
@@ -158,7 +158,7 @@ fairway notify send --notifier <name> --task <task-id> --domain <domain> [--temp
 fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
-fairway readiness capabilities                                  # compare configured consumer binary/schema/features
+fairway readiness capabilities                                  # compare binary/schema/features and runtime-network dependencies
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
@@ -752,7 +752,9 @@ See [assurance profiles](assurance-profiles.md).
 - `doctor` runs read-only local capability diagnostics before or during agent
   work. It reports config and DB path checks, git worktree state, stale
   `.git/index.lock` guidance, Go cache posture, required CLI tools, dashboard
-  reachability, and Fairway session readback as structured pass/warn/fail rows.
+  reachability, Fairway session readback, the selected runtime profile, and
+  every configured listener, identity, provider, notifier, rule-source, proxy,
+  tracker, and adapter network edge as structured pass/warn/fail rows.
   Rows include owner, suggested command, evidence path where applicable, and
   boundary labels such as task work, release, dashboard restart, git boundary,
   provider capability probes, or shared-team pilot. The command does not mutate
@@ -771,8 +773,9 @@ See [assurance profiles](assurance-profiles.md).
   `--json` returns the full report for automation.
 - `readiness capabilities` reads `[consumer_readiness]` and reports the invoked
   Fairway binary/version, optional pinned binary/version, applied and available
-  schema versions, and every required capability, command, or feature. Unknown
-  or unavailable requirements are named explicitly in text/JSON and return a
+  schema versions, selected runtime profile, redacted network-dependency
+  inventory, and every required capability, command, or feature. Unknown or
+  unavailable requirements are named explicitly in text/JSON and return a
   non-zero exit status. The command does not install, upgrade, migrate, restart,
   or mutate consumer state.
 - `dashboard` without a subcommand runs in the foreground. Use `dashboard start`,

@@ -22,7 +22,12 @@ evidence-organizing draft, not a readiness declaration.
 
 - `sovereign-offline`: disconnected single-host or isolated-local-network
   operation with offline install, verification, update, rollback, backup, and
-  documentation.
+  documentation. Configure `[runtime] profile = "sovereign-offline"`; config
+  loading then rejects active remote listeners, identity, providers, adapters,
+  notifiers, rule sources, proxies, and tracker dependencies. Doctor and
+  capability readiness expose the redacted dependency inventory. This product
+  guard complements, but does not replace, customer-enforced host/network
+  egress denial used by the disconnected rehearsal.
 - `sovereign-connected`: customer-controlled connectivity with explicit
   dependencies, allowlists, identity, audit, keys, and data paths.
 - `restricted-shared`: shared-team read/write service inside a restricted-data

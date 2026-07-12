@@ -31,6 +31,9 @@ main_branch = "main"                   # base branch worktrees branch off of
 task_id_pattern = "^[A-Z]+-[0-9]+$"    # regex enforced by add/import/update
 local_artifact_paths = ["dist/fairway"] # optional local evidence artifact dirs
 
+[runtime]
+profile = "standard"                   # standard | sovereign-offline
+
 [dashboard]
 listen = "127.0.0.1:7878"
 auto_open = true                       # open browser when `fairway dashboard` starts
@@ -216,6 +219,27 @@ roles, routes, and profile samples. Consumer compatibility fixtures under
 | `main_branch` | string | `main` | Base branch new worktree branches are created from. |
 | `task_id_pattern` | string | `^[A-Z]+-[0-9]+$` | Regex enforced for task IDs. Compatibility fixtures may use a wider pattern for legacy IDs such as `A-DEMO-UAT-001`; standalone projects should choose the narrowest pattern that fits their versioned backlog. |
 | `local_artifact_paths` | []string | `[]` | Optional repo-relative directories or files that may appear as untracked local evidence artifacts without making `merge-ready`, `workflow check`, or `workflow closeout` dirty. The dashboard evidence artifact viewer also uses this list as its allow-list: it only renders recorded evidence artifacts inside these roots, rejects traversal and symlink escapes, applies redaction before display truncation, and keeps raw path readback visible for local operators. Tracked source changes and arbitrary untracked files remain dirty. |
+
+### `[runtime]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `profile` | string | `standard` | Runtime network boundary. `sovereign-offline` fails config loading when an active non-loopback dashboard/server listener, trusted-proxy identity edge, remote provider target, remote advisory adapter, webhook notifier, remote rule source, proxy environment variable, or Plane tracker environment dependency is present. |
+
+`sovereign-offline` permits numeric loopback HTTP endpoints and explicitly local
+surfaces such as SQLite, local files, local process boundaries, `tmux`, `shell`,
+local log notifiers, and disabled or dry-run remote definitions. Local model
+adapters must use an endpoint environment variable containing a numeric
+loopback `http://` URL; hostnames are rejected so operation does not require
+DNS. Fairway loopback HTTP clients ignore proxy environment variables and
+reject redirects and non-loopback resolution. `fairway doctor --format json`
+and `fairway readiness capabilities` return the redacted dependency inventory.
+
+This profile constrains Fairway-owned network and adapter surfaces. It does not
+sandbox arbitrary commands started by an operator or provide host firewalling;
+the disconnected rehearsal and customer deployment must still enforce OS or
+network-level egress denial. The profile adds no certification, approval,
+release, deploy, live-operation, or dashboard mutation authority.
 
 ### `[dashboard]`
 

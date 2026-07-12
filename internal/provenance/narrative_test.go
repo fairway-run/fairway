@@ -1,9 +1,16 @@
 package provenance
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/subashram/fairway/internal/config"
 )
 
 func TestNarrativeEndpointFailsClosedOutsideLoopback(t *testing.T) {
@@ -25,6 +32,56 @@ func TestNarrativeEndpointFailsClosedOutsideLoopback(t *testing.T) {
 		t.Fatalf("endpoint=%q err=%v", endpoint, err)
 	}
 	_ = os.Unsetenv("FAIRWAY_TEST_NARRATIVE_ENDPOINT")
+}
+
+func TestSovereignOfflineNarrativeAdapterUsesNumericLoopbackWithoutProxyDNSOrRedirect(t *testing.T) {
+	var proxyHits atomic.Int64
+	proxy := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		proxyHits.Add(1)
+	}))
+	defer proxy.Close()
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("HTTPS_PROXY", proxy.URL)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "http://198.51.100.20/escape", http.StatusFound)
+			return
+		}
+		fmt.Fprint(w, `{"response":"{\"schema\":\"fairway.explain-narrative.v1\",\"statements\":[{\"label\":\"recorded\",\"text\":\"Task exists.\",\"citations\":[\"task:T-001\"]}]}"}`)
+	}))
+	defer server.Close()
+
+	cfg := config.Defaults(t.TempDir())
+	cfg.Runtime.Profile = config.RuntimeProfileSovereignOffline
+	cfg.AdvisoryAdapters = []config.AdvisoryAdapter{{
+		Name: "local", Provider: "ollama", Type: "local_ollama", Mode: "advisory", Model: "test",
+		EndpointEnv: "FAIRWAY_TEST_NARRATIVE_ENDPOINT", Capabilities: []string{"explain_code_narrative"}, AllowedActions: []string{"render_packet"},
+	}}
+	packet := ExplainCodePacket{Schema: "fairway.explain-code.v1", MachineInferenceInputs: []string{"task:T-001"}}
+	packet.Git.Commit = "abc1234"
+	t.Setenv("FAIRWAY_TEST_NARRATIVE_ENDPOINT", server.URL)
+	if _, err := GenerateExplainNarrative(context.Background(), cfg, packet, "local"); err != nil {
+		t.Fatalf("numeric loopback narrative: %v", err)
+	}
+	if proxyHits.Load() != 0 {
+		t.Fatalf("proxy hits = %d, want 0", proxyHits.Load())
+	}
+
+	localhostEndpoint := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
+	t.Setenv("FAIRWAY_TEST_NARRATIVE_ENDPOINT", localhostEndpoint)
+	if _, err := GenerateExplainNarrative(context.Background(), cfg, packet, "local"); err == nil || !strings.Contains(err.Error(), "request failed") {
+		t.Fatalf("DNS endpoint error = %v, want fail-closed request", err)
+	}
+
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://198.51.100.20/escape", http.StatusFound)
+	}))
+	defer redirect.Close()
+	t.Setenv("FAIRWAY_TEST_NARRATIVE_ENDPOINT", redirect.URL)
+	if _, err := GenerateExplainNarrative(context.Background(), cfg, packet, "local"); err == nil || !strings.Contains(err.Error(), "request failed") {
+		t.Fatalf("redirect error = %v, want fail-closed request", err)
+	}
 }
 
 func TestValidateExplainNarrativeRequiresKnownCitationsAndPrivacy(t *testing.T) {

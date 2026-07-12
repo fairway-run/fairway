@@ -5883,8 +5883,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-runtime-isolation
-    source_paths: [cmd/fairway, internal/config, internal/dashboard, examples/session-adapters, docs/config-reference.md]
-    target_paths: [cmd/fairway, internal/config, internal/dashboard, examples/session-adapters, docs/config-reference.md, docs/security]
+    source_paths: [cmd/fairway, internal/config, internal/dashboard, internal/networkpolicy, internal/provenance, examples/session-adapters, docs/config-reference.md, docs/roadmap/fairway-product-backlog.yaml]
+    target_paths: [cmd/fairway, internal/config, internal/dashboard, internal/networkpolicy, internal/provenance, examples/session-adapters, docs/config-reference.md, docs/design/cli.md, docs/design/provider-surface-capability-readiness.md, docs/security, docs/roadmap/fairway-product-backlog.yaml]
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: network-isolated-runtime

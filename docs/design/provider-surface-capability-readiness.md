@@ -54,11 +54,15 @@ response headers.
 `fairway doctor` is the local read-only capability diagnostic surface for common
 agent execution blockers. It checks Fairway config and DB paths, git worktree
 state, stale `.git/index.lock` guidance for tmux/CLI fallback, Go cache posture,
-required CLI tools, dashboard reachability, and Fairway session readback. Each
-row reports `pass`, `warn`, or `fail`, an owner, a suggested command, an
+required CLI tools, dashboard reachability, Fairway session readback, the
+selected runtime profile, and a redacted inventory of configured listener,
+identity, provider, notifier, rule-source, proxy, tracker, and adapter network
+edges. Under `sovereign-offline`, unsafe active edges fail config validation;
+safe or disabled edges remain visible in doctor and capability-readiness JSON.
+Each row reports `pass`, `warn`, or `fail`, an owner, a suggested command, an
 optional evidence path, and the boundary it blocks, such as task work, release,
-dashboard restart, provider capability probes, git boundary, or shared-team
-pilot.
+dashboard restart, provider capability probes, git boundary, shared-team pilot,
+or sovereign-offline operation.
 
 Doctor output is evidence and triage only. It must not approve reviews, start
 providers, push, deploy, restart dashboards, mutate environments, run live

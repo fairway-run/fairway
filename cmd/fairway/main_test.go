@@ -1590,6 +1590,77 @@ func TestCLI_DoctorReportsCapabilityDiagnostics(t *testing.T) {
 	assertContains(t, failed, "tool-go status=fail")
 }
 
+func TestCLI_SovereignOfflineProfileKeepsLocalWorkflowsAndRejectsRemoteEdges(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "PLANE_BASE_URL", "PLANE_WORKSPACE", "PLANE_PROJECT", "PLANE_API_TOKEN"} {
+		t.Setenv(name, "")
+	}
+	t.Setenv("GOCACHE", filepath.Join(t.TempDir(), "go-cache"))
+
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `profile = "standard"`, `profile = "sovereign-offline"`)
+	replaceInFile(t, ".fairway/config.toml", `auto_open = true`, `auto_open = false`)
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "init sovereign profile")
+	runOK(t, "config", "validate")
+
+	runOK(t, "add", "T-001", "--title", "Offline task", "--role", "backend")
+	runOK(t, "record", "evidence", "T-001", "--command-text", "offline local proof", "--result", "pass", "--artifact-type", "test")
+	runOK(t, "record", "review", "T-001", "--reviewer", "independent-reviewer", "--domain", "backend", "--verdict", "approve", "--reason", "offline review")
+	runOK(t, "delivery", "report", "--since", "24h")
+	runOK(t, "db", "backup", filepath.Join(repo, "offline-backup.db"))
+	runOK(t, "readiness", "capabilities")
+
+	doctor := runCapture(t, "doctor", "--dashboard-read-only", "", "--dashboard-full", "")
+	assertContains(t, doctor, "runtime_profile: sovereign-offline")
+	assertContains(t, doctor, "network-dashboard-listen status=pass")
+	readiness := runCapture(t, "--json", "readiness", "capabilities")
+	assertContains(t, readiness, `"runtime_profile": "sovereign-offline"`)
+	assertContains(t, readiness, `"network_dependencies"`)
+
+	if _, err := captureRun("dashboard", "--listen", "0.0.0.0:7878", "--no-open"); err == nil || !strings.Contains(err.Error(), "sovereign-offline dashboard is loopback-only") {
+		t.Fatalf("remote dashboard error = %v", err)
+	}
+	if _, err := captureRun("session", "upsert", "--id", "remote-1", "--role", "backend", "--backend", "shell", "--provider", "codex", "--status", "running"); err == nil || !strings.Contains(err.Error(), "sovereign-offline rejects running remote provider session") {
+		t.Fatalf("remote session error = %v", err)
+	}
+	runOK(t, "session", "upsert", "--id", "local-1", "--role", "backend", "--backend", "shell", "--provider", "shell", "--status", "running")
+	runOK(t, "session", "end", "local-1", "--reason", "normal")
+}
+
+func TestCLI_SovereignOfflineProfileRejectsProxyEnvironmentWithoutEcho(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	runOK(t, "init")
+	replaceInFile(t, ".fairway/config.toml", `profile = "standard"`, `profile = "sovereign-offline"`)
+	t.Setenv("HTTPS_PROXY", "http://user:SHOULD_NOT_RENDER@proxy.example:8080")
+	_, _, err = config.Load(filepath.Join(repo, ".fairway", "config.toml"))
+	if err == nil || !strings.Contains(err.Error(), "proxy-env:https_proxy") {
+		t.Fatalf("config.Load() error = %v, want proxy dependency", err)
+	}
+	if strings.Contains(err.Error(), "SHOULD_NOT_RENDER") || strings.Contains(err.Error(), "proxy.example") {
+		t.Fatalf("proxy value leaked in error: %v", err)
+	}
+}
+
 func TestCLI_WorkflowCheckWarnsOnDirtyDocsAndUnpushedCommits(t *testing.T) {
 	repo := t.TempDir()
 	remote := filepath.Join(t.TempDir(), "origin.git")

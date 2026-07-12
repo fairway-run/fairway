@@ -1923,11 +1923,12 @@ type worktreeCleanliness struct {
 }
 
 type doctorReport struct {
-	OK       bool            `json:"ok"`
-	Root     string          `json:"root,omitempty"`
-	Config   string          `json:"config,omitempty"`
-	DBPath   string          `json:"db_path,omitempty"`
-	Findings []doctorFinding `json:"findings"`
+	OK             bool            `json:"ok"`
+	Root           string          `json:"root,omitempty"`
+	Config         string          `json:"config,omitempty"`
+	DBPath         string          `json:"db_path,omitempty"`
+	RuntimeProfile string          `json:"runtime_profile,omitempty"`
+	Findings       []doctorFinding `json:"findings"`
 }
 
 type doctorFinding struct {
@@ -2072,6 +2073,7 @@ func buildDoctorReport(ctx context.Context, opts globalOptions, readOnlyDashboar
 	report.Root = root
 	report.Config = configPath
 	report.DBPath = resolveDBPath(root, cfg, opts)
+	report.RuntimeProfile = config.RuntimeProfile(cfg)
 	add(doctorPathFinding("config-file", "config", configPath, "ops", "fairway config validate", []string{"task work", "release"}))
 	add(doctorPathFinding("fairway-db", "config", report.DBPath, "backend", "fairway db backup", []string{"task work", "shared-team pilot"}))
 	add(doctorGitFinding(root, cfg.Fairway.MainBranch))
@@ -2094,6 +2096,25 @@ func buildDoctorReport(ctx context.Context, opts globalOptions, readOnlyDashboar
 	add(doctorDashboardFinding("dashboard-read-only", readOnlyDashboard, "fairway dashboard status --listen "+readOnlyDashboard+" --read-only"))
 	add(doctorDashboardFinding("dashboard-full", fullDashboard, "fairway dashboard status --listen "+fullDashboard))
 	add(doctorSessionReadbackFinding(ctx, cfg, report.DBPath))
+	for _, dependency := range config.RuntimeNetworkDependencies(cfg, os.LookupEnv) {
+		status := "pass"
+		var blocks []string
+		if dependency.Blocking {
+			status = "fail"
+			blocks = []string{"sovereign-offline operation"}
+		} else if dependency.Status == "remote" || dependency.Status == "configured" {
+			status = "warn"
+		}
+		add(doctorFinding{
+			ID:               "network-" + dependency.ID,
+			Category:         "network",
+			Status:           status,
+			Owner:            "security",
+			Detail:           fmt.Sprintf("profile=%s kind=%s mode=%s status=%s %s", config.RuntimeProfile(cfg), dependency.Kind, dependency.Mode, dependency.Status, dependency.Detail),
+			SuggestedCommand: "fairway config validate",
+			Blocks:           blocks,
+		})
+	}
 	sort.SliceStable(report.Findings, func(i, j int) bool { return report.Findings[i].ID < report.Findings[j].ID })
 	return report
 }
@@ -2108,6 +2129,9 @@ func printDoctorReport(report doctorReport) {
 	}
 	if report.DBPath != "" {
 		fmt.Printf("db_path: %s\n", report.DBPath)
+	}
+	if report.RuntimeProfile != "" {
+		fmt.Printf("runtime_profile: %s\n", report.RuntimeProfile)
 	}
 	fmt.Println("findings:")
 	for _, finding := range report.Findings {
@@ -8771,6 +8795,9 @@ func cmdSessionUpsert(ctx context.Context, opts globalOptions, args []string) er
 		if *backend == "" {
 			*backend = cfg.Sessions.DefaultBackend
 		}
+		if config.IsSovereignOffline(cfg) && *status == "running" && !config.IsLocalProvider(*provider, *backend) {
+			return fmt.Errorf("sovereign-offline rejects running remote provider session %q", firstNonEmpty(*provider, *backend))
+		}
 		if *branch == "" {
 			*branch = fairwaygit.CurrentBranch(root)
 		}
@@ -8951,6 +8978,9 @@ func cmdLaneStart(ctx context.Context, opts globalOptions, args []string) error 
 			if *worktreePath == "" {
 				*worktreePath = config.WorktreePath(cfg, root, roleCfg)
 			}
+		}
+		if config.IsSovereignOffline(cfg) && !config.IsLocalProvider(*provider, runtimeBackend) {
+			return fmt.Errorf("sovereign-offline lane start rejects remote provider %q", firstNonEmpty(*provider, runtimeBackend))
 		}
 		if *branch == "" {
 			*branch = fairwaygit.CurrentBranch(root)
@@ -10061,6 +10091,9 @@ func cmdSessionLaunch(ctx context.Context, opts globalOptions, args []string) er
 				providerName = roleCfg.Provider
 			}
 		}
+		if config.IsSovereignOffline(cfg) && !config.IsLocalProvider(providerName, launchBackend) {
+			return fmt.Errorf("sovereign-offline session launch rejects remote provider %q", firstNonEmpty(providerName, launchBackend))
+		}
 		sessionName := *name
 		if sessionName == "" {
 			sessionName = "fairway-" + sessionRole
@@ -11099,6 +11132,8 @@ type consumerSchemaReadback struct {
 
 type consumerCapabilityReadinessReport struct {
 	OK                  bool                           `json:"ok"`
+	RuntimeProfile      string                         `json:"runtime_profile"`
+	NetworkDependencies []config.NetworkDependency     `json:"network_dependencies,omitempty"`
 	MinimumVersion      string                         `json:"minimum_version,omitempty"`
 	RunningBinary       consumerBinaryReadback         `json:"running_binary"`
 	PinnedBinary        consumerBinaryReadback         `json:"pinned_binary"`
@@ -11146,11 +11181,27 @@ func buildConsumerCapabilityReadiness(ctx context.Context, cfg config.Config, ro
 	configured := cfg.ConsumerReadiness
 	runningPath, _ := os.Executable()
 	report := consumerCapabilityReadinessReport{
-		OK:             true,
-		MinimumVersion: strings.TrimSpace(configured.MinimumVersion),
-		RunningBinary:  consumerBinaryReadback{Path: runningPath, Version: version, State: "running"},
-		PinnedBinary:   consumerBinaryReadback{Version: "not_configured", State: "not_configured"},
-		Requirements:   []consumerReadinessRequirement{},
+		OK:                  true,
+		RuntimeProfile:      config.RuntimeProfile(cfg),
+		NetworkDependencies: config.RuntimeNetworkDependencies(cfg, os.LookupEnv),
+		MinimumVersion:      strings.TrimSpace(configured.MinimumVersion),
+		RunningBinary:       consumerBinaryReadback{Path: runningPath, Version: version, State: "running"},
+		PinnedBinary:        consumerBinaryReadback{Version: "not_configured", State: "not_configured"},
+		Requirements:        []consumerReadinessRequirement{},
+	}
+	for _, dependency := range report.NetworkDependencies {
+		status := "available"
+		if dependency.Blocking {
+			status = "missing"
+			report.OK = false
+		}
+		report.Requirements = append(report.Requirements, consumerReadinessRequirement{
+			Kind:             "network_dependency",
+			Name:             dependency.ID,
+			Status:           status,
+			Detail:           fmt.Sprintf("kind=%s mode=%s status=%s %s", dependency.Kind, dependency.Mode, dependency.Status, dependency.Detail),
+			SuggestedCommand: "fairway doctor --format json",
+		})
 	}
 	applied, available, err := store.SchemaVersions(ctx, dbPath)
 	if err != nil {
@@ -11357,7 +11408,7 @@ func parseFairwayVersion(value string) ([3]int, bool) {
 
 func printConsumerCapabilityReadiness(report consumerCapabilityReadinessReport) {
 	fmt.Println("# Fairway Consumer Capability Readiness")
-	fmt.Printf("\nready: %t\nrunning_binary: %s\nrunning_version: %s\npinned_binary: %s\npinned_version: %s\npinned_state: %s\n", report.OK, report.RunningBinary.Path, report.RunningBinary.Version, firstNonEmpty(report.PinnedBinary.Path, "not_configured"), report.PinnedBinary.Version, report.PinnedBinary.State)
+	fmt.Printf("\nready: %t\nruntime_profile: %s\nrunning_binary: %s\nrunning_version: %s\npinned_binary: %s\npinned_version: %s\npinned_state: %s\n", report.OK, report.RuntimeProfile, report.RunningBinary.Path, report.RunningBinary.Version, firstNonEmpty(report.PinnedBinary.Path, "not_configured"), report.PinnedBinary.Version, report.PinnedBinary.State)
 	fmt.Printf("schema: applied=%d available=%d required=%d\n", report.Schema.Applied, report.Schema.Available, report.Schema.Required)
 	fmt.Println("\n## Requirements")
 	if len(report.Requirements) == 0 {
@@ -18016,6 +18067,9 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		if *listen != "" {
 			addr = *listen
 		}
+		if config.IsSovereignOffline(cfg) && !config.IsLoopbackListen(addr) {
+			return fmt.Errorf("sovereign-offline dashboard is loopback-only; refusing listen address %q", addr)
+		}
 		if *readOnly {
 			cfg.Dashboard.ReadOnly = true
 		}
@@ -18047,6 +18101,9 @@ func cmdDashboardMulti(ctx context.Context, opts globalOptions, listen string, n
 	addr := cfg.Dashboard.Listen
 	if listen != "" {
 		addr = listen
+	}
+	if config.IsSovereignOffline(cfg) && !config.IsLoopbackListen(addr) {
+		return fmt.Errorf("sovereign-offline multi-project dashboard is loopback-only; refusing listen address %q", addr)
 	}
 	regPath, err := registry.DefaultPath()
 	if err != nil {
@@ -18133,6 +18190,9 @@ func cmdDashboardLifecycle(ctx context.Context, opts globalOptions, action strin
 	addr := cfg.Dashboard.Listen
 	if *listen != "" {
 		addr = *listen
+	}
+	if config.IsSovereignOffline(cfg) && !config.IsLoopbackListen(addr) {
+		return fmt.Errorf("sovereign-offline dashboard lifecycle is loopback-only; refusing listen address %q", addr)
 	}
 	resolvedPIDFile, resolvedLogFile := dashboardLifecycleFiles(root, *pidFile, *logFile, *multi)
 	status, err := readDashboardLifecycleStatus(resolvedPIDFile, resolvedLogFile, addr)

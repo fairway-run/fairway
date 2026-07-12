@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/networkpolicy"
 )
 
 const maxNarrativeResponseBytes = 64 << 10
@@ -82,16 +83,7 @@ func GenerateExplainNarrative(ctx context.Context, cfg config.Config, packet Exp
 		return ExplainNarrative{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			Proxy:       nil,
-			DialContext: loopbackDialContext,
-		},
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return fmt.Errorf("advisory narrative endpoint redirects are disabled")
-		},
-	}
+	client := networkpolicy.NewLoopbackHTTPClient(30*time.Second, !config.IsSovereignOffline(cfg))
 	resp, err := client.Do(req)
 	if err != nil {
 		return ExplainNarrative{}, fmt.Errorf("advisory narrative request failed")
@@ -222,23 +214,6 @@ func narrativePrompt(packet ExplainCodePacket) (string, error) {
 		return "", fmt.Errorf("grounded narrative prompt exceeds %d bytes", maxNarrativePromptBytes)
 	}
 	return prompt, nil
-}
-
-func loopbackDialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, fmt.Errorf("advisory narrative endpoint address is invalid")
-	}
-	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err != nil || len(addresses) == 0 {
-		return nil, fmt.Errorf("advisory narrative endpoint resolution failed")
-	}
-	for _, address := range addresses {
-		if !address.IP.IsLoopback() {
-			return nil, fmt.Errorf("advisory narrative endpoint resolved outside loopback")
-		}
-	}
-	return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, address)
 }
 
 func decodeStrictNarrativeJSON(data []byte, target *ExplainNarrative) error {
