@@ -10,7 +10,7 @@ Result: pass
 - Source SHA: `3bcc70d5ab9aca3f01780ca089bd6d537eeb8b40`
 - Previous release and rollback reference: `v0.1.12`
 - Release workflow: `29177531717`
-- Public release: <https://github.com/fairway-run/fairway/releases/tag/v0.1.13>
+- Public release: [Fairway v0.1.13](https://github.com/fairway-run/fairway/releases/tag/v0.1.13)
 - Homebrew tap commit: `654e1fd66fa21653da1c678fe0640c6b79862306`
 
 The annotated tag was created once at the approved SHA and pushed to the

@@ -5821,3 +5821,20 @@ tasks:
     acceptance_checks:
       - "`fairway release verify --help` exits zero with Fairway-style usage and no raw Go flag error."
       - "Focused regression preserves normal release verification parsing and failure behavior."
+
+  - id: FW-339
+    title: Fix v0.1.13 verification page MDX build failure
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: docs-portal
+    source_paths: [docs/assessment/fairway-v0.1.13-release-verification-2026-07-11.md, website]
+    target_paths: [docs/assessment/fairway-v0.1.13-release-verification-2026-07-11.md]
+    review_domains: [governance, ui]
+    risk_level: low
+    migration_type: docs-mdx-link-fix
+    dependencies: [FW-335]
+    acceptance_checks:
+      - "The public release reference uses MDX-compatible Markdown link syntax and renders as a working external link."
+      - "The local Docusaurus production build and the exact pushed Docs Portal workflow pass before closeout."
