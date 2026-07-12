@@ -159,6 +159,7 @@ fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
 fairway readiness capabilities                                  # compare binary/schema/features and runtime-network dependencies
+fairway readiness crypto [--format text|json]                    # fail-closed sovereign cryptography/key evidence report
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
@@ -778,6 +779,14 @@ See [assurance profiles](assurance-profiles.md).
   unavailable requirements are named explicitly in text/JSON and return a
   non-zero exit status. The command does not install, upgrade, migrate, restart,
   or mutate consumer state.
+- `readiness crypto` evaluates the five required sovereign cryptography
+  boundaries (`in_transit`, `at_rest`, `backup`, `evidence_export`, and
+  `signing`) from `[[sovereign_crypto_boundaries]]`. It requires explicit owner,
+  custodian, key/module/algorithm metadata, approval, custody, rotation, and
+  recovery proof. Externally validated module posture additionally requires the
+  exact local certificate and validated-configuration evidence. Missing or
+  unsafe evidence exits non-zero. The report states that Fairway is not FIPS
+  140-3 validated and grants no certification or operational authority.
 - `dashboard` without a subcommand runs in the foreground. Use `dashboard start`,
   `dashboard stop`, `dashboard restart`, and `dashboard status` for a detached
   local dashboard. Detached lifecycle commands do not open a browser unless

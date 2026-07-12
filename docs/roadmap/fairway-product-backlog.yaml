@@ -5940,8 +5940,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-cryptography
-    source_paths: [internal/store, internal/config, docs/design/schema.md, docs/design/shared-team-deployment-operations.md]
-    target_paths: [internal/config, cmd/fairway, docs/security, docs/config-reference.md, docs/operations]
+    source_paths: [internal/config, cmd/fairway/main.go, docs/design/shared-team-deployment-operations.md, docs/security/sovereign-deployment-ready.md]
+    target_paths: [internal/config/crypto_posture.go, internal/config/crypto_posture_test.go, internal/config/config.go, cmd/fairway/main.go, cmd/fairway/main_test.go, docs/config-reference.md, docs/design/cli.md, docs/design/shared-team-deployment-operations.md, docs/security/sovereign-cryptography-key-posture.md, docs/security/sovereign-deployment-ready.md, docs/operations/sovereign-key-readiness.md, docs/roadmap/fairway-product-backlog.yaml, website/sidebars.js]
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-cryptography-boundary

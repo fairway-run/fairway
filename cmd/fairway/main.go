@@ -2115,6 +2115,29 @@ func buildDoctorReport(ctx context.Context, opts globalOptions, readOnlyDashboar
 			Blocks:           blocks,
 		})
 	}
+	if config.IsSovereignOffline(cfg) || len(cfg.SovereignCryptoBoundaries) > 0 {
+		cryptoReport := config.BuildCryptoReadiness(cfg, root)
+		for _, boundary := range cryptoReport.Boundaries {
+			status := "pass"
+			var blocks []string
+			if boundary.Status != "ready" {
+				status = "warn"
+				if config.IsSovereignOffline(cfg) {
+					status = "fail"
+					blocks = []string{"sovereign readiness", "sovereign release claim"}
+				}
+			}
+			add(doctorFinding{
+				ID:               "crypto-" + boundary.Name,
+				Category:         "cryptography",
+				Status:           status,
+				Owner:            firstNonEmpty(boundary.Owner, "customer"),
+				Detail:           fmt.Sprintf("module=%s@%s assurance=%s missing=%s", firstNonEmpty(boundary.ModuleName, "missing"), firstNonEmpty(boundary.ModuleVersion, "missing"), firstNonEmpty(boundary.ModuleAssurance, "missing"), strings.Join(boundary.Missing, ",")),
+				SuggestedCommand: "fairway readiness crypto",
+				Blocks:           blocks,
+			})
+		}
+	}
 	sort.SliceStable(report.Findings, func(i, j int) bool { return report.Findings[i].ID < report.Findings[j].ID })
 	return report
 }
@@ -11038,14 +11061,17 @@ type readinessReport struct {
 
 func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("readiness requires subcommand: report or capabilities")
+		return errors.New("readiness requires subcommand: report, capabilities, or crypto")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("readiness", "report|capabilities")
+		subcommandUsage("readiness", "report|capabilities|crypto")
 		return nil
 	}
 	if args[0] == "capabilities" {
 		return cmdConsumerCapabilityReadiness(ctx, opts, args[1:])
+	}
+	if args[0] == "crypto" {
+		return cmdCryptoReadiness(opts, args[1:])
 	}
 	if args[0] != "report" {
 		return fmt.Errorf("unknown readiness subcommand %q", args[0])
@@ -11101,6 +11127,54 @@ func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error 
 		}
 		return nil
 	})
+}
+
+func cmdCryptoReadiness(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("readiness crypto", "[--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("readiness crypto", flag.ContinueOnError)
+	format := fs.String("format", "text", "output format: text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected readiness crypto arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return fmt.Errorf("unsupported readiness crypto format %q", *format)
+	}
+	cfg, root, _, err := loadConfig(opts)
+	if err != nil {
+		return err
+	}
+	report := config.BuildCryptoReadiness(cfg, root)
+	if opts.JSON || *format == "json" {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		printCryptoReadiness(report)
+	}
+	if !report.Ready {
+		return errors.New("sovereign cryptography readiness has missing boundaries or evidence")
+	}
+	return nil
+}
+
+func printCryptoReadiness(report config.CryptoReadinessReport) {
+	fmt.Println("# Fairway Sovereign Cryptography Readiness")
+	fmt.Printf("\nschema: %s\nruntime_profile: %s\nready: %t\nfips_posture: %s\nproduct_claim: %s\n", report.Schema, report.RuntimeProfile, report.Ready, report.FIPSPosture, report.ProductClaim)
+	fmt.Printf("missing_boundaries: %d\nmissing_evidence: %d\n", report.MissingBoundaries, report.MissingEvidence)
+	fmt.Println("\n## Boundaries")
+	for _, boundary := range report.Boundaries {
+		fmt.Printf("- %s: %s owner=%s custodian=%s module=%s@%s assurance=%s\n", boundary.Name, boundary.Status, firstNonEmpty(boundary.Owner, "missing"), firstNonEmpty(boundary.Custodian, "missing"), firstNonEmpty(boundary.ModuleName, "missing"), firstNonEmpty(boundary.ModuleVersion, "missing"), firstNonEmpty(boundary.ModuleAssurance, "missing"))
+		if len(boundary.Missing) > 0 {
+			fmt.Printf("  missing: %s\n", strings.Join(boundary.Missing, ", "))
+		}
+	}
+	fmt.Println("\nThis readiness report records engineering evidence only. It does not certify Fairway or the customer deployment.")
 }
 
 type consumerCapabilityDefinition struct {

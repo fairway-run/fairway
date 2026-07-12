@@ -302,6 +302,30 @@ restore, dashboard, and read-only API paths, use the
 | `sovereign_break_glass_max_seconds` | integer | `300` | Maximum `break_glass` proof lifetime, from 30 through 900 seconds and no longer than the normal session maximum. Break-glass requires an `admin` role and reason and does not bypass dual control or any deployment, release, credential, public-exposure, or live-operation boundary. |
 | `sovereign_dual_control_commands` | string array | `["set:status", "record:review"]` | Machine-readable consequential-command policy. Sovereign write mode requires both commands and an `authorizer` role. A distinct signed authorizer proof must be bound to command, task, canonical payload SHA-256, primary proof ID, and `Idempotency-Key`; exact replay returns the existing idempotent result and rebinding fails closed. |
 
+### Sovereign cryptography boundaries
+
+`[[sovereign_crypto_boundaries]]` records metadata and local evidence references
+for the five required names: `in_transit`, `at_rest`, `backup`,
+`evidence_export`, and `signing`. `fairway readiness crypto` reports and fails
+on missing boundaries or proof. The configuration stores no keys or secrets.
+
+| Field | Values | Purpose |
+|---|---|---|
+| `name` | one required boundary name | Stable boundary identity. Duplicate or unknown names fail config validation. |
+| `owner` | `customer`, `product`, `shared` | Accountable control owner; this is not a transfer of certification or authorization responsibility. |
+| `custodian` | bounded metadata string | Customer or platform key custodian reference. |
+| `key_reference` | bounded metadata reference | Identifier such as a PKCS#11/HSM/TPM/OS-keystore reference. Never put key material, credentials, or tokens here. |
+| `algorithm` | bounded metadata string | Exact configured algorithm or protection mechanism. |
+| `module_name`, `module_version` | bounded metadata strings | Exact cryptographic module and version used at this boundary. |
+| `module_assurance` | `customer_approved`, `fips_140_3_validated`, `not_assessed` | `fips_140_3_validated` applies only to the named externally validated module/configuration and requires certificate/configuration proof. It never means Fairway itself is validated. |
+| `approval_evidence` | local file reference | Customer approval or external module-assurance decision. |
+| `validation_certificate`, `validated_configuration` | local file references | Required only for `fips_140_3_validated`; must identify the exact certificate and approved configuration. |
+| `custody_evidence`, `rotation_evidence`, `recovery_evidence` | local file references | Required proof that key custody, rotation, loss/recovery, and responsible owner have been exercised or reviewed. |
+
+All evidence references must resolve to non-symlink regular files inside the
+project root. URLs, URNs, traversal, absent files, and symlinks remain gaps so a
+remote assertion cannot silently satisfy sovereign readiness.
+
 `fairway server --read-only` serves a read-only JSON API skeleton at
 `/api/v1/status`, `/api/v1/tasks`, `/api/v1/tasks/<task-id>`, and
 `/api/v1/reports/summary`. It reuses the existing Fairway store and read

@@ -142,6 +142,12 @@ The signed profile supplies cryptographic actor, scope, expiry, revocation,
 separation-of-duty, and dual-control evidence; it does not make Fairway an
 identity provider or certification authority.
 
+Cryptographic boundaries, customer key custody, and the explicit FIPS non-claim
+are specified in
+[Sovereign Cryptography And Key Posture](sovereign-cryptography-key-posture.md).
+`fairway readiness crypto` checks evidence completeness for the named modules
+and configurations; it does not validate a module or certify a deployment.
+
 The task sequence FW-342 through FW-354 implements, rehearses, assesses, and
 packages this baseline. Until those tasks and their independent gates complete,
 the documents and starter profile are design inputs only.

@@ -17,29 +17,30 @@ import (
 const DefaultConfigPath = ".fairway/config.toml"
 
 type Config struct {
-	Fairway             FairwayConfig           `toml:"fairway"`
-	Runtime             RuntimeConfig           `toml:"runtime"`
-	Dashboard           DashboardConfig         `toml:"dashboard"`
-	Server              ServerConfig            `toml:"server"`
-	Worktrees           WorktreesConfig         `toml:"worktrees"`
-	Sessions            SessionsConfig          `toml:"sessions"`
-	Coordinator         CoordinatorConfig       `toml:"coordinator"`
-	ConsumerReadiness   ConsumerReadinessConfig `toml:"consumer_readiness"`
-	States              StatesConfig            `toml:"states"`
-	Gates               GatesConfig             `toml:"gates"`
-	TaskKinds           TaskKindsConfig         `toml:"task_kinds"`
-	TaskPriorities      TaskPrioritiesConfig    `toml:"task_priorities"`
-	Roles               []Role                  `toml:"roles"`
-	ReviewDomainAliases map[string]string       `toml:"review_domain_aliases"`
-	ReviewRoutes        []ReviewRoute           `toml:"review_routes"`
-	WorkstreamProfiles  []WorkstreamProfile     `toml:"workstream_profiles"`
-	ReviewProfiles      []ReviewProfile         `toml:"review_profiles"`
-	PacketTemplates     []PacketTemplate        `toml:"packet_templates"`
-	RuleSources         []RuleSource            `toml:"rule_sources"`
-	ProviderTargets     []ProviderTarget        `toml:"provider_targets"`
-	ProviderModelPrices []ProviderModelPrice    `toml:"provider_model_prices"`
-	AdvisoryAdapters    []AdvisoryAdapter       `toml:"advisory_provider_adapters"`
-	ExternalNotifiers   []ExternalNotifier      `toml:"external_notifiers"`
+	Fairway                   FairwayConfig             `toml:"fairway"`
+	Runtime                   RuntimeConfig             `toml:"runtime"`
+	Dashboard                 DashboardConfig           `toml:"dashboard"`
+	Server                    ServerConfig              `toml:"server"`
+	Worktrees                 WorktreesConfig           `toml:"worktrees"`
+	Sessions                  SessionsConfig            `toml:"sessions"`
+	Coordinator               CoordinatorConfig         `toml:"coordinator"`
+	ConsumerReadiness         ConsumerReadinessConfig   `toml:"consumer_readiness"`
+	States                    StatesConfig              `toml:"states"`
+	Gates                     GatesConfig               `toml:"gates"`
+	TaskKinds                 TaskKindsConfig           `toml:"task_kinds"`
+	TaskPriorities            TaskPrioritiesConfig      `toml:"task_priorities"`
+	Roles                     []Role                    `toml:"roles"`
+	ReviewDomainAliases       map[string]string         `toml:"review_domain_aliases"`
+	ReviewRoutes              []ReviewRoute             `toml:"review_routes"`
+	WorkstreamProfiles        []WorkstreamProfile       `toml:"workstream_profiles"`
+	ReviewProfiles            []ReviewProfile           `toml:"review_profiles"`
+	PacketTemplates           []PacketTemplate          `toml:"packet_templates"`
+	RuleSources               []RuleSource              `toml:"rule_sources"`
+	ProviderTargets           []ProviderTarget          `toml:"provider_targets"`
+	ProviderModelPrices       []ProviderModelPrice      `toml:"provider_model_prices"`
+	AdvisoryAdapters          []AdvisoryAdapter         `toml:"advisory_provider_adapters"`
+	ExternalNotifiers         []ExternalNotifier        `toml:"external_notifiers"`
+	SovereignCryptoBoundaries []SovereignCryptoBoundary `toml:"sovereign_crypto_boundaries"`
 }
 
 type RuntimeConfig struct {
@@ -403,6 +404,9 @@ func Validate(cfg Config) error {
 		return err
 	}
 	if err := validateRuntimeProfile(cfg); err != nil {
+		return err
+	}
+	if err := validateSovereignCryptoBoundaries(cfg.SovereignCryptoBoundaries); err != nil {
 		return err
 	}
 	switch strings.TrimSpace(cfg.Dashboard.TrustedProxy) {

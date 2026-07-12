@@ -1622,7 +1622,7 @@ func TestCLI_SovereignOfflineProfileKeepsLocalWorkflowsAndRejectsRemoteEdges(t *
 	runOK(t, "db", "backup", filepath.Join(repo, "offline-backup.db"))
 	runOK(t, "readiness", "capabilities")
 
-	doctor := runCapture(t, "doctor", "--dashboard-read-only", "", "--dashboard-full", "")
+	doctor := runCaptureAllowError(t, "doctor", "--dashboard-read-only", "", "--dashboard-full", "")
 	assertContains(t, doctor, "runtime_profile: sovereign-offline")
 	assertContains(t, doctor, "network-dashboard-listen status=pass")
 	readiness := runCapture(t, "--json", "readiness", "capabilities")
@@ -2030,6 +2030,60 @@ required_features = ["managed_binary_cache"]
 	assertContains(t, missing, `"running 0.1.12 is below minimum 9.0.0"`)
 	assertContains(t, missing, `"missing_commands": [`)
 	assertContains(t, missing, `"future command"`)
+}
+
+func TestCLI_SovereignCryptoReadiness(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	assertContains(t, runCapture(t, "readiness", "crypto", "--help"), "fairway readiness crypto")
+	missing := runCaptureAllowError(t, "--json", "readiness", "crypto")
+	assertContains(t, missing, `"schema": "fairway.sovereign-crypto-readiness.v1"`)
+	assertContains(t, missing, `"ready": false`)
+	assertContains(t, missing, `"missing_boundaries": 5`)
+
+	for _, name := range []string{"approval", "custody", "rotation", "recovery"} {
+		if err := os.WriteFile(filepath.Join(repo, name+".json"), []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var blocks strings.Builder
+	for _, name := range config.RequiredSovereignCryptoBoundaries {
+		fmt.Fprintf(&blocks, `
+[[sovereign_crypto_boundaries]]
+name = %q
+owner = "customer"
+custodian = "customer-security"
+key_reference = %q
+algorithm = "customer-approved"
+module_name = "customer-module"
+module_version = "1.0"
+module_assurance = "customer_approved"
+approval_evidence = "approval.json"
+custody_evidence = "custody.json"
+rotation_evidence = "rotation.json"
+recovery_evidence = "recovery.json"
+`, name, "pkcs11:customer-key-"+name)
+	}
+	appendFile(t, ".fairway/config.toml", blocks.String())
+	report := runCapture(t, "readiness", "crypto")
+	assertContains(t, report, "ready: true")
+	assertContains(t, report, "fips_posture: not_claimed")
+	assertContains(t, report, "Fairway is not FIPS 140-3 validated")
+	jsonReport := runCapture(t, "--json", "readiness", "crypto")
+	assertContains(t, jsonReport, `"ready": true`)
+	assertContains(t, jsonReport, `"customer_owned": 5`)
+	doctor := runCaptureAllowError(t, "doctor", "--dashboard-read-only", "", "--dashboard-full", "")
+	assertContains(t, doctor, "crypto-in_transit status=pass")
+	assertContains(t, doctor, "crypto-signing status=pass")
 }
 
 func TestFairwayVersionAtLeast(t *testing.T) {

@@ -21,7 +21,7 @@ identity boundary, and concurrency model are reviewed:
 | Local single host | One operator or one team control-room host. | Default. SQLite and loopback dashboard. |
 | Shared read-only dashboard | Team visibility with writes still local CLI. | Loopback Fairway origin plus trusted tunnel/proxy. |
 | Single-host team server | Small team with one internal Fairway host and multiple remote writers. | Future pilot. Requires authn/authz, backup, and rollback. |
-| Airgap/internal server | Private network or airgap environment with no external identity provider. | Use private DNS, TLS/mTLS or API tokens, local backups, and explicit restore drills. |
+| Airgap/internal server | Private network or airgap environment with no external identity provider. | Use loopback/private TLS and the customer-controlled `sovereign_signed` identity profile; shared API tokens and unverified proxy headers do not satisfy sovereign identity readiness. Use encrypted local backups and explicit restore/key-recovery drills. |
 | Managed shared control plane | Longer-lived team deployment with server-backed store, monitored service, and release gates. | Future supported mode after pilot evidence. |
 
 No topology assumes Cloudflare. Cloudflare Access is one reference shared
@@ -109,6 +109,13 @@ Postgres/shared store:
 Backups must not include provider credentials, raw prompt/transcript content,
 or secrets outside the Fairway DB unless a separate compliance process owns
 them.
+
+Sovereign deployment readiness also requires one
+`[[sovereign_crypto_boundaries]]` inventory row for in-transit, at-rest, backup,
+evidence-export, and signing protection. `fairway readiness crypto` must identify
+the owner, custodian, key/module/configuration, rotation/recovery proof, and any
+externally validated module evidence. Fairway does not infer storage encryption
+from file permissions and does not claim FIPS validation for itself.
 
 ## Upgrades And Rollback
 
