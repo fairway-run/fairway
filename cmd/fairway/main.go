@@ -4795,6 +4795,7 @@ func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error 
 		fmt.Println("fairway assurance profiles list --dir <path> [--format text|json]")
 		fmt.Println("fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]")
 		fmt.Println("fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]")
+		fmt.Println("fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
 		fmt.Println("  Validate a non-executable assurance profile that organizes evidence without granting certification or workflow authority.")
 		return nil
 	}
@@ -4820,6 +4821,16 @@ func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error 
 	}
 	if args[0] == "readiness" {
 		return cmdAssuranceReadiness(ctx, opts, args[1:])
+	}
+	if args[0] == "package" {
+		if len(args) == 1 || isHelpOnly(args[1:]) {
+			fmt.Println("fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
+			return nil
+		}
+		if args[1] != "export" {
+			return fmt.Errorf("unknown assurance package subcommand %q", args[1])
+		}
+		return cmdAssurancePackageExport(ctx, opts, args[2:])
 	}
 	if args[0] != "profile" {
 		return fmt.Errorf("unknown assurance subcommand %q", args[0])
@@ -4865,6 +4876,85 @@ func cmdAssuranceProfilesList(opts globalOptions, args []string) error {
 	return nil
 }
 
+func cmdAssurancePackageExport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
+		return nil
+	}
+	fs := flag.NewFlagSet("assurance package export", flag.ContinueOnError)
+	profilePath := fs.String("profile", "", "local assurance profile path")
+	scope := fs.String("scope", "", "project, task_set, or release")
+	scopeID := fs.String("scope-id", "", "stable task-set or release identifier")
+	out := fs.String("out", "", "new local output directory")
+	at := fs.String("at", "", "package creation/evaluation time in RFC3339")
+	signingKeyEnv := fs.String("signing-key-env", "", "environment variable containing a base64 Ed25519 seed or private key")
+	var taskIDs multiStringFlag
+	fs.Var(&taskIDs, "task", "selected task id; repeatable")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || strings.TrimSpace(*profilePath) == "" || strings.TrimSpace(*scope) == "" || strings.TrimSpace(*out) == "" {
+		return errors.New("assurance package export requires --profile, --scope, and --out")
+	}
+	if !containsString([]string{"project", "task_set", "release"}, *scope) {
+		return errors.New("--scope must be project, task_set, or release")
+	}
+	if *scope == "project" && (len(taskIDs) > 0 || strings.TrimSpace(*scopeID) != "") {
+		return errors.New("project scope covers the configured project and does not accept --task or --scope-id")
+	}
+	if *scope != "project" && (len(taskIDs) == 0 || strings.TrimSpace(*scopeID) == "") {
+		return errors.New("task_set and release scopes require --scope-id and at least one --task")
+	}
+	profile, err := assurance.LoadFile(*profilePath)
+	if err != nil {
+		return err
+	}
+	if !containsString(profile.Scope.Types, *scope) {
+		return fmt.Errorf("assurance profile does not support scope %s", *scope)
+	}
+	createdAt, err := assuranceEvaluationTime(*at)
+	if err != nil {
+		return err
+	}
+	var signingKey string
+	if name := strings.TrimSpace(*signingKeyEnv); name != "" {
+		if ok, _ := regexp.MatchString(`^[A-Z_][A-Z0-9_]*$`, name); !ok {
+			return errors.New("--signing-key-env must be an uppercase environment variable name")
+		}
+		value, ok := os.LookupEnv(name)
+		if !ok || strings.TrimSpace(value) == "" {
+			return errors.New("assurance package signing key environment variable is not set")
+		}
+		signingKey = value
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
+		selected, resolvedScopeID, err := assuranceScopeTasks(ctx, s, cfg.Fairway.ProjectName, *scope, *scopeID, []string(taskIDs))
+		if err != nil {
+			return err
+		}
+		maps := make([]assurance.EvidenceMap, 0, len(selected))
+		for _, taskID := range selected {
+			mapped, err := assuranceEvidenceMapForTask(ctx, s, profile, taskID, createdAt)
+			if err != nil {
+				return fmt.Errorf("map assurance evidence for %s: %w", taskID, err)
+			}
+			maps = append(maps, mapped)
+		}
+		readiness := assurance.BuildReadiness(profile, *scope, maps)
+		readiness.ScopeID = resolvedScopeID
+		manifest, err := assurance.ExportPackage(assurance.PackageOptions{Profile: profile, Readiness: readiness, Maps: maps, OutputDirectory: *out, CreatedAt: createdAt, SigningKeyBase64: signingKey})
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(manifest)
+		}
+		fmt.Printf("assurance_package_exported: %s\n", *out)
+		fmt.Printf("schema: %s\nprofile: %s@%s\nscope: %s id=%s tasks=%d\nfiles: %d\nsigned: %t\nauthority_boundary: %s\n", manifest.Schema, manifest.ProfileID, manifest.ProfileVersion, manifest.Scope, manifest.ScopeID, len(manifest.TaskIDs), len(manifest.Files), manifest.Signed, manifest.AuthorityBoundary)
+		return nil
+	})
+}
+
 func cmdAssuranceReadiness(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
 		fmt.Println("fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]")
@@ -4908,18 +4998,9 @@ func cmdAssuranceReadiness(ctx context.Context, opts globalOptions, args []strin
 		return err
 	}
 	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
-		selected := uniqueStrings([]string(taskIDs))
-		resolvedScopeID := strings.TrimSpace(*scopeID)
-		if *scope == "project" {
-			resolvedScopeID = cfg.Fairway.ProjectName
-			tasks, err := s.AllTasks(ctx)
-			if err != nil {
-				return err
-			}
-			for _, task := range tasks {
-				selected = append(selected, task.Definition.ID)
-			}
-			sort.Strings(selected)
+		selected, resolvedScopeID, err := assuranceScopeTasks(ctx, s, cfg.Fairway.ProjectName, *scope, *scopeID, []string(taskIDs))
+		if err != nil {
+			return err
 		}
 		maps := make([]assurance.EvidenceMap, 0, len(selected))
 		for _, taskID := range selected {
@@ -4947,6 +5028,24 @@ func cmdAssuranceReadiness(ctx context.Context, opts globalOptions, args []strin
 		fmt.Printf("authority_boundary: %s\n", report.AuthorityBoundary)
 		return nil
 	})
+}
+
+func assuranceScopeTasks(ctx context.Context, s *store.Store, projectName, scope, scopeID string, taskIDs []string) ([]string, string, error) {
+	selected := uniqueStrings(taskIDs)
+	resolvedScopeID := strings.TrimSpace(scopeID)
+	if scope == "project" {
+		resolvedScopeID = projectName
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, task := range tasks {
+			selected = append(selected, task.Definition.ID)
+		}
+		selected = uniqueStrings(selected)
+	}
+	sort.Strings(selected)
+	return selected, resolvedScopeID, nil
 }
 
 func cmdAssuranceEvidenceMap(ctx context.Context, opts globalOptions, args []string) error {
@@ -19945,7 +20044,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, binary, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -19992,7 +20091,7 @@ func printCommandHelp(command string) bool {
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
-		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\n  Validate profiles and project existing Fairway facts without granting certification or workflow authority.",
+		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\nfairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]\n  Validate profiles, project existing facts, and export bounded assessor evidence without granting certification or workflow authority.",
 		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]\n  Render a deterministic grounded packet with an optional validated advisory narrative.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",

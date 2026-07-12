@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2463,6 +2464,22 @@ func TestCLI_AssuranceEvidenceMap(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "require --scope-id") {
 		t.Fatalf("unexpected missing scope id error: %v", err)
 	}
+
+	t.Setenv("FAIRWAY_TEST_ASSURANCE_SIGNING_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	packageOutput := runCapture(t, "assurance", "package", "export", "--profile", "profile.json", "--scope", "project", "--out", "assurance-package", "--at", "2026-07-12T12:00:00Z", "--signing-key-env", "FAIRWAY_TEST_ASSURANCE_SIGNING_KEY")
+	assertContains(t, packageOutput, "assurance_package_exported: assurance-package")
+	assertContains(t, packageOutput, "signed: true")
+	for _, name := range []string{"manifest.json", "signature.json", "profile.json", "readiness.json", "scope.json", "controls.json", "controls.md", "controls.csv", "evidence-index.json", "decisions.json", "reviews.json", "provenances.json", "exceptions.json", "responsibilities.json", "gaps.json", "oscal-control-map.json", "VERIFY.md"} {
+		if _, err := os.Stat(filepath.Join("assurance-package", name)); err != nil {
+			t.Fatalf("missing package file %s: %v", name, err)
+		}
+	}
+	manifestData, err := os.ReadFile("assurance-package/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNotContains(t, string(manifestData), "go test ./...")
+	assertNotContains(t, string(manifestData), "artifacts/test.json")
 }
 
 func TestCLI_ExplainCodeGroundedPacket(t *testing.T) {

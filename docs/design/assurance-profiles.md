@@ -129,6 +129,10 @@ recorded source references, freshness rule, and assessor boundary. Gap output
 is read-only and does not automatically create tasks, accept exceptions, or
 change control state.
 
+FW-358 consumes the same normalized maps and readiness report to create the
+bounded, optionally signed bundle described in
+[assurance packages](assurance-packages.md).
+
 Generated findings and packages remain assessment inputs. A certification or
 authorization may be recorded later only as explicit external evidence from the
 named authority for the exact scope, product version, and configuration.

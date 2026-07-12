@@ -635,6 +635,7 @@ fairway assurance profile validate <path> [--format text|json]
 fairway assurance profiles list --dir <path> [--format text|json]
 fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]
 fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]
+fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]
 ```
 
 The validator accepts one local YAML or JSON
@@ -665,6 +666,12 @@ Project scope always covers every task in the configured Fairway project and
 rejects task subsets. Task-set and release scopes require a stable `--scope-id`
 and at least one explicit `--task`, preventing partial evidence from being
 presented as an unidentified release or project-wide result.
+`package export` creates a new bounded directory containing digest-manifested
+JSON, Markdown, and CSV control views, metadata-only evidence/reference
+indexes, responsibilities, gaps, verification instructions, and an explicit
+OSCAL bridge boundary. Optional Ed25519 signing reads a base64 key from the
+named environment variable; key material is not accepted in argv or written to
+the package. See [assurance packages](assurance-packages.md).
 See [assurance profiles](assurance-profiles.md).
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic
