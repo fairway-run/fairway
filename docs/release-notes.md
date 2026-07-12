@@ -4,11 +4,66 @@ Fairway `v0.1.1` is the first public release with signed/notarized macOS
 artifacts and a Homebrew cask. The initial `v0.1.0` release artifact was yanked
 because its CLI version metadata still reported the development version.
 
-Product boundary reminder for current releases: Fairway supports governed
-agentic engineering as a coordination control plane. It is not an autonomous
+Product boundary reminder for current releases: Fairway provides engineering
+control and accountability for agent-driven delivery. It is not an autonomous
 workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
+
+## v0.1.13
+
+### What Changed
+
+- The default dashboard wall no longer waits for coordinator, reconciliation,
+  closeout, and audit projections. Those read-only diagnostics remain available
+  through bounded progressive panels without rendering skipped work as a clean
+  zero.
+- SSE event delivery now reads incrementally from a durable cursor and performs
+  bounded review-wait sweeps. Large stores no longer require a full event and
+  review hydration every second for each idle dashboard client.
+- Reports, task detail, coordinator plans, and audit checks use batch readers
+  for transitions, evidence, reviews, handoffs, and notifications. Unknown or
+  static routes return bounded responses instead of building the wall.
+- The public product story now leads with accountable intent, material
+  decisions, evidence, independent judgment, and explicit promotion. The
+  quickstart proves one complete local work record without requiring users to
+  learn the advanced lane, watcher, shared-team, or release model first.
+- Documentation is organized by reader journey and claim status. Implemented,
+  validated-practice, experimental, planned, and non-goal statements are
+  separated, and an internal AI Cloud case study reports both observed benefit
+  and process cost without claiming causation or external adoption.
+- Standalone Fairway no longer contains hidden GPUaaS project, role, route, or
+  example defaults. Current AI Cloud and GPUaaS references remain only where
+  explicitly labeled as case study, assessment, release history, archive, or
+  compatibility material.
+- The docs backlog audit now emits `consumer_lessons`. The previous
+  `gpuaas_lessons` JSON field remains populated for one compatibility window.
+
+### Known Limits
+
+- Shared-team write APIs, trusted-proxy runtime verification, non-loopback
+  Fairway origins, and Postgres runtime storage remain preview or unsupported.
+  This release does not promote them to supported production operation.
+- The AI Cloud timing comparison is observational, uses small non-equivalent
+  cohorts, and is not a general productivity or customer-adoption claim.
+- The static portal dependency tree currently reports four moderate
+  development-chain advisories. The configured high-severity gate passes; a
+  separate dependency-maintenance slice owns upgrades.
+- The old `gpuaas_lessons` JSON compatibility key is temporary and should be
+  removed only through a separately documented compatibility decision.
+
+### Release Checklist
+
+- `go test ./...` and `go test -tags=integration ./...` pass.
+- Focused race tests for store, coordinator, dashboard, audit, and CLI pass.
+- `go vet ./...`, `git diff --check`, `go mod tidy`, and backlog YAML parsing
+  pass without source drift.
+- `fairway config validate`, workflow guard, and active reconciliation pass.
+- `goreleaser check` and a release-linked `0.1.13` version/ready/reconcile build
+  pass.
+- The clean first-value rehearsal and public desktop/mobile portal review pass.
+- A separate reviewed task owns the tag, GitHub release, signing/notarization,
+  Homebrew update, release verification, and dashboard restart decision.
 
 ## v0.1.12
 

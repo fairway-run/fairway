@@ -9,6 +9,37 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
+## v0.1.13
+
+### Added
+
+- A reader-oriented public documentation portal with a five-minute first-value
+  path, evidence-backed capability labels, an ecosystem responsibility map,
+  integration guidance, and an explicitly internal AI Cloud case study.
+- Repeatable dashboard contention and real-data assessment packets for
+  separating product projection defects from deployment and dataset hygiene.
+
+### Changed
+
+- Fairway is now consistently described as engineering control and
+  accountability for agent-driven delivery. Coordination, lanes, sessions,
+  and worktrees remain capabilities rather than the product category.
+- Core defaults, audit language, examples, help, and current documentation no
+  longer assume one GPUaaS consumer. Historical and compatibility material is
+  labeled rather than silently rewritten.
+- Dashboard wall, diagnostics, reports, task detail, coordinator, audit, and
+  store projections use bounded or batched read models so larger Fairway data
+  sets do not make routine views wait on every heavy diagnostic.
+- Dashboard SSE polling uses incremental cursors and bounded review-wait sweeps
+  rather than hydrating the full event and review surface every second.
+
+### Fixed
+
+- Unknown and static dashboard routes no longer fall through to expensive wall
+  projections.
+- The docs backlog audit reports generic consumer lessons while retaining the
+  previous JSON key for one documented compatibility window.
+
 ## v0.1.12
 
 ### Added

@@ -5769,3 +5769,21 @@ tasks:
       - "The annotated v0.1.13 tag points to the authorized reviewed SHA and the normal release workflow publishes signed/notarized binary assets without moving an existing tag."
       - "GitHub release, checksums, asset HTTP status, Homebrew cask/tap commit, brew fetch, installed version, public docs, and release verification readbacks pass."
       - "Rollback reference remains v0.1.12, and dashboard restart/version readback is either completed under a separate reviewed task or explicitly deferred."
+
+  - id: FW-336
+    title: Prove provider replacement on one real agent task
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: adopter-value-proof
+    source_paths: [docs/quickstart.md, docs/agent-guide.md, examples/session-adapters, docs/assessment]
+    target_paths: [docs/quickstart.md, docs/assessment, website]
+    review_domains: [governance, ops, ui]
+    risk_level: medium
+    migration_type: provider-replacement-adoption-demo
+    dependencies: [FW-335]
+    acceptance_checks:
+      - "A real bounded implementation task starts with one external provider, records intent, checkpoint, material decision, Git state, and evidence, then deliberately ends that provider before completion."
+      - "A replacement provider resumes from Fairway and repository facts without private transcript access, completes the task, and identifies any missing context or ceremony."
+      - "The resulting optional second quickstart demonstrates user value rather than Fairway self-verification and reports elapsed time, recovered facts, unrecoverable context, rough edges, and cleanup."

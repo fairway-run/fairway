@@ -1,12 +1,12 @@
-- Atomic `work start`, compact status, guarded verification, and composed
-  closeout make the common Fairway path faster without bypassing existing
-  evidence, review, reconciliation, or consequential release/live controls.
-- Task decisions, track-memory lifecycle, routing preflight, wait hygiene,
-  managed binary cache, and consumer readiness reports move repeatable
-  coordination and environment state out of provider chat loops.
-- Deterministic `fairway explain code` packets connect committed Git locations
-  to cited Fairway contracts, decisions, evidence, and reviews while showing
-  conflicts and missing provenance instead of generating history.
-- Optional loopback-only advisory narratives label every statement as recorded,
-  inferred, or unknown and require packet citations. Generated text remains
-  display-only and never becomes accepted provenance or workflow authority.
+- Routine dashboard views remain responsive on larger Fairway stores through
+  incremental SSE cursors, batched read models, a wall fast path, bounded task
+  detail, and independently loaded diagnostics.
+- Fairway now presents one coherent accountability chain: declared intent,
+  material decisions, evidence, independent judgment, and explicit promotion.
+  Coordination remains a capability rather than the category definition.
+- A proven five-minute path, reader-oriented portal, responsibility map,
+  integration guide, and candid internal AI Cloud case study make the product
+  evaluable without exposing the entire operating model at first contact.
+- Core behavior and reusable examples are project-neutral. Consumer-specific
+  names survive only as labeled evidence, history, case study, archive, or
+  documented compatibility material.
