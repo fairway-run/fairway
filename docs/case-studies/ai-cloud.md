@@ -154,6 +154,20 @@ These findings are separated into product defects, data/archive hygiene, and
 deployment/runtime behavior. Historical task volume is not used to excuse
 product defects.
 
+## Assurance package pilot
+
+A bounded three-task node-security set was exported with the NIST SSDF 1.1
+starter profile. Export took 0.02 seconds and pinned-key offline verification
+took 0.01 seconds. One narrow accountability control was supported, two were
+partial, and release provenance was missing. The package contained metadata and
+Fairway references only; it did not import AI Cloud source or artifact bodies.
+
+The result supports continued internal assessment preparation because the tool
+made the missing decision, provenance, release, and vulnerability evidence
+explicit. It does not establish full SSDF coverage or any certification,
+compliance, procurement, legal, or authorization outcome. See the
+[assurance package pilot](../assessment/fairway-assurance-package-pilot-2026-07-12.md).
+
 ## Known limitations
 
 - The timing comparison is observational and small; it does not isolate Fairway

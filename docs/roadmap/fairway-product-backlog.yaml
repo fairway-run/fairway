@@ -6254,3 +6254,22 @@ tasks:
       - "Fairway generates one package for its Sovereign Deployment Ready reference profile and one bounded AI Cloud consumer package using existing durable evidence without importing private transcripts, credentials, secrets, or raw artifact bodies."
       - "An independent reviewer measures evidence collection time, mapped and unmapped controls, stale or conflicting evidence, false satisfaction findings, package usability, manual assessor work remaining, and whether the package materially shortens readiness work."
       - "The pilot produces promote, repeat-with-fixes, or block recommendations for each profile and does not advertise certification, compliance, authorization, or customer outcomes beyond the measured evidence."
+
+  - id: FW-362
+    title: Resolve assurance review history to latest domain verdict
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: assurance-evidence-normalization
+    source_paths: [internal/assurance, internal/store, docs/assessment]
+    target_paths: [internal/assurance, docs/design/assurance-profiles.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: high
+    migration_type: assurance-review-history-resolution
+    dependencies: [FW-312, FW-356, FW-361]
+    acceptance_checks:
+      - "Assurance mapping keeps only the latest durable review verdict per task and domain in current state while retaining earlier review references as superseded history without review reasons or private content."
+      - "Changes-then-approve can support a positive review requirement, approve-then-changes remains non-satisfying, and tied timestamps resolve by durable review row order rather than wall-clock order."
+      - "Readiness and package regressions prove resolved review history no longer creates a false conflict and unresolved or mixed current-domain verdicts never create false satisfaction."

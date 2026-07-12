@@ -44,3 +44,8 @@ evidence alone.
 
 See [authoring custom profiles](authoring.md) and the
 [compatibility policy](compatibility.md).
+
+The [2026-07-12 package pilot](../assessment/fairway-assurance-package-pilot-2026-07-12.md)
+records measured Fairway sovereign and bounded AI Cloud results, including
+machine time, gaps, privacy checks, manual assessor work, and promote/repeat
+recommendations without an external assurance claim.
