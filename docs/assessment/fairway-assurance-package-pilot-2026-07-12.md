@@ -104,6 +104,16 @@ release/provenance facts for `PS.3`, and vulnerability-class proof for `RV.1`.
 - The sampled `PO.2` support consists of `done` task facts and `approve` review
   facts. No failing or private artifact content was used.
 
+FW-362 replayed the same Fairway task set after the pilot. The normalized
+index contained 33 current approval facts and 28 superseded review facts, with
+no review-history conflicts. A fresh AI Cloud replay after later independent
+`changes` verdicts correctly marked the review requirements conflicting and
+did not preserve the earlier `PO.2` satisfaction. Its two blocked/pass
+evidence facts remained conflicting because they are genuine evidence history,
+not review supersession. The original signed pilot bundles remain immutable
+point-in-time evidence at `2026-07-12T21:52:00Z`; this replay is regression
+evidence for the corrected current-state projection, not a rewrite of them.
+
 ## Privacy and trust checks
 
 - Evidence indexes contain no `/Users/` paths, command text, kind-recovery

@@ -103,6 +103,13 @@ The projection excludes command text, notes, review reasons, decision
 rationale, artifact paths, and artifact contents. Each fact retains a stable
 Fairway reference, class, result, timestamp, actor or producer when recorded,
 project/task scope, applicability, freshness, state, and confidence boundary.
+For review facts, only the latest durable verdict for each task and effective
+review domain is `current`. Earlier verdicts remain visible as `superseded`.
+The explicit `review_domain` is authoritative; legacy rows without one use the
+reviewer role as their effective domain. The latest timestamp wins, and equal
+timestamps resolve by durable review-row order. A later approval can therefore
+resolve earlier changes in the same domain, while a later changes verdict or
+mixed current-domain verdicts cannot satisfy a positive review requirement.
 Fact freshness is labeled `requirement_relative`; each control requirement
 evaluates its own `maximum_age` against `evaluated_at`, so one class can be
 stale for a strict control and current for a longer retention window.

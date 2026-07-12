@@ -106,6 +106,44 @@ func TestVerifyPackageFailsOverallButKeepsIntegrityForMissingOrStaleEvidence(t *
 	}
 }
 
+func TestVerifyPackagePreservesSupersededReviewHistory(t *testing.T) {
+	profile := mappingProfile()
+	profile.Controls = []Control{{ID: "C-1", Title: "Review", Objective: "Retain review evidence.", Responsibility: "product",
+		AssessmentObjectives: []string{"Inspect review facts."}, Evidence: []EvidenceRequirement{{Class: "review", MinimumCount: 1, AcceptedResults: []string{"approve"}}}}}
+	at := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	mapped := MapEvidence(profile, Sources{Task: TaskContext{Project: "demo", TaskID: "T-1", Status: "done", UpdatedAt: at.Format(time.RFC3339Nano)}, Reviews: []SourceReview{
+		{Index: 1, Domain: "arch", Verdict: "changes", Reviewer: "reviewer", CreatedAt: at.Add(-time.Hour).Format(time.RFC3339Nano)},
+		{Index: 2, Domain: "arch", Verdict: "approve", Reviewer: "reviewer", CreatedAt: at.Add(-time.Hour).Format(time.RFC3339Nano)},
+	}}, at)
+	readiness := BuildReadiness(profile, "task_set", []EvidenceMap{mapped})
+	readiness.ScopeID = "review-history"
+	dir := filepath.Join(t.TempDir(), "package")
+	if _, err := ExportPackage(PackageOptions{Profile: profile, Readiness: readiness, Maps: []EvidenceMap{mapped}, OutputDirectory: dir, CreatedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	report, err := VerifyPackage(VerifyOptions{Directory: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK || report.ControlSufficiency != "sufficient_recorded_evidence" {
+		t.Fatalf("review-history package verification=%+v", report)
+	}
+	var reviews packageReferenceGroup
+	data, err := os.ReadFile(filepath.Join(dir, "reviews.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &reviews); err != nil {
+		t.Fatal(err)
+	}
+	if len(reviews.Facts) != 2 || reviews.Facts[0].State != "superseded" || reviews.Facts[1].State != "current" {
+		t.Fatalf("packaged review history=%+v", reviews.Facts)
+	}
+	if strings.Contains(string(data), "reason") || strings.Contains(string(data), "private") {
+		t.Fatalf("packaged review history leaked excluded content: %s", data)
+	}
+}
+
 func TestVerifyPackageRejectsGeneratedClaimsEvenWithUpdatedDigests(t *testing.T) {
 	dir, _ := exportVerifiablePackage(t, false, false)
 	profilePath := filepath.Join(dir, "profile.json")

@@ -50,6 +50,80 @@ func TestMapEvidencePreservesBoundaries(t *testing.T) {
 	}
 }
 
+func TestMapEvidenceResolvesLatestReviewVerdictPerDomain(t *testing.T) {
+	profile := mappingProfile()
+	profile.Controls = []Control{{ID: "C-1", Title: "Review", Objective: "Retain review evidence.", Responsibility: "product",
+		AssessmentObjectives: []string{"Inspect review facts."}, Evidence: []EvidenceRequirement{{Class: "review", MinimumCount: 1, AcceptedResults: []string{"approve"}}}}}
+	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	tied := now.Add(-time.Hour).Format(time.RFC3339Nano)
+	tests := []struct {
+		name       string
+		reviews    []SourceReview
+		wantState  string
+		wantResult string
+	}{
+		{
+			name: "changes then approve",
+			reviews: []SourceReview{
+				{Index: 1, Domain: "arch", Verdict: "changes", Reviewer: "reviewer", CreatedAt: tied},
+				{Index: 2, Domain: "arch", Verdict: "approve", Reviewer: "reviewer", CreatedAt: tied},
+			},
+			wantState: "supported", wantResult: "approve",
+		},
+		{
+			name: "approve then changes",
+			reviews: []SourceReview{
+				{Index: 1, Domain: "arch", Verdict: "approve", Reviewer: "reviewer", CreatedAt: tied},
+				{Index: 2, Domain: "arch", Verdict: "changes", Reviewer: "reviewer", CreatedAt: tied},
+			},
+			wantState: "superseded", wantResult: "changes",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mapped := MapEvidence(profile, Sources{Task: TaskContext{Project: "demo", TaskID: "T-1", Status: "done", UpdatedAt: now.Format(time.RFC3339Nano)}, Reviews: tc.reviews}, now)
+			if got := mapped.Controls[0].Requirements[0].State; got != tc.wantState {
+				t.Fatalf("requirement state=%s want=%s facts=%+v", got, tc.wantState, mapped.Facts)
+			}
+			var current, superseded int
+			for _, fact := range mapped.Facts {
+				if fact.Class != "review" {
+					continue
+				}
+				switch fact.State {
+				case "current":
+					current++
+					if fact.Result != tc.wantResult {
+						t.Fatalf("current result=%s want=%s", fact.Result, tc.wantResult)
+					}
+				case "superseded":
+					superseded++
+				}
+			}
+			if current != 1 || superseded != 1 {
+				t.Fatalf("current=%d superseded=%d facts=%+v", current, superseded, mapped.Facts)
+			}
+		})
+	}
+}
+
+func TestMapEvidenceMixedCurrentReviewDomainsCannotSatisfy(t *testing.T) {
+	profile := mappingProfile()
+	profile.Controls = []Control{{ID: "C-1", Title: "Review", Objective: "Retain review evidence.", Responsibility: "product",
+		AssessmentObjectives: []string{"Inspect review facts."}, Evidence: []EvidenceRequirement{{Class: "review", MinimumCount: 1, AcceptedResults: []string{"approve"}}}}}
+	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	mapped := MapEvidence(profile, Sources{Task: TaskContext{Project: "demo", TaskID: "T-1", Status: "done", UpdatedAt: now.Format(time.RFC3339Nano)}, Reviews: []SourceReview{
+		{Index: 1, Domain: "arch", Verdict: "approve", Reviewer: "arch-reviewer", CreatedAt: now.Format(time.RFC3339Nano)},
+		{Index: 2, Domain: "security", Verdict: "changes", Reviewer: "security-reviewer", CreatedAt: now.Format(time.RFC3339Nano)},
+	}}, now)
+	if got := mapped.Controls[0].Requirements[0].State; got != "conflicting" {
+		t.Fatalf("requirement state=%s want=conflicting facts=%+v", got, mapped.Facts)
+	}
+	if BuildReadiness(profile, "task_set", []EvidenceMap{mapped}).Controls[0].Status == "satisfied_by_recorded_evidence" {
+		t.Fatal("mixed current-domain verdicts satisfied review requirement")
+	}
+}
+
 func TestMapEvidenceDoesNotUpgradeProblemFacts(t *testing.T) {
 	profile := mappingProfile()
 	profile.Controls = []Control{{ID: "C-1", Title: "Evidence", Objective: "Retain evidence.", Responsibility: "product",

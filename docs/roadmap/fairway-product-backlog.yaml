@@ -6264,7 +6264,7 @@ tasks:
     owning_domain: fairway
     owning_layer: assurance-evidence-normalization
     source_paths: [internal/assurance, internal/store, docs/assessment]
-    target_paths: [internal/assurance, docs/design/assurance-profiles.md, docs/roadmap/fairway-product-backlog.yaml]
+    target_paths: [internal/assurance, docs/design/assurance-profiles.md, docs/assessment/fairway-assurance-package-pilot-2026-07-12.md, docs/roadmap/fairway-product-backlog.yaml]
     review_domains: [arch, backend, governance, ops, security]
     risk_level: high
     migration_type: assurance-review-history-resolution

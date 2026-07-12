@@ -178,12 +178,17 @@ func normalizeFacts(profile Profile, sources Sources, now time.Time, applicable 
 		}
 		add(fmt.Sprintf("evidence:%s:%d", sources.Task.TaskID, index), class, evidence.Result, evidence.CreatedAt, "", "fairway", state)
 	}
+	latestReviews := latestReviewPositions(sources.Reviews)
 	for i, review := range sources.Reviews {
 		index := review.Index
 		if index == 0 {
 			index = i + 1
 		}
-		add(fmt.Sprintf("review:%s:%s:%d", sources.Task.TaskID, review.Domain, index), "review", review.Verdict, review.CreatedAt, review.Reviewer, "fairway-review", "current")
+		state := "superseded"
+		if latestReviews[reviewDomainKey(review)] == i {
+			state = "current"
+		}
+		add(fmt.Sprintf("review:%s:%s:%d", sources.Task.TaskID, review.Domain, index), "review", review.Verdict, review.CreatedAt, review.Reviewer, "fairway-review", state)
 	}
 	for _, decision := range sources.Decisions {
 		state := "current"
@@ -203,6 +208,53 @@ func normalizeFacts(profile Profile, sources Sources, now time.Time, applicable 
 		return facts[i].Reference < facts[j].Reference
 	})
 	return facts
+}
+
+func latestReviewPositions(reviews []SourceReview) map[string]int {
+	latest := map[string]int{}
+	for i, review := range reviews {
+		key := reviewDomainKey(review)
+		previous, ok := latest[key]
+		if !ok || reviewIsLater(review, i, reviews[previous], previous) {
+			latest[key] = i
+		}
+	}
+	return latest
+}
+
+func reviewDomainKey(review SourceReview) string {
+	key := strings.ToLower(strings.TrimSpace(review.Domain))
+	if key == "" {
+		// Legacy rows used reviewer role as the effective review domain.
+		key = strings.ToLower(strings.TrimSpace(review.Reviewer))
+	}
+	return key
+}
+
+func reviewIsLater(candidate SourceReview, candidatePosition int, previous SourceReview, previousPosition int) bool {
+	candidateAt, candidateErr := time.Parse(time.RFC3339Nano, candidate.CreatedAt)
+	previousAt, previousErr := time.Parse(time.RFC3339Nano, previous.CreatedAt)
+	if candidateErr == nil && previousErr == nil && !candidateAt.Equal(previousAt) {
+		return candidateAt.After(previousAt)
+	}
+	if candidateErr == nil && previousErr != nil {
+		return true
+	}
+	if candidateErr != nil && previousErr == nil {
+		return false
+	}
+	candidateOrder := candidate.Index
+	if candidateOrder == 0 {
+		candidateOrder = candidatePosition + 1
+	}
+	previousOrder := previous.Index
+	if previousOrder == 0 {
+		previousOrder = previousPosition + 1
+	}
+	if candidateOrder != previousOrder {
+		return candidateOrder > previousOrder
+	}
+	return candidatePosition > previousPosition
 }
 
 func markConflicts(facts []EvidenceFact) {
