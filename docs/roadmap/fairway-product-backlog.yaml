@@ -5787,3 +5787,37 @@ tasks:
       - "A real bounded implementation task starts with one external provider, records intent, checkpoint, material decision, Git state, and evidence, then deliberately ends that provider before completion."
       - "A replacement provider resumes from Fairway and repository facts without private transcript access, completes the task, and identifies any missing context or ceremony."
       - "The resulting optional second quickstart demonstrates user value rather than Fairway self-verification and reports elapsed time, recovered facts, unrecoverable context, rough edges, and cleanup."
+
+  - id: FW-337
+    title: Sanitize local paths in public provenance exports
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: provenance-privacy
+    source_paths: [internal/provenance, cmd/fairway, docs/design/supply-chain-provenance.md]
+    target_paths: [internal/provenance, cmd/fairway, docs/design/supply-chain-provenance.md]
+    review_domains: [backend, governance, security]
+    risk_level: high
+    migration_type: provenance-path-sanitization
+    dependencies: [FW-335]
+    acceptance_checks:
+      - "Public/release provenance export mode emits repository-relative config, database, artifact, and source references and never exposes a local home directory or checkout root."
+      - "Regression covers absolute Unix and Windows-style paths, already-relative paths, paths outside the repository, and privacy fail-closed behavior without rewriting authoritative source facts in the Fairway DB."
+
+  - id: FW-338
+    title: Make release verify help exit cleanly
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: cli-help
+    source_paths: [cmd/fairway/main.go, cmd/fairway/main_test.go]
+    target_paths: [cmd/fairway/main.go, cmd/fairway/main_test.go, docs/design/cli.md]
+    review_domains: [backend, governance]
+    risk_level: low
+    migration_type: release-verify-help
+    dependencies: [FW-335]
+    acceptance_checks:
+      - "`fairway release verify --help` exits zero with Fairway-style usage and no raw Go flag error."
+      - "Focused regression preserves normal release verification parsing and failure behavior."

@@ -1,0 +1,172 @@
+{
+  "schema": "fairway.provenance.v1",
+  "generated_at": "2026-07-12T03:04:18Z",
+  "project": {
+    "name": "fairway",
+    "db_path": ".fairway/state.db",
+    "config_path": ".fairway/config.toml"
+  },
+  "scope": {
+    "task_id": "FW-335",
+    "since": "2026-07-05T03:04:18Z",
+    "until": "2026-07-12T03:04:18Z"
+  },
+  "tasks": [
+    {
+      "id": "FW-335",
+      "title": "Publish and verify Fairway v0.1.13",
+      "status": "done",
+      "role": "ops",
+      "owner": "ops",
+      "profile": "fairway-adoption",
+      "risk_level": "critical",
+      "acceptance": [
+        "Tag the authorized SHA and publish signed notarized assets without moving an existing tag.",
+        "Verify release checksums assets Homebrew tap brew fetch installed version public docs and release readback.",
+        "Preserve v0.1.12 rollback and separately track or defer dashboard restart."
+      ],
+      "source_paths": [
+        ".goreleaser.yaml",
+        "docs/release-notes.md",
+        "docs/release-highlights.md",
+        "docs/assessment"
+      ],
+      "target_paths": [
+        "docs/assessment"
+      ],
+      "commit_refs": [
+        "3bcc70d"
+      ],
+      "evidence_refs": [
+        {
+          "ref": "evidence:FW-335:1",
+          "result": "pass",
+          "artifact_path": "3bcc70d5ab9aca3f01780ca089bd6d537eeb8b40",
+          "artifact_type": "release-preflight",
+          "command_text": "exact pushed v0.1.13 candidate preflight",
+          "created_at": "2026-07-12T02:56:46.631754Z"
+        },
+        {
+          "ref": "evidence:FW-335:2",
+          "result": "pass",
+          "artifact_path": "fairway-run/v0.1.13",
+          "artifact_type": "push-intent",
+          "command_text": "fairway record push-intent FW-335 intent=release branch=v0.1.13 remote=fairway-run",
+          "created_at": "2026-07-12T02:56:46.724661Z"
+        },
+        {
+          "ref": "evidence:FW-335:3",
+          "result": "pass",
+          "artifact_path": "https://github.com/fairway-run/fairway/actions/runs/29177531717",
+          "artifact_type": "release-workflow",
+          "command_text": "GitHub Release workflow 29177531717",
+          "created_at": "2026-07-12T03:04:04.46503Z"
+        },
+        {
+          "ref": "evidence:FW-335:4",
+          "result": "pass",
+          "artifact_path": "https://github.com/fairway-run/fairway/releases/tag/v0.1.13",
+          "artifact_type": "release",
+          "command_text": "public GitHub release v0.1.13",
+          "created_at": "2026-07-12T03:04:04.937971Z"
+        },
+        {
+          "ref": "evidence:FW-335:5",
+          "result": "pass",
+          "artifact_path": "/tmp/fairway-v0.1.13-verify",
+          "artifact_type": "release-verification",
+          "command_text": "release asset checksum and signature verification",
+          "created_at": "2026-07-12T03:04:05.40035Z"
+        },
+        {
+          "ref": "evidence:FW-335:6",
+          "result": "pass",
+          "artifact_path": "654e1fd66fa21653da1c678fe0640c6b79862306",
+          "artifact_type": "homebrew",
+          "command_text": "Homebrew cask v0.1.13",
+          "created_at": "2026-07-12T03:04:05.867377Z"
+        },
+        {
+          "ref": "evidence:FW-335:7",
+          "result": "pass",
+          "artifact_path": "https://github.com/fairway-run/fairway/releases/tag/v0.1.13",
+          "artifact_type": "release-verification",
+          "command_text": "Fairway release verify v0.1.13",
+          "created_at": "2026-07-12T03:04:06.324878Z"
+        }
+      ],
+      "review_refs": [
+        {
+          "ref": "review:FW-335:1",
+          "domain": "ops",
+          "reviewer": "fairway-reviewer",
+          "verdict": "approve",
+          "created_at": "2026-07-12T02:57:35.37384Z"
+        },
+        {
+          "ref": "review:FW-335:2",
+          "domain": "governance",
+          "reviewer": "fairway-reviewer",
+          "verdict": "approve",
+          "created_at": "2026-07-12T02:57:35.697556Z"
+        },
+        {
+          "ref": "review:FW-335:3",
+          "domain": "security",
+          "reviewer": "fairway-reviewer",
+          "verdict": "approve",
+          "created_at": "2026-07-12T02:57:36.027733Z"
+        }
+      ],
+      "checkpoint_refs": [
+        {
+          "id": 577,
+          "state": "active",
+          "owner": "ops",
+          "summary": "Publish and verify authorized Fairway v0.1.13 candidate at 3bcc70d5 (session work-fw-335)",
+          "created_at": "2026-07-12T02:56:46.536127Z"
+        }
+      ],
+      "session_refs": [
+        {
+          "id": "work-fw-335",
+          "provider": "codex",
+          "backend": "codex-thread",
+          "role": "ops",
+          "status": "ended",
+          "started_at": "2026-07-12T02:56:46.536127Z",
+          "ended_at": "2026-07-12T03:04:18.835218Z"
+        }
+      ],
+      "release_refs": [
+        "/tmp/fairway-v0.1.13-verify",
+        "https://github.com/fairway-run/fairway/releases/tag/v0.1.13"
+      ],
+      "validation_gates": [
+        "Fairway release verify v0.1.13"
+      ],
+      "provenance_facts": {
+        "checkpoint_count": "1",
+        "evidence_count": "7",
+        "review_count": "3",
+        "session_count": "1",
+        "usage_count": "0"
+      }
+    }
+  ],
+  "privacy": {
+    "raw_prompts_included": false,
+    "transcripts_included": false,
+    "tool_bodies_included": false,
+    "generated_content_included": false,
+    "redaction_applied": false,
+    "excluded_content": [
+      "raw secrets",
+      "provider auth state",
+      "raw prompt bodies by default",
+      "private transcripts",
+      "raw tool bodies",
+      "generated-content dumps"
+    ]
+  }
+}
