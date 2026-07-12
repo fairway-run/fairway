@@ -733,6 +733,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"provenance", "report", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "prompt-packet", "--help"}, "fairway provenance prompt-packet --task <task-id> [--format markdown|json]"},
 		{[]string{"provenance", "manifest", "--help"}, "fairway provenance manifest --path <file>... [--format text|json]"},
+		{[]string{"assurance", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
+		{[]string{"assurance", "profile", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
+		{[]string{"assurance", "profile", "validate", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
 		{[]string{"explain", "--help"}, "fairway explain code [<repo-path>]"},
 		{[]string{"explain", "code", "--help"}, "fairway explain code [<repo-path>]"},
 		{[]string{"recipe", "--help"}, "fairway recipe extract|render|list"},
@@ -2362,6 +2365,40 @@ func TestCLI_ProvenanceManifest(t *testing.T) {
 	assertContains(t, rejected, "privacy_rejected")
 	assertContains(t, rejected, "refusing suspicious evidence path artifacts/secret-token.json")
 	assertNotContains(t, rejected, "do-not-export")
+}
+
+func TestCLI_AssuranceProfileValidate(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	profile := `{"schema":"fairway.assurance-profile.v1","id":"cli-profile","version":"v1","title":"CLI profile","description":"Organizes evidence only.","framework":{"id":"example","title":"Example","version":"v1","source":"https://example.invalid/framework"},"applicability":{"description":"Example projects."},"scope":{"types":["project"]},"controls":[{"id":"EX-1","title":"Evidence","objective":"Retain verification evidence.","responsibility":"product","assessment_objectives":["Inspect evidence references."],"evidence":[{"class":"evidence","minimum_count":1,"accepted_results":["pass"]}]}],"prohibited_claims":["certified","compliant","authorized"],"authority":{"mode":"evidence_only","prohibited_actions":["certify","declare_compliance","accept_risk","approve","mutate_workflow","merge","deploy","release","use_credentials","change_public_exposure","run_live_operation"]}}`
+	writeFile(t, "profile.json", profile)
+
+	text := runCapture(t, "assurance", "profile", "validate", "profile.json")
+	assertContains(t, text, "assurance_profile_valid: true")
+	assertContains(t, text, "profile: cli-profile@v1")
+	assertContains(t, text, "evidence_classes: evidence")
+	assertContains(t, text, "no certification, compliance, risk acceptance")
+
+	jsonOut := runCapture(t, "--json", "assurance", "profile", "validate", "profile.json")
+	assertContains(t, jsonOut, `"schema": "fairway.assurance-profile-validation.v1"`)
+	assertContains(t, jsonOut, `"valid": true`)
+	assertContains(t, jsonOut, `"control_count": 1`)
+
+	writeFile(t, "unsafe.json", strings.Replace(profile, "Organizes evidence only.", "authorization: Bearer SHOULD_NOT_RENDER", 1))
+	err = run(context.Background(), []string{"assurance", "profile", "validate", "unsafe.json"})
+	if err == nil || !strings.Contains(err.Error(), "contains prohibited secret-like or executable content") {
+		t.Fatalf("unexpected unsafe profile error: %v", err)
+	}
+	if strings.Contains(err.Error(), "SHOULD_NOT_RENDER") {
+		t.Fatalf("error echoed private input: %v", err)
+	}
 }
 
 func TestCLI_ExplainCodeGroundedPacket(t *testing.T) {

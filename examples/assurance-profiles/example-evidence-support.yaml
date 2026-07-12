@@ -1,0 +1,51 @@
+schema: fairway.assurance-profile.v1
+id: example-evidence-support
+version: v1
+title: Example evidence support profile
+description: Demonstrates the profile contract without claiming coverage of an external framework.
+framework:
+  id: example-framework
+  title: Example Framework
+  version: v1
+  source: https://example.invalid/assurance-framework
+applicability:
+  description: Example project, task-set, and release evidence.
+  task_kinds: [task]
+  risk_levels: [high]
+  tags: [assurance]
+scope:
+  types: [project, task_set, release]
+controls:
+  - id: EX-1
+    title: Independent verification evidence
+    objective: Retain passing engineering evidence and independent review references.
+    responsibility: shared
+    assessment_objectives:
+      - Inspect evidence result, source reference, age, and reviewer independence.
+    evidence:
+      - class: evidence
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [pass, partial]
+      - class: review
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [approve, changes]
+prohibited_claims:
+  - certified
+  - compliant
+  - authorized
+authority:
+  mode: evidence_only
+  prohibited_actions:
+    - certify
+    - declare_compliance
+    - accept_risk
+    - approve
+    - mutate_workflow
+    - merge
+    - deploy
+    - release
+    - use_credentials
+    - change_public_exposure
+    - run_live_operation

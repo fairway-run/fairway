@@ -627,6 +627,21 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   It reports missing artifacts, changed hashes, and privacy-rejected path names
   without embedding artifact contents. It is tamper-evidence for review and
   release packets, not proof that a change was benign or malicious.
+
+### Assurance profiles
+
+```bash
+fairway assurance profile validate <path> [--format text|json]
+```
+
+The validator accepts one local YAML or JSON
+`fairway.assurance-profile.v1` file and reports profile/framework identity,
+control count, evidence classes, and the evidence-only authority boundary.
+Unknown fields and schemas, duplicate controls, remote or symlinked files,
+unsafe text, unsupported vocabularies, invalid freshness, and incomplete claim
+or action guards fail closed. Validation does not evaluate controls, infer
+compliance, mutate workflow, or grant certification or operational authority.
+See [assurance profiles](assurance-profiles.md).
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic
   command, evidence, and notification patterns, then reports frequency, recent

@@ -1,0 +1,83 @@
+# Assurance profiles
+
+## Purpose
+
+Fairway assurance profiles describe how recorded engineering facts can support
+an assessment. They make evidence collection repeatable without turning Fairway
+into a certification authority, auditor, policy approver, or workflow mutation
+surface.
+
+The first schema is `fairway.assurance-profile.v1`. A profile is a local YAML or
+JSON file validated with:
+
+```bash
+fairway assurance profile validate examples/assurance-profiles/example-evidence-support.yaml
+fairway --json assurance profile validate examples/assurance-profiles/example-evidence-support.yaml
+```
+
+The example profile is deliberately not a standards mapping. Versioned starter
+profiles for named frameworks are owned by `FW-360` and require authoritative
+source/version review.
+
+## Contract
+
+A profile declares:
+
+- profile and framework identity, exact version, and HTTPS source;
+- applicability and supported project, task-set, or release scopes;
+- control objectives and assessment objectives;
+- product, customer, shared, or external-assessor responsibility;
+- accepted evidence classes, minimum counts, results, and freshness;
+- whether an independent external assessment is required;
+- prohibited claims and prohibited workflow actions.
+
+The schema contains no command, script, hook, expression, query, or provider
+prompt field. Unknown fields fail validation. Profile files must be regular
+local `.yaml`, `.yml`, or `.json` files no larger than 1 MiB; symlinks and remote
+URLs are rejected. Framework sources are HTTPS references without embedded
+credentials, query strings, or fragments.
+
+## Fixed vocabulary
+
+Scope types are `project`, `task_set`, and `release`.
+
+Responsibilities are:
+
+| Value | Meaning |
+|---|---|
+| `product` | The evaluated product or producing project owns the evidence. |
+| `customer` | The adopting organization must provide and assess the evidence. |
+| `shared` | Product and customer evidence are both required. |
+| `external_assessor` | Only an independent external assessment can satisfy the objective. |
+
+Evidence classes are bounded to existing engineering fact families: task,
+decision, evidence, review, CI, release, provenance, rehearsal, exception,
+external assessment, configuration, backup/restore, vulnerability, identity,
+and audit. A later read model maps those classes to Fairway records; the profile
+does not contain evidence or mutate the Fairway database.
+
+## Fail-closed validation
+
+Validation rejects:
+
+- unknown schema versions or unknown fields;
+- duplicate control IDs or duplicate evidence classes;
+- unsupported scope, responsibility, evidence, and result values;
+- invalid or non-positive freshness durations;
+- secret-like values and shell/executable markers;
+- missing `certified`, `compliant`, or `authorized` claim prohibitions;
+- missing evidence-only authority or any required prohibited action.
+
+The required authority boundary prohibits certification, compliance declaration,
+risk acceptance, approval, workflow mutation, merge, deploy, release, credential
+use, public-exposure changes, and live operations.
+
+## Status and authority
+
+FW-355 implements profile parsing and validation only. It does not evaluate a
+control, infer compliance, generate an assessor package, or write findings.
+Those read-only surfaces are split across FW-356 through FW-359.
+
+Generated findings and packages remain assessment inputs. A certification or
+authorization may be recorded later only as explicit external evidence from the
+named authority for the exact scope, product version, and configuration.
