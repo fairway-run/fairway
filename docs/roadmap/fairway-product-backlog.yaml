@@ -5902,8 +5902,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-offline-distribution
-    source_paths: [.goreleaser.yaml, .github, scripts, website, docs/governance/release.md]
-    target_paths: [.goreleaser.yaml, .github, scripts, docs/operations, docs/security]
+    source_paths: [internal/provenance/release_bundle.go, scripts/release/build_release_assurance_bundle.sh, examples/fairway-config.toml, examples/sovereign-deployment-baselines/v1, docs/security/release-assurance-bundle.md, docs/security/sovereign-deployment-ready.md]
+    target_paths: [cmd/fairway/main.go, cmd/fairway/main_test.go, cmd/fairway/release_offline_test.go, cmd/fairway-offline-verify/main.go, internal/offlinebundle, scripts/release/build_offline_distribution_bundle.sh, scripts/ci/offline_distribution_rehearsal.sh, docs/design/cli.md, docs/design/schema.md, docs/governance/release.md, docs/operations/sovereign-offline-bundle.md, docs/security/release-assurance-bundle.md, docs/security/sovereign-deployment-ready.md, docs/roadmap/fairway-product-backlog.yaml, website/sidebars.js]
     review_domains: [arch, governance, ops, security]
     risk_level: critical
     migration_type: signed-offline-distribution

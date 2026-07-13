@@ -25,6 +25,12 @@ A passing `fairway readiness deployment` report proves only that the supplied
 observation packet satisfies that baseline's evidence-reference shape. It is
 not an assessor conclusion or product label.
 
+The signed install/update/rollback composition and disconnected compatibility
+rehearsal are documented in
+[Sovereign Offline Distribution Bundle](../operations/sovereign-offline-bundle.md).
+Its verifier proves integrity and exact declared identities only. Customer
+media custody and verifier bootstrap trust remain outside Fairway's authority.
+
 ## Reference modes
 
 - `sovereign-offline`: disconnected single-host or isolated-local-network

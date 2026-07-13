@@ -765,6 +765,9 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"batch", "list", "--help"}, "fairway batch list"},
 		{[]string{"audit", "--help"}, "fairway audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog"},
 		{[]string{"release", "--help"}, "fairway release verify"},
+		{[]string{"release", "offline", "--help"}, "fairway release offline export|verify"},
+		{[]string{"release", "offline", "export", "--help"}, "fairway release offline export --out <dir>"},
+		{[]string{"release", "offline", "verify", "--help"}, "fairway release offline verify --dir <path>"},
 		{[]string{"rules", "--help"}, "fairway rules validate <dir>|evidence-types|match <task-id>"},
 	} {
 		out := runCapture(t, tc.args...)

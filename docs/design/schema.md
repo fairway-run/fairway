@@ -184,6 +184,15 @@ and either a genesis marker or the previous externally retained checkpoint.
 This is a derived export, not a second audit store, and does not mutate the
 `audit_events` source of truth.
 
+Offline distribution is also file-based rather than a database store.
+`fairway.offline-distribution-manifest.v1` binds current and rollback release
+identity, required platform archives and verifier binaries, typed local assets,
+lifecycle scripts, file modes, sizes, and SHA-256 digests. A detached
+`fairway.offline-distribution-signature.v1` Ed25519 signature binds the exact
+manifest. `fairway.offline-distribution-verification.v1` is a derived,
+read-only verification report. None of these schemas mutates task, release,
+deployment, or certification state.
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | INTEGER PK | |

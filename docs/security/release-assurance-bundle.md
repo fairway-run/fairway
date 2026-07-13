@@ -42,3 +42,19 @@ The workflow does not publish the draft or update Homebrew. Those are separate
 reviewed release actions and must use the archive digests in the verified
 bundle. A bundle-generation or verification failure therefore leaves no draft,
 tap commit, public release, or deployment side effect.
+
+## Offline distribution composition
+
+FW-343 composes two verified release-assurance packages into a separately
+signed offline distribution: the intended current release and a pinned
+rollback release. The outer manifest requires all supported archives and
+standalone verifier binaries, local docs/configuration/deployment baselines,
+fixed lifecycle scripts, and an exact signed inventory. Both nested packages
+must verify against the same separately pinned key before export and again
+during offline verification.
+
+This composition does not weaken either nested package or create a new trust
+root. The verifier itself must be obtained or digest-approved through a trusted
+software-intake channel; a binary cannot establish its own trust by verifying
+the bundle that contains it. Operational guidance is in
+[Sovereign Offline Distribution Bundle](../operations/sovereign-offline-bundle.md).

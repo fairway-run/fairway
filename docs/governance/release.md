@@ -444,6 +444,30 @@ and pinned public key. Measured SLSA fields do not assign a level. Hermeticity
 and reproducibility remain false until separate repeatable evidence proves
 them.
 
+### Sovereign offline distribution
+
+After current and rollback release-assurance packages verify, an explicitly
+reviewed release task may run
+`scripts/release/build_offline_distribution_bundle.sh`. The resulting signed
+offline distribution includes both complete assurance packages, all four
+supported binary and standalone-verifier targets, local documentation,
+configuration and deployment baselines, and fixed verify/install/rollback
+scripts. The builder requires the current package source SHA to equal checked
+out `HEAD`; it does not fetch release archives or publish the result.
+
+`fairway release offline verify` and the standalone
+`fairway-offline-verify` require a separately pinned Ed25519 public key and
+exact current and rollback version/source/builder/policy identity. Run the
+disconnected lifecycle rehearsal and retain its version, path, backup, state,
+digest, rollback, and cleanup evidence before attaching the bundle to a release.
+
+The verifier binary has its own bootstrap trust requirement: obtain it or its
+approved digest through the customer software-intake boundary before using the
+copy inside removable media. Bundle verification is not release publication,
+installation authorization, deployment approval, certification, or risk
+acceptance. See
+[Sovereign Offline Distribution Bundle](../operations/sovereign-offline-bundle.md).
+
 ## Docs portal deployment
 
 The public Fairway docs portal should use separate Cloudflare credentials for

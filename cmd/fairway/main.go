@@ -39,6 +39,7 @@ import (
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
 	"github.com/subashram/fairway/internal/livewindow"
+	"github.com/subashram/fairway/internal/offlinebundle"
 	"github.com/subashram/fairway/internal/provenance"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/registry"
@@ -9766,17 +9767,177 @@ type releaseAssetResult struct {
 
 func cmdRelease(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("release", "verify|assurance")
+		subcommandUsage("release", "verify|assurance|offline")
 		return nil
 	}
 	switch args[0] {
 	case "assurance":
 		return cmdReleaseAssurance(opts, args[1:])
+	case "offline":
+		return cmdReleaseOffline(opts, args[1:])
 	case "verify":
 		return cmdReleaseVerify(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown release subcommand %q", args[0])
 	}
+}
+
+func cmdReleaseOffline(opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("release offline", "export|verify")
+		return nil
+	}
+	switch args[0] {
+	case "export":
+		return cmdReleaseOfflineExport(opts, args[1:])
+	case "verify":
+		return cmdReleaseOfflineVerify(opts, args[1:])
+	default:
+		return fmt.Errorf("unknown release offline subcommand %q", args[0])
+	}
+}
+
+type offlineReleaseFlagSet struct {
+	version *string
+	source  *string
+	builder *string
+	policy  *string
+}
+
+func bindOfflineReleaseFlags(fs *flag.FlagSet, prefix string) offlineReleaseFlagSet {
+	return offlineReleaseFlagSet{
+		version: fs.String(prefix+"version", "", "exact release version"),
+		source:  fs.String(prefix+"source-sha", "", "exact release source revision"),
+		builder: fs.String(prefix+"builder-id", "", "exact release builder identity"),
+		policy:  fs.String(prefix+"policy-version", "", "exact release policy version"),
+	}
+}
+
+func (f offlineReleaseFlagSet) identity() offlinebundle.ReleaseIdentity {
+	return offlinebundle.ReleaseIdentity{Version: *f.version, SourceSHA: *f.source, BuilderID: *f.builder, PolicyVersion: *f.policy}
+}
+
+func cmdReleaseOfflineExport(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("release offline export", "--out <dir> --current-assurance-dir <dir> --rollback-assurance-dir <dir> --trusted-public-key-env <name> --signing-key-env <name> --asset <class:name=path>... --current-version <version> --current-source-sha <sha> --current-builder-id <id> --current-policy-version <id> --rollback-version <version> --rollback-source-sha <sha> --rollback-builder-id <id> --rollback-policy-version <id> [--created-at <RFC3339>]")
+		return nil
+	}
+	fs := flag.NewFlagSet("release offline export", flag.ContinueOnError)
+	out := fs.String("out", "", "new offline distribution bundle directory")
+	currentDir := fs.String("current-assurance-dir", "", "verified current release assurance directory")
+	rollbackDir := fs.String("rollback-assurance-dir", "", "verified rollback release assurance directory")
+	trustedKeyEnv := fs.String("trusted-public-key-env", "", "environment variable containing the pinned Ed25519 public key")
+	signingKeyEnv := fs.String("signing-key-env", "", "environment variable containing the Ed25519 signing key")
+	createdAtRaw := fs.String("created-at", "", "bundle creation time in RFC3339; defaults to now")
+	current := bindOfflineReleaseFlags(fs, "current-")
+	rollback := bindOfflineReleaseFlags(fs, "rollback-")
+	var rawAssets multiFlag
+	fs.Var(&rawAssets, "asset", "typed local asset class:name=path; repeatable")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("unexpected release offline export arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*out) == "" || strings.TrimSpace(*currentDir) == "" || strings.TrimSpace(*rollbackDir) == "" || strings.TrimSpace(*trustedKeyEnv) == "" || strings.TrimSpace(*signingKeyEnv) == "" {
+		return errors.New("release offline export requires --out, both assurance directories, --trusted-public-key-env, and --signing-key-env")
+	}
+	trustedKey := os.Getenv(*trustedKeyEnv)
+	if strings.TrimSpace(trustedKey) == "" {
+		return fmt.Errorf("offline trusted public key environment variable %s is not set", *trustedKeyEnv)
+	}
+	signingKey := os.Getenv(*signingKeyEnv)
+	if strings.TrimSpace(signingKey) == "" {
+		return fmt.Errorf("offline signing key environment variable %s is not set", *signingKeyEnv)
+	}
+	assets, err := parseOfflineAssets(rawAssets)
+	if err != nil {
+		return err
+	}
+	createdAt := time.Now().UTC()
+	if strings.TrimSpace(*createdAtRaw) != "" {
+		createdAt, err = time.Parse(time.RFC3339Nano, *createdAtRaw)
+		if err != nil {
+			return errors.New("release offline export --created-at must be RFC3339")
+		}
+	}
+	manifest, err := offlinebundle.Export(offlinebundle.ExportOptions{
+		OutputDirectory: *out, CurrentAssuranceDir: *currentDir, RollbackAssuranceDir: *rollbackDir,
+		TrustedPublicKeyBase64: trustedKey, SigningKeyBase64: signingKey,
+		CurrentExpected: current.identity(), RollbackExpected: rollback.identity(), Assets: assets, CreatedAt: createdAt,
+	})
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(manifest)
+	}
+	fmt.Printf("release_offline_export: %s\ncurrent_version: %s\ncurrent_source_sha: %s\nrollback_version: %s\nrollback_source_sha: %s\nfiles: %d\nsigning_key_id: %s\nauthority_boundary: %s\n", *out, manifest.Current.Version, manifest.Current.SourceSHA, manifest.Rollback.Version, manifest.Rollback.SourceSHA, len(manifest.Files), manifest.SigningKeyID, manifest.AuthorityBoundary)
+	return nil
+}
+
+func cmdReleaseOfflineVerify(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("release offline verify", "--dir <path> --trusted-public-key-env <name> --current-version <version> --current-source-sha <sha> --current-builder-id <id> --current-policy-version <id> --rollback-version <version> --rollback-source-sha <sha> --rollback-builder-id <id> --rollback-policy-version <id> [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("release offline verify", flag.ContinueOnError)
+	dir := fs.String("dir", "", "offline distribution bundle directory")
+	keyEnv := fs.String("trusted-public-key-env", "", "environment variable containing the pinned Ed25519 public key")
+	format := fs.String("format", "text", "output format")
+	current := bindOfflineReleaseFlags(fs, "current-")
+	rollback := bindOfflineReleaseFlags(fs, "rollback-")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("unexpected release offline verify arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return fmt.Errorf("unsupported release offline verify format %q", *format)
+	}
+	if strings.TrimSpace(*dir) == "" || strings.TrimSpace(*keyEnv) == "" {
+		return errors.New("release offline verify requires --dir and --trusted-public-key-env")
+	}
+	key := os.Getenv(*keyEnv)
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("offline trusted public key environment variable %s is not set", *keyEnv)
+	}
+	report, err := offlinebundle.Verify(offlinebundle.VerifyOptions{Directory: *dir, TrustedPublicKeyBase64: key, CurrentExpected: current.identity(), RollbackExpected: rollback.identity()})
+	if err != nil {
+		return err
+	}
+	if opts.JSON || *format == "json" {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("release_offline_verify: %t\ncurrent_version: %s\ncurrent_source_sha: %s\nrollback_version: %s\nrollback_source_sha: %s\nsignature_status: %s\ninventory_status: %s\ncurrent_assurance_status: %s\nrollback_assurance_status: %s\nrequired_asset_class_status: %s\nfiles: %d\nauthority_boundary: %s\n", report.OK, report.Current.Version, report.Current.SourceSHA, report.Rollback.Version, report.Rollback.SourceSHA, report.SignatureStatus, report.InventoryStatus, report.CurrentAssuranceStatus, report.RollbackAssuranceStatus, report.RequiredAssetClassStatus, report.FileCount, report.AuthorityBoundary)
+	}
+	if !report.OK {
+		return errors.New("release offline verification failed")
+	}
+	return nil
+}
+
+func parseOfflineAssets(values []string) ([]offlinebundle.Asset, error) {
+	assets := make([]offlinebundle.Asset, 0, len(values))
+	seen := map[string]bool{}
+	for _, raw := range values {
+		left, pathValue, ok := strings.Cut(raw, "=")
+		class, name, named := strings.Cut(left, ":")
+		class, name, pathValue = strings.TrimSpace(class), strings.TrimSpace(name), strings.TrimSpace(pathValue)
+		if !ok || !named || class == "" || name == "" || pathValue == "" {
+			return nil, fmt.Errorf("offline asset %q must use class:name=path", raw)
+		}
+		key := class + ":" + name
+		if seen[key] {
+			return nil, fmt.Errorf("duplicate offline asset %q", key)
+		}
+		seen[key] = true
+		assets = append(assets, offlinebundle.Asset{Class: class, Name: name, Path: pathValue, Executable: class == "verifier"})
+	}
+	return assets, nil
 }
 
 func cmdReleaseAssurance(opts globalOptions, args []string) error {
@@ -20679,7 +20840,7 @@ func printCommandHelp(command string) bool {
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"server":                     "fairway server --read-only [--listen <addr>] | fairway server start|status|logs|stop|restart --read-only | fairway server --mode api-write-pilot --write\n  Run or manage the loopback shared-team API. Managed lifecycle is read-only only.",
 		"binary":                     "fairway binary install --source <local-binary> [--cache-dir <path>] | fairway binary status|rollback|cleanup [--cache-dir <path>]\n  Install and manage verified Fairway binaries in the user cache outside consumer worktrees.",
-		"release":                    "fairway release verify ... | fairway release assurance export|verify ...\n  Verify publication state or produce and verify a pinned offline release assurance bundle.",
+		"release":                    "fairway release verify ... | fairway release assurance export|verify ... | fairway release offline export|verify ...\n  Verify publication state, release assurance, or a signed current/rollback offline distribution.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat|rehearsal ...\n  Manage the local Fairway database.",
 		"audit":                      "fairway audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog ...\n  Export and verify signed sovereign audit checkpoints or run advisory coverage and lifecycle reports.",
