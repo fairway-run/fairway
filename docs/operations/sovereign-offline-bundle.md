@@ -40,6 +40,59 @@ tokens, internal URLs, prompts, transcripts, or raw tool output in the bundle.
 
 ## Build
 
+For a complete non-publishing rehearsal from exact current and rollback Git
+identities, use the one-command builder:
+
+```bash
+scripts/release/build_sovereign_rehearsal_media.sh \
+  --current-version 0.1.14-rehearsal.<short-sha> \
+  --rollback-ref v0.1.13 --rollback-version 0.1.13 \
+  --output-root /absolute/retained/fairway-sovereign-rehearsal \
+  --builder-id local:reviewed-rehearsal-builder \
+  --policy-version sovereign-rehearsal-v1 \
+  --created-at 2026-07-12T12:00:00Z
+```
+
+The command builds both sources in detached temporary worktrees, creates four
+normalized archives for each version, runs both release-assurance builders and
+verifiers, creates and verifies the outer offline media, and writes a separate
+`trust-bootstrap/` packet. The trust packet contains immutable source, version,
+builder, archive, manifest, public-key, verifier, build-helper, and reviewed
+license-policy digests. The current source's reviewed license override policy
+is copied into each nested assurance package and applied to both current and
+rollback dependency inventories; every override remains pinned to module
+version, origin, origin commit, license path, and license digest. This makes the
+policy input explicit without assuming that an older rollback tree contains the
+current policy file. One current-source Fairway release tool performs export
+and verification for both nested packages, because a rollback source may
+predate the assurance command; its binary digest is in the trust packet, while
+SBOM, dependency, license, and vulnerability collection still runs inside each
+exact source tree. The trust packet deliberately contains no pending/approved
+review state; record the latest independent acceptance as Fairway evidence or a
+reviewed handoff without rewriting the packet.
+
+The builder creates one ephemeral release-signing root, stores its private file
+mode `0600` only under a temporary directory, removes it before writing trust
+readback, unsets key environments, and secret-scans retained output. Its Go
+archive helper normalizes timestamps, owners, modes, entry ordering, and gzip
+metadata and rejects symlinks, non-regular files, AppleDouble files, and
+`.DS_Store`, avoiding macOS extended-attribute portability noise. The retained
+scan rejects private/secret/token filenames, PEM private-key headers, bearer
+credential values, and long secret-like key assignments across text and binary
+bytes without treating bounded verifier error strings as credentials. All
+candidate output is built in a hidden sibling staging directory. Retained log
+output is synchronous and is closed before the final scan. The promoter hashes
+the complete staged inventory and bytes before and after scanning, rejects any
+change, and atomically renames only that quiescent tree to the requested output
+path. No retained file is written after the final scan.
+
+On failure, staging, logs, partial media, trust material, manifests, archives,
+and readback are removed before a new output containing exactly
+`diagnostics/failure.json` is written. That bounded file contains only schema,
+phase, exit code, private-material disposition, and the authority boundary. The
+builder never publishes, tags, installs, deploys, changes public exposure, or
+grants credential/live authority.
+
 Build both release-assurance directories first. The current directory must
 match checked-out `HEAD`; both must contain the four supported archives and
 verify under the same pinned public key.

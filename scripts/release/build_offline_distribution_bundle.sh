@@ -8,7 +8,7 @@ output_root=${3:?output root is required}
 : "${FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY:?FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY is required}"
 : "${FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY:?FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY is required}"
 
-for tool in go git jq tar shasum uname; do
+for tool in go git jq shasum uname; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'required offline bundle build tool is missing: %s\n' "$tool" >&2
     exit 1
@@ -141,6 +141,7 @@ case "$host_arch" in x86_64) host_arch=amd64 ;; arm64|aarch64) host_arch=arm64 ;
   --expected-rollback-policy-version "$rollback_policy"
 
 archive="$output_root/fairway_${current_version#v}_offline_distribution.tar.gz"
-tar -C "$output_root" -czf "$archive" "$(basename "$bundle_dir")"
+helper_file=${FAIRWAY_REHEARSAL_HELPER_FILE:-scripts/release/internal/rehearsal_helper.go}
+go run "$helper_file" archive-dir --dir "$bundle_dir" --root-name "$(basename "$bundle_dir")" --out "$archive"
 shasum -a 256 "$archive" > "$archive.sha256"
 printf 'offline distribution bundle: %s\narchive: %s\nchecksum: %s\n' "$bundle_dir" "$archive" "$archive.sha256"

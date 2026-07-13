@@ -9,7 +9,17 @@ output_root=${4:?output directory is required}
 : "${FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY:?FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY is required}"
 : "${FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY:?FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY is required}"
 
-for tool in syft go-licenses govulncheck jq; do
+if [[ -n "${FAIRWAY_RELEASE_TOOL:-}" ]]; then
+  if [[ ! -f "$FAIRWAY_RELEASE_TOOL" || -L "$FAIRWAY_RELEASE_TOOL" || ! -x "$FAIRWAY_RELEASE_TOOL" ]]; then
+    printf 'FAIRWAY_RELEASE_TOOL must be an executable regular non-symlink file\n' >&2
+    exit 1
+  fi
+  fairway_release_command=("$FAIRWAY_RELEASE_TOOL")
+else
+  fairway_release_command=(go run ./cmd/fairway)
+fi
+
+for tool in syft go-licenses govulncheck jq shasum; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'required release assurance tool is missing: %s\n' "$tool" >&2
     exit 1
@@ -35,7 +45,13 @@ syft dir:. -o spdx-json="$evidence_dir/sbom.spdx.json"
 go list -m -json all > "$evidence_dir/dependencies.jsonl"
 go-licenses report ./... > "$evidence_dir/licenses.csv"
 
-license_overrides=docs/security/release-license-overrides.json
+license_overrides_source=${FAIRWAY_RELEASE_LICENSE_OVERRIDES:-docs/security/release-license-overrides.json}
+if [[ ! -f "$license_overrides_source" || -L "$license_overrides_source" ]]; then
+  printf 'release license override policy must be a regular non-symlink file\n' >&2
+  exit 1
+fi
+license_overrides="$evidence_dir/license-overrides.json"
+cp "$license_overrides_source" "$license_overrides"
 unknown_modules=$(awk -F, '$3 == "Unknown" { print $1 }' "$evidence_dir/licenses.csv")
 while IFS= read -r module; do
   [[ -n "$module" ]] || continue
@@ -81,7 +97,15 @@ fi
 
 builder_id=${GITHUB_WORKFLOW_REF:-local:unreviewed-builder}
 policy_version=${FAIRWAY_RELEASE_POLICY_VERSION:-sovereign-release-v1}
-created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+if [[ -n "${SOURCE_DATE_EPOCH:-}" ]]; then
+  if created_at=$(date -u -r "$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null); then
+    :
+  else
+    created_at=$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ)
+  fi
+else
+  created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+fi
 
 jq -n \
   --arg version "$version" \
@@ -136,7 +160,7 @@ done < <(find "$dist_dir" -maxdepth 1 -type f -name 'fairway_*.tar.gz' -print | 
   exit 1
 }
 
-go run ./cmd/fairway release assurance export \
+"${fairway_release_command[@]}" release assurance export \
   --out "$bundle_dir" \
   --version "$version" \
   --source-sha "$source_sha" \
@@ -161,7 +185,7 @@ go run ./cmd/fairway release assurance export \
   --slsa-build-recipe-recorded \
   --slsa-dependencies-recorded
 
-go run ./cmd/fairway release assurance verify \
+"${fairway_release_command[@]}" release assurance verify \
   --dir "$bundle_dir" \
   --trusted-public-key-env FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY \
   --expected-version "$version" \
@@ -170,6 +194,7 @@ go run ./cmd/fairway release assurance verify \
   --expected-policy-version "$policy_version"
 
 archive="$output_root/fairway_${version}_release_assurance.tar.gz"
-tar -C "$output_root" -czf "$archive" "$(basename "$bundle_dir")"
+helper_file=${FAIRWAY_REHEARSAL_HELPER_FILE:-scripts/release/internal/rehearsal_helper.go}
+go run "$helper_file" archive-dir --dir "$bundle_dir" --root-name "$(basename "$bundle_dir")" --out "$archive"
 shasum -a 256 "$archive" > "$archive.sha256"
 printf 'release assurance bundle: %s\n' "$archive"

@@ -58,3 +58,26 @@ root. The verifier itself must be obtained or digest-approved through a trusted
 software-intake channel; a binary cannot establish its own trust by verifying
 the bundle that contains it. Operational guidance is in
 [Sovereign Offline Distribution Bundle](../operations/sovereign-offline-bundle.md).
+
+The sovereign rehearsal media builder composes this package twice, once for an
+exact current source and once for a pinned rollback source. Its trust bootstrap
+records immutable package, builder, and reviewed license-policy digests only.
+The explicit current license policy is copied into both nested evidence sets;
+its module version, origin, commit, path, and digest checks still run against
+each source dependency graph. A digest-pinned current release tool exports and
+verifies both packages when the rollback source predates the assurance command;
+the rollback archive and collected dependency evidence still come from the
+exact rollback source. Review verdicts remain durable Fairway facts and are not
+copied into or used to rewrite signed media.
+
+The composed sovereign output is not retained incrementally. It is assembled
+and verified in a private sibling staging directory. Retained logging uses a
+synchronous file descriptor that is restored and closed before final scanning.
+The promoter snapshots every staged path, mode, size, and byte before and after
+the secret scan; any delayed append or inventory change fails closed instead of
+being promoted. The quiescent tree is then atomically renamed, with no later
+retained write. Any failed phase removes staging, including its build log and
+partial signed artifacts, before retaining the single bounded
+`diagnostics/failure.json`. The failure packet is operational status only and
+cannot be interpreted as verified media, trust bootstrap, certification, or
+release authority.
