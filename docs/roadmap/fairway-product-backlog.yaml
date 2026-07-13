@@ -5998,7 +5998,7 @@ tasks:
     owning_domain: fairway
     owning_layer: sovereign-deployment-hardening
     source_paths: [scripts, examples, docs/operations, docs/design/shared-team-deployment-operations.md]
-    target_paths: [scripts, examples, docs/operations, docs/security]
+    target_paths: [internal/deploymentbaseline/baseline.go, internal/deploymentbaseline/baseline_test.go, cmd/fairway/main.go, cmd/fairway/main_test.go, examples/sovereign-deployment-baselines/v1, docs/design/cli.md, docs/design/shared-team-deployment-operations.md, docs/operations/sovereign-deployment-baselines.md, docs/security/sovereign-deployment-ready.md, docs/roadmap/fairway-product-backlog.yaml, website/sidebars.js]
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-deployment-hardening

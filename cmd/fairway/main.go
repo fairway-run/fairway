@@ -34,6 +34,7 @@ import (
 	"github.com/subashram/fairway/internal/dashboard"
 	"github.com/subashram/fairway/internal/deliveryreport"
 	"github.com/subashram/fairway/internal/deliveryresources"
+	"github.com/subashram/fairway/internal/deploymentbaseline"
 	"github.com/subashram/fairway/internal/evidencemodel"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/importer"
@@ -11334,10 +11335,10 @@ type readinessReport struct {
 
 func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("readiness requires subcommand: report, capabilities, or crypto")
+		return errors.New("readiness requires subcommand: report, capabilities, crypto, or deployment")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("readiness", "report|capabilities|crypto")
+		subcommandUsage("readiness", "report|capabilities|crypto|deployment")
 		return nil
 	}
 	if args[0] == "capabilities" {
@@ -11345,6 +11346,9 @@ func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error 
 	}
 	if args[0] == "crypto" {
 		return cmdCryptoReadiness(opts, args[1:])
+	}
+	if args[0] == "deployment" {
+		return cmdDeploymentReadiness(opts, args[1:])
 	}
 	if args[0] != "report" {
 		return fmt.Errorf("unknown readiness subcommand %q", args[0])
@@ -11400,6 +11404,62 @@ func cmdReadiness(ctx context.Context, opts globalOptions, args []string) error 
 		}
 		return nil
 	})
+}
+
+func cmdDeploymentReadiness(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("readiness deployment", "--baseline <yaml> --observation <yaml> [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("readiness deployment", flag.ContinueOnError)
+	baselinePath := fs.String("baseline", "", "versioned deployment baseline YAML")
+	observationPath := fs.String("observation", "", "deployment observation YAML")
+	format := fs.String("format", "text", "output format: text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected readiness deployment arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return fmt.Errorf("unsupported readiness deployment format %q", *format)
+	}
+	baseline, err := deploymentbaseline.LoadBaseline(*baselinePath)
+	if err != nil {
+		return err
+	}
+	observation, err := deploymentbaseline.LoadObservation(*observationPath)
+	if err != nil {
+		return err
+	}
+	report, err := deploymentbaseline.Evaluate(baseline, observation)
+	if err != nil {
+		return err
+	}
+	if opts.JSON || *format == "json" {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		printDeploymentReadiness(report)
+	}
+	if !report.Ready {
+		return errors.New("sovereign deployment baseline has blocking deviations")
+	}
+	return nil
+}
+
+func printDeploymentReadiness(report deploymentbaseline.Report) {
+	fmt.Println("# Fairway Sovereign Deployment Baseline Readiness")
+	fmt.Printf("\nschema: %s\nbaseline: %s@%s\ntopology: %s\ndeployment: %s\nobserved_at: %s\nready: %t\n", report.Schema, report.BaselineID, report.BaselineVersion, report.Topology, report.DeploymentID, report.ObservedAt, report.Ready)
+	fmt.Printf("controls: %d\npassing: %d\nblocking_deviations: %d\nadvisory_deviations: %d\n", report.ControlCount, report.PassingCount, report.BlockingCount, report.AdvisoryCount)
+	if len(report.Deviations) > 0 {
+		fmt.Println("\n## Deviations")
+		for _, deviation := range report.Deviations {
+			fmt.Printf("- %s: %s severity=%s status=%s\n  expected: %s\n  next: %s\n", deviation.ControlID, deviation.Title, deviation.Severity, deviation.Status, deviation.Expectation, deviation.SuggestedNext)
+		}
+	}
+	fmt.Printf("\nAuthority boundary: %s.\n", report.AuthorityBoundary)
 }
 
 func cmdCryptoReadiness(opts globalOptions, args []string) error {

@@ -164,6 +164,7 @@ fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
 fairway readiness capabilities                                  # compare binary/schema/features and runtime-network dependencies
 fairway readiness crypto [--format text|json]                    # fail-closed sovereign cryptography/key evidence report
+fairway readiness deployment --baseline <yaml> --observation <yaml> [--format text|json]
 fairway adoption artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway parity artifact [--catalog <path>] [--route <path>]... [--limit <n>] [--gap-limit <n>]
 fairway packet context <task-id> --goal <text> --owner <role> --acceptance <text>
@@ -791,6 +792,12 @@ See [assurance profiles](assurance-profiles.md).
   exact local certificate and validated-configuration evidence. Missing or
   unsafe evidence exits non-zero. The report states that Fairway is not FIPS
   140-3 validated and grants no certification or operational authority.
+- `readiness deployment` compares one strict local observation packet with a
+  versioned single-host, managed-service, or container/orchestration baseline.
+  It reports sorted blocking and advisory deviations and exits non-zero on
+  blocking gaps. It never probes, repairs, deploys, or mutates the observed
+  system; a ready report is engineering evidence, not certification,
+  compliance, approval, or risk acceptance.
 - `audit export` reads the existing ordered `audit_events` facts and writes a
   new local, mode-0700 directory containing canonical metadata-only JSONL, a
   SHA-256 record chain, a signed manifest, and no raw audit detail. Customer

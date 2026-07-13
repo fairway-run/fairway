@@ -66,6 +66,7 @@ const sidebars = {
         'operations/small-team-lab-deployment',
         'operations/sovereign-key-readiness',
         'operations/sovereign-audit-export',
+        'operations/sovereign-deployment-baselines',
         'design/shared-team-deployment-operations',
         'design/dashboard-sharing',
         'release-notes',

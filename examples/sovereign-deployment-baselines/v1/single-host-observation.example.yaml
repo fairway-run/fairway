@@ -1,0 +1,67 @@
+schema: fairway.sovereign-deployment-observation.v1
+baseline_id: fairway-sovereign-single-host
+baseline_version: v1
+topology: single_host
+deployment_id: example-single-host
+observed_at: "2026-07-12T00:00:00Z"
+results:
+  - control_id: artifact-source
+    status: pass
+    evidence_refs: [artifacts/release-assurance-verification.json]
+  - control_id: local-assets
+    status: pass
+    evidence_refs: [artifacts/local-assets.json]
+  - control_id: data-paths
+    status: pass
+    evidence_refs: [artifacts/data-paths.txt]
+  - control_id: configuration-signing
+    status: pass
+    evidence_refs: [artifacts/config-digest.txt]
+  - control_id: drift-detection
+    status: pass
+    evidence_refs: [artifacts/drift-report.json]
+  - control_id: service-identity
+    status: pass
+    evidence_refs: [artifacts/service-identity.txt]
+  - control_id: least-privilege
+    status: pass
+    evidence_refs: [artifacts/least-privilege.txt]
+  - control_id: customer-secret-store
+    status: pass
+    evidence_refs: [artifacts/secret-source-readback.json]
+  - control_id: firewall
+    status: pass
+    evidence_refs: [artifacts/firewall.txt]
+  - control_id: network-allowlist
+    status: pass
+    evidence_refs: [artifacts/network-dependencies.json]
+  - control_id: rootless-runtime
+    status: pass
+    evidence_refs: [artifacts/process-identity.txt]
+  - control_id: read-only-filesystem
+    status: pass
+    evidence_refs: [artifacts/filesystem-mounts.txt]
+  - control_id: mandatory-access-control
+    status: not_applicable
+    evidence_refs: [artifacts/equivalent-confinement-decision.md]
+    notes: Reviewed equivalent host confinement is recorded for this operating system.
+  - control_id: status-version-logs
+    status: pass
+    evidence_refs: [artifacts/status-version-logs.txt]
+  - control_id: resource-budget
+    status: pass
+    evidence_refs: [artifacts/resource-budget.json]
+  - control_id: backup-restore
+    status: pass
+    evidence_refs: [artifacts/restore-rehearsal.json]
+  - control_id: key-recovery
+    status: pass
+    evidence_refs: [artifacts/key-recovery-rehearsal.json]
+  - control_id: upgrade-rollback
+    status: pass
+    evidence_refs: [artifacts/upgrade-rollback.json]
+  - control_id: disaster-recovery
+    status: pass
+    evidence_refs: [artifacts/disaster-recovery.json]
+authority:
+  mode: observation_only

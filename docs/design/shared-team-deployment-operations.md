@@ -14,6 +14,12 @@ identity boundary, and concurrency model are reviewed:
 - [shared-team-concurrency-and-sync.md](shared-team-concurrency-and-sync.md),
 - [postgres-adapter.md](postgres-adapter.md).
 
+For executable read-only posture expectations, use the versioned single-host,
+managed-service, or container/orchestration manifests described in
+[sovereign-deployment-baselines.md](../operations/sovereign-deployment-baselines.md).
+`fairway readiness deployment` compares a bounded observation packet with the
+selected baseline; it reports deviations but never changes the host or service.
+
 ## Deployment Topologies
 
 | Topology | Intended use | Notes |

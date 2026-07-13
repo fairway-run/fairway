@@ -740,6 +740,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"assurance", "profile", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
 		{[]string{"assurance", "profile", "validate", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
 		{[]string{"assurance", "profile", "diff", "--help"}, "fairway assurance profile diff --from <path> --to <path> [--format text|json]"},
+		{[]string{"readiness", "deployment", "--help"}, "fairway readiness deployment --baseline <yaml> --observation <yaml>"},
 		{[]string{"explain", "--help"}, "fairway explain code [<repo-path>]"},
 		{[]string{"explain", "code", "--help"}, "fairway explain code [<repo-path>]"},
 		{[]string{"recipe", "--help"}, "fairway recipe extract|render|list"},
@@ -2085,6 +2086,34 @@ recovery_evidence = "recovery.json"
 	doctor := runCaptureAllowError(t, "doctor", "--dashboard-read-only", "", "--dashboard-full", "")
 	assertContains(t, doctor, "crypto-in_transit status=pass")
 	assertContains(t, doctor, "crypto-signing status=pass")
+}
+
+func TestCLI_SovereignDeploymentBaselineReadiness(t *testing.T) {
+	root := filepath.Join("..", "..")
+	baseline := filepath.Join(root, "examples", "sovereign-deployment-baselines", "v1", "single-host.yaml")
+	observation := filepath.Join(root, "examples", "sovereign-deployment-baselines", "v1", "single-host-observation.example.yaml")
+
+	report := runCapture(t, "readiness", "deployment", "--baseline", baseline, "--observation", observation)
+	for _, want := range []string{"ready: true", "controls: 19", "blocking_deviations: 0", "not certification"} {
+		assertContains(t, report, want)
+	}
+	jsonReport := runCapture(t, "--json", "readiness", "deployment", "--baseline", baseline, "--observation", observation)
+	assertContains(t, jsonReport, `"schema": "fairway.sovereign-deployment-baseline-report.v1"`)
+	assertContains(t, jsonReport, `"ready": true`)
+
+	data, err := os.ReadFile(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := strings.Replace(string(data), "control_id: artifact-source\n    status: pass", "control_id: artifact-source\n    status: fail", 1)
+	failedPath := filepath.Join(t.TempDir(), "failed-observation.yaml")
+	if err := os.WriteFile(failedPath, []byte(failed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failedReport := runCaptureAllowError(t, "readiness", "deployment", "--baseline", baseline, "--observation", failedPath)
+	assertContains(t, failedReport, "ready: false")
+	assertContains(t, failedReport, "artifact-source")
+	assertContains(t, failedReport, "blocking_deviations: 1")
 }
 
 func TestFairwayVersionAtLeast(t *testing.T) {

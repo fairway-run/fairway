@@ -1,0 +1,144 @@
+schema: fairway.sovereign-deployment-baseline.v1
+id: fairway-sovereign-managed-service
+version: v1
+title: Fairway sovereign managed-service baseline
+description: Read-only posture requirements for an internally managed Fairway service with customer-owned data and trust boundaries.
+topology: managed_service
+controls:
+  - id: artifact-source
+    title: Verified release promotion
+    category: artifact
+    severity: blocking
+    expectation: Promote only an immutable release whose archives and assurance package verify against customer-pinned source, builder, policy, and signing identity.
+    evidence_required: true
+    next_action: Record promotion artifact digests and pinned offline verification output.
+  - id: local-assets
+    title: Internal artifact availability
+    category: artifact
+    severity: blocking
+    expectation: Mirror required release, recovery, schema, and operator assets into the approved internal artifact boundary.
+    evidence_required: true
+    next_action: Record internal mirror inventory, digests, and disconnected fetch proof.
+  - id: data-paths
+    title: Managed durable data paths
+    category: configuration
+    severity: blocking
+    expectation: Use explicit durable database, log, evidence, backup, and lifecycle paths with customer retention and capacity ownership.
+    evidence_required: true
+    next_action: Record storage class, ownership, retention, encryption, capacity, and path readback.
+  - id: configuration-signing
+    title: Reviewed configuration promotion
+    category: configuration
+    severity: blocking
+    expectation: Sign or digest-pin service configuration and verify exact environment overlays before rollout.
+    evidence_required: true
+    next_action: Record configuration provenance, signature or digest, reviewer, and runtime readback.
+  - id: drift-detection
+    title: Managed drift detection
+    category: configuration
+    severity: blocking
+    expectation: Detect binary, image, configuration, identity, network, storage, and policy drift without automatic corrective authority.
+    evidence_required: true
+    next_action: Record scheduled drift output, owner, severity, and bounded remediation handoff.
+  - id: service-identity
+    title: Workload service identity
+    category: identity
+    severity: blocking
+    expectation: Give each Fairway service role a verified workload identity with bounded audience and no shared human administrator credential.
+    evidence_required: true
+    next_action: Record issuer, audience, workload binding, rotation, and failed-auth proof.
+  - id: least-privilege
+    title: Command and infrastructure least privilege
+    category: identity
+    severity: blocking
+    expectation: Separate viewer, operator, reviewer, coordinator, adapter, runtime, migration, backup, and administrator permissions.
+    evidence_required: true
+    next_action: Record effective role and infrastructure policy mappings plus denied-action tests.
+  - id: customer-secret-store
+    title: Managed customer secret store
+    category: identity
+    severity: blocking
+    expectation: Retrieve runtime secrets through customer secret-management identity and keep values out of config, logs, evidence, process arguments, and images.
+    evidence_required: true
+    next_action: Record secret references, access policy, rotation, and redacted leakage scan.
+  - id: firewall
+    title: Service and store firewalling
+    category: network
+    severity: blocking
+    expectation: Isolate dashboard, API, store, backup, and management planes with explicit ingress and east-west policy.
+    evidence_required: true
+    next_action: Record listener inventory, firewall policy, denied paths, and origin-isolation proof.
+  - id: network-allowlist
+    title: Managed dependency allowlist
+    category: network
+    severity: blocking
+    expectation: Allow only reviewed internal identity, store, artifact, notification, tracker, proxy, and monitoring endpoints for the selected runtime profile.
+    evidence_required: true
+    next_action: Record resolved destinations and deny undeclared egress before promotion.
+  - id: rootless-runtime
+    title: Non-root managed service
+    category: runtime
+    severity: blocking
+    expectation: Run each steady-state service under a dedicated non-root identity with no host administrator or migration privilege.
+    evidence_required: true
+    next_action: Record service uid, capabilities, sandbox, and privilege-denial proof.
+  - id: read-only-filesystem
+    title: Read-only service image and code
+    category: runtime
+    severity: blocking
+    expectation: Keep executable and packaged assets read-only and mount only explicit state, log, evidence, and temporary paths writable.
+    evidence_required: true
+    next_action: Record service mount and write-denial readback.
+  - id: mandatory-access-control
+    title: Managed host confinement
+    category: runtime
+    severity: blocking
+    expectation: Apply SELinux, AppArmor, seccomp, or an equivalent managed-service confinement boundary.
+    evidence_required: true
+    allow_not_applicable: true
+    next_action: Record the active policy and denials, or document the reviewed equivalent platform control.
+  - id: status-version-logs
+    title: Managed lifecycle and log readback
+    category: observability
+    severity: blocking
+    expectation: Expose exact release, config, schema, identity mode, process health, listener, backup freshness, and metadata-only logs to operators.
+    evidence_required: true
+    next_action: Record status, version, schema, identity, listener, and redacted log probes.
+  - id: resource-budget
+    title: Managed service budgets
+    category: observability
+    severity: blocking
+    expectation: Define per-service CPU, memory, storage, connection, queue, route-latency, backup, and recovery budgets with alerts.
+    evidence_required: true
+    next_action: Record limits, representative load, saturation behavior, and alert delivery proof.
+  - id: backup-restore
+    title: Managed backup and restore
+    category: resilience
+    severity: blocking
+    expectation: Use encrypted, access-controlled, retained backups and prove isolated restore, schema compatibility, and read-model equivalence.
+    evidence_required: true
+    next_action: Record backup provenance, restore rehearsal, counts, integrity, and recovery timing.
+  - id: key-recovery
+    title: Managed key recovery
+    category: resilience
+    severity: blocking
+    expectation: Separate key custodians and prove rotation, revocation, backup, loss response, and recovery for signing, TLS, identity, and backup keys.
+    evidence_required: true
+    next_action: Record custodian-approved recovery rehearsal and stale-key rejection without key material.
+  - id: upgrade-rollback
+    title: Managed rollout and rollback
+    category: resilience
+    severity: blocking
+    expectation: Use health-gated rollout, pre-change backup, migration lock, compatibility checks, stop conditions, and explicit rollback or reconciliation.
+    evidence_required: true
+    next_action: Record staged rollout, health window, rollback proof, and any write-divergence decision.
+  - id: disaster-recovery
+    title: Managed service disaster recovery
+    category: resilience
+    severity: blocking
+    expectation: Restore service, store, identity, network policy, and audit continuity in the approved recovery topology within declared objectives.
+    evidence_required: true
+    next_action: Record failover or rebuild rehearsal, recovery objectives, residual loss, and return-to-service approval boundary.
+authority:
+  mode: observe_only
+  prohibited_actions: [accept_risk, approve, certify, change_public_exposure, declare_compliance, deploy, merge, mutate_system, release, run_live_operation, send_provider_message, use_credentials]

@@ -1,0 +1,144 @@
+schema: fairway.sovereign-deployment-baseline.v1
+id: fairway-sovereign-single-host
+version: v1
+title: Fairway sovereign single-host baseline
+description: Read-only posture requirements for a customer-controlled single-host Fairway deployment.
+topology: single_host
+controls:
+  - id: artifact-source
+    title: Verified release artifact
+    category: artifact
+    severity: blocking
+    expectation: Install an immutable Fairway version whose digest and release assurance package verify against customer-pinned trust.
+    evidence_required: true
+    next_action: Verify the release assurance package and record binary version and digest readback.
+  - id: local-assets
+    title: Local installation assets
+    category: artifact
+    severity: blocking
+    expectation: Stage all required binary, configuration, documentation, and recovery assets inside the approved boundary before disconnected operation.
+    evidence_required: true
+    next_action: Record the local asset manifest and missing dependency check.
+  - id: data-paths
+    title: Explicit customer data paths
+    category: configuration
+    severity: blocking
+    expectation: Place database, WAL, logs, pid files, evidence, backups, and configuration under explicit customer-owned paths outside ephemeral or root-owned application storage.
+    evidence_required: true
+    next_action: Record path ownership, permissions, capacity, and filesystem readback.
+  - id: configuration-signing
+    title: Configuration integrity
+    category: configuration
+    severity: blocking
+    expectation: Pin configuration digest or customer signature and verify it before service start and after change.
+    evidence_required: true
+    next_action: Record the approved configuration digest and verification result.
+  - id: drift-detection
+    title: Configuration and binary drift detection
+    category: configuration
+    severity: blocking
+    expectation: Compare running binary, configuration, service definition, and data-path permissions with the approved baseline on a bounded schedule.
+    evidence_required: true
+    next_action: Run the local drift check and record all deviations without applying repairs.
+  - id: service-identity
+    title: Dedicated service identity
+    category: identity
+    severity: blocking
+    expectation: Run Fairway under a dedicated customer-controlled operating-system identity with no interactive administrator credentials.
+    evidence_required: true
+    next_action: Record service account identity, groups, login posture, and file ownership.
+  - id: least-privilege
+    title: Least-privilege service permissions
+    category: identity
+    severity: blocking
+    expectation: Grant only the file, socket, and network permissions required for the selected read-only or reviewed write mode.
+    evidence_required: true
+    next_action: Record effective privileges and remove unrelated group, sudo, or filesystem access.
+  - id: customer-secret-store
+    title: Customer-controlled secret storage
+    category: identity
+    severity: blocking
+    expectation: Source signing, identity, TLS, notifier, and database secrets from customer environment or secret storage and never from Fairway evidence or committed config.
+    evidence_required: true
+    next_action: Record secret-source metadata and a redacted no-secret-in-config scan.
+  - id: firewall
+    title: Host firewall boundary
+    category: network
+    severity: blocking
+    expectation: Deny unsolicited inbound access and allow only reviewed loopback or private listener paths required by the selected mode.
+    evidence_required: true
+    next_action: Record host firewall policy and listener readback.
+  - id: network-allowlist
+    title: Explicit egress and dependency allowlist
+    category: network
+    severity: blocking
+    expectation: Deny undeclared remote dependencies and document every allowed identity, tracker, notifier, provider, update, and proxy endpoint.
+    evidence_required: true
+    next_action: Run Fairway doctor and runtime dependency readback, then record unresolved egress.
+  - id: rootless-runtime
+    title: Non-root runtime
+    category: runtime
+    severity: blocking
+    expectation: Run the Fairway process as a non-root identity; privileged setup must not remain in the steady-state service.
+    evidence_required: true
+    next_action: Record process uid, gid, capabilities, and service sandbox readback.
+  - id: read-only-filesystem
+    title: Read-only application filesystem
+    category: runtime
+    severity: blocking
+    expectation: Keep the binary and packaged assets read-only while granting writes only to explicit data, log, pid, evidence, and backup paths.
+    evidence_required: true
+    next_action: Record mount and permission readback for executable and writable paths.
+  - id: mandatory-access-control
+    title: SELinux or AppArmor confinement
+    category: runtime
+    severity: blocking
+    expectation: Apply SELinux, AppArmor, or a documented equivalent host confinement boundary where the platform supports it.
+    evidence_required: true
+    allow_not_applicable: true
+    next_action: Record the active policy and denials, or document the reviewed equivalent boundary and platform limitation.
+  - id: status-version-logs
+    title: Durable lifecycle readback
+    category: observability
+    severity: blocking
+    expectation: Preserve status, exact binary path and version, config and database paths, pid file, log file, listener, and bounded metadata-only logs.
+    evidence_required: true
+    next_action: Record version, lifecycle status, pid, listener, and redacted log readback.
+  - id: resource-budget
+    title: Resource and capacity budget
+    category: observability
+    severity: blocking
+    expectation: Define and monitor CPU, memory, disk, file descriptor, database growth, backup, and route-latency budgets for the deployment size.
+    evidence_required: true
+    next_action: Record current utilization, limits, alert thresholds, and dashboard timing evidence.
+  - id: backup-restore
+    title: Backup and restore rehearsal
+    category: resilience
+    severity: blocking
+    expectation: Produce encrypted customer-owned backups and prove restore into an isolated path with version and reconcile readback.
+    evidence_required: true
+    next_action: Run a bounded backup and isolated restore rehearsal and record counts and verification output.
+  - id: key-recovery
+    title: Signing and identity key recovery
+    category: resilience
+    severity: blocking
+    expectation: Document custodians, backup, rotation, revocation, loss response, and recovery proof for customer-controlled Fairway keys.
+    evidence_required: true
+    next_action: Record a bounded key rotation or recovery rehearsal without storing key material.
+  - id: upgrade-rollback
+    title: Upgrade and rollback procedure
+    category: resilience
+    severity: blocking
+    expectation: Pin candidate and previous binaries, take a pre-change backup, verify migrations, and prove rollback with write-divergence handling.
+    evidence_required: true
+    next_action: Record upgrade rehearsal, stop conditions, rollback command, and post-rollback readback.
+  - id: disaster-recovery
+    title: Single-host disaster recovery
+    category: resilience
+    severity: blocking
+    expectation: Rebuild the service on a replacement host from verified artifacts, customer config, keys, and backup while preserving audit continuity.
+    evidence_required: true
+    next_action: Rehearse replacement-host restore and record recovery time, data loss boundary, and audit continuity.
+authority:
+  mode: observe_only
+  prohibited_actions: [accept_risk, approve, certify, change_public_exposure, declare_compliance, deploy, merge, mutate_system, release, run_live_operation, send_provider_message, use_credentials]

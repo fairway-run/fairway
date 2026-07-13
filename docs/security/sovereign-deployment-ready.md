@@ -18,6 +18,13 @@ the exact version. The current
 `fairway-sovereign-deployment-ready-v1-starter@v1` assurance profile is an
 evidence-organizing draft, not a readiness declaration.
 
+The versioned deployment posture manifests and read-only validator are
+documented in
+[sovereign-deployment-baselines.md](../operations/sovereign-deployment-baselines.md).
+A passing `fairway readiness deployment` report proves only that the supplied
+observation packet satisfies that baseline's evidence-reference shape. It is
+not an assessor conclusion or product label.
+
 ## Reference modes
 
 - `sovereign-offline`: disconnected single-host or isolated-local-network

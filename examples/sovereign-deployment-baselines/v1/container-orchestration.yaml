@@ -1,0 +1,144 @@
+schema: fairway.sovereign-deployment-baseline.v1
+id: fairway-sovereign-container-orchestration
+version: v1
+title: Fairway sovereign container and orchestration baseline
+description: Read-only posture requirements for Fairway packaged in a customer-controlled container orchestration environment.
+topology: container_orchestration
+controls:
+  - id: artifact-source
+    title: Verified image and release artifacts
+    category: artifact
+    severity: blocking
+    expectation: Pin image and release artifacts by immutable digest and bind them to a verified Fairway release assurance package.
+    evidence_required: true
+    next_action: Record image digest, archive digest, source revision, builder, signature, and policy verification.
+  - id: local-assets
+    title: Internal image and asset mirror
+    category: artifact
+    severity: blocking
+    expectation: Mirror images, release evidence, manifests, schemas, and recovery assets into the approved customer registry and artifact boundary.
+    evidence_required: true
+    next_action: Record mirrored digest inventory and disconnected pull proof.
+  - id: data-paths
+    title: Explicit persistent volumes and paths
+    category: configuration
+    severity: blocking
+    expectation: Bind database, logs, evidence, backups, and lifecycle state to explicit customer-owned persistent storage with declared access modes and capacity.
+    evidence_required: true
+    next_action: Record volume claims, storage policy, permissions, encryption, capacity, and restore mapping.
+  - id: configuration-signing
+    title: Signed deployment configuration
+    category: configuration
+    severity: blocking
+    expectation: Pin deployment manifests, policy, configuration, and image digests through customer-approved signatures or immutable digests before admission.
+    evidence_required: true
+    next_action: Record manifest provenance, digest or signature verification, and admitted runtime values.
+  - id: drift-detection
+    title: Orchestration drift detection
+    category: configuration
+    severity: blocking
+    expectation: Detect drift in workload spec, image digest, configuration, secret references, identity, network policy, storage, and security context without self-repair authority.
+    evidence_required: true
+    next_action: Record desired-versus-observed output and route deviations to the owning operator.
+  - id: service-identity
+    title: Workload and service account identity
+    category: identity
+    severity: blocking
+    expectation: Use dedicated namespaced workload identity and bounded service accounts with no default or shared cluster administrator token.
+    evidence_required: true
+    next_action: Record service account, projected token audience, workload binding, and denied cross-namespace access.
+  - id: least-privilege
+    title: Namespaced RBAC and infrastructure privilege
+    category: identity
+    severity: blocking
+    expectation: Grant only required namespaced API, volume, secret-reference, network, and runtime permissions; separate migration and backup roles.
+    evidence_required: true
+    next_action: Record effective RBAC and failed privileged-action checks.
+  - id: customer-secret-store
+    title: Externalized customer secrets
+    category: identity
+    severity: blocking
+    expectation: Inject secrets from customer secret storage through bounded references and workload identity, never images, manifests, logs, evidence, or arguments.
+    evidence_required: true
+    next_action: Record secret provider references, rotation, access policy, and redacted manifest and log scan.
+  - id: firewall
+    title: Ingress and east-west firewall boundary
+    category: network
+    severity: blocking
+    expectation: Limit ingress controllers, services, store access, management endpoints, and namespace communication through explicit policy.
+    evidence_required: true
+    next_action: Record service exposure, ingress, NetworkPolicy or equivalent, and denied connectivity proof.
+  - id: network-allowlist
+    title: Egress allowlist
+    category: network
+    severity: blocking
+    expectation: Deny default egress and allow only reviewed identity, store, registry, notifier, tracker, proxy, DNS, and monitoring destinations.
+    evidence_required: true
+    next_action: Record effective egress policy, resolved destinations, and undeclared-egress denial.
+  - id: rootless-runtime
+    title: Non-root container execution
+    category: runtime
+    severity: blocking
+    expectation: Require runAsNonRoot, fixed uid and gid, dropped capabilities, no privilege escalation, and a default seccomp profile.
+    evidence_required: true
+    next_action: Record pod security context, admission result, and privileged-container denial.
+  - id: read-only-filesystem
+    title: Read-only root filesystem
+    category: runtime
+    severity: blocking
+    expectation: Require a read-only root filesystem and explicit bounded writable volumes for state, logs, evidence, and temporary files.
+    evidence_required: true
+    next_action: Record security context, mounts, and write-denial/readback tests.
+  - id: mandatory-access-control
+    title: SELinux AppArmor or equivalent workload confinement
+    category: runtime
+    severity: blocking
+    expectation: Apply SELinux, AppArmor, seccomp, or an equivalent orchestration admission policy to the Fairway workload.
+    evidence_required: true
+    allow_not_applicable: true
+    next_action: Record the admitted profile and denial events, or document the reviewed equivalent platform control.
+  - id: status-version-logs
+    title: Workload lifecycle readback
+    category: observability
+    severity: blocking
+    expectation: Expose pod and service health, exact image and binary version, config digest, schema, identity mode, listener, restart history, and metadata-only logs.
+    evidence_required: true
+    next_action: Record rollout, pod, image, service, version, config, and redacted log readback.
+  - id: resource-budget
+    title: Requests limits quotas and timing budgets
+    category: observability
+    severity: blocking
+    expectation: Set requests, limits, quotas, disruption posture, storage capacity, route latency, backup, and recovery budgets from measured workload evidence.
+    evidence_required: true
+    next_action: Record resource specification, representative utilization, eviction or saturation behavior, and alerts.
+  - id: backup-restore
+    title: Orchestrated backup and restore
+    category: resilience
+    severity: blocking
+    expectation: Back up persistent state and required configuration with encryption, retention, integrity, provenance, and isolated restore verification.
+    evidence_required: true
+    next_action: Record backup job, restore namespace, schema and count equivalence, and cleanup proof.
+  - id: key-recovery
+    title: Workload key recovery
+    category: resilience
+    severity: blocking
+    expectation: Prove customer-controlled rotation, revocation, backup, loss response, and recovery for workload identity, TLS, signing, and backup keys.
+    evidence_required: true
+    next_action: Record key recovery rehearsal and stale workload or signature rejection without key material.
+  - id: upgrade-rollback
+    title: Health-gated rollout and rollback
+    category: resilience
+    severity: blocking
+    expectation: Use immutable images, pre-change backup, migration lock, readiness gates, bounded rollout, stop conditions, and rollback or explicit write reconciliation.
+    evidence_required: true
+    next_action: Record candidate rollout, health window, previous digest rollback, and post-rollback state equivalence.
+  - id: disaster-recovery
+    title: Orchestration disaster recovery
+    category: resilience
+    severity: blocking
+    expectation: Recreate namespace, workload identity, network policy, storage, configuration, service, and audit continuity in the approved recovery cluster or site.
+    evidence_required: true
+    next_action: Record cluster or namespace recovery rehearsal, recovery objectives, residual data loss, and return-to-service boundary.
+authority:
+  mode: observe_only
+  prohibited_actions: [accept_risk, approve, certify, change_public_exposure, declare_compliance, deploy, merge, mutate_system, release, run_live_operation, send_provider_message, use_credentials]
