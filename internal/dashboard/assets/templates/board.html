@@ -56,7 +56,7 @@
 <span>monitor proof: {{.ActiveReport.Summary.MonitorSessionsNoProof}}</span>
 <span>monitor resume: {{.ActiveReport.Summary.MonitorResumeNeeded}}</span>
 <span>provider lifecycle: {{.ActiveReport.Summary.ProviderLifecycleMissing}}</span>
-<span>closeout debt: {{len .CloseoutReports}}</span>
+{{if .GitProjectionDeferred}}<span>closeout: deferred</span>{{else}}<span>closeout debt: {{len .CloseoutReports}}</span>{{end}}
 <span>orchestration: {{.CoordinatorPlan.Summary.TopClassification}}</span>
 <span>coord waits: {{.Coordination.OpenWaits}}</span>
 <span>stale memory: {{.Coordination.MemoryStale}}</span>
@@ -120,9 +120,11 @@
 </article>
 <article class="diagnostic-panel">
 <h2>Lane Closeout</h2>
+{{if .GitProjectionDeferred}}<p class="muted">Git-dependent closeout projection deferred: {{.GitDiagnostic}}</p>{{else}}
 <table data-sortable><thead><tr><th><button type="button" data-sort="text">Task</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="number">Blockers</button></th><th><button type="button" data-sort="number">Warnings</button></th><th><button type="button" data-sort="text">Findings</button></th></tr></thead><tbody>
 {{range .CloseoutReports}}<tr><td><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a></td><td>{{.Branch}}</td><td>{{.Summary.Blockers}}</td><td>{{.Summary.Warnings}}</td><td>{{range .Findings}}<span class="chip">{{.Kind}}</span> {{end}}</td></tr>{{else}}<tr><td colspan="5">no lane closeout debt</td></tr>{{end}}
 </tbody></table>
+{{end}}
 </article>
 <article class="diagnostic-panel wide">
 <h2>Coverage Diagnostics</h2>
@@ -155,7 +157,7 @@
 <article class="diagnostic-panel">
 <h2>Worktrees</h2>
 <table data-sortable><thead><tr><th><button type="button" data-sort="text">Role</button></th><th><button type="button" data-sort="text">Branch</button></th><th><button type="button" data-sort="text">State</button></th><th><button type="button" data-sort="text">Commit</button></th><th><button type="button" data-sort="text">Path</button></th></tr></thead><tbody>
-{{range .Worktrees}}<tr><td>{{.Role}}</td><td>{{.Branch}}</td><td>{{if .Dirty}}dirty{{else}}clean{{end}} {{if not .Exists}}missing{{else if not .Registered}}unregistered{{end}}</td><td>{{.LastCommit}}</td><td>{{.Path}}</td></tr>{{else}}<tr><td colspan="5">no configured worktrees</td></tr>{{end}}
+{{range .Worktrees}}<tr><td>{{.Role}}</td><td>{{.Branch}}</td><td>{{if .GitUnavailable}}deferred{{else if .Dirty}}dirty{{else}}clean{{end}} {{if not .Exists}}missing{{else if and (not .GitUnavailable) (not .Registered)}}unregistered{{end}}{{if .Diagnostic}} <span class="muted">{{.Diagnostic}}</span>{{end}}</td><td>{{.LastCommit}}</td><td>{{.Path}}</td></tr>{{else}}<tr><td colspan="5">no configured worktrees</td></tr>{{end}}
 </tbody></table>
 </article>
 <article class="diagnostic-panel">

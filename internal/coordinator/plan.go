@@ -17,13 +17,15 @@ import (
 )
 
 type WorktreeFact struct {
-	Role       string `json:"role"`
-	Branch     string `json:"branch"`
-	Path       string `json:"path"`
-	Registered bool   `json:"registered"`
-	Exists     bool   `json:"exists"`
-	Dirty      bool   `json:"dirty"`
-	LastCommit string `json:"last_commit"`
+	Role           string `json:"role"`
+	Branch         string `json:"branch"`
+	Path           string `json:"path"`
+	Registered     bool   `json:"registered"`
+	Exists         bool   `json:"exists"`
+	Dirty          bool   `json:"dirty"`
+	LastCommit     string `json:"last_commit"`
+	GitUnavailable bool   `json:"git_unavailable,omitempty"`
+	Diagnostic     string `json:"diagnostic,omitempty"`
 }
 
 type PlanOptions struct {
@@ -595,12 +597,24 @@ func BuildPlan(ctx context.Context, cfg config.Config, s *store.Store, opts Plan
 			}
 		}
 	}
-	for _, group := range relatedReadyGroups(cfg, ready) {
-		plan.Summary.BatchRecommended++
-		addAction(&plan, 35, "ready", "consider_work_batch", group.Reason, "", "", "", "", group.TaskIDs, nil, false)
+	gitUnavailable := false
+	for _, wt := range opts.Worktrees {
+		if !wt.GitUnavailable {
+			continue
+		}
+		gitUnavailable = true
+		reason := firstNonEmpty(wt.Diagnostic, "git executable unavailable; worktree state cannot be verified")
+		addStop(&plan, "worktree-state-deferred", reason, "", wt.Role)
+		addAction(&plan, 5, "blocked", "restore_git_visibility_before_dispatch", reason, "", wt.Role, "", "", nil, nil, true)
 	}
-	for _, task := range ready {
-		addAction(&plan, 60, "ready", "claim_ready_task", "task is ready and no higher-priority stop condition applies", task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
+	if !gitUnavailable {
+		for _, group := range relatedReadyGroups(cfg, ready) {
+			plan.Summary.BatchRecommended++
+			addAction(&plan, 35, "ready", "consider_work_batch", group.Reason, "", "", "", "", group.TaskIDs, nil, false)
+		}
+		for _, task := range ready {
+			addAction(&plan, 60, "ready", "claim_ready_task", "task is ready and no higher-priority stop condition applies", task.Definition.ID, task.Definition.Role, "", "", nil, nil, false)
+		}
 	}
 	for _, wt := range opts.Worktrees {
 		if wt.Dirty {

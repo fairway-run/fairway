@@ -782,7 +782,7 @@ func cmdServer(ctx context.Context, opts globalOptions, args []string) error {
 		}
 		_ = lifecycleToken
 		fmt.Println("server", url)
-		worktrees, err := collectWorktreeStatus(cfg, root)
+		worktrees, err := collectRuntimeWorktreeStatus(cfg, root)
 		if err != nil {
 			return err
 		}
@@ -8312,13 +8312,15 @@ func cmdReviewCheckout(ctx context.Context, opts globalOptions, args []string) e
 }
 
 type worktreeStatus struct {
-	Role       string `json:"role"`
-	Branch     string `json:"branch"`
-	Path       string `json:"path"`
-	Registered bool   `json:"registered"`
-	Exists     bool   `json:"exists"`
-	Dirty      bool   `json:"dirty"`
-	LastCommit string `json:"last_commit"`
+	Role           string `json:"role"`
+	Branch         string `json:"branch"`
+	Path           string `json:"path"`
+	Registered     bool   `json:"registered"`
+	Exists         bool   `json:"exists"`
+	Dirty          bool   `json:"dirty"`
+	LastCommit     string `json:"last_commit"`
+	GitUnavailable bool   `json:"git_unavailable,omitempty"`
+	Diagnostic     string `json:"diagnostic,omitempty"`
 }
 
 func cmdWorktree(opts globalOptions, args []string) error {
@@ -8435,6 +8437,9 @@ func cmdWorktreePrune(opts globalOptions, force bool) error {
 }
 
 func collectWorktreeStatus(cfg config.Config, root string) ([]worktreeStatus, error) {
+	if _, err := exec.LookPath("git"); err != nil {
+		return nil, errors.New("git executable is required for worktree status")
+	}
 	registered := map[string]bool{}
 	worktrees, err := fairwaygit.Worktrees(root)
 	if err != nil {
@@ -8460,6 +8465,38 @@ func collectWorktreeStatus(cfg config.Config, root string) ([]worktreeStatus, er
 			if err == nil {
 				status.Dirty = gitStatus.Dirty
 			}
+		}
+		statuses = append(statuses, status)
+	}
+	return statuses, nil
+}
+
+func collectRuntimeWorktreeStatus(cfg config.Config, root string) ([]worktreeStatus, error) {
+	if _, err := exec.LookPath("git"); err == nil {
+		return collectWorktreeStatus(cfg, root)
+	}
+	statuses := make([]worktreeStatus, 0, len(cfg.Roles))
+	if len(cfg.Roles) == 0 {
+		return []worktreeStatus{{
+			Role:           "repository",
+			Branch:         cfg.Fairway.MainBranch,
+			Path:           root,
+			Exists:         true,
+			GitUnavailable: true,
+			Diagnostic:     "git executable unavailable; worktree and closeout state deferred",
+		}}, nil
+	}
+	for _, role := range cfg.Roles {
+		wtPath := config.WorktreePath(cfg, root, role)
+		status := worktreeStatus{
+			Role:           role.Name,
+			Branch:         config.RoleBranch(role),
+			Path:           wtPath,
+			GitUnavailable: true,
+			Diagnostic:     "git executable unavailable; worktree and closeout state deferred",
+		}
+		if _, err := os.Stat(wtPath); err == nil {
+			status.Exists = true
 		}
 		statuses = append(statuses, status)
 	}
@@ -11278,13 +11315,15 @@ func coordinatorWorktreeFacts(worktrees []worktreeStatus) []coord.WorktreeFact {
 	facts := make([]coord.WorktreeFact, 0, len(worktrees))
 	for _, worktree := range worktrees {
 		facts = append(facts, coord.WorktreeFact{
-			Role:       worktree.Role,
-			Branch:     worktree.Branch,
-			Path:       worktree.Path,
-			Registered: worktree.Registered,
-			Exists:     worktree.Exists,
-			Dirty:      worktree.Dirty,
-			LastCommit: worktree.LastCommit,
+			Role:           worktree.Role,
+			Branch:         worktree.Branch,
+			Path:           worktree.Path,
+			Registered:     worktree.Registered,
+			Exists:         worktree.Exists,
+			Dirty:          worktree.Dirty,
+			LastCommit:     worktree.LastCommit,
+			GitUnavailable: worktree.GitUnavailable,
+			Diagnostic:     worktree.Diagnostic,
 		})
 	}
 	return facts
@@ -18854,7 +18893,7 @@ func cmdDashboard(ctx context.Context, opts globalOptions, args []string) error 
 		if cfg.Dashboard.AutoOpen && !*noOpen {
 			_ = openBrowser(url)
 		}
-		worktrees, err := collectWorktreeStatus(cfg, root)
+		worktrees, err := collectRuntimeWorktreeStatus(cfg, root)
 		if err != nil {
 			return err
 		}
@@ -19278,13 +19317,15 @@ func dashboardWorktrees(statuses []worktreeStatus) []dashboard.WorktreeStatus {
 	out := make([]dashboard.WorktreeStatus, 0, len(statuses))
 	for _, status := range statuses {
 		out = append(out, dashboard.WorktreeStatus{
-			Role:       status.Role,
-			Branch:     status.Branch,
-			Path:       status.Path,
-			Registered: status.Registered,
-			Exists:     status.Exists,
-			Dirty:      status.Dirty,
-			LastCommit: status.LastCommit,
+			Role:           status.Role,
+			Branch:         status.Branch,
+			Path:           status.Path,
+			Registered:     status.Registered,
+			Exists:         status.Exists,
+			Dirty:          status.Dirty,
+			LastCommit:     status.LastCommit,
+			GitUnavailable: status.GitUnavailable,
+			Diagnostic:     status.Diagnostic,
 		})
 	}
 	return out

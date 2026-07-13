@@ -604,6 +604,14 @@ execution surface cannot signal an old listener, use the approved tmux/SSH
 operator lane to stop the old PID and restart from the reviewed binary; do not
 fall back to an untracked foreground process.
 
+In a signed disconnected installation, the foreground and managed dashboard
+may run without Git on `PATH`. Git-backed worktree and lane-closeout diagnostics
+then render as `deferred` with an explicit diagnostic instead of failing startup
+or displaying false clean/merged state. Coordinator diagnostics also suppress
+ready-task claim and batch-dispatch recommendations until Git visibility is
+restored. This does not emulate Git state: repository workflow commands
+continue to require the Git executable and fail closed when it is absent.
+
 ## Multi-Project Mode
 
 `fairway dashboard --multi` aggregates registered projects via SQLite

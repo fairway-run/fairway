@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -7802,10 +7803,26 @@ func TestCLI_ServerReadOnlyLifecycle(t *testing.T) {
 		}
 		return string(out)
 	}
+	runExternalWithPath := func(path string, wantSuccess bool, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(fairwayBin, args...)
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "PATH="+path)
+		out, err := cmd.CombinedOutput()
+		if wantSuccess && err != nil {
+			logData, _ := os.ReadFile(filepath.Join(repo, ".fairway", "managed-server.log"))
+			t.Fatalf("fairway %v with PATH=%s: %v\n%s\nserver log:\n%s", args, path, err, out, logData)
+		}
+		if !wantSuccess && err == nil {
+			t.Fatalf("fairway %v with PATH=%s succeeded, expected failure\n%s", args, path, out)
+		}
+		return string(out)
+	}
 	git(t, repo, "init", "-b", "main")
 	git(t, repo, "config", "user.email", "test@example.com")
 	git(t, repo, "config", "user.name", "Test User")
 	runExternal(true, "init")
+	runExternal(true, "add", "READY-001", "--title", "Ready offline work", "--role", "backend")
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -7848,6 +7865,69 @@ func TestCLI_ServerReadOnlyLifecycle(t *testing.T) {
 	restarted := runExternal(true, append([]string{"server", "start", "--read-only"}, base...)...)
 	assertContains(t, restarted, "server started")
 	runExternal(true, append([]string{"server", "stop"}, base...)...)
+
+	noGitPath := t.TempDir()
+	strictGit := runExternalWithPath(noGitPath, false, "worktree", "status")
+	assertContains(t, strictGit, "git executable is required for worktree status")
+	started = runExternalWithPath(noGitPath, true, append([]string{"server", "start", "--read-only"}, base...)...)
+	assertContains(t, started, "server started")
+	resp, err = http.Get("http://" + addr + "/api/v1/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		t.Fatalf("no-git server status code = %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	runExternal(true, append([]string{"server", "stop"}, base...)...)
+
+	ln, err = net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dashboardAddr := ln.Addr().String()
+	_ = ln.Close()
+	dashboardCmd := exec.Command(fairwayBin, "dashboard", "--listen", dashboardAddr, "--no-open", "--read-only")
+	dashboardCmd.Dir = repo
+	dashboardCmd.Env = append(os.Environ(), "PATH="+noGitPath)
+	var dashboardLog bytes.Buffer
+	dashboardCmd.Stdout = &dashboardLog
+	dashboardCmd.Stderr = &dashboardLog
+	if err := dashboardCmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if dashboardCmd.Process != nil {
+			_ = dashboardCmd.Process.Kill()
+			_, _ = dashboardCmd.Process.Wait()
+		}
+	})
+	var dashboardBody string
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		response, requestErr := http.Get("http://" + dashboardAddr + "/board/panels/diagnostics")
+		if requestErr == nil {
+			data, readErr := io.ReadAll(response.Body)
+			response.Body.Close()
+			if readErr == nil && response.StatusCode == http.StatusOK {
+				dashboardBody = string(data)
+				break
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if dashboardBody == "" {
+		t.Fatalf("no-git dashboard did not become ready: %s", dashboardLog.String())
+	}
+	for _, want := range []string{"deferred", "git executable unavailable", "Git-dependent closeout projection deferred", "restore_git_visibility_before_dispatch"} {
+		assertContains(t, dashboardBody, want)
+	}
+	if strings.Contains(dashboardBody, ">clean<") || strings.Contains(dashboardBody, "no lane closeout debt") || strings.Contains(dashboardBody, "claim_ready_task") || strings.Contains(dashboardBody, "consider_work_batch") {
+		t.Fatalf("no-git dashboard implied clean Git state:\n%s", dashboardBody)
+	}
+	_ = dashboardCmd.Process.Kill()
+	_, _ = dashboardCmd.Process.Wait()
 }
 
 func runOK(t *testing.T, args ...string) {

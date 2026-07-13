@@ -95,6 +95,16 @@ rename, preserve the prior binary under `backups/`, and print exact version
 readback. They do not start services, alter configuration or data, contact a
 network, approve a deployment, or delete customer backups.
 
+The installed binary can run the loopback dashboard and read-only shared server
+without a `git` executable. Worktree and lane-closeout projections are marked
+`deferred` in that environment; they are never presented as clean or merged.
+Coordinator diagnostics do not recommend ready-task dispatch while repository
+cleanliness is unknown.
+Commands that actually inspect or mutate Git state, including `worktree
+status`, still fail with an actionable missing-Git error. Install Git only when
+the disconnected operating procedure explicitly requires those repository
+workflows; dashboard/server startup does not fetch or install it.
+
 Use the reusable compatibility rehearsal after bundle creation:
 
 ```bash

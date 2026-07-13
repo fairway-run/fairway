@@ -94,6 +94,44 @@ func TestBuildPlanRecommendsSafeIterationGroupedReview(t *testing.T) {
 	}
 }
 
+func TestBuildPlanDefersDispatchWhenGitStateIsUnavailable(t *testing.T) {
+	ctx := context.Background()
+	s := openPlanStore(t, ctx)
+	cfg := config.Defaults(t.TempDir())
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "READY-001", Title: "Ready work", Kind: "task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(ctx, cfg, s, PlanOptions{
+		Worktrees: []WorktreeFact{{
+			Role:           "backend",
+			Branch:         "agent/backend",
+			GitUnavailable: true,
+			Diagnostic:     "git executable unavailable; worktree and closeout state deferred",
+		}},
+		StaleCheckpointAfter: time.Hour,
+		ReadyLimit:           10,
+		RecommendationLimit:  20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.OK {
+		t.Fatalf("plan OK with unavailable Git state: %+v", plan)
+	}
+	if !hasPlanAction(plan, "blocked", "restore_git_visibility_before_dispatch", "") {
+		t.Fatalf("missing deferred Git action: %+v", plan.Actions)
+	}
+	for _, action := range plan.Actions {
+		switch action.Action {
+		case "claim_ready_task", "consider_work_batch":
+			t.Fatalf("worktree-dependent action %q emitted with unavailable Git state: %+v", action.Action, plan.Actions)
+		}
+	}
+	if len(plan.StopConditions) == 0 || plan.StopConditions[0].Kind != "worktree-state-deferred" {
+		t.Fatalf("missing worktree-state-deferred stop: %+v", plan.StopConditions)
+	}
+}
+
 func TestBuildPlanRecommendsCausalResetForLoopDetected(t *testing.T) {
 	ctx := context.Background()
 	s := openPlanStore(t, ctx)

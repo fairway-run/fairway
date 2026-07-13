@@ -57,13 +57,15 @@ type ssePollStats struct {
 const taskDetailCompletionActionLimit = 10000
 
 type WorktreeStatus struct {
-	Role       string
-	Branch     string
-	Path       string
-	Registered bool
-	Exists     bool
-	Dirty      bool
-	LastCommit string
+	Role           string
+	Branch         string
+	Path           string
+	Registered     bool
+	Exists         bool
+	Dirty          bool
+	LastCommit     string
+	GitUnavailable bool
+	Diagnostic     string
 }
 
 type Rollup struct {
@@ -296,49 +298,51 @@ type FilterOptions struct {
 }
 
 type DashboardViewData struct {
-	View                 string
-	Summary              DashboardSummary
-	Gates                []GateStatus
-	GateGroups           []GateGroup
-	Groups               []RoleGroup
-	ProjectGroups        []ProjectWallGroup
-	MissingReviewDomains map[string][]string
-	TableRows            []store.Task
-	Pagination           TablePagination
-	Workstreams          []WorkstreamGroup
-	WorkstreamTotal      int
-	WorkstreamsExpanded  bool
-	WorkstreamsShowAll   string
-	WorkstreamsCompact   string
-	Filters              TaskFilters
-	FilterOptions        FilterOptions
-	FilterChips          []FilterChip
-	ClearFiltersHref     string
-	BoardColumns         []BoardColumn
-	PersonalViews        []SavedView
-	TeamViews            []SavedView
-	CurrentViewQuery     string
-	Activity             []store.Activity
-	ActivityTotal        int
-	Health               store.Health
-	Sessions             []store.Session
-	Worktrees            []WorktreeStatus
-	Checkpoints          []store.Checkpoint
-	StaleCheckpoints     []store.Checkpoint
-	Watchers             []store.Watcher
-	Rollups              map[string]Rollup
-	TaskRoles            map[string]string
-	ActiveReport         reconcile.ActiveReport
-	CoordinatorPlan      coord.Plan
-	Coordination         CoordinationIntelligence
-	CloseoutReports      []reconcile.CloseoutReport
-	Audit                AuditDiagnostics
-	DiagnosticsDeferred  bool
-	DiagnosticPanel      string
-	ReadOnly             bool
-	CSRFToken            string
-	MutableStates        []string
-	Roles                []string
+	View                  string
+	Summary               DashboardSummary
+	Gates                 []GateStatus
+	GateGroups            []GateGroup
+	Groups                []RoleGroup
+	ProjectGroups         []ProjectWallGroup
+	MissingReviewDomains  map[string][]string
+	TableRows             []store.Task
+	Pagination            TablePagination
+	Workstreams           []WorkstreamGroup
+	WorkstreamTotal       int
+	WorkstreamsExpanded   bool
+	WorkstreamsShowAll    string
+	WorkstreamsCompact    string
+	Filters               TaskFilters
+	FilterOptions         FilterOptions
+	FilterChips           []FilterChip
+	ClearFiltersHref      string
+	BoardColumns          []BoardColumn
+	PersonalViews         []SavedView
+	TeamViews             []SavedView
+	CurrentViewQuery      string
+	Activity              []store.Activity
+	ActivityTotal         int
+	Health                store.Health
+	Sessions              []store.Session
+	Worktrees             []WorktreeStatus
+	Checkpoints           []store.Checkpoint
+	StaleCheckpoints      []store.Checkpoint
+	Watchers              []store.Watcher
+	Rollups               map[string]Rollup
+	TaskRoles             map[string]string
+	ActiveReport          reconcile.ActiveReport
+	CoordinatorPlan       coord.Plan
+	Coordination          CoordinationIntelligence
+	CloseoutReports       []reconcile.CloseoutReport
+	Audit                 AuditDiagnostics
+	DiagnosticsDeferred   bool
+	GitProjectionDeferred bool
+	GitDiagnostic         string
+	DiagnosticPanel       string
+	ReadOnly              bool
+	CSRFToken             string
+	MutableStates         []string
+	Roles                 []string
 }
 
 type TaskDetailViewData struct {
@@ -774,48 +778,50 @@ func (s *Server) buildDashboardViewData(r *http.Request, view string, timing *da
 		return DashboardViewData{}, err
 	}
 	return DashboardViewData{
-		View:                 view,
-		Summary:              dashboardSummary(tasks, displayTasks, workstreams, readySet),
-		Gates:                gates,
-		GateGroups:           gateGroups,
-		Groups:               groups,
-		MissingReviewDomains: missingReviewDomains,
-		TableRows:            tableRows,
-		Pagination:           pagination,
-		Workstreams:          visibleWorkstreams,
-		WorkstreamTotal:      len(workstreams),
-		WorkstreamsExpanded:  workstreamsExpanded(filters),
-		WorkstreamsShowAll:   boardWorkstreamsHref(filters, "all"),
-		WorkstreamsCompact:   boardWorkstreamsHref(filters, ""),
-		Filters:              filters,
-		FilterOptions:        filterOptions(tasks, activity, s.cfg.Fairway.ProjectName),
-		FilterChips:          boardFilterChips(filters),
-		ClearFiltersHref:     boardClearFiltersHref(filters),
-		BoardColumns:         boardColumns(filters),
-		PersonalViews:        personalViews,
-		TeamViews:            teamViews,
-		CurrentViewQuery:     boardCurrentQuery(filters),
-		Activity:             filteredActivity,
-		ActivityTotal:        activityTotal,
-		Health:               health,
-		Sessions:             sessions,
-		Worktrees:            s.worktrees,
-		Checkpoints:          checkpoints,
-		StaleCheckpoints:     staleCheckpoints,
-		Watchers:             watchers,
-		Rollups:              rollups,
-		TaskRoles:            taskRoleMap(tasks),
-		ActiveReport:         activeReport,
-		CoordinatorPlan:      coordinatorPlan,
-		Coordination:         dashboardCoordinationIntelligence(coordinatorPlan, memories, time.Now().UTC(), 24*time.Hour, s.cfg.States.Terminal),
-		CloseoutReports:      closeoutReports,
-		Audit:                auditDiagnostics,
-		DiagnosticsDeferred:  diagnosticsDeferred,
-		DiagnosticPanel:      diagnosticPanel,
-		ReadOnly:             s.cfg.Dashboard.ReadOnly,
-		CSRFToken:            s.csrfToken,
-		MutableStates:        dashboardMutableStates(s.cfg),
-		Roles:                append([]string(nil), s.roles...),
+		View:                  view,
+		Summary:               dashboardSummary(tasks, displayTasks, workstreams, readySet),
+		Gates:                 gates,
+		GateGroups:            gateGroups,
+		Groups:                groups,
+		MissingReviewDomains:  missingReviewDomains,
+		TableRows:             tableRows,
+		Pagination:            pagination,
+		Workstreams:           visibleWorkstreams,
+		WorkstreamTotal:       len(workstreams),
+		WorkstreamsExpanded:   workstreamsExpanded(filters),
+		WorkstreamsShowAll:    boardWorkstreamsHref(filters, "all"),
+		WorkstreamsCompact:    boardWorkstreamsHref(filters, ""),
+		Filters:               filters,
+		FilterOptions:         filterOptions(tasks, activity, s.cfg.Fairway.ProjectName),
+		FilterChips:           boardFilterChips(filters),
+		ClearFiltersHref:      boardClearFiltersHref(filters),
+		BoardColumns:          boardColumns(filters),
+		PersonalViews:         personalViews,
+		TeamViews:             teamViews,
+		CurrentViewQuery:      boardCurrentQuery(filters),
+		Activity:              filteredActivity,
+		ActivityTotal:         activityTotal,
+		Health:                health,
+		Sessions:              sessions,
+		Worktrees:             s.worktrees,
+		Checkpoints:           checkpoints,
+		StaleCheckpoints:      staleCheckpoints,
+		Watchers:              watchers,
+		Rollups:               rollups,
+		TaskRoles:             taskRoleMap(tasks),
+		ActiveReport:          activeReport,
+		CoordinatorPlan:       coordinatorPlan,
+		Coordination:          dashboardCoordinationIntelligence(coordinatorPlan, memories, time.Now().UTC(), 24*time.Hour, s.cfg.States.Terminal),
+		CloseoutReports:       closeoutReports,
+		Audit:                 auditDiagnostics,
+		DiagnosticsDeferred:   diagnosticsDeferred,
+		GitProjectionDeferred: worktreeGitUnavailable(s.worktrees),
+		GitDiagnostic:         worktreeGitDiagnostic(s.worktrees),
+		DiagnosticPanel:       diagnosticPanel,
+		ReadOnly:              s.cfg.Dashboard.ReadOnly,
+		CSRFToken:             s.csrfToken,
+		MutableStates:         dashboardMutableStates(s.cfg),
+		Roles:                 append([]string(nil), s.roles...),
 	}, nil
 }
 
@@ -885,12 +891,33 @@ func (s *Server) closeoutGitForTask(task store.Task) reconcile.CloseoutGit {
 		WorktreePath:  worktreePath,
 		WorktreeDirty: worktreeDirty,
 	}
+	if worktreeGitUnavailable(s.worktrees) {
+		return info
+	}
 	if s.root != "" && branch != "" {
 		info.BranchExists = fairwaygit.BranchExists(s.root, branch)
 		info.BranchMerged = fairwaygit.BranchMerged(s.root, branch, s.cfg.Fairway.MainBranch)
 		info.RemoteBranchExists = branch != s.cfg.Fairway.MainBranch && fairwaygit.RemoteBranchExists(s.root, branch)
 	}
 	return info
+}
+
+func worktreeGitUnavailable(worktrees []WorktreeStatus) bool {
+	for _, worktree := range worktrees {
+		if worktree.GitUnavailable {
+			return true
+		}
+	}
+	return false
+}
+
+func worktreeGitDiagnostic(worktrees []WorktreeStatus) string {
+	for _, worktree := range worktrees {
+		if worktree.GitUnavailable {
+			return worktree.Diagnostic
+		}
+	}
+	return ""
 }
 
 func worktreeStateForRole(worktrees []WorktreeStatus, role string) (string, bool) {
@@ -915,13 +942,15 @@ func dashboardWorktreeFacts(worktrees []WorktreeStatus) []coord.WorktreeFact {
 	facts := make([]coord.WorktreeFact, 0, len(worktrees))
 	for _, worktree := range worktrees {
 		facts = append(facts, coord.WorktreeFact{
-			Role:       worktree.Role,
-			Branch:     worktree.Branch,
-			Path:       worktree.Path,
-			Registered: worktree.Registered,
-			Exists:     worktree.Exists,
-			Dirty:      worktree.Dirty,
-			LastCommit: worktree.LastCommit,
+			Role:           worktree.Role,
+			Branch:         worktree.Branch,
+			Path:           worktree.Path,
+			Registered:     worktree.Registered,
+			Exists:         worktree.Exists,
+			Dirty:          worktree.Dirty,
+			LastCommit:     worktree.LastCommit,
+			GitUnavailable: worktree.GitUnavailable,
+			Diagnostic:     worktree.Diagnostic,
 		})
 	}
 	return facts
