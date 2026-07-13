@@ -712,6 +712,7 @@ See [assurance profiles](assurance-profiles.md).
 fairway security advisory export --advisory <json> --patch-bundle <path> --out <dir> --signing-key-env <name>
 fairway security advisory verify --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> [--format text|json]
 fairway security advisory acknowledge --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> --customer-ref <id> --status <received|deferred|rejected> --at <RFC3339> --out <json>
+fairway security rehearsal run --workspace <tmpfs-dir> --out <new-retained-dir> --project <id> --at <RFC3339> [--format text|json]
 ```
 
 `export` validates strict `fairway.security-advisory.v1` JSON and creates a new
@@ -733,6 +734,15 @@ bundle. Receipt status is
 `received`, `deferred`, or `rejected`; it does not approve, import, install,
 deploy, notify, accept risk, or change task/dashboard state. See
 [Restricted Advisory and LTS Patch Channel](../security/restricted-advisory-channel.md).
+
+`security rehearsal run` is independent of advisory packaging. It requires an
+actual Linux tmpfs workspace and a retained-output path on a distinct non-tmpfs mount, creates
+distinct ephemeral identity/recovery/audit Ed25519 roots, exercises the real
+sovereign authorization and audit-verification paths, retains only public
+keys/fingerprints and a signed bounded report, and removes private files before
+success. It does not issue reusable credentials or provide key-ceremony, HSM,
+FIPS, certification, approval, deployment, release, public-exposure, or live
+authority. See [Sovereign Customer Key Rehearsal](../operations/sovereign-customer-key-rehearsal.md).
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic
   command, evidence, and notification patterns, then reports frequency, recent

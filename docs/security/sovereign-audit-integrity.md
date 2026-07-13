@@ -75,3 +75,8 @@ chain, trusted-time evidence binding, and supplied previous checkpoint agree.
 It does not establish compliance, certification, completeness of every
 customer log source, accuracy of human-entered metadata, authorization, risk
 acceptance, or proof that a WORM/SIEM retained the package.
+
+The [Sovereign Customer Key Rehearsal](../operations/sovereign-customer-key-rehearsal.md)
+uses a distinct ephemeral audit root to exercise signed export, pinned
+verification, and wrong-key rejection without reusing release or identity keys.
+It is rehearsal evidence only, not a production retention or signing service.

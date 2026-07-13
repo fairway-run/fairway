@@ -145,7 +145,7 @@ func run(ctx context.Context, args []string) error {
 	case "assurance":
 		return cmdAssurance(ctx, opts, args[1:])
 	case "security":
-		return cmdSecurity(opts, args[1:])
+		return cmdSecurity(ctx, opts, args[1:])
 	case "explain":
 		return cmdExplain(ctx, opts, args[1:])
 	case "recipe":
@@ -5055,19 +5055,23 @@ func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error 
 	return cmdAssuranceProfileValidate(opts, args[2:])
 }
 
-func cmdSecurity(opts globalOptions, args []string) error {
+func cmdSecurity(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
 		fmt.Println("fairway security advisory export --advisory <json> --patch-bundle <path> --out <dir> --signing-key-env <name>")
 		fmt.Println("fairway security advisory verify --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> [--format text|json]")
 		fmt.Println("fairway security advisory acknowledge --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> --customer-ref <id> --status <received|deferred|rejected> --at <RFC3339> --out <json>")
+		fmt.Println("fairway security rehearsal run --workspace <tmpfs-dir> --out <new-retained-dir> --project <id> --at <RFC3339> [--format text|json]")
 		fmt.Println("  Export and verify a signed restricted-channel advisory package or record customer-controlled receipt without authorizing patch import or deployment.")
 		return nil
+	}
+	if args[0] == "rehearsal" {
+		return cmdSecurityRehearsal(ctx, opts, args[1:])
 	}
 	if args[0] != "advisory" {
 		return fmt.Errorf("unknown security subcommand %q", args[0])
 	}
 	if len(args) == 1 || isHelpOnly(args[1:]) {
-		return cmdSecurity(opts, nil)
+		return cmdSecurity(ctx, opts, nil)
 	}
 	switch args[1] {
 	case "export":
@@ -21078,7 +21082,7 @@ func printCommandHelp(command string) bool {
 		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
 		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profile diff --from <path> --to <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\nfairway assurance package export --profile <path> --product-version <version> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]\nfairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]\nfairway assurance claims validate --path <markdown-or-text-file>... [--format text|json]\n  Validate and compare profiles, project facts, export bounded assessor evidence, verify packages offline, and reject unsupported public wording without granting certification or workflow authority.",
-		"security":                   "fairway security advisory export|verify|acknowledge ...\n  Export and verify signed restricted-channel security advisories or record customer-controlled receipt without patch/deployment authority.",
+		"security":                   "fairway security advisory export|verify|acknowledge ...\nfairway security rehearsal run ...\n  Handle bounded signed advisory packages or run an offline customer-key rehearsal without patch, deployment, credential, or certification authority.",
 		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]\n  Render a deterministic grounded packet with an optional validated advisory narrative.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",

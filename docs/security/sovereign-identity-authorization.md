@@ -138,3 +138,9 @@ revocation decisions, revocation-file integrity, emergency approval policy,
 rotation and recovery, host and network controls, and independent assessment.
 Fairway verifies the configured proof contract and records bounded audit facts.
 Those facts are inputs to an assurance package, not self-certification.
+
+For a disposable offline exercise of positive authorization, role rejection,
+revocation, key loss/substitution, and recovery using ephemeral customer-style
+roots, see [Sovereign Customer Key Rehearsal](../operations/sovereign-customer-key-rehearsal.md).
+The rehearsal does not issue reusable credentials or define a production key
+ceremony.

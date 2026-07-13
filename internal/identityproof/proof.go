@@ -139,6 +139,26 @@ func DecodePublicKey(encoded string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(raw), nil
 }
 
+func Sign(privateKey ed25519.PrivateKey, keyID string, claims Claims) (string, error) {
+	if len(privateKey) != ed25519.PrivateKeySize {
+		return "", errors.New("invalid Ed25519 private key")
+	}
+	keyID = strings.TrimSpace(keyID)
+	if keyID == "" || len(keyID) > 512 || strings.ContainsAny(keyID, "\r\n") {
+		return "", errors.New("identity proof key id is invalid")
+	}
+	header, err := json.Marshal(proofHeader{Algorithm: ProofAlgorithm, Type: ProofType, KeyID: keyID})
+	if err != nil {
+		return "", errors.New("encode identity proof header")
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", errors.New("encode identity proof claims")
+	}
+	input := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload)
+	return input + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(input))), nil
+}
+
 func ParseRevocations(data []byte) (Revocations, error) {
 	var revocations Revocations
 	if err := decodeStrict(data, &revocations); err != nil {

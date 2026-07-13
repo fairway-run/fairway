@@ -64,6 +64,33 @@ func TestVerifySovereignIdentityProof(t *testing.T) {
 	}
 }
 
+func TestSignProducesVerifiableProofWithoutPrivateMaterial(t *testing.T) {
+	public, private, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revocationFile := filepath.Join(t.TempDir(), "revocations.json")
+	writeRevocations(t, revocationFile, Revocations{Schema: RevocationSchema})
+	cfg := testProofConfig(revocationFile)
+	t.Setenv(cfg.PublicKeyEnv, base64.StdEncoding.EncodeToString(public))
+	now := time.Unix(1_800_000_000, 0).UTC()
+	claims := Claims{Issuer: cfg.Issuer, Audience: cfg.Audience, Subject: "operator", Project: cfg.Project, Role: "viewer", Purpose: "session", ProofID: "proof-1", IssuedAt: now.Unix(), NotBefore: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix()}
+	token, err := Sign(private, cfg.KeyID, claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(token, base64.StdEncoding.EncodeToString(private)) {
+		t.Fatal("signed proof contains private key encoding")
+	}
+	proof, err := Verify(token, cfg, now, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proof.Claims.ProofID != claims.ProofID {
+		t.Fatalf("proof id = %q, want %q", proof.Claims.ProofID, claims.ProofID)
+	}
+}
+
 func TestVerifySovereignIdentityProofFailsClosed(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	public, private, err := ed25519.GenerateKey(nil)
