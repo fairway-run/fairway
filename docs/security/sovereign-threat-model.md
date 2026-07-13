@@ -12,7 +12,7 @@ The baseline covers three bounded deployment shapes:
 | Profile | Boundary | Expected connectivity |
 |---|---|---|
 | `sovereign-offline` | One customer-controlled host or isolated local network; local SQLite remains the execution store. | No outbound DNS, HTTP, telemetry, update, remote provider, remote identity, or remote asset dependency during install and operation. Explicit loopback and local sockets only. |
-| `sovereign-connected` | Customer-controlled network with explicit internal services and allowlisted update/evidence transfer paths. | Deny by default. Every identity, notifier, provider, registry, package, and update dependency is named and customer approved. |
+| `sovereign-connected` | Customer-controlled network with explicit internal services and allowlisted update/evidence transfer paths. | Deny by default. Every identity, notifier, provider, registry, package, and update dependency is named and explicitly permitted by customer policy. |
 | `restricted-shared` | Shared-team Fairway service and store inside a customer-controlled restricted-data boundary. | Authenticated, encrypted internal paths only. Shared writes require verified identity, scoped authorization, audit, conflict control, and separately reviewed deployment support. |
 
 The evaluated scope must name the Fairway version, source revision, binary and
@@ -45,7 +45,7 @@ deployment systems remain authoritative for facts they create.
 
 | Boundary | Trusted only for | Must not imply |
 |---|---|---|
-| Human operator | Explicit local or external action under a named authorization | That Fairway authorized deploy, release, credential use, or live mutation |
+| Human operator | Explicit local or external action under a named authorization | That Fairway grants deployment, release, credential-use, or live-mutation authority |
 | Reviewer | Attributable verdict in a configured review domain | Product certification, customer risk acceptance, or self-review |
 | Dashboard | Read-oriented display of Fairway state | Write, send, approval, merge, deploy, release, or live authority |
 | Provider or utility adapter | Bounded lifecycle, notification, or evidence metadata | Provenance, approval, unrestricted command execution, or secret custody |
@@ -80,7 +80,7 @@ deployment systems remain authoritative for facts they create.
 | `T07 rollback` | An old binary, policy, DB, trust root, or evidence snapshot is restored and presented as current. | `SDR-PROVENANCE`, `SDR-IDENTITY-AND-AUDIT`, `SDR-RECOVERY`, `SDR-VULNERABILITY-AND-SUPPORT`; version/readback; externally anchored audit where required; approved rollback target; post-restore verification. | Shared | Customer operations owner |
 | `T08 backup-loss` | Backups are absent, unreadable, exposed, use lost keys, or cannot restore the expected state. | `SDR-CRYPTOGRAPHY-AND-KEYS`, `SDR-RECOVERY`; encrypted/versioned backups; restore drills; key recovery; retention; disposal proof. | Customer | Customer operations owner |
 | `T09 adapter-escape` | A provider, notifier, utility, tracker, browser asset, or command adapter bypasses the network/data boundary or gains hidden authority. | `SDR-NETWORK-ISOLATION`, `SDR-ADAPTER-CONTAINMENT`, `SDR-DATA-MINIMIZATION`; disabled-by-default remote adapters; allowlists; capability preflight; metadata-only records; no dashboard send authority. | Product and customer | Customer platform owner |
-| `T10 data-boundary-failure` | Secrets, private paths, prompts, transcripts, raw tool bodies, evidence contents, or restricted metadata leave the approved boundary. | `SDR-NETWORK-ISOLATION`, `SDR-IDENTITY-AND-AUDIT`, `SDR-DATA-MINIMIZATION`, `SDR-EVIDENCE-AND-CLAIMS`; data inventory; redaction; local roots; export allowlist; egress deny; negative tests. | Shared | Customer data owner |
+| `T10 data-boundary-failure` | Secrets, private paths, prompts, transcripts, raw tool bodies, evidence contents, or restricted metadata leave the policy-permitted boundary. | `SDR-NETWORK-ISOLATION`, `SDR-IDENTITY-AND-AUDIT`, `SDR-DATA-MINIMIZATION`, `SDR-EVIDENCE-AND-CLAIMS`; data inventory; redaction; local roots; export allowlist; egress deny; negative tests. | Shared | Customer data owner |
 | `T11 key-compromise` | A signing, encryption, token, or backup key is exposed, substituted, unavailable, or not customer controlled. | `SDR-CRYPTOGRAPHY-AND-KEYS`; external secret store; key identity and purpose; rotation/revocation/recovery; pinned verification roots. | Customer and product | Customer key owner |
 | `T12 network-escape` | DNS, redirects, proxy environment variables, remote assets, update checks, or adapters create unexpected outbound traffic. | `SDR-NETWORK-ISOLATION`, `SDR-ADAPTER-CONTAINMENT`; deny-by-default network policy and egress-denied rehearsal. | Shared | Customer network owner |
 
@@ -95,7 +95,7 @@ deployment systems remain authoritative for facts they create.
 | `SDR-CRYPTOGRAPHY-AND-KEYS` | Name every encryption/signing boundary, module, key owner, trust root, and recovery path. | Shared | Crypto inventory, module/version/config reference, customer key custody, rotation/recovery rehearsal, explicit FIPS non-claim unless externally supported. | FW-345 |
 | `SDR-RECOVERY` | Restore the exact supported state and safely roll back software, policy, data, and trust roots. | Customer | Backup manifest, restore/readback proof, rollback target, compatibility result, key-loss procedure, cleanup proof. | FW-348 |
 | `SDR-ADAPTER-CONTAINMENT` | Keep providers, notifiers, trackers, utilities, and remote assets disabled or explicitly bounded. | Product and customer | Adapter inventory, allowlist/disable proof, network and authority negative tests, notification evidence. | FW-342, FW-348 |
-| `SDR-DATA-MINIMIZATION` | Keep restricted content and identifiers inside the approved boundary and out of routine Fairway records/exports. | Shared | Data inventory, redaction tests, artifact-root policy, export review, egress-deny evidence, retention/disposal policy. | FW-346, FW-349 |
+| `SDR-DATA-MINIMIZATION` | Keep restricted content and identifiers inside the policy-permitted boundary and out of routine Fairway records/exports. | Shared | Data inventory, redaction tests, artifact-root policy, export review, egress-deny evidence, retention/disposal policy. | FW-346, FW-349 |
 | `SDR-VULNERABILITY-AND-SUPPORT` | Deliver advisories, affected versions, mitigations, fixes, VEX, and offline updates through a supported lifecycle. | Product | Vulnerability policy, advisory fixtures, LTS/EOL policy, synthetic offline patch rehearsal. | FW-353 |
 | `SDR-OFFLINE-REHEARSAL` | Prove bounded install, operation, verification, recovery, rollback, and cleanup with outbound network denied. | Shared | Non-authoring disconnected rehearsal packet, exact timing/readback, failure and cleanup evidence. | FW-350 |
 | `SDR-INDEPENDENT-ASSESSMENT` | Obtain a qualified security assessment for the exact scope. | External assessor and customer | Assessment report reference, findings/retest status, assessor identity, exact criteria, and explicit limitations. | FW-352 |

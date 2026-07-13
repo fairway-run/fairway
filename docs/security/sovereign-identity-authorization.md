@@ -127,8 +127,8 @@ The API index and `GET /api/v1/status` expose
 - whether revocation state is mandatory.
 
 This readback contains no identities, proof IDs, key values, revocation entries,
-or credentials. It supports readiness and assessor evidence; it does not state
-that an identity system, deployment, or organization is certified.
+or credentials. It supports readiness and assessor evidence. Fairway does not
+certify an identity system, deployment, or organization through this readback.
 
 ## Customer Responsibilities
 

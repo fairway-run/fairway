@@ -6349,3 +6349,21 @@ tasks:
       - "One reproducible non-publishing command builds exact current and pinned rollback archives, nested assurance, outer offline media, and a physically separate trust-bootstrap packet with source, builder, policy, archive, manifest, public-key, and verifier digests."
       - "The trust packet contains immutable facts only and never embeds mutable pending or approved review state; latest review acceptance is linked through durable Fairway evidence or a separate reviewed handoff without rewriting signed media."
       - "Ephemeral private signing material is destroyed, retained output is secret-scanned, macOS extended-attribute portability noise is removed, failures leave a bounded diagnostic packet, and no tag, release, publication, install, deploy, credential, public-exposure, or live authority is implied."
+
+  - id: FW-367
+    title: Make sovereign reference documentation pass claim guards
+    kind: task
+    parent_id: FW-340
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-claim-guard
+    source_paths: [docs/security/sovereign-threat-model.md, docs/security/sovereign-cryptography-key-posture.md, docs/security/sovereign-identity-authorization.md, internal/assurance/claims.go]
+    target_paths: [docs/security/sovereign-threat-model.md, docs/security/sovereign-cryptography-key-posture.md, docs/security/sovereign-identity-authorization.md]
+    review_domains: [governance, security]
+    risk_level: medium
+    migration_type: sovereign-reference-claim-guard
+    acceptance_checks:
+      - "Every canonical sovereign reference and assessor-input document passes fairway assurance claims validate without weakening positive unsupported-claim rejection."
+      - "Threat-model wording continues to require explicit customer policy permission for connected dependencies without being misread as product or regulatory approval."
+      - "Focused claim validation, full tests, vet, config, workflow, diff, and reconciliation checks pass; no certification, compliance, release, deploy, credential, public, or live authority is introduced."

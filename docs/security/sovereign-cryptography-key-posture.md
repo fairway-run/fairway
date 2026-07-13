@@ -62,10 +62,10 @@ configuration. That status means only:
 
 It does not mean:
 
-- Fairway is a FIPS 140-3 validated cryptographic module;
+- Fairway must not be represented as a FIPS 140-3 validated cryptographic module;
 - an unlisted Go runtime, operating system, proxy, database, storage layer,
   signer, or HSM configuration inherits validation;
-- the customer deployment is compliant, certified, or authorized;
+- this evidence grants the customer deployment no compliance conclusion, certification, or authorization;
 - a certificate applies outside its named version, operating environment,
   algorithms, modes, key sizes, or security policy.
 
