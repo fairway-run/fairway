@@ -198,7 +198,7 @@ func BuildExplainCode(ctx context.Context, cfg config.Config, configPath, root s
 		packet.MissingProvenance = append(packet.MissingProvenance, ExplainIssue{Ref: "fairway:task", Summary: "no Fairway task maps to the selected entry point"})
 	}
 	for _, candidate := range candidates {
-		report, buildErr := Build(ctx, cfg, configPath, s, Options{TaskID: candidate.Definition.ID})
+		report, buildErr := Build(ctx, cfg, root, configPath, s, Options{TaskID: candidate.Definition.ID})
 		if buildErr != nil {
 			return ExplainCodePacket{}, buildErr
 		}

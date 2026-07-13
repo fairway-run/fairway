@@ -2447,6 +2447,17 @@ func TestCLI_ProvenanceReportAndPromptPacket(t *testing.T) {
 		"--result", "pass",
 		"--artifact", "artifacts/release-verify-v0.1.2.md",
 		"--artifact-type", "release-verify")
+	canonicalRepo, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	insideArtifact := filepath.Join(canonicalRepo, "artifacts", "inside.json")
+	outsideArtifact := filepath.Join(filepath.Dir(repo), "outside-private.json")
+	runOK(t, "record", "evidence", "T-001",
+		"--command-text", "verify "+insideArtifact+" and "+outsideArtifact,
+		"--result", "pass",
+		"--artifact", outsideArtifact,
+		"--artifact-type", "validation")
 	runOK(t, "record", "evidence", "T-003",
 		"--command-text", "echo release wording only",
 		"--result", "pass",
@@ -2471,6 +2482,12 @@ func TestCLI_ProvenanceReportAndPromptPacket(t *testing.T) {
 	assertContains(t, jsonOut, `"total_tokens": 42`)
 	assertContains(t, jsonOut, `"release_refs": [`)
 	assertContains(t, jsonOut, `"artifacts/release-verify-v0.1.2.md"`)
+	assertContains(t, jsonOut, `"config_path": ".fairway/config.toml"`)
+	assertContains(t, jsonOut, `"db_path": ".fairway/state.db"`)
+	assertContains(t, jsonOut, `\u003credacted-local-path\u003e`)
+	assertContains(t, jsonOut, "./artifacts/inside.json")
+	assertNotContains(t, jsonOut, repo)
+	assertNotContains(t, jsonOut, outsideArtifact)
 	assertNotContains(t, jsonOut, "supersecret")
 
 	falsePositive := runCapture(t, "--json", "provenance", "report", "--task", "T-003")

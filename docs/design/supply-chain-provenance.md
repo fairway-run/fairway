@@ -85,6 +85,16 @@ Allowed fields are bounded metadata:
 - prompt-packet objective, scope, acceptance, forbidden actions, cited Fairway
   facts, validation gates, and evidence refs.
 
+Public provenance path fields are repository-relative and slash-normalized.
+Absolute paths inside the repository are rewritten relative to the repository
+root. Absolute paths outside the repository, `file://` references, path
+traversal, and Windows-drive paths outside the repository fail closed as
+`<redacted-local-path>` with a privacy warning. Recorded command, acceptance,
+and checkpoint text also removes repository roots and absolute local path
+tokens. For remote URLs, Fairway preserves the scheme, host, and path, removes
+userinfo, sanitizes query values and fragments, and always redacts known
+credential-bearing query keys before export.
+
 If a consumer needs prompt or transcript retention for another compliance
 system, that system owns the content store. Fairway may link to an externally
 controlled redacted artifact only after the operator records it as evidence.

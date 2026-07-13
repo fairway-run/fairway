@@ -5704,8 +5704,8 @@ func cmdExplainCode(ctx context.Context, opts globalOptions, args []string) erro
 	if *format != "packet" && *format != "markdown" && *format != "json" {
 		return errors.New("--format must be packet, markdown, or json")
 	}
-	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
-		packet, err := provenance.BuildExplainCode(ctx, cfg, root, root, s, provenance.ExplainCodeOptions{Path: path, Line: *line, Symbol: *symbol, Commit: *commit, TaskID: *taskID})
+	return withStoreDetails(ctx, opts, func(ctx context.Context, cfg config.Config, root, configPath string, s *store.Store) error {
+		packet, err := provenance.BuildExplainCode(ctx, cfg, configPath, root, s, provenance.ExplainCodeOptions{Path: path, Line: *line, Symbol: *symbol, Commit: *commit, TaskID: *taskID})
 		if err != nil {
 			return err
 		}
@@ -5869,8 +5869,8 @@ func cmdProvenanceReport(ctx context.Context, opts globalOptions, args []string)
 	if *format != "text" && *format != "markdown" && *format != "json" {
 		return errors.New("--format must be text, markdown, or json")
 	}
-	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, configPath string, s *store.Store) error {
-		report, err := provenance.Build(ctx, cfg, configPath, s, provenance.Options{TaskID: *taskID, Since: *since})
+	return withStoreDetails(ctx, opts, func(ctx context.Context, cfg config.Config, root, configPath string, s *store.Store) error {
+		report, err := provenance.Build(ctx, cfg, root, configPath, s, provenance.Options{TaskID: *taskID, Since: *since})
 		if err != nil {
 			return err
 		}
@@ -5907,8 +5907,8 @@ func cmdProvenancePromptPacket(ctx context.Context, opts globalOptions, args []s
 	if *format != "markdown" && *format != "json" {
 		return errors.New("--format must be markdown or json")
 	}
-	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, configPath string, s *store.Store) error {
-		packet, err := provenance.BuildPromptPacket(ctx, cfg, configPath, s, *taskID, time.Time{})
+	return withStoreDetails(ctx, opts, func(ctx context.Context, cfg config.Config, root, configPath string, s *store.Store) error {
+		packet, err := provenance.BuildPromptPacket(ctx, cfg, root, configPath, s, *taskID, time.Time{})
 		if err != nil {
 			return err
 		}
@@ -20292,7 +20292,13 @@ func defaultBackupPath(root string) string {
 }
 
 func withStore(ctx context.Context, opts globalOptions, fn func(context.Context, config.Config, string, *store.Store) error) error {
-	cfg, root, _, err := loadConfig(opts)
+	return withStoreDetails(ctx, opts, func(ctx context.Context, cfg config.Config, root, _ string, s *store.Store) error {
+		return fn(ctx, cfg, root, s)
+	})
+}
+
+func withStoreDetails(ctx context.Context, opts globalOptions, fn func(context.Context, config.Config, string, string, *store.Store) error) error {
+	cfg, root, configPath, err := loadConfig(opts)
 	if err != nil {
 		return err
 	}
@@ -20306,7 +20312,7 @@ func withStore(ctx context.Context, opts globalOptions, fn func(context.Context,
 		return err
 	}
 	defer s.Close()
-	return fn(ctx, cfg, root, s)
+	return fn(ctx, cfg, root, configPath, s)
 }
 
 func resolveDBPath(root string, cfg config.Config, opts globalOptions) string {

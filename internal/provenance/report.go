@@ -3,6 +3,9 @@ package provenance
 import (
 	"context"
 	"fmt"
+	"net/url"
+	pathpkg "path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -157,20 +160,33 @@ var secretPatterns = []struct {
 	{regexp.MustCompile(`(?i)((?:authorization|cookie|set-cookie):\s*)([^\r\n]+)`), `${1}<redacted>`},
 }
 
-func Build(ctx context.Context, cfg config.Config, configPath string, s *store.Store, opts Options) (Report, error) {
+var (
+	windowsAbsolutePath = regexp.MustCompile(`(?i)^(?:[A-Z]:[\\/]|\\\\[?A-Z0-9._$-])`)
+	absoluteTextPath    = regexp.MustCompile(`(^|[^A-Za-z0-9._~+@%/\\-])((?:/[A-Za-z0-9._~+@%,-][^\s"'<>]*)|(?:[A-Za-z]:[\\/][^\s"'<>]*)|(?:\\\\[?A-Za-z0-9._$-][^\s"'<>]*))`)
+	sensitiveQueryKey   = regexp.MustCompile(`(?i)^(?:access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|ssh[_-]?private[_-]?key|api[_-]?key|token|secret|password|authorization|cookie|set-cookie)$`)
+)
+
+const redactedLocalPath = "<redacted-local-path>"
+
+func Build(ctx context.Context, cfg config.Config, repositoryRoot, configPath string, s *store.Store, opts Options) (Report, error) {
 	generated := opts.GeneratedAt
 	if generated.IsZero() {
 		generated = time.Now().UTC()
 	}
+	var pathWarnings []string
 	report := Report{
 		Schema:      "fairway.provenance.v1",
 		GeneratedAt: generated.Format(time.RFC3339),
 		Project: Project{
 			Name:       cfg.Fairway.ProjectName,
-			DBPath:     cfg.Fairway.DBPath,
-			ConfigPath: configPath,
+			DBPath:     publicProvenancePath(repositoryRoot, cfg.Fairway.DBPath, &pathWarnings, "project:db_path"),
+			ConfigPath: publicProvenancePath(repositoryRoot, configPath, &pathWarnings, "project:config_path"),
 		},
 		Privacy: defaultPrivacy(),
+	}
+	if len(pathWarnings) > 0 {
+		report.Privacy.RedactionApplied = true
+		report.Warnings = append(report.Warnings, pathWarnings...)
 	}
 	if opts.TaskID != "" {
 		report.Scope.TaskID = opts.TaskID
@@ -211,7 +227,7 @@ func Build(ctx context.Context, cfg config.Config, configPath string, s *store.S
 		return Report{}, err
 	}
 	for _, task := range tasks {
-		record, warnings, err := buildTaskRecord(ctx, s, task, checkpoints, sessions)
+		record, warnings, err := buildTaskRecord(ctx, s, task, checkpoints, sessions, repositoryRoot)
 		if err != nil {
 			return Report{}, err
 		}
@@ -225,11 +241,11 @@ func Build(ctx context.Context, cfg config.Config, configPath string, s *store.S
 	return report, nil
 }
 
-func BuildPromptPacket(ctx context.Context, cfg config.Config, configPath string, s *store.Store, taskID string, generated time.Time) (PromptPacket, error) {
+func BuildPromptPacket(ctx context.Context, cfg config.Config, repositoryRoot, configPath string, s *store.Store, taskID string, generated time.Time) (PromptPacket, error) {
 	if generated.IsZero() {
 		generated = time.Now().UTC()
 	}
-	report, err := Build(ctx, cfg, configPath, s, Options{TaskID: taskID, GeneratedAt: generated})
+	report, err := Build(ctx, cfg, repositoryRoot, configPath, s, Options{TaskID: taskID, GeneratedAt: generated})
 	if err != nil {
 		return PromptPacket{}, err
 	}
@@ -273,7 +289,7 @@ func BuildPromptPacket(ctx context.Context, cfg config.Config, configPath string
 	return packet, nil
 }
 
-func buildTaskRecord(ctx context.Context, s *store.Store, task store.Task, checkpoints []store.Checkpoint, sessions []store.Session) (TaskRecord, []string, error) {
+func buildTaskRecord(ctx context.Context, s *store.Store, task store.Task, checkpoints []store.Checkpoint, sessions []store.Session, repositoryRoot string) (TaskRecord, []string, error) {
 	detailTask, _, evidence, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
 	if err != nil {
 		return TaskRecord{}, nil, err
@@ -292,9 +308,9 @@ func buildTaskRecord(ctx context.Context, s *store.Store, task store.Task, check
 		Profile:         detailTask.Definition.Profile,
 		RiskLevel:       detailTask.Definition.RiskLevel,
 		Tags:            append([]string{}, detailTask.Definition.Tags...),
-		Acceptance:      redactStrings(detailTask.Definition.AcceptanceChecks, &warnings, task.Definition.ID, "acceptance"),
-		SourcePaths:     append([]string{}, detailTask.Definition.SourcePaths...),
-		TargetPaths:     append([]string{}, detailTask.Definition.TargetPaths...),
+		Acceptance:      redactPublicStrings(detailTask.Definition.AcceptanceChecks, repositoryRoot, &warnings, task.Definition.ID, "acceptance"),
+		SourcePaths:     publicProvenancePaths(detailTask.Definition.SourcePaths, repositoryRoot, &warnings, task.Definition.ID, "source_paths"),
+		TargetPaths:     publicProvenancePaths(detailTask.Definition.TargetPaths, repositoryRoot, &warnings, task.Definition.ID, "target_paths"),
 		ProvenanceFacts: map[string]string{},
 	}
 	if detailTask.CommitSHA != "" {
@@ -305,8 +321,8 @@ func buildTaskRecord(ctx context.Context, s *store.Store, task store.Task, check
 	}
 	for i, ev := range evidence {
 		ref := fmt.Sprintf("evidence:%s:%d", task.Definition.ID, i+1)
-		command := redactString(ev.CommandText, &warnings, task.Definition.ID, ref+":command")
-		artifact := redactString(ev.ArtifactPath, &warnings, task.Definition.ID, ref+":artifact")
+		command := redactPublicText(ev.CommandText, repositoryRoot, &warnings, task.Definition.ID, ref+":command")
+		artifact := publicProvenancePath(repositoryRoot, redactString(ev.ArtifactPath, &warnings, task.Definition.ID, ref+":artifact"), &warnings, ref+":artifact")
 		record.EvidenceRefs = append(record.EvidenceRefs, EvidenceRef{
 			Ref:          ref,
 			Result:       ev.Result,
@@ -340,8 +356,8 @@ func buildTaskRecord(ctx context.Context, s *store.Store, task store.Task, check
 			ID:           cp.ID,
 			State:        cp.State,
 			Owner:        cp.Owner,
-			Summary:      redactString(cp.Summary, &warnings, task.Definition.ID, fmt.Sprintf("checkpoint:%d:summary", cp.ID)),
-			ArtifactPath: redactString(cp.ArtifactPath, &warnings, task.Definition.ID, fmt.Sprintf("checkpoint:%d:artifact", cp.ID)),
+			Summary:      redactPublicText(cp.Summary, repositoryRoot, &warnings, task.Definition.ID, fmt.Sprintf("checkpoint:%d:summary", cp.ID)),
+			ArtifactPath: publicProvenancePath(repositoryRoot, redactString(cp.ArtifactPath, &warnings, task.Definition.ID, fmt.Sprintf("checkpoint:%d:artifact", cp.ID)), &warnings, fmt.Sprintf("checkpoint:%d:artifact", cp.ID)),
 			CreatedAt:    cp.CreatedAt,
 		})
 	}
@@ -423,6 +439,202 @@ func redactStrings(values []string, warnings *[]string, taskID, field string) []
 		out = append(out, redactString(value, warnings, taskID, field))
 	}
 	return out
+}
+
+func redactPublicStrings(values []string, repositoryRoot string, warnings *[]string, taskID, field string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, redactPublicText(value, repositoryRoot, warnings, taskID, field))
+	}
+	return out
+}
+
+func publicProvenancePaths(values []string, repositoryRoot string, warnings *[]string, taskID, field string) []string {
+	out := make([]string, 0, len(values))
+	for i, value := range values {
+		out = append(out, publicProvenancePath(repositoryRoot, value, warnings, fmt.Sprintf("task=%s field=%s:%d", taskID, field, i+1)))
+	}
+	return out
+}
+
+func publicProvenancePath(repositoryRoot, value string, warnings *[]string, field string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	lower := strings.ToLower(value)
+	if strings.Contains(value, "://") {
+		if strings.HasPrefix(lower, "file://") {
+			appendPathWarning(warnings, field)
+			return redactedLocalPath
+		}
+		return publicProvenanceURL(value, repositoryRoot, warnings, field)
+	}
+
+	valueWindows := windowsAbsolutePath.MatchString(value)
+	rootWindows := windowsAbsolutePath.MatchString(repositoryRoot)
+	if !valueWindows && filepath.IsAbs(value) {
+		value = canonicalPublicPath(value)
+	}
+	if !rootWindows && filepath.IsAbs(repositoryRoot) {
+		repositoryRoot = canonicalPublicPath(repositoryRoot)
+	}
+	normalized := pathpkg.Clean(strings.ReplaceAll(value, `\`, "/"))
+	root := pathpkg.Clean(strings.ReplaceAll(strings.TrimSpace(repositoryRoot), `\`, "/"))
+	valueAbsolute := strings.HasPrefix(normalized, "/") || valueWindows
+	if !valueAbsolute {
+		if normalized == ".." || strings.HasPrefix(normalized, "../") {
+			appendPathWarning(warnings, field)
+			return redactedLocalPath
+		}
+		return normalized
+	}
+
+	if root != "" && root != "." && (valueWindows == rootWindows) {
+		candidateCmp, rootCmp := normalized, root
+		if valueWindows {
+			candidateCmp = strings.ToLower(candidateCmp)
+			rootCmp = strings.ToLower(rootCmp)
+		}
+		if candidateCmp == rootCmp {
+			return "."
+		}
+		if strings.HasPrefix(candidateCmp, strings.TrimSuffix(rootCmp, "/")+"/") {
+			return normalized[len(strings.TrimSuffix(root, "/"))+1:]
+		}
+	}
+	appendPathWarning(warnings, field)
+	return redactedLocalPath
+}
+
+func publicProvenanceURL(value, repositoryRoot string, warnings *[]string, field string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		appendPathWarning(warnings, field)
+		return redactedLocalPath
+	}
+	if parsed.User != nil {
+		parsed.User = nil
+		appendPathWarning(warnings, field+":userinfo")
+	}
+	if parsed.RawQuery != "" {
+		query, err := url.ParseQuery(parsed.RawQuery)
+		if err != nil {
+			parsed.RawQuery = ""
+			appendPathWarning(warnings, field+":query")
+		} else {
+			for key, values := range query {
+				if sensitiveQueryKey.MatchString(strings.TrimSpace(key)) {
+					for i := range values {
+						values[i] = "<redacted>"
+					}
+					query[key] = values
+					appendPathWarning(warnings, field+":query:"+key)
+					continue
+				}
+				for i, queryValue := range values {
+					values[i] = redactPublicText(queryValue, repositoryRoot, warnings, "public-provenance", field+":query:"+key)
+				}
+				query[key] = values
+			}
+			parsed.RawQuery = query.Encode()
+		}
+	}
+	if parsed.Fragment != "" {
+		parsed.Fragment = redactPublicText(parsed.Fragment, repositoryRoot, warnings, "public-provenance", field+":fragment")
+		parsed.RawFragment = ""
+	}
+	return parsed.String()
+}
+
+func canonicalPublicPath(value string) string {
+	original := filepath.Clean(value)
+	candidate := original
+	var tail []string
+	for {
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return filepath.Clean(resolved)
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return original
+		}
+		tail = append(tail, filepath.Base(candidate))
+		candidate = parent
+	}
+}
+
+func redactPublicText(value, repositoryRoot string, warnings *[]string, taskID, field string) string {
+	redacted := redactString(value, warnings, taskID, field)
+	root := strings.TrimRight(strings.TrimSpace(repositoryRoot), `/\`)
+	if root != "" {
+		for _, candidate := range []string{root, strings.ReplaceAll(root, `/`, `\`)} {
+			var replaced bool
+			redacted, replaced = replacePathRoot(redacted, candidate)
+			if replaced {
+				appendPathWarning(warnings, fmt.Sprintf("task=%s field=%s", taskID, field))
+			}
+		}
+	}
+	cleaned := absoluteTextPath.ReplaceAllString(redacted, `${1}`+redactedLocalPath)
+	if cleaned != redacted {
+		appendPathWarning(warnings, fmt.Sprintf("task=%s field=%s", taskID, field))
+	}
+	return cleaned
+}
+
+func replacePathRoot(value, root string) (string, bool) {
+	if root == "" {
+		return value, false
+	}
+	searchValue, searchRoot := value, root
+	if windowsAbsolutePath.MatchString(root) {
+		searchValue = strings.ToLower(value)
+		searchRoot = strings.ToLower(root)
+	}
+	var out strings.Builder
+	replaced := false
+	for offset := 0; offset < len(value); {
+		relative := strings.Index(searchValue[offset:], searchRoot)
+		if relative < 0 {
+			out.WriteString(value[offset:])
+			break
+		}
+		start := offset + relative
+		end := start + len(root)
+		beforeOK := start == 0 || isPathTextBoundary(value[start-1])
+		afterOK := end == len(value) || value[end] == '/' || value[end] == '\\' || isPathTextBoundary(value[end])
+		if beforeOK && afterOK {
+			out.WriteString(value[offset:start])
+			out.WriteByte('.')
+			offset = end
+			replaced = true
+			continue
+		}
+		out.WriteString(value[offset : start+1])
+		offset = start + 1
+	}
+	return out.String(), replaced
+}
+
+func isPathTextBoundary(value byte) bool {
+	switch value {
+	case ' ', '\t', '\r', '\n', '"', '\'', '=', '(', ')', '[', ']', '{', '}', ':', ',', ';':
+		return true
+	default:
+		return false
+	}
+}
+
+func appendPathWarning(warnings *[]string, field string) {
+	if warnings == nil {
+		return
+	}
+	*warnings = appendUnique(*warnings, "redacted local path "+field)
 }
 
 func redactString(value string, warnings *[]string, taskID, field string) string {
