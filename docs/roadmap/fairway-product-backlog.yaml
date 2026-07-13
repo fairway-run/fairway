@@ -5978,8 +5978,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-release-assurance
-    source_paths: [.github, .goreleaser.yaml, internal/provenance, cmd/fairway, docs/design/supply-chain-provenance.md]
-    target_paths: [.github, .goreleaser.yaml, internal/provenance, cmd/fairway, docs/security, docs/governance/release.md]
+    source_paths: [.github/workflows/release.yml, .goreleaser.yaml, internal/provenance, cmd/fairway/main.go, docs/design/supply-chain-provenance.md]
+    target_paths: [.github/workflows/release.yml, .github/workflows/ci.yml, scripts/release/build_release_assurance_bundle.sh, internal/provenance/release_bundle.go, internal/provenance/release_bundle_test.go, cmd/fairway/main.go, cmd/fairway/main_test.go, docs/design/cli.md, docs/design/supply-chain-provenance.md, docs/security/release-assurance-bundle.md, docs/security/release-license-overrides.json, docs/governance/release.md, docs/roadmap/fairway-product-backlog.yaml, website/sidebars.js]
     review_domains: [arch, backend, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-release-assurance-bundle

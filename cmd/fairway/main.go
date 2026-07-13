@@ -9765,15 +9765,152 @@ type releaseAssetResult struct {
 
 func cmdRelease(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("release", "verify")
+		subcommandUsage("release", "verify|assurance")
 		return nil
 	}
 	switch args[0] {
+	case "assurance":
+		return cmdReleaseAssurance(opts, args[1:])
 	case "verify":
 		return cmdReleaseVerify(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown release subcommand %q", args[0])
 	}
+}
+
+func cmdReleaseAssurance(opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("release assurance", "export|verify")
+		return nil
+	}
+	switch args[0] {
+	case "export":
+		return cmdReleaseAssuranceExport(opts, args[1:])
+	case "verify":
+		return cmdReleaseAssuranceVerify(opts, args[1:])
+	default:
+		return fmt.Errorf("unknown release assurance subcommand %q", args[0])
+	}
+}
+
+func cmdReleaseAssuranceExport(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("release assurance export", "--out <dir> --version <vX.Y.Z> --source-sha <sha> --builder-id <id> --policy-version <id> --signing-key-env <name> --artifact <name=path>... --evidence <class=path>... [measured SLSA flags]")
+		return nil
+	}
+	fs := flag.NewFlagSet("release assurance export", flag.ContinueOnError)
+	out := fs.String("out", "", "new bundle directory")
+	version := fs.String("version", "", "release version")
+	source := fs.String("source-sha", "", "source commit sha")
+	builder := fs.String("builder-id", "", "builder identity")
+	policy := fs.String("policy-version", "", "release policy version")
+	keyEnv := fs.String("signing-key-env", "", "environment variable containing Ed25519 release key")
+	var artifacts, evidence multiFlag
+	fs.Var(&artifacts, "artifact", "artifact name=path; repeatable")
+	fs.Var(&evidence, "evidence", "evidence class=path; repeatable")
+	sourceVersioned := fs.Bool("slsa-source-versioned", false, "measured source versioning property")
+	buildGenerated := fs.Bool("slsa-build-service-generated", false, "measured build-service provenance property")
+	provenanceAvailable := fs.Bool("slsa-provenance-available", false, "measured provenance availability")
+	builderRecorded := fs.Bool("slsa-builder-identity-recorded", false, "measured builder identity property")
+	recipeRecorded := fs.Bool("slsa-build-recipe-recorded", false, "measured build recipe property")
+	dependenciesRecorded := fs.Bool("slsa-dependencies-recorded", false, "measured dependency inventory property")
+	hermetic := fs.Bool("slsa-hermetic-demonstrated", false, "measured hermetic build proof")
+	reproducible := fs.Bool("slsa-reproducible-demonstrated", false, "measured reproducible build proof")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected release assurance export arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if strings.TrimSpace(*keyEnv) == "" {
+		return errors.New("--signing-key-env is required")
+	}
+	key := os.Getenv(*keyEnv)
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("release signing key environment variable %s is not set", *keyEnv)
+	}
+	artifactMap, err := parseReleaseBundlePairs(artifacts)
+	if err != nil {
+		return err
+	}
+	evidenceMap, err := parseReleaseBundlePairs(evidence)
+	if err != nil {
+		return err
+	}
+	manifest, err := provenance.ExportReleaseBundle(provenance.ReleaseBundleOptions{OutputDirectory: *out, Version: *version, SourceSHA: *source, BuilderID: *builder, PolicyVersion: *policy, CreatedAt: time.Now().UTC(), SigningKeyBase64: key, Artifacts: artifactMap, Evidence: evidenceMap, SLSA: provenance.ReleaseSLSAProperties{SourceVersioned: *sourceVersioned, BuildServiceGenerated: *buildGenerated, ProvenanceAvailable: *provenanceAvailable, BuilderIdentityRecorded: *builderRecorded, BuildRecipeRecorded: *recipeRecorded, DependenciesRecorded: *dependenciesRecorded, HermeticBuildDemonstrated: *hermetic, ReproducibleBuildDemonstrated: *reproducible}})
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(manifest)
+	}
+	fmt.Printf("release_assurance_export: %s\nversion: %s\nsource_sha: %s\nbuilder_id: %s\npolicy_version: %s\nartifacts: %d\nevidence: %d\nsigning_key_id: %s\nauthority_boundary: %s\n", *out, manifest.Version, manifest.SourceSHA, manifest.BuilderID, manifest.PolicyVersion, len(manifest.Artifacts), len(manifest.Evidence), manifest.SigningKeyID, manifest.AuthorityBoundary)
+	return nil
+}
+
+func cmdReleaseAssuranceVerify(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("release assurance verify", "--dir <path> --trusted-public-key-env <name> --expected-version <vX.Y.Z> --expected-source-sha <sha> --expected-builder-id <id> --expected-policy-version <id> [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("release assurance verify", flag.ContinueOnError)
+	dir := fs.String("dir", "", "bundle directory")
+	keyEnv := fs.String("trusted-public-key-env", "", "environment variable containing pinned public key")
+	version := fs.String("expected-version", "", "expected release version")
+	source := fs.String("expected-source-sha", "", "expected source sha")
+	builder := fs.String("expected-builder-id", "", "expected builder id")
+	policy := fs.String("expected-policy-version", "", "expected policy version")
+	format := fs.String("format", "text", "output format")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected release assurance verify arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return fmt.Errorf("unsupported release assurance verify format %q", *format)
+	}
+	if strings.TrimSpace(*keyEnv) == "" {
+		return errors.New("--trusted-public-key-env is required")
+	}
+	key := os.Getenv(*keyEnv)
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("release trusted public key environment variable %s is not set", *keyEnv)
+	}
+	report, err := provenance.VerifyReleaseBundle(provenance.ReleaseBundleVerifyOptions{Directory: *dir, TrustedPublicKeyBase64: key, ExpectedVersion: *version, ExpectedSourceSHA: *source, ExpectedBuilderID: *builder, ExpectedPolicyVersion: *policy})
+	if err != nil {
+		return err
+	}
+	if opts.JSON || *format == "json" {
+		if err := printJSON(report); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("release_assurance_verify: %t\nversion: %s\nsource_sha: %s\nbuilder_id: %s\npolicy_version: %s\nsignature_status: %s\nartifact_signature_status: %s\ncompleteness_status: %s\nauthority_boundary: %s\n", report.OK, report.Version, report.SourceSHA, report.BuilderID, report.PolicyVersion, report.SignatureStatus, report.ArtifactSignatureStatus, report.CompletenessStatus, report.AuthorityBoundary)
+		for _, issue := range report.Issues {
+			fmt.Printf("issue: %s\n", issue)
+		}
+	}
+	if !report.OK {
+		return errors.New("release assurance verification failed")
+	}
+	return nil
+}
+
+func parseReleaseBundlePairs(values []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, raw := range values {
+		parts := strings.SplitN(raw, "=", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			return nil, fmt.Errorf("release bundle input %q must use name=path", raw)
+		}
+		name := strings.TrimSpace(parts[0])
+		if _, ok := out[name]; ok {
+			return nil, fmt.Errorf("duplicate release bundle input %q", name)
+		}
+		out[name] = strings.TrimSpace(parts[1])
+	}
+	return out, nil
 }
 
 func cmdReleaseVerify(ctx context.Context, opts globalOptions, args []string) error {
@@ -20482,7 +20619,7 @@ func printCommandHelp(command string) bool {
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"server":                     "fairway server --read-only [--listen <addr>] | fairway server start|status|logs|stop|restart --read-only | fairway server --mode api-write-pilot --write\n  Run or manage the loopback shared-team API. Managed lifecycle is read-only only.",
 		"binary":                     "fairway binary install --source <local-binary> [--cache-dir <path>] | fairway binary status|rollback|cleanup [--cache-dir <path>]\n  Install and manage verified Fairway binaries in the user cache outside consumer worktrees.",
-		"release":                    "fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> [--provenance-bundle <path>] ...\n  Verify release evidence, provenance bundle reference, and publication state.",
+		"release":                    "fairway release verify ... | fairway release assurance export|verify ...\n  Verify publication state or produce and verify a pinned offline release assurance bundle.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat|rehearsal ...\n  Manage the local Fairway database.",
 		"audit":                      "fairway audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog ...\n  Export and verify signed sovereign audit checkpoints or run advisory coverage and lifecycle reports.",

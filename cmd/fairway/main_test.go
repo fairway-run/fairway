@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/provenance"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -5332,6 +5333,51 @@ func TestCLI_AuditExportAndVerify(t *testing.T) {
 	}
 	failed := runCaptureAllowError(t, "--json", "audit", "verify", "--dir", "audit-export", "--trusted-public-key-env", "FAIRWAY_TEST_AUDIT_PUBLIC_KEY")
 	assertContains(t, failed, `"ok": false`)
+}
+
+func TestCLI_ReleaseAssuranceExportVerify(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	artifact := "fairway_linux_arm64.tar.gz"
+	if err := os.WriteFile(artifact, []byte("candidate\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"release", "assurance", "export", "--out", "bundle", "--version", "v1.2.3", "--source-sha", strings.Repeat("a", 40), "--builder-id", "github:fairway-run/release@macos-15", "--policy-version", "sovereign-release-v1", "--signing-key-env", "FAIRWAY_TEST_RELEASE_KEY", "--artifact", artifact + "=" + artifact}
+	created := time.Now().UTC().Format(time.RFC3339)
+	values := map[string]string{
+		"sbom":         `{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","packages":[{}]}`,
+		"vex":          fmt.Sprintf(`{"@context":"https://openvex.dev/ns/v0.2.0","@id":"https://example.test/vex","author":"test","timestamp":%q,"version":1,"statements":[]}`, created),
+		"dependencies": `{"Path":"example.test/module","Version":"v1.0.0"}`, "licenses": `example.test/module,https://example.test/LICENSE,MIT`, "license_disposition": `{"schema":"fairway.release-license-overrides.v1","overrides":[{}]}`,
+		"source_provenance": fmt.Sprintf(`{"schema":"fairway.release-source-provenance.v1","version":"v1.2.3","source_sha":%q,"repository":"test/repo","ref":"refs/tags/test"}`, strings.Repeat("a", 40)),
+		"build_provenance":  fmt.Sprintf(`{"schema":"fairway.release-build-provenance.v1","builder_id":"github:fairway-run/release@macos-15","run_id":"1","run_attempt":"1","runner_os":"test","runner_arch":"test","go_version":"go test","goreleaser_version":"test","created_at":%q}`, created),
+		"build_recipe":      fmt.Sprintf(`{"schema":"fairway.release-build-recipe.v1","source":".goreleaser.yaml","sha256":%q}`, strings.Repeat("b", 64)), "test_summary": fmt.Sprintf(`{"schema":"fairway.release-test-summary.v1","created_at":%q,"commands":["go test ./..."],"result":"pass"}`, created), "vulnerability_disposition": `{"schema":"fairway.release-vulnerability-disposition.v1","scanner":"govulncheck","result":"no_findings","report":"govulncheck.json","authority_boundary":"scanner result only"}`,
+	}
+	for _, class := range provenance.RequiredReleaseEvidence {
+		path := class + ".json"
+		if err := os.WriteFile(path, []byte(values[class]+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		args = append(args, "--evidence", class+"="+path)
+	}
+	public, private, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FAIRWAY_TEST_RELEASE_KEY", base64.StdEncoding.EncodeToString(private))
+	t.Setenv("FAIRWAY_TEST_RELEASE_PUBLIC", base64.StdEncoding.EncodeToString(public))
+	assertContains(t, runCapture(t, "release", "assurance", "export", "--help"), "fairway release assurance export")
+	assertContains(t, runCapture(t, "release", "assurance", "verify", "--help"), "fairway release assurance verify")
+	assertContains(t, runCapture(t, args...), "artifacts: 1")
+	report := runCapture(t, "--json", "release", "assurance", "verify", "--dir", "bundle", "--trusted-public-key-env", "FAIRWAY_TEST_RELEASE_PUBLIC", "--expected-version", "v1.2.3", "--expected-source-sha", strings.Repeat("a", 40), "--expected-builder-id", "github:fairway-run/release@macos-15", "--expected-policy-version", "sovereign-release-v1")
+	assertContains(t, report, `"ok": true`)
+	assertContains(t, report, `"level_claimed": false`)
 }
 
 func TestCLI_AuditDocsBacklog(t *testing.T) {

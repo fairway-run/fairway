@@ -14,13 +14,15 @@ jobs:
     # binaries abort there with dyld "missing LC_UUID" before tests execute.
     runs-on: macos-15
     env:
-      HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
       MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
       MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
       MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
       MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
       MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
       MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+      FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY: ${{ secrets.FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY }}
+      FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY: ${{ vars.FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY }}
+      FAIRWAY_RELEASE_POLICY_VERSION: sovereign-release-v1
     steps:
       - uses: actions/checkout@v5
         with:
@@ -29,6 +31,16 @@ jobs:
         with:
           go-version: "1.22"
           cache: true
+      - name: Install pinned Syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.46.0
+      - name: Install pinned release assurance tools
+        run: |
+          set -euo pipefail
+          go install github.com/google/go-licenses@v1.6.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Test
         run: |
           go test ./...
@@ -80,6 +92,50 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean
+          # Build the final tagged archives without creating a GitHub release or
+          # mutating the Homebrew tap. Publication is gated on the signed bundle.
+          args: release --clean --skip=publish
+      - name: Build and verify release assurance bundle
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/fairway-release-assurance"
+          mkdir -p "$output"
+          scripts/release/build_release_assurance_bundle.sh \
+            "$GITHUB_REF_NAME" \
+            "$GITHUB_SHA" \
+            dist \
+            "$output"
+      - name: Create gated release draft from verified artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/fairway-release-assurance"
+          bundle="$output/fairway-${GITHUB_REF_NAME}-release-assurance"
+          verified_archives=()
+          while IFS= read -r artifact; do
+            verified_archives+=("$artifact")
+          done < <(find "$bundle/artifacts" -maxdepth 1 -type f -name 'fairway_*.tar.gz' -print | sort)
+          goreleaser_checksums=()
+          while IFS= read -r checksum; do
+            goreleaser_checksums+=("$checksum")
+          done < <(find dist -maxdepth 1 -type f -name 'fairway_*_checksums.txt' -print | sort)
+          (( ${#verified_archives[@]} == 4 )) || {
+            printf 'expected four verified release archives, found %d\n' "${#verified_archives[@]}" >&2
+            exit 1
+          }
+          (( ${#goreleaser_checksums[@]} == 1 )) || {
+            printf 'expected one GoReleaser checksum file, found %d\n' "${#goreleaser_checksums[@]}" >&2
+            exit 1
+          }
+          gh release create "$GITHUB_REF_NAME" \
+            --repo fairway-run/fairway \
+            --verify-tag \
+            --draft \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes "$FAIRWAY_RELEASE_HIGHLIGHTS" \
+            "${verified_archives[@]}" \
+            "${goreleaser_checksums[@]}" \
+            "$output/fairway_${GITHUB_REF_NAME}_release_assurance.tar.gz" \
+            "$output/fairway_${GITHUB_REF_NAME}_release_assurance.tar.gz.sha256"

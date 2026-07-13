@@ -50,7 +50,8 @@ const sidebars = {
             'security/sovereign-threat-model',
             'security/sovereign-identity-authorization',
             'security/sovereign-cryptography-key-posture',
-            'security/sovereign-audit-integrity'
+            'security/sovereign-audit-integrity',
+            'security/release-assurance-bundle'
           ]
         }
       ]

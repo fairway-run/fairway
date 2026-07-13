@@ -17,6 +17,17 @@ jobs:
       - run: gofmt -w cmd internal && git diff --exit-code
       - run: go test ./...
       - run: go vet ./...
+      - run: bash -n scripts/release/build_release_assurance_bundle.sh
+      - name: Verify release assurance gates publication
+        run: |
+          set -euo pipefail
+          candidate_line=$(grep -n 'args: release --clean --skip=publish' .github/workflows/release.yml | cut -d: -f1)
+          assurance_line=$(grep -n 'name: Build and verify release assurance bundle' .github/workflows/release.yml | cut -d: -f1)
+          draft_line=$(grep -n 'gh release create' .github/workflows/release.yml | cut -d: -f1)
+          [[ -n "$candidate_line" && -n "$assurance_line" && -n "$draft_line" ]]
+          (( candidate_line < assurance_line && assurance_line < draft_line ))
+          ! grep -Eq 'args: release --clean[[:space:]]*$' .github/workflows/release.yml
+          ! grep -q 'HOMEBREW_TAP_GITHUB_TOKEN' .github/workflows/release.yml
       - name: Rehearse small-team read-only lifecycle
         run: |
           FAIRWAY_PILOT_ARTIFACTS="$RUNNER_TEMP/fairway-small-team-pilot" \

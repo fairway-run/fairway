@@ -60,19 +60,26 @@ the publish task.
 - Targets: `darwin/amd64`, `darwin/arm64`, `linux/amd64`, `linux/arm64`.
 - Archives: `fairway_<version>_<os>_<arch>.tar.gz`.
 - Checksums: `fairway_<version>_checksums.txt`.
-- GitHub Releases are published from `fairway-run/fairway`.
+- GitHub Release drafts are created from `fairway-run/fairway` only after the
+  signed release assurance bundle verifies the exact candidate archives.
 - The macOS CLI binaries are signed with native `codesign` and submitted with
   native `notarytool` from the macOS release runner before Homebrew publishing.
-  GoReleaser OSS still drives the release, archives, checksums, GitHub release,
-  and cask update. GoReleaser Pro is not required unless Fairway later ships
-  macOS app bundles, DMGs, or PKGs.
+  GoReleaser OSS still drives the signed candidate build, archives, and
+  checksums. Fairway gates the exact archives before GitHub draft creation;
+  the reviewed publish step updates the cask from those verified digests.
+  GoReleaser Pro is not required unless Fairway later ships macOS app bundles,
+  DMGs, or PKGs.
 
 ## CI release flow
 
-1. Tag pushed → GitHub Actions runs `goreleaser release`.
-2. Artifacts attached to the GitHub Release.
-3. Homebrew cask updated in `fairway-run/homebrew-tap`.
-4. No automatic publishing to other package registries until v1.0.
+1. Tag pushed → GitHub Actions runs `goreleaser release --skip=publish`.
+2. Fairway generates and pinned-verifies the signed assurance bundle over the
+   exact candidate archives.
+3. Only after verification, the workflow creates a GitHub draft and attaches
+   the verified archives, GoReleaser checksums, and assurance package.
+4. The separately reviewed publish step makes the draft public and updates the
+   Homebrew cask from the verified archive digests.
+5. No automatic publishing to other package registries until v1.0.
 
 ## GitHub Actions runtime posture
 
@@ -318,14 +325,16 @@ gh run watch --repo fairway-run/fairway
 ```
 
 The GitHub Release is intentionally created as a draft. Review artifacts,
-checksums, signing/notarization logs, and the generated Homebrew cask before
-publishing the draft.
+checksums, signing/notarization logs, and the proposed Homebrew cask digests
+before publishing the draft and updating the tap.
 
 Do not treat the release as Homebrew-ready while the GitHub Release is still a
-draft. GoReleaser can update `fairway-run/homebrew-tap` before the draft is
-published, but cask URLs point at `releases/download/vX.Y.Z/...` and return 404
-until the release is public. The release-run checklist should classify this as
-failed verification:
+draft. The assurance-gated workflow intentionally does not mutate the Homebrew
+tap. The reviewed publish step updates the cask only after the draft and its
+verified assets have been inspected. Cask URLs point at
+`releases/download/vX.Y.Z/...` and return 404 until the release is public; the
+release-run checklist should classify a premature cask update as failed
+verification:
 
 ```text
 Homebrew cask version == tag, but GitHub release is draft or asset URL is 404.
@@ -404,6 +413,36 @@ If the cask publish fails, fix the tap or release config and rerun the release
 workflow only when the generated cask will point to the same immutable tag and
 checksums. If the released artifact itself is wrong, yank and cut a new version;
 never reuse a version number.
+
+### Sovereign release assurance bundle
+
+The tag-triggered release workflow first runs GoReleaser with
+`--skip=publish`, then builds and verifies one
+`fairway.release-assurance-manifest.v1` package over those exact candidate
+archives. Repository configuration must provide secret
+`FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY`, separately pinned variable
+`FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY`, and policy identifier
+`FAIRWAY_RELEASE_POLICY_VERSION`.
+
+The workflow pins the official Anchore Syft download action `v0.24.0` by commit
+with Syft `v1.46.0`, plus go-licenses `v1.6.0` and govulncheck `v1.1.4`. It
+records build environment/tool versions and fails if required
+archives or evidence are absent. A govulncheck finding stops the automatic
+no-findings path; it requires a separate reviewed vulnerability disposition
+rather than silently publishing an empty VEX.
+
+No GitHub release or Homebrew side effect occurs before pinned bundle
+verification succeeds. After the gate, the workflow creates a draft release
+from the verified archive copies and attaches the GoReleaser checksum plus the
+assurance archive/checksum. A failed assurance step therefore leaves no draft
+or tap mutation to clean up. The workflow does not publish the draft, update
+Homebrew, or authorize deployment; those remain separately reviewed publish
+actions.
+
+Offline verification requires exact expected version, source, builder, policy,
+and pinned public key. Measured SLSA fields do not assign a level. Hermeticity
+and reproducibility remain false until separate repeatable evidence proves
+them.
 
 ## Docs portal deployment
 

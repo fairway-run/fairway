@@ -1,0 +1,15 @@
+{
+  "schema": "fairway.release-license-overrides.v1",
+  "overrides": [
+    {
+      "module": "modernc.org/mathutil",
+      "version": "v1.6.0",
+      "origin": "https://gitlab.com/cznic/mathutil",
+      "origin_commit": "aabd79189264b253ce2360e80193242239022080",
+      "license": "BSD-3-Clause",
+      "license_path": "LICENSE",
+      "license_sha256": "bfa9bf72a72ca009fd62a8f84fca3dca67e51d93af96352723646599898b6cf5",
+      "reason": "go-licenses v1.6.0 reports Unknown although the pinned module archive contains the BSD-3-Clause license at LICENSE"
+    }
+  ]
+}

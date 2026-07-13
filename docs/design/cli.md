@@ -158,6 +158,8 @@ fairway notify notifiers [--include-disabled] # read-only configured external no
 fairway notify dry-run --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--target <target>] [--record-intent]
 fairway notify send --notifier <name> --task <task-id> --domain <domain> [--template <name>] [--target <label>]
 fairway release verify --version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>
+fairway release assurance export --out <dir> --version <vX.Y.Z> --source-sha <sha> --builder-id <id> --policy-version <id> --signing-key-env <name> --artifact <name=path>... --evidence <class=path>... [measured SLSA flags]
+fairway release assurance verify --dir <path> --trusted-public-key-env <name> --expected-version <vX.Y.Z> --expected-source-sha <sha> --expected-builder-id <id> --expected-policy-version <id> [--format text|json]
 fairway coordinator preflight | status | tick
 fairway readiness report [--profile <name>] [--gap-limit <n>]
 fairway readiness capabilities                                  # compare binary/schema/features and runtime-network dependencies

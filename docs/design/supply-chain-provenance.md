@@ -192,6 +192,25 @@ bundle is supplied, or when the bundle does not mention the release version or
 source SHA. That keeps release provenance visible without making Fairway an
 artifact signer, SBOM system, SLSA generator, or in-toto attestation authority.
 
+## Release Assurance Bundle
+
+`fairway release assurance export` packages candidate artifacts with generated
+checksums and detached Ed25519 signatures plus the required evidence classes:
+SBOM, VEX, dependency inventory, license inventory/disposition, source provenance, build
+provenance, build recipe, test summary, and vulnerability disposition. The
+signed manifest binds release version, source SHA, builder identity, policy
+version, file digests, and measured SLSA properties. Signing material is read
+only from the named environment variable.
+
+`fairway release assurance verify` is offline and fail-closed. It requires a
+pinned public key and exact expected version, source, builder, and policy. It
+rejects missing or unknown files, digest or detached-signature mismatch,
+missing evidence classes, and a manifest that claims a SLSA level. Measured
+fields report only properties for which the release pipeline supplied evidence;
+hermetic and reproducible remain false unless an independently reviewed build
+process proves them. A valid bundle is release evidence, not certification,
+dependency trust, deployment approval, or risk acceptance.
+
 ## Prompt-Packet Export
 
 Prompt packets are provenance inputs, not arbitrary transcript storage. A task
