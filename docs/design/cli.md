@@ -644,8 +644,9 @@ fairway assurance profile diff --from <path> --to <path> [--format text|json]
 fairway assurance profiles list --dir <path> [--format text|json]
 fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]
 fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]
-fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]
+fairway assurance package export --profile <path> --product-version <version> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]
 fairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]
+fairway assurance claims validate --path <markdown-or-text-file>... [--format text|json]
 ```
 
 The validator accepts one local YAML or JSON
@@ -682,8 +683,10 @@ and at least one explicit `--task`, preventing partial evidence from being
 presented as an unidentified release or project-wide result.
 `package export` creates a new bounded directory containing digest-manifested
 JSON, Markdown, and CSV control views, metadata-only evidence/reference
-indexes, responsibilities, gaps, verification instructions, and an explicit
-OSCAL bridge boundary. Optional Ed25519 signing reads a base64 key from the
+indexes, responsibilities, gaps, verification instructions, an explicit
+non-OSCAL bridge boundary, and a deterministic OSCAL 1.1.3 component
+definition. Package v2 requires the exact product/source version and records a
+review date derived from the fixed creation clock. Optional Ed25519 signing reads a base64 key from the
 named environment variable; key material is not accepted in argv or written to
 the package. See [assurance packages](assurance-packages.md).
 `package verify` operates entirely on the local package. It validates strict
@@ -692,6 +695,13 @@ references and freshness, exception linkage, fixed views, claim guards, and
 optional Ed25519 signatures. The report keeps `integrity_ok`,
 `control_sufficiency`, `signature_status`, and `external_certification`
 separate and never writes findings back into Fairway.
+`claims validate` reads only local non-symlink Markdown or text files and
+rejects positive unsupported ISO, SOC, CUI, FedRAMP, FIPS, EU CRA, EUCC,
+Common Criteria, EAL, national-cloud, sovereign-cloud, regulatory, or generic
+Fairway certification/compliance/authorization wording. Explicit nonclaims and
+external-review requirements remain valid. The guard reports line numbers
+without echoing document content and does not replace qualified legal,
+assessor, certification-body, or public-wording review.
 See [assurance profiles](assurance-profiles.md).
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic

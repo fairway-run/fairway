@@ -2573,6 +2573,34 @@ func TestCLI_AssuranceProfileValidate(t *testing.T) {
 	assertContains(t, jsonDiff, `"requires_review": true`)
 }
 
+func TestCLI_AssuranceDocumentationClaimGuard(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	writeFile(t, "bounded.md", "Fairway is not ISO 27001 certified. EU CRA conformity requires external review.\n")
+	text := runCapture(t, "assurance", "claims", "validate", "--path", "bounded.md")
+	assertContains(t, text, "assurance_documentation_claims: valid documents=1")
+	assertContains(t, text, "not legal review, certification, compliance")
+	jsonOut := runCapture(t, "--json", "assurance", "claims", "validate", "--path", "bounded.md")
+	assertContains(t, jsonOut, `"schema": "fairway.documentation-claim-validation.v1"`)
+	assertContains(t, jsonOut, `"valid": true`)
+
+	writeFile(t, "unsafe.md", "This Fairway release is SOC 2 compliant. SHOULD_NOT_RENDER\n")
+	err = run(context.Background(), []string{"assurance", "claims", "validate", "--path", "unsafe.md"})
+	if err == nil || !strings.Contains(err.Error(), "unsupported certification or regulatory assertion") {
+		t.Fatalf("unsupported claim error=%v", err)
+	}
+	if strings.Contains(err.Error(), "SHOULD_NOT_RENDER") || strings.Contains(err.Error(), "SOC 2") {
+		t.Fatalf("claim guard echoed document content: %v", err)
+	}
+}
+
 func TestCLI_AssuranceEvidenceMap(t *testing.T) {
 	repo := t.TempDir()
 	oldwd, err := os.Getwd()
@@ -2637,10 +2665,12 @@ func TestCLI_AssuranceEvidenceMap(t *testing.T) {
 	}
 
 	t.Setenv("FAIRWAY_TEST_ASSURANCE_SIGNING_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
-	packageOutput := runCapture(t, "assurance", "package", "export", "--profile", "profile.json", "--scope", "project", "--out", "assurance-package", "--at", "2026-07-12T12:00:00Z", "--signing-key-env", "FAIRWAY_TEST_ASSURANCE_SIGNING_KEY")
+	packageOutput := runCapture(t, "assurance", "package", "export", "--profile", "profile.json", "--product-version", "0.1.13", "--scope", "project", "--out", "assurance-package", "--at", "2026-07-12T12:00:00Z", "--signing-key-env", "FAIRWAY_TEST_ASSURANCE_SIGNING_KEY")
 	assertContains(t, packageOutput, "assurance_package_exported: assurance-package")
+	assertContains(t, packageOutput, "product_version: 0.1.13")
+	assertContains(t, packageOutput, "review_date: 2026-07-12")
 	assertContains(t, packageOutput, "signed: true")
-	for _, name := range []string{"manifest.json", "signature.json", "profile.json", "readiness.json", "scope.json", "controls.json", "controls.md", "controls.csv", "evidence-index.json", "decisions.json", "reviews.json", "provenances.json", "exceptions.json", "responsibilities.json", "gaps.json", "oscal-control-map.json", "VERIFY.md"} {
+	for _, name := range []string{"manifest.json", "signature.json", "profile.json", "readiness.json", "scope.json", "controls.json", "controls.md", "controls.csv", "evidence-index.json", "decisions.json", "reviews.json", "provenances.json", "exceptions.json", "responsibilities.json", "gaps.json", "oscal-control-map.json", "oscal-component-definition.json", "VERIFY.md"} {
 		if _, err := os.Stat(filepath.Join("assurance-package", name)); err != nil {
 			t.Fatalf("missing package file %s: %v", name, err)
 		}
@@ -2651,6 +2681,14 @@ func TestCLI_AssuranceEvidenceMap(t *testing.T) {
 	}
 	assertNotContains(t, string(manifestData), "go test ./...")
 	assertNotContains(t, string(manifestData), "artifacts/test.json")
+	oscalData, err := os.ReadFile("assurance-package/oscal-component-definition.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, string(oscalData), `"component-definition"`)
+	assertContains(t, string(oscalData), `"oscal-version": "1.1.3"`)
+	assertContains(t, string(oscalData), `"product-version"`)
+	assertContains(t, string(oscalData), `"review-date"`)
 	publicKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey)
 	t.Setenv("FAIRWAY_TEST_ASSURANCE_PUBLIC_KEY", base64.StdEncoding.EncodeToString(publicKey))
 	verified := runCapture(t, "assurance", "package", "verify", "--dir", "assurance-package", "--trusted-public-key-env", "FAIRWAY_TEST_ASSURANCE_PUBLIC_KEY")

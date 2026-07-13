@@ -5,9 +5,9 @@ facts for assessment preparation. They are deliberately small mappings, not
 complete control catalogs, legal interpretations, certification schemes, or
 claims that a product satisfies the named framework.
 
-The directory contains five named starter mappings plus the project-neutral
+The directory contains six named starter mappings plus the project-neutral
 `example-evidence-support` schema example retained at its established path for
-compatibility, so `profiles list` reports six entries.
+compatibility, so `profiles list` reports seven entries.
 
 ```bash
 fairway assurance profiles list --dir examples/assurance-profiles
@@ -23,6 +23,7 @@ fairway assurance profile validate examples/assurance-profiles/nist-ssdf-1.1-sta
 | `eu-cra-2024-2847-technical-documentation-starter` | [Regulation (EU) 2024/2847](https://eur-lex.europa.eu/eli/reg/2024/2847/oj) | Selected manufacturer, vulnerability-handling, and technical-documentation evidence topics. | A qualified party determines legal scope, role, classification, applicable dates, conformity route, and required documentation. This is not legal advice. |
 | `slsa-1.2-supply-chain-starter` | [SLSA specification 1.2](https://slsa.dev/spec/v1.2/) | Selected source and Build L1-L3 evidence concepts. | The profile does not assign, attest, or certify a SLSA level. Hardened-builder assessment remains external. |
 | `fairway-sovereign-deployment-ready-v1-starter` | Fairway reference model `v1-starter` | Deployment boundary, provenance, disconnected rehearsal, customer identity/audit, recovery, and external assessment. | This is a draft reference profile. It does not establish a sovereign, restricted-technology, jurisdictional, certification, or authorization outcome. |
+| `fairway-sovereign-nist-800-53-r5-assessor-input-v1-starter` | [NIST SP 800-53 Rev. 5 Update 1](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final) | Selected account/access, audit, configuration, recovery, identity, engineering, integrity, supply-chain, boundary, and cryptographic controls. | This is an assessor-input subset, not a NIST baseline, SP 800-53A assessment, CUI determination, authorization, or control-satisfaction claim. |
 
 The profiles separate four responsibility classes: `product`, `customer`,
 `shared`, and `external_assessor`. Readiness output preserves customer and
@@ -38,7 +39,8 @@ evidence alone.
 3. Create a new profile version for any mapping change and inspect it with
    `assurance profile diff`.
 4. Run readiness against an explicit project, task set, or release scope.
-5. Export and optionally sign an assessor package.
+5. Export and optionally sign an assessor package with an exact
+   `--product-version` and review clock.
 6. Verify the package offline and hand it to the authorized assessor or
    customer decision owner.
 

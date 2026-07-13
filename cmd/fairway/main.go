@@ -4981,8 +4981,9 @@ func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error 
 		fmt.Println("fairway assurance profiles list --dir <path> [--format text|json]")
 		fmt.Println("fairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]")
 		fmt.Println("fairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]")
-		fmt.Println("fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
+		fmt.Println("fairway assurance package export --profile <path> --product-version <version> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
 		fmt.Println("fairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]")
+		fmt.Println("fairway assurance claims validate --path <markdown-or-text-file>... [--format text|json]")
 		fmt.Println("  Validate a non-executable assurance profile that organizes evidence without granting certification or workflow authority.")
 		return nil
 	}
@@ -5009,9 +5010,19 @@ func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error 
 	if args[0] == "readiness" {
 		return cmdAssuranceReadiness(ctx, opts, args[1:])
 	}
+	if args[0] == "claims" {
+		if len(args) == 1 || isHelpOnly(args[1:]) {
+			fmt.Println("fairway assurance claims validate --path <markdown-or-text-file>... [--format text|json]")
+			return nil
+		}
+		if args[1] != "validate" {
+			return fmt.Errorf("unknown assurance claims subcommand %q", args[1])
+		}
+		return cmdAssuranceClaimsValidate(opts, args[2:])
+	}
 	if args[0] == "package" {
 		if len(args) == 1 || isHelpOnly(args[1:]) {
-			fmt.Println("fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
+			fmt.Println("fairway assurance package export --profile <path> --product-version <version> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
 			fmt.Println("fairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]")
 			return nil
 		}
@@ -5173,11 +5184,12 @@ func cmdAssuranceProfilesList(opts globalOptions, args []string) error {
 
 func cmdAssurancePackageExport(ctx context.Context, opts globalOptions, args []string) error {
 	if isHelpOnly(args) {
-		fmt.Println("fairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
+		fmt.Println("fairway assurance package export --profile <path> --product-version <version> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]")
 		return nil
 	}
 	fs := flag.NewFlagSet("assurance package export", flag.ContinueOnError)
 	profilePath := fs.String("profile", "", "local assurance profile path")
+	productVersion := fs.String("product-version", "", "exact Fairway product or source version")
 	scope := fs.String("scope", "", "project, task_set, or release")
 	scopeID := fs.String("scope-id", "", "stable task-set or release identifier")
 	out := fs.String("out", "", "new local output directory")
@@ -5188,8 +5200,8 @@ func cmdAssurancePackageExport(ctx context.Context, opts globalOptions, args []s
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 || strings.TrimSpace(*profilePath) == "" || strings.TrimSpace(*scope) == "" || strings.TrimSpace(*out) == "" {
-		return errors.New("assurance package export requires --profile, --scope, and --out")
+	if fs.NArg() != 0 || strings.TrimSpace(*profilePath) == "" || strings.TrimSpace(*productVersion) == "" || strings.TrimSpace(*scope) == "" || strings.TrimSpace(*out) == "" {
+		return errors.New("assurance package export requires --profile, --product-version, --scope, and --out")
 	}
 	if !containsString([]string{"project", "task_set", "release"}, *scope) {
 		return errors.New("--scope must be project, task_set, or release")
@@ -5237,7 +5249,7 @@ func cmdAssurancePackageExport(ctx context.Context, opts globalOptions, args []s
 		}
 		readiness := assurance.BuildReadiness(profile, *scope, maps)
 		readiness.ScopeID = resolvedScopeID
-		manifest, err := assurance.ExportPackage(assurance.PackageOptions{Profile: profile, Readiness: readiness, Maps: maps, OutputDirectory: *out, CreatedAt: createdAt, SigningKeyBase64: signingKey})
+		manifest, err := assurance.ExportPackage(assurance.PackageOptions{Profile: profile, Readiness: readiness, Maps: maps, OutputDirectory: *out, CreatedAt: createdAt, ProductVersion: strings.TrimSpace(*productVersion), SigningKeyBase64: signingKey})
 		if err != nil {
 			return err
 		}
@@ -5245,9 +5257,46 @@ func cmdAssurancePackageExport(ctx context.Context, opts globalOptions, args []s
 			return printJSON(manifest)
 		}
 		fmt.Printf("assurance_package_exported: %s\n", *out)
-		fmt.Printf("schema: %s\nprofile: %s@%s\nscope: %s id=%s tasks=%d\nfiles: %d\nsigned: %t\nauthority_boundary: %s\n", manifest.Schema, manifest.ProfileID, manifest.ProfileVersion, manifest.Scope, manifest.ScopeID, len(manifest.TaskIDs), len(manifest.Files), manifest.Signed, manifest.AuthorityBoundary)
+		fmt.Printf("schema: %s\nprofile: %s@%s\nproduct_version: %s\nreview_date: %s\nscope: %s id=%s tasks=%d\nfiles: %d\nsigned: %t\nauthority_boundary: %s\n", manifest.Schema, manifest.ProfileID, manifest.ProfileVersion, manifest.ProductVersion, manifest.ReviewDate, manifest.Scope, manifest.ScopeID, len(manifest.TaskIDs), len(manifest.Files), manifest.Signed, manifest.AuthorityBoundary)
 		return nil
 	})
+}
+
+func cmdAssuranceClaimsValidate(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway assurance claims validate --path <markdown-or-text-file>... [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("assurance claims validate", flag.ContinueOnError)
+	format := fs.String("format", "text", "text or json")
+	var paths multiStringFlag
+	fs.Var(&paths, "path", "local Markdown or text document; repeatable")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || len(paths) == 0 {
+		return errors.New("assurance claims validate requires at least one --path")
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	reports := make([]assurance.DocumentationClaimValidation, 0, len(paths))
+	for _, path := range paths {
+		report, err := assurance.ValidateDocumentationClaims(path)
+		if err != nil {
+			return fmt.Errorf("documentation claim validation failed for %s: %w", filepath.Clean(path), err)
+		}
+		reports = append(reports, report)
+	}
+	if opts.JSON || *format == "json" {
+		return printJSON(map[string]any{"schema": assurance.DocumentationClaimValidationSchema, "valid": true, "documents": reports})
+	}
+	fmt.Printf("assurance_documentation_claims: valid documents=%d\n", len(reports))
+	for _, report := range reports {
+		fmt.Printf("- path=%s lines_checked=%d valid=%t\n", report.Path, report.LinesChecked, report.Valid)
+	}
+	fmt.Println("authority_boundary: wording guard only; not legal review, certification, compliance, authorization, approval, or risk acceptance")
+	return nil
 }
 
 func cmdAssuranceReadiness(ctx context.Context, opts globalOptions, args []string) error {
@@ -20829,7 +20878,7 @@ func printCommandHelp(command string) bool {
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
 		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
-		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profile diff --from <path> --to <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\nfairway assurance package export --profile <path> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]\nfairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]\n  Validate and compare profiles, project facts, export bounded assessor evidence, and verify packages offline without granting certification or workflow authority.",
+		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profile diff --from <path> --to <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\nfairway assurance package export --profile <path> --product-version <version> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]\nfairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]\nfairway assurance claims validate --path <markdown-or-text-file>... [--format text|json]\n  Validate and compare profiles, project facts, export bounded assessor evidence, verify packages offline, and reject unsupported public wording without granting certification or workflow authority.",
 		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]\n  Render a deterministic grounded packet with an optional validated advisory narrative.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",

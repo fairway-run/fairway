@@ -103,17 +103,32 @@ against the named authority's certificate and exact evaluated scope.
 
 Prohibited unsupported wording includes:
 
-- “sovereign compliant” without an exact sovereign profile and evidence version;
-- “certified,” “authorized,” or “approved” based only on Fairway records;
-- “FIPS validated” without the exact externally validated module/configuration;
-- “CUI authorized” or “NIST 800-171 compliant” without customer applicability,
-  system boundary, assessment method, and authorized outcome;
-- “EU CRA compliant,” “Common Criteria certified,” an EAL, or a national-cloud
-  approval without the corresponding qualified or accredited process;
+- Do not state “sovereign compliant” without an exact sovereign profile and evidence version;
+- Do not state “certified” based only on Fairway records;
+- Do not state “authorized” based only on Fairway records;
+- Do not state “approved” based only on Fairway records;
+- Do not state “FIPS validated” without the exact module/configuration and its
+  external validation record;
+- Do not state “CUI authorized” without customer applicability, system boundary,
+  assessment method, and formal external outcome;
+- Do not state “NIST 800-171 compliant” without customer applicability, system
+  boundary, assessment method, and formal external outcome;
+- Do not state “EU CRA compliant” without the corresponding qualified process;
+- Do not state “Common Criteria certified” or name an EAL without the
+  corresponding qualified external process;
+- Do not state national-cloud approval without the corresponding qualified
+  external process;
 - a statement that one customer, version, configuration, or rehearsal applies
   to another.
 
 ## Readiness package
+
+The canonical document and generated-package index is
+[Fairway Sovereign Assessor Package v1](../assessment/fairway-sovereign-assessor-package-v1.md).
+The candidate product-evaluation boundary is recorded separately in
+[Sovereign Security Target Input](sovereign-security-target-draft.md), and the
+metadata/privacy boundary is recorded in
+[Sovereign Data and Privacy Inventory](sovereign-data-inventory.md).
 
 The eventual release packet must include:
 

@@ -6016,8 +6016,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-assessor-evidence
-    source_paths: [docs/security, docs/design, docs/governance, docs/assessment, internal/provenance]
-    target_paths: [docs/security, docs/assessment, examples/oscal]
+    source_paths: [internal/assurance, cmd/fairway, examples/assurance-profiles, docs/security, docs/design, docs/governance, docs/assessment, website/sidebars.js]
+    target_paths: [internal/assurance, cmd/fairway, examples/assurance-profiles, examples/oscal, docs/security, docs/design, docs/assurance, docs/assessment, website/sidebars.js]
     review_domains: [arch, governance, ops, security]
     risk_level: critical
     migration_type: sovereign-assessor-evidence-package

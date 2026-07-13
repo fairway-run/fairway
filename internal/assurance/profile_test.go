@@ -118,8 +118,8 @@ func TestStarterProfilesAndAuthoringFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reports) != 6 {
-		t.Fatalf("starter profile count=%d want 6: %#v", len(reports), reports)
+	if len(reports) != 7 {
+		t.Fatalf("starter profile count=%d want 7: %#v", len(reports), reports)
 	}
 	if _, err := LoadFile(filepath.Join(root, "fixtures", "valid-custom-v1.yaml")); err != nil {
 		t.Fatalf("valid authoring fixture: %v", err)

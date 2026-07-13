@@ -19,12 +19,14 @@ import (
 
 const VerificationSchema = "fairway.assurance-package-verification.v1"
 
-var requiredPackageFiles = []string{
+var requiredPackageFilesV1 = []string{
 	"VERIFY.md", "controls.csv", "controls.json", "controls.md", "decisions.json",
 	"evidence-index.json", "exceptions.json", "gaps.json", "oscal-control-map.json",
 	"profile.json", "provenances.json", "readiness.json", "responsibilities.json",
 	"reviews.json", "scope.json",
 }
+
+var requiredPackageFilesV2 = append(append([]string(nil), requiredPackageFilesV1...), "oscal-component-definition.json")
 
 type VerifyOptions struct {
 	Directory              string
@@ -72,7 +74,8 @@ func VerifyPackage(opts VerifyOptions) (VerificationReport, error) {
 		return report, errors.New("decode assurance package manifest")
 	}
 	report.PackageSchema, report.ProfileID, report.ProfileVersion, report.Project, report.Scope, report.ScopeID = manifest.Schema, manifest.ProfileID, manifest.ProfileVersion, manifest.Project, manifest.Scope, manifest.ScopeID
-	if manifest.Schema != PackageManifestSchema || manifest.PackageVersion != "v1" {
+	requiredFiles, isV2, ok := packageContract(manifest)
+	if !ok {
 		return report, errors.New("unsupported assurance package manifest schema or version")
 	}
 	if manifest.AuthorityBoundary != "assessor-ready evidence package only; not certification, compliance, authorization, approval, or risk acceptance" {
@@ -81,8 +84,19 @@ func VerifyPackage(opts VerifyOptions) (VerificationReport, error) {
 	if !manifest.Signed && manifest.SigningKeyID != "" {
 		report.Issues = append(report.Issues, "unsigned manifest must not declare a signing key identity")
 	}
-	if _, err := time.Parse(time.RFC3339Nano, manifest.CreatedAt); err != nil {
+	createdAt, createdAtErr := time.Parse(time.RFC3339Nano, manifest.CreatedAt)
+	if createdAtErr != nil {
 		report.Issues = append(report.Issues, "manifest creation time is invalid")
+	}
+	if isV2 {
+		if err := validIdentifier("assurance package product version", manifest.ProductVersion, identifierPattern); err != nil {
+			report.Issues = append(report.Issues, "manifest product version is invalid")
+		}
+		if manifest.ReviewDate != createdAt.UTC().Format(time.DateOnly) {
+			report.Issues = append(report.Issues, "manifest review date does not match creation time")
+		}
+	} else if manifest.ProductVersion != "" || manifest.ReviewDate != "" {
+		report.Issues = append(report.Issues, "v1 manifest must not declare v2 product metadata")
 	}
 	if !contains([]string{"project", "task_set", "release"}, manifest.Scope) || strings.TrimSpace(manifest.ScopeID) == "" {
 		report.Issues = append(report.Issues, "manifest scope is invalid")
@@ -113,13 +127,13 @@ func VerifyPackage(opts VerifyOptions) (VerificationReport, error) {
 			report.Issues = append(report.Issues, "manifest digest or size mismatch: "+entry.Path)
 		}
 	}
-	for _, name := range requiredPackageFiles {
+	for _, name := range requiredFiles {
 		if !manifestNames[name] {
 			report.Issues = append(report.Issues, "required package file is missing from manifest: "+name)
 		}
 	}
 	for name := range manifestNames {
-		if !contains(requiredPackageFiles, name) {
+		if !contains(requiredFiles, name) {
 			report.Issues = append(report.Issues, "manifest contains a file outside the fixed package contract: "+name)
 		}
 	}
@@ -148,8 +162,18 @@ func VerifyPackage(opts VerifyOptions) (VerificationReport, error) {
 
 	scopeBytes, scopeErr := readBoundedPackageFile(dir, "scope.json")
 	var scope packageScope
-	if scopeErr != nil || strictPackageJSON(scopeBytes, &scope) != nil || scope.Schema != "fairway.assurance-package-scope.v1" || scope.ProfileID != manifest.ProfileID || scope.ProfileVersion != manifest.ProfileVersion || scope.Project != manifest.Project || scope.Scope != manifest.Scope || scope.ScopeID != manifest.ScopeID || !equalStrings(scope.TaskIDs, manifest.TaskIDs) {
+	expectedScopeSchema := "fairway.assurance-package-scope.v1"
+	if isV2 {
+		expectedScopeSchema = "fairway.assurance-package-scope.v2"
+	}
+	if scopeErr != nil || strictPackageJSON(scopeBytes, &scope) != nil || scope.Schema != expectedScopeSchema || scope.ProfileID != manifest.ProfileID || scope.ProfileVersion != manifest.ProfileVersion || scope.Project != manifest.Project || scope.Scope != manifest.Scope || scope.ScopeID != manifest.ScopeID || !equalStrings(scope.TaskIDs, manifest.TaskIDs) {
 		report.Issues = append(report.Issues, "packaged scope does not match manifest")
+	}
+	if isV2 && (scope.ProductVersion != manifest.ProductVersion || scope.ReviewDate != manifest.ReviewDate) {
+		report.Issues = append(report.Issues, "packaged scope product metadata does not match manifest")
+	}
+	if !isV2 && (scope.ProductVersion != "" || scope.ReviewDate != "") {
+		report.Issues = append(report.Issues, "v1 scope must not declare v2 product metadata")
 	}
 	if err := validatePackageSemanticClaims(manifest, readiness, scope); err != nil {
 		report.Issues = append(report.Issues, err.Error())
@@ -165,7 +189,7 @@ func VerifyPackage(opts VerifyOptions) (VerificationReport, error) {
 		verifyReferenceGroups(&report, dir, index)
 		verifyRecomputedReadiness(&report, profile, manifest, readiness, readinessBytes, index)
 	}
-	verifyReadinessViews(&report, dir, profile, readiness)
+	verifyReadinessViews(&report, dir, profile, readiness, manifest, createdAt, isV2)
 	verifyPackageSignature(&report, dir, manifest, manifestBytes, opts.TrustedPublicKeyBase64)
 	report.IntegrityOK = len(report.Issues) == 0
 	report.IntegrityIssues = append(report.IntegrityIssues, report.Issues...)
@@ -173,6 +197,17 @@ func VerifyPackage(opts VerifyOptions) (VerificationReport, error) {
 	sort.Strings(report.Issues)
 	report.OK = report.IntegrityOK && report.ControlSufficiency == "sufficient_recorded_evidence" && (report.SignatureStatus == "unsigned" || report.SignatureStatus == "verified_pinned")
 	return report, nil
+}
+
+func packageContract(manifest PackageManifest) ([]string, bool, bool) {
+	switch {
+	case manifest.Schema == PackageManifestSchemaV1 && manifest.PackageVersion == "v1":
+		return requiredPackageFilesV1, false, true
+	case manifest.Schema == PackageManifestSchema && manifest.PackageVersion == "v2":
+		return requiredPackageFilesV2, true, true
+	default:
+		return nil, false, false
+	}
 }
 
 func verifyReadinessSemantics(report *VerificationReport, profile Profile, readiness ReadinessReport, scope packageScope) {
@@ -352,7 +387,7 @@ func verifyReferenceGroups(report *VerificationReport, dir string, index package
 	}
 }
 
-func verifyReadinessViews(report *VerificationReport, dir string, profile Profile, readiness ReadinessReport) {
+func verifyReadinessViews(report *VerificationReport, dir string, profile Profile, readiness ReadinessReport, manifest PackageManifest, createdAt time.Time, isV2 bool) {
 	expectedControls, _ := stableJSON(map[string]any{"schema": "fairway.assurance-control-view.v1", "controls": readiness.Controls})
 	controls, err := readBoundedPackageFile(dir, "controls.json")
 	if err != nil || subtle.ConstantTimeCompare(controls, expectedControls) != 1 {
@@ -364,11 +399,16 @@ func verifyReadinessViews(report *VerificationReport, dir string, profile Profil
 		report.Issues = append(report.Issues, "packaged gap view does not match readiness report")
 	}
 	expectedMarkdown := controlMarkdown(readiness)
+	expectedCSV := controlCSV(readiness)
+	if isV2 {
+		opts := PackageOptions{Profile: profile, Readiness: readiness, ProductVersion: manifest.ProductVersion, CreatedAt: createdAt}
+		expectedMarkdown = controlMarkdownV2(opts)
+		expectedCSV = controlCSVV2(opts)
+	}
 	markdown, err := readBoundedPackageFile(dir, "controls.md")
 	if err != nil || subtle.ConstantTimeCompare(markdown, expectedMarkdown) != 1 {
 		report.Issues = append(report.Issues, "packaged Markdown control view does not match readiness report")
 	}
-	expectedCSV := controlCSV(readiness)
 	csvView, err := readBoundedPackageFile(dir, "controls.csv")
 	if err != nil || subtle.ConstantTimeCompare(csvView, expectedCSV) != 1 {
 		report.Issues = append(report.Issues, "packaged CSV control view does not match readiness report")
@@ -378,8 +418,17 @@ func verifyReadinessViews(report *VerificationReport, dir string, profile Profil
 	if err != nil || subtle.ConstantTimeCompare(boundaryData, expectedBoundary) != 1 {
 		report.Issues = append(report.Issues, "OSCAL control map boundary is invalid")
 	}
+	expectedInstructions := verificationInstructionsV1()
+	if isV2 {
+		expectedInstructions = verificationInstructionsV2()
+		expectedOSCAL, _ := stableJSON(oscalComponentForPackage(PackageOptions{Profile: profile, Readiness: readiness, ProductVersion: manifest.ProductVersion, CreatedAt: createdAt}))
+		oscalData, oscalErr := readBoundedPackageFile(dir, "oscal-component-definition.json")
+		if oscalErr != nil || subtle.ConstantTimeCompare(oscalData, expectedOSCAL) != 1 {
+			report.Issues = append(report.Issues, "OSCAL component definition does not match package state")
+		}
+	}
 	instructions, err := readBoundedPackageFile(dir, "VERIFY.md")
-	if err != nil || subtle.ConstantTimeCompare(instructions, verificationInstructions()) != 1 {
+	if err != nil || subtle.ConstantTimeCompare(instructions, expectedInstructions) != 1 {
 		report.Issues = append(report.Issues, "verification instructions are invalid")
 	}
 	expectedResponsibilities, _ := stableJSON(packageResponsibilitiesForProfile(profile))

@@ -95,6 +95,115 @@ func TestVerifyPackageRejectsManifestListedExtraFile(t *testing.T) {
 	}
 }
 
+func TestVerifyPackageRecomputesOSCALComponentDefinition(t *testing.T) {
+	dir, _ := exportVerifiablePackage(t, false, false)
+	path := filepath.Join(dir, "oscal-component-definition.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document oscalComponentDocument
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	document.ComponentDefinition.Components[0].ControlImplementations[0].ImplementedRequirements[0].Description = "rewritten assertion"
+	data, _ = stableJSON(document)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	updateUnsignedManifestFile(t, dir, "oscal-component-definition.json", data)
+	report, err := VerifyPackage(VerifyOptions{Directory: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.IntegrityOK || !containsIssue(report.Issues, "OSCAL component definition does not match package state") {
+		t.Fatalf("rewritten OSCAL component passed: %+v", report)
+	}
+}
+
+func TestVerifyPackageRetainsV1Compatibility(t *testing.T) {
+	dir, _ := exportVerifiablePackage(t, false, false)
+	if err := os.Remove(filepath.Join(dir, "oscal-component-definition.json")); err != nil {
+		t.Fatal(err)
+	}
+	scopePath := filepath.Join(dir, "scope.json")
+	var scope packageScope
+	scopeData, _ := os.ReadFile(scopePath)
+	if err := json.Unmarshal(scopeData, &scope); err != nil {
+		t.Fatal(err)
+	}
+	scope.Schema = "fairway.assurance-package-scope.v1"
+	scope.ProductVersion = ""
+	scope.ReviewDate = ""
+	scopeData, _ = stableJSON(scope)
+	if err := os.WriteFile(scopePath, scopeData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	verifyData := verificationInstructionsV1()
+	if err := os.WriteFile(filepath.Join(dir, "VERIFY.md"), verifyData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var readiness ReadinessReport
+	readinessData, _ := os.ReadFile(filepath.Join(dir, "readiness.json"))
+	if err := json.Unmarshal(readinessData, &readiness); err != nil {
+		t.Fatal(err)
+	}
+	controlsMarkdown := controlMarkdown(readiness)
+	controlsCSV := controlCSV(readiness)
+	if err := os.WriteFile(filepath.Join(dir, "controls.md"), controlsMarkdown, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "controls.csv"), controlsCSV, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestPath := filepath.Join(dir, "manifest.json")
+	manifestData, _ := os.ReadFile(manifestPath)
+	var manifest PackageManifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Schema = PackageManifestSchemaV1
+	manifest.PackageVersion = "v1"
+	manifest.ProductVersion = ""
+	manifest.ReviewDate = ""
+	var files []PackageManifestFile
+	for _, entry := range manifest.Files {
+		if entry.Path == "oscal-component-definition.json" {
+			continue
+		}
+		if entry.Path == "scope.json" {
+			digest := sha256.Sum256(scopeData)
+			entry.SHA256, entry.Bytes = hex.EncodeToString(digest[:]), len(scopeData)
+		}
+		if entry.Path == "VERIFY.md" {
+			digest := sha256.Sum256(verifyData)
+			entry.SHA256, entry.Bytes = hex.EncodeToString(digest[:]), len(verifyData)
+		}
+		if entry.Path == "controls.md" {
+			digest := sha256.Sum256(controlsMarkdown)
+			entry.SHA256, entry.Bytes = hex.EncodeToString(digest[:]), len(controlsMarkdown)
+		}
+		if entry.Path == "controls.csv" {
+			digest := sha256.Sum256(controlsCSV)
+			entry.SHA256, entry.Bytes = hex.EncodeToString(digest[:]), len(controlsCSV)
+		}
+		files = append(files, entry)
+	}
+	manifest.Files = files
+	manifestData, _ = stableJSON(manifest)
+	if err := os.WriteFile(manifestPath, manifestData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	report, err := VerifyPackage(VerifyOptions{Directory: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.OK || !report.IntegrityOK || report.PackageSchema != PackageManifestSchemaV1 {
+		t.Fatalf("v1 package compatibility failed: %+v", report)
+	}
+}
+
 func TestVerifyPackageFailsOverallButKeepsIntegrityForMissingOrStaleEvidence(t *testing.T) {
 	dir, _ := exportVerifiablePackage(t, false, true)
 	report, err := VerifyPackage(VerifyOptions{Directory: dir})
@@ -118,7 +227,7 @@ func TestVerifyPackagePreservesSupersededReviewHistory(t *testing.T) {
 	readiness := BuildReadiness(profile, "task_set", []EvidenceMap{mapped})
 	readiness.ScopeID = "review-history"
 	dir := filepath.Join(t.TempDir(), "package")
-	if _, err := ExportPackage(PackageOptions{Profile: profile, Readiness: readiness, Maps: []EvidenceMap{mapped}, OutputDirectory: dir, CreatedAt: at}); err != nil {
+	if _, err := ExportPackage(PackageOptions{Profile: profile, Readiness: readiness, Maps: []EvidenceMap{mapped}, OutputDirectory: dir, CreatedAt: at, ProductVersion: "0.1.13"}); err != nil {
 		t.Fatal(err)
 	}
 	report, err := VerifyPackage(VerifyOptions{Directory: dir})
@@ -247,7 +356,7 @@ func exportVerifiablePackage(t *testing.T, signed, stale bool) (string, ed25519.
 		public = private.Public().(ed25519.PublicKey)
 		encoded = base64.StdEncoding.EncodeToString(seed)
 	}
-	if _, err := ExportPackage(PackageOptions{Profile: profile, Readiness: report, Maps: []EvidenceMap{mapped}, OutputDirectory: dir, CreatedAt: at, SigningKeyBase64: encoded}); err != nil {
+	if _, err := ExportPackage(PackageOptions{Profile: profile, Readiness: report, Maps: []EvidenceMap{mapped}, OutputDirectory: dir, CreatedAt: at, ProductVersion: "0.1.13", SigningKeyBase64: encoded}); err != nil {
 		t.Fatal(err)
 	}
 	return dir, public

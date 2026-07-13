@@ -1,0 +1,224 @@
+schema: fairway.assurance-profile.v1
+id: fairway-sovereign-nist-800-53-r5-assessor-input-v1-starter
+version: v1
+title: Fairway sovereign NIST SP 800-53 Rev. 5 assessor-input starter
+description: Bounded engineering-evidence starter for selected NIST SP 800-53 Rev. 5 controls; applicability and assessment conclusions remain with the adopting organization and its authorized assessor.
+framework:
+  id: nist-sp-800-53-r5
+  title: NIST SP 800-53 Rev. 5 Security and Privacy Controls
+  version: rev5-update1
+  source: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+applicability:
+  description: Fairway releases and restricted-environment deployments preparing selected control evidence; this subset is not a baseline selection or assessment procedure.
+scope:
+  types: [project, task_set, release]
+controls:
+  - id: AC-2
+    title: Account Management
+    objective: Retain bounded identity lifecycle, role, expiry, revocation, and separation-of-duty evidence for Fairway actors.
+    responsibility: shared
+    assessment_objectives: [Inspect actor lifecycle and authorization evidence for the exact deployment scope.]
+    evidence:
+      - class: identity
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: audit
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: AC-3
+    title: Access Enforcement
+    objective: Retain command-scoped authorization policy and negative access-test evidence without inferring operational authorization.
+    responsibility: shared
+    assessment_objectives: [Inspect allowed and denied command paths, actor binding, and consequential-action boundaries.]
+    evidence:
+      - class: identity
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: configuration
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: AU-2
+    title: Event Logging
+    objective: Retain the reviewed audit event inventory and bounded event-generation evidence.
+    responsibility: product
+    assessment_objectives: [Inspect event classes, actor and scope attribution, clocks, and excluded private content.]
+    evidence:
+      - class: audit
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: AU-9
+    title: Protection of Audit Information
+    objective: Retain audit tamper-verification, signing, external-retention, rollback-continuity, and key-custody references.
+    responsibility: shared
+    assessment_objectives: [Inspect signed audit exports, continuity checks, retention ownership, and tamper-negative tests.]
+    evidence:
+      - class: audit
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: backup_restore
+        minimum_count: 1
+        accepted_results: [pass]
+  - id: CM-2
+    title: Baseline Configuration
+    objective: Retain the exact versioned deployment baseline and deviation report for the selected Fairway mode.
+    responsibility: shared
+    assessment_objectives: [Inspect configuration identity, least-privilege defaults, local paths, network boundaries, and deviations.]
+    evidence:
+      - class: configuration
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [verified, pass]
+  - id: CM-3
+    title: Configuration Change Control
+    objective: Retain reviewed decisions and independent review references for consequential configuration and policy changes.
+    responsibility: shared
+    assessment_objectives: [Inspect change decisions, reviewers, exact source identity, tests, rollback, and unresolved exceptions.]
+    evidence:
+      - class: decision
+        minimum_count: 1
+        accepted_results: [accepted]
+      - class: review
+        minimum_count: 1
+        accepted_results: [approve]
+  - id: CM-8
+    title: System Component Inventory
+    objective: Retain release, dependency, adapter, cryptographic-module, and deployment-component inventory references.
+    responsibility: shared
+    assessment_objectives: [Inspect component identities, versions, owners, purposes, boundaries, and unsupported dependencies.]
+    evidence:
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: configuration
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: CP-9
+    title: System Backup
+    objective: Retain customer-owned backup scope, encryption, key custody, retention, disposal, and restoration evidence.
+    responsibility: customer
+    assessment_objectives: [Obtain customer backup policy, protected-media inventory, key ownership, and successful restore references.]
+    evidence:
+      - class: backup_restore
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [pass]
+  - id: CP-10
+    title: System Recovery and Reconstitution
+    objective: Retain bounded restore, upgrade, rollback, key-loss, and clean-disposal rehearsal evidence.
+    responsibility: shared
+    assessment_objectives: [Inspect exact recovery inputs, timings, status readback, rollback target, residual risks, and cleanup.]
+    evidence:
+      - class: rehearsal
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [pass]
+      - class: backup_restore
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [pass]
+  - id: IA-2
+    title: Identification and Authentication
+    objective: Retain customer identity-provider, verified actor, and strong-authentication applicability evidence for shared operation.
+    responsibility: customer
+    assessment_objectives: [Obtain customer identity-source, authenticator, proxy-verification, and privileged-access evidence.]
+    evidence:
+      - class: identity
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: IA-5
+    title: Authenticator Management
+    objective: Retain token, key, certificate, signing-root, rotation, revocation, expiry, and recovery ownership evidence.
+    responsibility: shared
+    assessment_objectives: [Inspect authenticator issuance, storage, rotation, revocation, expiry, recovery, and secret-exclusion tests.]
+    evidence:
+      - class: identity
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: configuration
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: RA-5
+    title: Vulnerability Monitoring and Scanning
+    objective: Retain vulnerability intake, scanning, triage, disposition, advisory, and remediation evidence for the exact version.
+    responsibility: product
+    assessment_objectives: [Inspect vulnerability sources, severity, affected versions, exceptions, mitigations, fixes, and retest references.]
+    evidence:
+      - class: vulnerability
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [verified, pass]
+  - id: SA-11
+    title: Developer Testing and Evaluation
+    objective: Retain deterministic tests, negative boundary tests, CI results, independent review, and known-gap evidence.
+    responsibility: product
+    assessment_objectives: [Inspect test strategy, results, coverage boundaries, independent findings, and unresolved defects.]
+    evidence:
+      - class: ci
+        minimum_count: 1
+        maximum_age: 720h
+        accepted_results: [pass]
+      - class: review
+        minimum_count: 1
+        accepted_results: [approve]
+  - id: SI-2
+    title: Flaw Remediation
+    objective: Retain affected-version, remediation, advisory, patch, verification, and support-lifecycle evidence.
+    responsibility: product
+    assessment_objectives: [Inspect flaw intake through verified fix, including disconnected notification and patch delivery boundaries.]
+    evidence:
+      - class: vulnerability
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: release
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: SI-7
+    title: Software and Information Integrity
+    objective: Retain signed source, builder, binary, package, SBOM, VEX, and offline verification references.
+    responsibility: product
+    assessment_objectives: [Inspect subject digests, signing identity, builder policy, manifest coverage, tamper rejection, and trust pinning.]
+    evidence:
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: release
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: SR-4
+    title: Provenance
+    objective: Retain source-to-build-to-release provenance and third-party component evidence for offline review.
+    responsibility: product
+    assessment_objectives: [Inspect source, builder, subject, dependency, license, SBOM, VEX, and release identities.]
+    evidence:
+      - class: provenance
+        minimum_count: 1
+        accepted_results: [verified, pass]
+  - id: SC-7
+    title: Boundary Protection
+    objective: Retain local-listener, egress-deny, adapter-disablement, allowlist, redirect, DNS, and proxy-boundary evidence.
+    responsibility: shared
+    assessment_objectives: [Inspect declared flows and negative network tests for the exact connected or disconnected mode.]
+    evidence:
+      - class: configuration
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: rehearsal
+        minimum_count: 1
+        maximum_age: 2160h
+        accepted_results: [pass]
+  - id: SC-13
+    title: Cryptographic Protection
+    objective: Retain cryptographic module, version, purpose, owner, configuration, key, trust-root, and non-claim evidence.
+    responsibility: shared
+    assessment_objectives: [Inspect each cryptographic boundary and any external validation separately from Fairway engineering evidence.]
+    evidence:
+      - class: configuration
+        minimum_count: 1
+        accepted_results: [verified, pass]
+      - class: identity
+        minimum_count: 1
+        accepted_results: [verified, pass]
+prohibited_claims: [certified, compliant, authorized]
+authority:
+  mode: evidence_only
+  prohibited_actions: [certify, declare_compliance, accept_risk, approve, mutate_workflow, merge, deploy, release, use_credentials, change_public_exposure, run_live_operation]
