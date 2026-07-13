@@ -6292,3 +6292,60 @@ tasks:
       - "A clean reviewed source candidate and pinned rollback release are built into all four supported archives, nested signed release-assurance packages, and one retained signed offline distribution with exact source, builder, policy, current, rollback, checksum, and standalone-verifier identity."
       - "A separate trust-bootstrap packet records the Ed25519 public key and fingerprint plus the independently reviewed Linux arm64 verifier digest; ephemeral private signing material is destroyed and neither media nor trust packet is committed or publicly released."
       - "The retained media and trust packet are delivered through distinct local evidence paths to the non-authoring FW-350 operator, verify without network access, and preserve customer import, install, deployment, release, credential, public-exposure, and live-operation authority."
+
+  - id: FW-364
+    title: Remove undeclared git runtime dependency from offline dashboard and server
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-offline-runtime
+    source_paths: [cmd/fairway, internal/dashboard, internal/git, internal/offlinebundle, docs/operations]
+    target_paths: [cmd/fairway, internal/dashboard, internal/git, internal/offlinebundle, scripts/ci, docs/operations]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-offline-runtime-dependency
+    dependencies: [FW-343, FW-363]
+    acceptance_checks:
+      - "Dashboard and shared server start, remain running, and provide bounded status/readback in a clean signed network-none installation with no git executable; Git-dependent projections report unavailable or deferred instead of terminating the process."
+      - "Commands that genuinely require Git still fail with a bounded actionable error and never synthesize repository state, weaken read-only or authorization boundaries, or add network/package installation."
+      - "Focused PATH-without-git regressions and a fresh independent disconnected rehearsal prove dashboard and server behavior from signed media before FW-350 can be promoted."
+
+  - id: FW-365
+    title: Add offline customer key bootstrap for sovereign rehearsal
+    kind: task
+    parent_id: FW-340
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-customer-key-bootstrap
+    source_paths: [cmd/fairway, internal/identityproof, internal/audit, docs/security, docs/operations]
+    target_paths: [cmd/fairway, internal/identityproof, internal/audit, scripts/ci, docs/security, docs/operations]
+    review_domains: [arch, backend, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-offline-customer-key-bootstrap
+    dependencies: [FW-344, FW-346, FW-363]
+    acceptance_checks:
+      - "A reviewed offline-only bootstrap or rehearsal surface creates distinct Ed25519 identity and audit roots inside operator-controlled tmpfs, writes private material mode 0600 without printing, logging, committing, persisting to Fairway, or reusing product release keys, and emits pinned public fingerprints."
+      - "A cache-free network-none environment can exercise positive identity authorization, role and revocation failures, signed audit export and verification, key loss and recovery, and key substitution rejection without downloading packages or importing unreviewed tools."
+      - "Documentation labels the surface as rehearsal or local bootstrap only, not HSM or production key ceremony, FIPS validation, credential authority, certification, deployment approval, or risk acceptance; private-key destruction and exact public-key evidence are recorded."
+
+  - id: FW-366
+    title: Automate sovereign rehearsal media and immutable trust bootstrap generation
+    kind: task
+    parent_id: FW-340
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-rehearsal-builder
+    source_paths: [scripts/release, cmd/fairway-offline-verify, internal/offlinebundle, internal/provenance, docs/operations]
+    target_paths: [scripts/release, scripts/ci, docs/operations, docs/assessment]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-rehearsal-builder
+    dependencies: [FW-343, FW-347, FW-353, FW-363]
+    acceptance_checks:
+      - "One reproducible non-publishing command builds exact current and pinned rollback archives, nested assurance, outer offline media, and a physically separate trust-bootstrap packet with source, builder, policy, archive, manifest, public-key, and verifier digests."
+      - "The trust packet contains immutable facts only and never embeds mutable pending or approved review state; latest review acceptance is linked through durable Fairway evidence or a separate reviewed handoff without rewriting signed media."
+      - "Ephemeral private signing material is destroyed, retained output is secret-scanned, macOS extended-attribute portability noise is removed, failures leave a bounded diagnostic packet, and no tag, release, publication, install, deploy, credential, public-exposure, or live authority is implied."
