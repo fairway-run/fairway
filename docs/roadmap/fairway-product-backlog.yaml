@@ -6092,8 +6092,8 @@ tasks:
     profile: fairway-adoption
     owning_domain: fairway
     owning_layer: sovereign-vulnerability-response
-    source_paths: [SECURITY.md, .github, scripts, docs/governance/release.md, docs/security]
-    target_paths: [SECURITY.md, .github, scripts, docs/security, docs/governance/release.md]
+    source_paths: [SECURITY.md, cmd/fairway, internal/securityadvisory, scripts, docs/governance/release.md, docs/security, docs/design/cli.md, website/sidebars.js]
+    target_paths: [SECURITY.md, cmd/fairway, internal/securityadvisory, scripts/ci, docs/security, docs/governance/release.md, docs/design/cli.md, website/sidebars.js]
     review_domains: [governance, ops, security]
     risk_level: critical
     migration_type: restricted-vulnerability-response

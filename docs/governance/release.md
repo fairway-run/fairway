@@ -468,6 +468,22 @@ installation authorization, deployment approval, certification, or risk
 acceptance. See
 [Sovereign Offline Distribution Bundle](../operations/sovereign-offline-bundle.md).
 
+### Restricted security advisory and LTS channel
+
+Security fixes for restricted environments use a separately signed advisory
+package that binds affected/fixed versions, severity, mitigations, VEX updates,
+support track, rollback identity, and an opaque offline patch bundle. Generate
+and pinned-verify the package with `fairway security advisory export|verify`.
+The patch artifact must still pass its own release-assurance and offline-bundle
+verification before customer import.
+
+The support and end-of-support policy is canonical in `SECURITY.md`; operator
+steps and trust-root rotation are in
+[Restricted Advisory and LTS Patch Channel](../security/restricted-advisory-channel.md).
+Customer acknowledgement is receipt evidence only. No advisory command
+publishes, notifies, imports, installs, approves, deploys, accepts risk, or
+changes dashboard/public exposure.
+
 ## Docs portal deployment
 
 The public Fairway docs portal should use separate Cloudflare credentials for

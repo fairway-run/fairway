@@ -55,6 +55,7 @@ const sidebars = {
             'security/sovereign-cryptography-key-posture',
             'security/sovereign-audit-integrity',
             'security/release-assurance-bundle',
+            'security/restricted-advisory-channel',
             'operations/sovereign-offline-bundle'
           ]
         }

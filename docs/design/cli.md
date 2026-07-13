@@ -698,11 +698,41 @@ separate and never writes findings back into Fairway.
 `claims validate` reads only local non-symlink Markdown or text files and
 rejects positive unsupported ISO, SOC, CUI, FedRAMP, FIPS, EU CRA, EUCC,
 Common Criteria, EAL, national-cloud, sovereign-cloud, regulatory, or generic
-Fairway certification/compliance/authorization wording. Explicit nonclaims and
-external-review requirements remain valid. The guard reports line numbers
-without echoing document content and does not replace qualified legal,
-assessor, certification-body, or public-wording review.
+Fairway certification/compliance/authorization wording. Direct grammatical
+nonclaims and explicit claim-wording prohibitions remain valid; draft/example
+labels, conditional caveats, and unrelated negation do not suppress a positive
+claim. The guard reports line numbers without echoing document content and does
+not replace qualified legal, assessor, certification-body, or public-wording
+review.
 See [assurance profiles](assurance-profiles.md).
+
+### Restricted security advisories
+
+```bash
+fairway security advisory export --advisory <json> --patch-bundle <path> --out <dir> --signing-key-env <name>
+fairway security advisory verify --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> [--format text|json]
+fairway security advisory acknowledge --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> --customer-ref <id> --status <received|deferred|rejected> --at <RFC3339> --out <json>
+```
+
+`export` validates strict `fairway.security-advisory.v1` JSON and creates a new
+signed exact-inventory directory containing deterministic machine/human views
+and an opaque offline patch artifact. The manifest binds advisory, patch,
+rollback, and signing-key identity. Private signing material is read only from
+the named environment variable.
+
+`verify` is DB/config/network independent and requires a separately pinned
+Ed25519 public key plus exact advisory, patch, and rollback identifiers. It rejects
+unknown or duplicate JSON, symlinks, unknown files, digest/size changes,
+generated-view drift, key substitution, privacy markers, and identity mismatch.
+It does not verify or import the nested offline distribution; run the release
+offline verifier separately.
+
+`acknowledge` first repeats pinned verification and then writes a local 0600
+receipt tied to the manifest, signing key, patch digest, and exact rollback
+bundle. Receipt status is
+`received`, `deferred`, or `rejected`; it does not approve, import, install,
+deploy, notify, accept risk, or change task/dashboard state. See
+[Restricted Advisory and LTS Patch Channel](../security/restricted-advisory-channel.md).
 - `automation candidates --since <duration> [--threshold <n>] [--format text|json]`
   is a read-only repeated-work report. It detects repeated deterministic
   command, evidence, and notification patterns, then reports frequency, recent

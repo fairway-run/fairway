@@ -740,6 +740,11 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"assurance", "profile", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
 		{[]string{"assurance", "profile", "validate", "--help"}, "fairway assurance profile validate <path> [--format text|json]"},
 		{[]string{"assurance", "profile", "diff", "--help"}, "fairway assurance profile diff --from <path> --to <path> [--format text|json]"},
+		{[]string{"security", "--help"}, "fairway security advisory export"},
+		{[]string{"security", "advisory", "--help"}, "fairway security advisory export"},
+		{[]string{"security", "advisory", "export", "--help"}, "fairway security advisory export --advisory <json>"},
+		{[]string{"security", "advisory", "verify", "--help"}, "fairway security advisory verify --dir <path>"},
+		{[]string{"security", "advisory", "acknowledge", "--help"}, "fairway security advisory acknowledge --dir <path>"},
 		{[]string{"readiness", "deployment", "--help"}, "fairway readiness deployment --baseline <yaml> --observation <yaml>"},
 		{[]string{"explain", "--help"}, "fairway explain code [<repo-path>]"},
 		{[]string{"explain", "code", "--help"}, "fairway explain code [<repo-path>]"},
@@ -2598,6 +2603,78 @@ func TestCLI_AssuranceDocumentationClaimGuard(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "SHOULD_NOT_RENDER") || strings.Contains(err.Error(), "SOC 2") {
 		t.Fatalf("claim guard echoed document content: %v", err)
+	}
+}
+
+func TestCLI_SecurityAdvisoryRestrictedChannel(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FAIRWAY_TEST_ADVISORY_PRIVATE_KEY", base64.StdEncoding.EncodeToString(privateKey))
+	t.Setenv("FAIRWAY_TEST_ADVISORY_PUBLIC_KEY", base64.StdEncoding.EncodeToString(publicKey))
+	writeFile(t, "advisory.json", `{
+  "schema": "fairway.security-advisory.v1",
+  "id": "FAIRWAY-SA-2099-001",
+  "published_at": "2099-01-02T03:04:05Z",
+  "severity": "high",
+  "summary": "Synthetic restricted-channel advisory",
+  "affected_versions": ["9.9.8"],
+  "fixed_versions": ["9.9.9"],
+  "mitigations": ["Use the signed offline patch after local authorization"],
+  "vex_updates": [{"vulnerability_id":"CVE-2099-0001","status":"fixed","justification":"Synthetic fixed-version proof"}],
+  "patch_bundle_id": "fairway-offline-9.9.9",
+  "rollback_bundle_id": "fairway-offline-9.9.8",
+  "support_track": "lts",
+  "synthetic": true,
+  "authority_boundary": ""
+}`)
+	writeFile(t, "patch.bin", "synthetic offline patch\n")
+	exported := runCapture(t, "security", "advisory", "export", "--advisory", "advisory.json", "--patch-bundle", "patch.bin", "--out", "package", "--signing-key-env", "FAIRWAY_TEST_ADVISORY_PRIVATE_KEY")
+	assertContains(t, exported, "security_advisory_exported: package")
+	assertContains(t, exported, "advisory_id: FAIRWAY-SA-2099-001")
+	verified := runCapture(t, "security", "advisory", "verify", "--dir", "package", "--expected-id", "FAIRWAY-SA-2099-001", "--expected-patch-bundle-id", "fairway-offline-9.9.9", "--expected-rollback-bundle-id", "fairway-offline-9.9.8", "--trusted-public-key-env", "FAIRWAY_TEST_ADVISORY_PUBLIC_KEY")
+	assertContains(t, verified, "ok: true")
+	assertContains(t, verified, "signature_status: verified_pinned")
+	assertContains(t, verified, "inventory_status: verified_exact")
+	err = run(context.Background(), []string{"security", "advisory", "verify", "--dir", "package", "--expected-id", "FAIRWAY-SA-2099-001", "--expected-patch-bundle-id", "fairway-offline-9.9.9", "--expected-rollback-bundle-id", "fairway-offline-9.9.7", "--trusted-public-key-env", "FAIRWAY_TEST_ADVISORY_PUBLIC_KEY"})
+	if err == nil || !strings.Contains(err.Error(), "identity") {
+		t.Fatalf("rollback mismatch error=%v", err)
+	}
+	acknowledged := runCapture(t, "security", "advisory", "acknowledge", "--dir", "package", "--expected-id", "FAIRWAY-SA-2099-001", "--expected-patch-bundle-id", "fairway-offline-9.9.9", "--expected-rollback-bundle-id", "fairway-offline-9.9.8", "--trusted-public-key-env", "FAIRWAY_TEST_ADVISORY_PUBLIC_KEY", "--customer-ref", "lab-customer-001", "--status", "received", "--at", "2099-01-02T04:00:00Z", "--out", "ack.json")
+	assertContains(t, acknowledged, "security_advisory_acknowledged: ack.json")
+	assertContains(t, acknowledged, "status: received")
+	assertContains(t, acknowledged, "rollback_bundle_id: fairway-offline-9.9.8")
+	ackData, err := os.ReadFile("ack.json")
+	if err != nil || !strings.Contains(string(ackData), `"schema": "fairway.restricted-advisory-acknowledgement.v1"`) {
+		t.Fatalf("ack=%s err=%v", ackData, err)
+	}
+	assertContains(t, string(ackData), `"rollback_bundle_id": "fairway-offline-9.9.8"`)
+	file, err := os.OpenFile(filepath.Join("package", "patch", "patch-bundle.bin"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("tamper"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	err = run(context.Background(), []string{"security", "advisory", "verify", "--dir", "package", "--expected-id", "FAIRWAY-SA-2099-001", "--expected-patch-bundle-id", "fairway-offline-9.9.9", "--expected-rollback-bundle-id", "fairway-offline-9.9.8", "--trusted-public-key-env", "FAIRWAY_TEST_ADVISORY_PUBLIC_KEY"})
+	if err == nil || !strings.Contains(err.Error(), "advisory package file digest mismatch") {
+		t.Fatalf("tampered verification error=%v", err)
+	}
+	if strings.Contains(err.Error(), base64.StdEncoding.EncodeToString(privateKey)) {
+		t.Fatalf("tamper error echoed private key: %v", err)
 	}
 }
 

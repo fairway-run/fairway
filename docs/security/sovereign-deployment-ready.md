@@ -31,6 +31,12 @@ rehearsal are documented in
 Its verifier proves integrity and exact declared identities only. Customer
 media custody and verifier bootstrap trust remain outside Fairway's authority.
 
+Restricted vulnerability notices, LTS/end-of-support policy, signed advisory
+packages, offline patch identity, and customer-controlled acknowledgement are
+documented in
+[Restricted Advisory and LTS Patch Channel](restricted-advisory-channel.md).
+Advisory verification is not patch import or deployment authorization.
+
 ## Reference modes
 
 - `sovereign-offline`: disconnected single-host or isolated-local-network

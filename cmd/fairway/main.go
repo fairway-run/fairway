@@ -47,6 +47,7 @@ import (
 	"github.com/subashram/fairway/internal/reviewstate"
 	"github.com/subashram/fairway/internal/roughedge"
 	"github.com/subashram/fairway/internal/rules"
+	"github.com/subashram/fairway/internal/securityadvisory"
 	"github.com/subashram/fairway/internal/state"
 	"github.com/subashram/fairway/internal/store"
 	"github.com/subashram/fairway/internal/tracker"
@@ -143,6 +144,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdProvenance(ctx, opts, args[1:])
 	case "assurance":
 		return cmdAssurance(ctx, opts, args[1:])
+	case "security":
+		return cmdSecurity(opts, args[1:])
 	case "explain":
 		return cmdExplain(ctx, opts, args[1:])
 	case "recipe":
@@ -5050,6 +5053,155 @@ func cmdAssurance(ctx context.Context, opts globalOptions, args []string) error 
 		return fmt.Errorf("unknown assurance profile subcommand %q", args[1])
 	}
 	return cmdAssuranceProfileValidate(opts, args[2:])
+}
+
+func cmdSecurity(opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		fmt.Println("fairway security advisory export --advisory <json> --patch-bundle <path> --out <dir> --signing-key-env <name>")
+		fmt.Println("fairway security advisory verify --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> [--format text|json]")
+		fmt.Println("fairway security advisory acknowledge --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> --customer-ref <id> --status <received|deferred|rejected> --at <RFC3339> --out <json>")
+		fmt.Println("  Export and verify a signed restricted-channel advisory package or record customer-controlled receipt without authorizing patch import or deployment.")
+		return nil
+	}
+	if args[0] != "advisory" {
+		return fmt.Errorf("unknown security subcommand %q", args[0])
+	}
+	if len(args) == 1 || isHelpOnly(args[1:]) {
+		return cmdSecurity(opts, nil)
+	}
+	switch args[1] {
+	case "export":
+		return cmdSecurityAdvisoryExport(opts, args[2:])
+	case "verify":
+		return cmdSecurityAdvisoryVerify(opts, args[2:])
+	case "acknowledge":
+		return cmdSecurityAdvisoryAcknowledge(opts, args[2:])
+	default:
+		return fmt.Errorf("unknown security advisory subcommand %q", args[1])
+	}
+}
+
+func cmdSecurityAdvisoryExport(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway security advisory export --advisory <json> --patch-bundle <path> --out <dir> --signing-key-env <name>")
+		return nil
+	}
+	fs := flag.NewFlagSet("security advisory export", flag.ContinueOnError)
+	advisoryPath := fs.String("advisory", "", "strict fairway.security-advisory.v1 JSON input")
+	patchBundle := fs.String("patch-bundle", "", "local offline patch bundle artifact")
+	out := fs.String("out", "", "new advisory package directory")
+	signingKeyEnv := fs.String("signing-key-env", "", "environment variable containing a base64 Ed25519 seed, private key, or PKCS8 DER key")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || strings.TrimSpace(*advisoryPath) == "" || strings.TrimSpace(*patchBundle) == "" || strings.TrimSpace(*out) == "" || strings.TrimSpace(*signingKeyEnv) == "" {
+		return errors.New("security advisory export requires --advisory, --patch-bundle, --out, and --signing-key-env")
+	}
+	signingKey, err := requiredUpperEnvironment(*signingKeyEnv, "advisory signing key")
+	if err != nil {
+		return err
+	}
+	advisory, err := securityadvisory.LoadAdvisory(*advisoryPath)
+	if err != nil {
+		return err
+	}
+	manifest, err := securityadvisory.Export(securityadvisory.ExportOptions{Advisory: advisory, PatchBundlePath: *patchBundle, OutputDirectory: *out, SigningKeyBase64: signingKey})
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(manifest)
+	}
+	fmt.Printf("security_advisory_exported: %s\nschema: %s\nadvisory_id: %s\npatch_bundle_id: %s\nrollback_bundle_id: %s\nfiles: %d\nsigning_key_id: %s\nauthority_boundary: %s\n", filepath.Clean(*out), manifest.Schema, manifest.AdvisoryID, manifest.PatchBundleID, manifest.RollbackBundleID, len(manifest.Files), manifest.SigningKeyID, manifest.AuthorityBoundary)
+	return nil
+}
+
+func cmdSecurityAdvisoryVerify(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway security advisory verify --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("security advisory verify", flag.ContinueOnError)
+	dir := fs.String("dir", "", "local advisory package directory")
+	expectedID := fs.String("expected-id", "", "exact expected advisory id")
+	expectedPatchID := fs.String("expected-patch-bundle-id", "", "exact expected offline patch bundle id")
+	expectedRollbackID := fs.String("expected-rollback-bundle-id", "", "exact expected rollback bundle id")
+	trustedKeyEnv := fs.String("trusted-public-key-env", "", "environment variable containing the pinned base64 Ed25519 public key or PKIX DER key")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || strings.TrimSpace(*dir) == "" || strings.TrimSpace(*expectedID) == "" || strings.TrimSpace(*expectedPatchID) == "" || strings.TrimSpace(*expectedRollbackID) == "" || strings.TrimSpace(*trustedKeyEnv) == "" {
+		return errors.New("security advisory verify requires --dir, --expected-id, --expected-patch-bundle-id, --expected-rollback-bundle-id, and --trusted-public-key-env")
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	trustedKey, err := requiredUpperEnvironment(*trustedKeyEnv, "advisory trusted public key")
+	if err != nil {
+		return err
+	}
+	report, err := securityadvisory.Verify(securityadvisory.VerifyOptions{Directory: *dir, TrustedPublicKeyBase64: trustedKey, ExpectedAdvisoryID: *expectedID, ExpectedPatchBundleID: *expectedPatchID, ExpectedRollbackBundleID: *expectedRollbackID})
+	if err != nil {
+		return err
+	}
+	if opts.JSON || *format == "json" {
+		return printJSON(report)
+	}
+	fmt.Printf("security_advisory_verification: %s\nok: %t\nadvisory_id: %s\nseverity: %s\npatch_bundle_id: %s\nrollback_bundle_id: %s\npatch_sha256: %s\nsignature_status: %s\ninventory_status: %s\nauthority_boundary: %s\n", report.Schema, report.OK, report.AdvisoryID, report.Severity, report.PatchBundleID, report.RollbackBundleID, report.PatchSHA256, report.SignatureStatus, report.InventoryStatus, report.AuthorityBoundary)
+	return nil
+}
+
+func cmdSecurityAdvisoryAcknowledge(opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway security advisory acknowledge --dir <path> --expected-id <id> --expected-patch-bundle-id <id> --expected-rollback-bundle-id <id> --trusted-public-key-env <name> --customer-ref <id> --status <received|deferred|rejected> --at <RFC3339> --out <json>")
+		return nil
+	}
+	fs := flag.NewFlagSet("security advisory acknowledge", flag.ContinueOnError)
+	dir := fs.String("dir", "", "local advisory package directory")
+	expectedID := fs.String("expected-id", "", "exact expected advisory id")
+	expectedPatchID := fs.String("expected-patch-bundle-id", "", "exact expected offline patch bundle id")
+	expectedRollbackID := fs.String("expected-rollback-bundle-id", "", "exact expected rollback bundle id")
+	trustedKeyEnv := fs.String("trusted-public-key-env", "", "environment variable containing the pinned base64 Ed25519 public key or PKIX DER key")
+	customerRef := fs.String("customer-ref", "", "privacy-bounded customer acknowledgement reference")
+	status := fs.String("status", "", "received, deferred, or rejected")
+	at := fs.String("at", "", "acknowledgement time in RFC3339")
+	out := fs.String("out", "", "new local acknowledgement JSON path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || strings.TrimSpace(*dir) == "" || strings.TrimSpace(*expectedID) == "" || strings.TrimSpace(*expectedPatchID) == "" || strings.TrimSpace(*expectedRollbackID) == "" || strings.TrimSpace(*trustedKeyEnv) == "" || strings.TrimSpace(*customerRef) == "" || strings.TrimSpace(*status) == "" || strings.TrimSpace(*at) == "" || strings.TrimSpace(*out) == "" {
+		return errors.New("security advisory acknowledge requires package identity, pinned key, customer reference, status, time, and output path")
+	}
+	acknowledgedAt, err := time.Parse(time.RFC3339, *at)
+	if err != nil {
+		return errors.New("--at must be RFC3339")
+	}
+	trustedKey, err := requiredUpperEnvironment(*trustedKeyEnv, "advisory trusted public key")
+	if err != nil {
+		return err
+	}
+	ack, err := securityadvisory.Acknowledge(securityadvisory.AcknowledgeOptions{VerifyOptions: securityadvisory.VerifyOptions{Directory: *dir, TrustedPublicKeyBase64: trustedKey, ExpectedAdvisoryID: *expectedID, ExpectedPatchBundleID: *expectedPatchID, ExpectedRollbackBundleID: *expectedRollbackID}, OutputPath: *out, CustomerReference: *customerRef, Status: *status, AcknowledgedAt: acknowledgedAt})
+	if err != nil {
+		return err
+	}
+	if opts.JSON {
+		return printJSON(ack)
+	}
+	fmt.Printf("security_advisory_acknowledged: %s\nadvisory_id: %s\npatch_bundle_id: %s\nrollback_bundle_id: %s\ncustomer_reference: %s\nstatus: %s\nauthority_boundary: %s\n", filepath.Clean(*out), ack.AdvisoryID, ack.PatchBundleID, ack.RollbackBundleID, ack.CustomerReference, ack.Status, ack.AuthorityBoundary)
+	return nil
+}
+
+func requiredUpperEnvironment(name, label string) (string, error) {
+	name = strings.TrimSpace(name)
+	if ok, _ := regexp.MatchString(`^[A-Z_][A-Z0-9_]*$`, name); !ok {
+		return "", fmt.Errorf("%s environment variable name must be uppercase", label)
+	}
+	value, ok := os.LookupEnv(name)
+	if !ok || strings.TrimSpace(value) == "" {
+		return "", fmt.Errorf("%s environment variable is not set", label)
+	}
+	return value, nil
 }
 
 func cmdAssuranceProfileDiff(opts globalOptions, args []string) error {
@@ -20831,7 +20983,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export|verify, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export|verify, security advisory export|verify|acknowledge, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, binary, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -20879,6 +21031,7 @@ func printCommandHelp(command string) bool {
 		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
 		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profile diff --from <path> --to <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\nfairway assurance package export --profile <path> --product-version <version> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]\nfairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]\nfairway assurance claims validate --path <markdown-or-text-file>... [--format text|json]\n  Validate and compare profiles, project facts, export bounded assessor evidence, verify packages offline, and reject unsupported public wording without granting certification or workflow authority.",
+		"security":                   "fairway security advisory export|verify|acknowledge ...\n  Export and verify signed restricted-channel security advisories or record customer-controlled receipt without patch/deployment authority.",
 		"explain":                    "fairway explain code [<repo-path>] [--line <n>] [--symbol <name>] [--commit <ref>] [--task <task-id>] [--narrative-provider <adapter>] [--format packet|markdown|json]\n  Render a deterministic grounded packet with an optional validated advisory narrative.",
 		"recipe":                     "fairway recipe extract|render|list ...\n  Extract completed tasks into reusable privacy-bounded recipe packets and render them for new tasks.",
 		"advisory":                   "fairway advisory adapters|validate <task-id> ...\n  List configured advisory provider adapters or validate advisory recommendations as evidence only.",
