@@ -6273,3 +6273,22 @@ tasks:
       - "Assurance mapping keeps only the latest durable review verdict per task and domain in current state while retaining earlier review references as superseded history without review reasons or private content."
       - "Changes-then-approve can support a positive review requirement, approve-then-changes remains non-satisfying, and tied timestamps resolve by durable review row order rather than wall-clock order."
       - "Readiness and package regressions prove resolved review history no longer creates a false conflict and unresolved or mixed current-domain verdicts never create false satisfaction."
+
+  - id: FW-363
+    title: Retain signed sovereign rehearsal media and independent trust bootstrap
+    kind: task
+    parent_id: FW-340
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: sovereign-rehearsal-media
+    source_paths: [scripts/release, cmd/fairway-offline-verify, internal/offlinebundle, internal/provenance, docs/operations, docs/security]
+    target_paths: [scripts/ci, docs/assessment, docs/operations, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, governance, ops, security]
+    risk_level: critical
+    migration_type: sovereign-rehearsal-media-retention
+    dependencies: [FW-343, FW-347, FW-353]
+    acceptance_checks:
+      - "A clean reviewed source candidate and pinned rollback release are built into all four supported archives, nested signed release-assurance packages, and one retained signed offline distribution with exact source, builder, policy, current, rollback, checksum, and standalone-verifier identity."
+      - "A separate trust-bootstrap packet records the Ed25519 public key and fingerprint plus the independently reviewed Linux arm64 verifier digest; ephemeral private signing material is destroyed and neither media nor trust packet is committed or publicly released."
+      - "The retained media and trust packet are delivered through distinct local evidence paths to the non-authoring FW-350 operator, verify without network access, and preserve customer import, install, deployment, release, credential, public-exposure, and live-operation authority."
