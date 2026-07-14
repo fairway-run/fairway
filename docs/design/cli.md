@@ -789,6 +789,8 @@ authority. See [Sovereign Customer Key Rehearsal](../operations/sovereign-custom
   provider APIs itself. It flags draft GitHub releases with matching Homebrew
   casks, missing release notes/changelog entries, failed asset URL checks,
   missing release status, and failed Homebrew fetch verification.
+  `release verify --help` exits zero with Fairway-style usage; normal
+  verification failures remain non-zero.
 - `coordinator tick` composes reports and recommendations. It does not claim,
   merge, or mutate tasks automatically.
 - `completion-handback-report` derives idle-time metrics from existing

@@ -10318,6 +10318,10 @@ func parseReleaseBundlePairs(values []string) (map[string]string, error) {
 }
 
 func cmdReleaseVerify(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		subcommandUsage("release verify", "--version <vX.Y.Z> --tag <vX.Y.Z> --ci-status <status> --docs-status <status> --signing-status <status> --notary-status <status> --release-state <public|draft> --asset <url=status> --homebrew-version <vX.Y.Z> --homebrew-tap-commit <sha> --brew-fetch-status <status>")
+		return nil
+	}
 	fs := flag.NewFlagSet("release verify", flag.ContinueOnError)
 	version := fs.String("version", "", "release version, usually vX.Y.Z")
 	tag := fs.String("tag", "", "release tag")
