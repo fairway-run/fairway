@@ -130,6 +130,8 @@ operator topics, not first-run requirements.
 Choose the next page by need:
 
 - Run normal work: [Agent guide](agent-guide.md)
+- Practice replacing a provider:
+  [Provider replacement quickstart](provider-replacement-quickstart.md)
 - Understand the minimum model: [Concepts](design/concepts.md)
 - Configure roles, routes, and profiles: [Configuration reference](config-reference.md)
 - Operate the dashboard: [Dashboard](design/dashboard.md)
