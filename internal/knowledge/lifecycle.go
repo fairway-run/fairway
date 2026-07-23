@@ -104,7 +104,10 @@ func Ingest(opts IngestOptions) (IngestResult, error) {
 	result := IngestResult{
 		Applied: opts.Apply, Preview: !opts.Apply, SourcePath: sourceRel,
 		SourceClass: className, SourceRevision: opts.SourceRevision,
-		Changes: []Change{describeChange(pageRel, "create", pageData), describeChange("index.md", "update", indexNext)},
+		Changes: []Change{
+			describeChange(pageRel, "create", pageData, string(pageData)),
+			describeChange("index.md", "update", indexNext, fmt.Sprintf("append: - [%s](%s)", title, pageRel)),
+		},
 	}
 	if !opts.Apply {
 		return result, nil
@@ -313,7 +316,7 @@ func Promote(opts PromoteOptions) (PromoteResult, error) {
 	result := PromoteResult{
 		Applied: opts.Apply, Preview: !opts.Apply, PagePath: pageRel,
 		TargetPath: targetRel, ReviewedCommit: opts.ReviewedCommit,
-		Changes: []Change{describeChange(pageRel, "update", next)},
+		Changes: []Change{describeChange(pageRel, "update", next, string(next))},
 	}
 	if !opts.Apply {
 		return result, nil
@@ -515,9 +518,24 @@ func atomicReplace(path string, expected, next []byte, mode os.FileMode) error {
 	return nil
 }
 
-func describeChange(path, action string, data []byte) Change {
+func describeChange(path, action string, data []byte, preview string) Change {
 	sum := sha256.Sum256(data)
-	return Change{Path: filepath.ToSlash(path), Action: action, SHA256: hex.EncodeToString(sum[:]), Bytes: len(data)}
+	return Change{
+		Path: filepath.ToSlash(path), Action: action, SHA256: hex.EncodeToString(sum[:]),
+		Bytes: len(data), Preview: boundedChangePreview(preview),
+	}
+}
+
+func boundedChangePreview(value string) string {
+	const limit = 2048
+	if len(value) > limit {
+		value = value[:limit]
+		for !utf8.ValidString(value) {
+			value = value[:len(value)-1]
+		}
+		value = strings.TrimRight(value, "\r\n ") + "\n[preview truncated]"
+	}
+	return value
 }
 
 func titleFromPath(path string) string {

@@ -31,6 +31,9 @@ func TestIngestIsPreviewFirstAndDoesNotCopySourceBody(t *testing.T) {
 	if preview.Applied || !preview.Preview || len(preview.Changes) != 2 {
 		t.Fatalf("unexpected preview: %+v", preview)
 	}
+	if !strings.Contains(preview.Changes[0].Preview, "status: draft") || strings.Contains(preview.Changes[0].Preview, "RAW_SOURCE_SENTINEL") {
+		t.Fatalf("preview is not bounded generated content: %+v", preview.Changes[0])
+	}
 	if _, err := os.Stat(filepath.Join(project, DefaultRoot, "architecture", "node-trust.md")); !os.IsNotExist(err) {
 		t.Fatalf("preview wrote page: %v", err)
 	}

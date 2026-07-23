@@ -140,6 +140,7 @@ func cmdKnowledgeIngest(ctx context.Context, opts globalOptions, args []string) 
 			map[bool]string{true: "applied", false: "preview"}[result.Applied], result.SourcePath, result.SourceClass, result.SourceRevision)
 		for _, change := range result.Changes {
 			fmt.Printf("- action=%s path=%s bytes=%d sha256=%s\n", change.Action, change.Path, change.Bytes, change.SHA256)
+			fmt.Printf("  preview=%q\n", change.Preview)
 		}
 		if !result.Applied {
 			fmt.Println("next: review the bounded proposal, then rerun with --apply")
@@ -212,6 +213,7 @@ func cmdKnowledgePromote(ctx context.Context, opts globalOptions, args []string)
 			map[bool]string{true: "applied", false: "preview"}[result.Applied], result.PagePath, result.TargetPath, result.ReviewedCommit)
 		for _, change := range result.Changes {
 			fmt.Printf("- action=%s path=%s bytes=%d sha256=%s\n", change.Action, change.Path, change.Bytes, change.SHA256)
+			fmt.Printf("  preview=%q\n", change.Preview)
 		}
 		return nil
 	})

@@ -140,10 +140,11 @@ type Report struct {
 // Change describes one bounded project-file mutation proposed by a lifecycle
 // command. Content is generated metadata and prose, never copied source text.
 type Change struct {
-	Path   string `json:"path"`
-	Action string `json:"action"`
-	SHA256 string `json:"sha256"`
-	Bytes  int    `json:"bytes"`
+	Path    string `json:"path"`
+	Action  string `json:"action"`
+	SHA256  string `json:"sha256"`
+	Bytes   int    `json:"bytes"`
+	Preview string `json:"preview"`
 }
 
 // IngestOptions controls deterministic, preview-first page creation.
