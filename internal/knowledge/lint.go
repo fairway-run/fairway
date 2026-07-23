@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/secretscan"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,15 +23,7 @@ var (
 	shaPattern          = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 	sourceClassPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 	fairwayIDPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$`)
-	secretPatterns      = []regexp.Regexp{
-		*regexp.MustCompile(`(?i)-----BEGIN [A-Z ]*PRIVATE KEY-----`),
-		*regexp.MustCompile(`(?i)\bauthorization\s*:\s*(?:bearer|basic)\s+\S+`),
-		*regexp.MustCompile(`(?i)\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|api[_-]?key|password|passwd|cookie)\s*[:=]\s*["']?[^\s"']{4,}`),
-		*regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
-		*regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}\b`),
-		*regexp.MustCompile(`\bsk_live_[A-Za-z0-9]{16,}\b`),
-	}
-	allowedStatuses = map[string]bool{
+	allowedStatuses     = map[string]bool{
 		"draft": true, "verified": true, "stale": true, "conflicted": true, "superseded": true,
 	}
 )
@@ -527,6 +520,10 @@ func (s *scanState) validateIndex() {
 		}
 	}
 	for path := range s.pageByPath {
+		index := s.pageByPath[path]
+		page := s.report.Pages[index]
+		page.Reachable = reachable[path]
+		s.report.Pages[index] = page
 		if path == "README.md" || path == "log.md" || reachable[path] {
 			continue
 		}
@@ -594,12 +591,7 @@ func readBounded(path string, limit int64) ([]byte, error) {
 }
 
 func containsSecret(data []byte) bool {
-	for _, pattern := range secretPatterns {
-		if pattern.Match(data) {
-			return true
-		}
-	}
-	return false
+	return secretscan.Contains(data)
 }
 
 func normalizedIdentity(title string) string {

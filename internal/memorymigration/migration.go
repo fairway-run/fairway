@@ -17,6 +17,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/subashram/fairway/internal/secretscan"
 )
 
 const (
@@ -109,13 +111,6 @@ var (
 	headingPattern = regexp.MustCompile(`^#{1,6}\s+(.+?)\s*#*\s*$`)
 	listPattern    = regexp.MustCompile(`^(?:[-*+]\s+|\d+[.)]\s+)(.*)$`)
 	idPattern      = regexp.MustCompile(`\b[1-9][0-9]*\b`)
-	secretAssign   = regexp.MustCompile("(?i)(access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|ssh[_-]?private[_-]?key|api[_-]?key|password|authorization|cookie|set-cookie|secret)\\s*[:=]\\s*[\\\"']?([^\\s\\\"'`]+)")
-	bearerPattern  = regexp.MustCompile(`(?i)\bauthorization\s*:\s*bearer\s+\S+|\bbearer\s+[A-Za-z0-9._~+/=-]{16,}`)
-	jwtPattern     = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b`)
-	knownSecret    = regexp.MustCompile(`\b(?:sk_live_|rk_live_|ghp_|github_pat_|AKIA)[A-Za-z0-9_-]{8,}`)
-	pemBoundary    = regexp.MustCompile(`(?i)-----BEGIN [A-Z0-9][A-Z0-9 _-]*-----`)
-	placeholderVar = regexp.MustCompile(`^\$\{[A-Za-z_][A-Za-z0-9_]*\}$`)
-	placeholderTag = regexp.MustCompile(`^<(?:redacted|masked|unset|none|example|changeme|secret|token|password)>$`)
 	shellPrompt    = regexp.MustCompile(`^(?:[$#>]\s+|[A-Za-z0-9_.-]+@[^[:space:]:]+:[^$#]*[$#]\s+)`)
 	logPrefix      = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ][0-9:.+-]+(?:Z|[+-][0-9:]+)?\s+(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\b`)
 	stackFrame     = regexp.MustCompile(`^(?:goroutine \d+|panic:|at [A-Za-z0-9_.$/<>-]+\(|\s*File ".+", line \d+)`)
@@ -396,29 +391,10 @@ func isMemoryMarkdown(name string) bool {
 }
 
 func rejectSensitive(body []byte) error {
-	text := string(body)
-	if pemBoundary.MatchString(text) || bearerPattern.MatchString(text) || jwtPattern.MatchString(text) || knownSecret.MatchString(text) {
-		return errors.New("legacy memory file contains prohibited secret-like material")
-	}
-	for _, match := range secretAssign.FindAllStringSubmatch(text, -1) {
-		if len(match) < 3 || placeholder(match[2]) {
-			continue
-		}
+	if secretscan.Contains(body) {
 		return errors.New("legacy memory file contains prohibited secret-like material")
 	}
 	return nil
-}
-
-func placeholder(value string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
-	if placeholderVar.MatchString(value) || placeholderTag.MatchString(value) {
-		return true
-	}
-	value = strings.Trim(value, "[]{}()*,.;")
-	if value == "" || value == "redacted" || value == "none" || value == "unset" || value == "example" || value == "changeme" || value == "masked" || value == "xxx" {
-		return true
-	}
-	return false
 }
 
 func extract(body []byte) (Proposal, []string, error) {

@@ -30,6 +30,9 @@ type Options struct {
 	// against the coordinator store. Without it, Fairway references are
 	// reported as requiring validation and do not satisfy verified provenance.
 	ValidateFairwayReference func(FairwayReferenceRequirement) error
+	// CustodyHook is deterministic test instrumentation invoked only after
+	// sensitive file descriptors are bound. Production callers leave it nil.
+	CustodyHook func(stage string)
 }
 
 // ScaffoldOptions controls creation of the initial knowledge tree.
@@ -101,6 +104,7 @@ type Page struct {
 	Path      string       `json:"path"`
 	Metadata  PageMetadata `json:"metadata"`
 	LinkCount int          `json:"link_count"`
+	Reachable bool         `json:"reachable"`
 }
 
 // Severity classifies a deterministic finding.
@@ -181,13 +185,22 @@ type QueryOptions struct {
 
 // QuerySource is a deduplicated provenance reference.
 type QuerySource struct {
-	Key       string `json:"key"`
-	Class     string `json:"class"`
-	Authority string `json:"authority"`
-	Kind      string `json:"kind"`
-	Path      string `json:"path,omitempty"`
-	FairwayID string `json:"fairway_id,omitempty"`
-	Verified  bool   `json:"verified"`
+	Key              string                `json:"key"`
+	Class            string                `json:"class"`
+	Authority        string                `json:"authority"`
+	Kind             string                `json:"kind"`
+	Path             string                `json:"path,omitempty"`
+	FairwayID        string                `json:"fairway_id,omitempty"`
+	Verified         bool                  `json:"verified"`
+	MemoryReferenced bool                  `json:"memory_referenced,omitempty"`
+	Citations        []QuerySourceCitation `json:"citations"`
+}
+
+// QuerySourceCitation preserves verification state for each selected page
+// while the source identity itself is deduplicated.
+type QuerySourceCitation struct {
+	Page     string `json:"page"`
+	Verified bool   `json:"verified"`
 }
 
 // QueryPage is a bounded selected-page projection.
