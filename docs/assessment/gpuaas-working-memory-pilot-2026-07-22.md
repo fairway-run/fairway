@@ -12,9 +12,10 @@ The pilot migrated the completed GPUaaS node-runtime trust working memory from
 memory. The legacy Markdown was treated as an input only. Fairway stored the
 bounded extracted fields and source-fact IDs, not the raw file contents.
 
-The migrated memory was backed by GPUaaS checkpoint `3934`. The provider packet
-also read current task, session, checkpoint, dependency, and Git state from the
-GPUaaS Fairway project.
+The migrated memory was backed by GPUaaS checkpoint `3934`, final UAT evidence
+`5281`-`5283`, and independent final approvals `1749`-`1753`. The provider
+packet also read current task, session, checkpoint, dependency, and Git state
+from the GPUaaS Fairway project.
 
 ## Results
 
@@ -23,7 +24,7 @@ GPUaaS Fairway project.
 | Import preview before apply | yes |
 | Explicit apply required | yes |
 | Cold-start wall time | 0.10 seconds |
-| Cold-start JSON size | 4,123 bytes |
+| Corrected cold-start JSON size | 4,382 bytes |
 | Clarifications required | 0 |
 | Secret-pattern findings in retained import/packet output | 0 |
 | Stale legacy facts found | 1 |
@@ -33,9 +34,11 @@ GPUaaS Fairway project.
 | Exact extracted facts represented before retirement | 2 of 2 |
 
 The stale fact was the legacy file's old active-scope statement. It was retained
-as the extracted legacy fact for exact coverage while the current objective,
-decision, blocker posture, and next action were separately curated from the
-closed Fairway task and committed UAT evidence.
+temporarily as the extracted legacy fact for exact coverage. The current
+objective, decision, blocker posture, and next action were curated from the
+closed Fairway task, final evidence, and approvals. After retirement eligibility
+was proven, the archived memory's active scope was corrected to describe the
+completed track.
 
 The cold-start packet identified:
 
@@ -46,6 +49,25 @@ The cold-start packet identified:
 - current related SPIFFE tasks reached through dependency closure;
 - repository branch, commit, and clean working-tree posture.
 
+An isolated provider with no inherited conversation was given only the GPUaaS
+repository, track ID, and this invocation:
+
+```bash
+/tmp/fairway-memory-pilot \
+  --config .fairway/platform-foundation-config.toml \
+  --json memory cold-start \
+  --track UAT-NODE-RECOVERY-MESH-DISPOSABLE-001 \
+  --for isolated-provider
+```
+
+From the packet alone it reported the closed objective, commit `06c02b69`, all
+three evidence IDs, all five approval IDs, no active product blocker, the
+separate SPIRE work, and the correct recommendation not to reopen the track. It
+asked no clarification questions, repeated no investigation, and selected no
+incorrect authority. It also detected the temporary stale active-scope field;
+that finding was corrected before final archival. The independently measured
+command wall time was 0.10 seconds and the retained JSON was 4,382 bytes.
+
 ## Retirement
 
 Before retirement, `fairway memory coverage` reported the legacy file as
@@ -53,7 +75,9 @@ Before retirement, `fairway memory coverage` reported the legacy file as
 memory was then archived. `fairway memory retire-file` returned `eligible=true`
 for SHA-256
 `919bb00da242dca86aded6de89695578b25f738635be189a47394f98540ac9d9`.
-The ignored legacy file was removed after that readback.
+The ignored legacy file was removed after that readback. Final archived memory
+references checkpoint `3934`, evidence `5281`-`5283`, and reviews
+`1749`-`1753`; its scope no longer carries the stale legacy execution statement.
 
 The remaining `tmp-ux` inventory is intentionally not declared migrated by this
 pilot. The final inventory contains 17 memory-named files: safe files remain
