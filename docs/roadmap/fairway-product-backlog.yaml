@@ -6377,7 +6377,7 @@ tasks:
     owning_layer: project-working-memory
     source_paths: [docs/design/project-working-memory.md, docs/design/task-decision-memory.md, docs/design/context-packets.md, internal/store, cmd/fairway]
     target_paths: [docs/design, docs/agent-guide.md, docs/config-reference.md, internal, cmd/fairway]
-    review_domains: [arch, backend, governance]
+    review_domains: [governance]
     risk_level: medium
     migration_type: working-memory-product
     acceptance_checks:
@@ -6395,7 +6395,7 @@ tasks:
     owning_layer: project-working-memory-design
     source_paths: [docs/design/backlog-sources.md, docs/design/task-decision-memory.md, docs/design/context-packets.md, docs/agent-guide.md]
     target_paths: [docs/design/project-working-memory.md, docs/product.md, docs/roadmap/fairway-product-backlog.yaml]
-    review_domains: [arch, governance]
+    review_domains: [governance]
     risk_level: low
     migration_type: working-memory-design
     acceptance_checks:
@@ -6413,7 +6413,7 @@ tasks:
     owning_layer: project-working-memory-runtime
     source_paths: [docs/design/project-working-memory.md, internal/store, internal/packet, cmd/fairway]
     target_paths: [internal, cmd/fairway, docs/agent-guide.md, docs/config-reference.md]
-    review_domains: [arch, backend, governance, security]
+    review_domains: [arch]
     risk_level: medium
     migration_type: working-memory-runtime
     dependencies: [FW-369]
@@ -6432,7 +6432,7 @@ tasks:
     owning_layer: project-working-memory-pilot
     source_paths: [docs/design/project-working-memory.md, docs/assessment, ../GPUasService/tmp-ux]
     target_paths: [docs/assessment, docs/agent-guide.md, docs/design/project-working-memory.md]
-    review_domains: [arch, governance, ops]
+    review_domains: [ops]
     risk_level: medium
     migration_type: working-memory-consumer-pilot
     dependencies: [FW-370]
@@ -6450,7 +6450,7 @@ tasks:
     owning_layer: engineering-knowledge
     source_paths: [docs/design/engineering-knowledge.md, docs/design/project-working-memory.md, docs/design/task-decision-memory.md, internal/provenance]
     target_paths: [docs/design, docs/agent-guide.md, docs/config-reference.md, internal, cmd/fairway, examples]
-    review_domains: [arch, backend, governance, security]
+    review_domains: [governance]
     risk_level: medium
     migration_type: engineering-knowledge-product
     acceptance_checks:
@@ -6468,7 +6468,7 @@ tasks:
     owning_layer: engineering-knowledge-design
     source_paths: [docs/design/task-decision-memory.md, docs/design/product-boundaries.md, docs/design/supply-chain-provenance.md, docs/design/project-working-memory.md]
     target_paths: [docs/design/engineering-knowledge.md, docs/product.md, docs/roadmap/fairway-product-backlog.yaml]
-    review_domains: [arch, governance, security]
+    review_domains: [governance]
     risk_level: low
     migration_type: engineering-knowledge-design
     acceptance_checks:
@@ -6486,7 +6486,7 @@ tasks:
     owning_layer: engineering-knowledge-foundation
     source_paths: [docs/design/engineering-knowledge.md, internal/config, internal/provenance, cmd/fairway]
     target_paths: [internal/knowledge, internal/config, cmd/fairway, examples, docs/agent-guide.md, docs/config-reference.md]
-    review_domains: [arch, backend, governance, security]
+    review_domains: [arch]
     risk_level: medium
     migration_type: engineering-knowledge-foundation
     dependencies: [FW-373]
@@ -6505,7 +6505,7 @@ tasks:
     owning_layer: engineering-knowledge-lifecycle
     source_paths: [docs/design/engineering-knowledge.md, docs/design/project-working-memory.md, internal/knowledge, internal/packet, internal/provenance]
     target_paths: [internal/knowledge, internal/packet, cmd/fairway, docs/agent-guide.md, docs/config-reference.md]
-    review_domains: [arch, backend, governance, security]
+    review_domains: [security]
     risk_level: medium
     migration_type: engineering-knowledge-lifecycle
     dependencies: [FW-370, FW-374]
@@ -6524,7 +6524,7 @@ tasks:
     owning_layer: engineering-knowledge-pilot
     source_paths: [docs/design/project-working-memory.md, docs/design/engineering-knowledge.md, docs/assessment, ../GPUasService]
     target_paths: [docs/assessment, docs/design/project-working-memory.md, docs/design/engineering-knowledge.md, docs/product.md]
-    review_domains: [arch, governance, ops, security]
+    review_domains: [ops]
     risk_level: medium
     migration_type: engineering-memory-consumer-pilot
     dependencies: [FW-371, FW-375]
