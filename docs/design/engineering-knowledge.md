@@ -81,6 +81,7 @@ title: Node trust model
 status: verified
 owner: platform-security
 last_verified: 2026-07-22
+review_by: 2026-10-22
 source_sha: b3b346cd3499bc2ef69dbff28d28890228e11d73
 sources:
   - path: doc/architecture/node-trust.md
@@ -101,7 +102,11 @@ Allowed initial status values are:
 | `superseded` | Replaced by a linked page or canonical document |
 
 `verified` means source-grounded within the declared scope. It does not mean
-approved architecture, accepted risk, compliance, or release readiness.
+the synthesis is correct, complete, approved architecture, accepted risk,
+compliance, or release readiness. Deterministic validation can prove that the
+named sources exist and have not changed; it cannot prove that a derived
+conclusion interpreted those sources correctly. Material conclusions still
+require normal human review at the boundary where they influence a decision.
 
 ## Source Classes
 
@@ -151,6 +156,7 @@ Lint reports:
 - invalid metadata or unsafe paths;
 - missing or inaccessible cited sources;
 - source revisions newer than page verification;
+- pages past their `review_by` date;
 - orphan pages and broken links;
 - duplicate page identities;
 - conflicting claims marked by ingest or reviewers;
@@ -161,6 +167,13 @@ Lint reports:
 
 Deterministic findings are separated from model-suggested semantic findings.
 The latter are advisory until a person or configured review accepts them.
+
+Lint is part of the normal project quality loop, not an optional cleanup sweep.
+Each page has an owner and `review_by` date. Projects run deterministic lint in
+their configured local or CI documentation gate, initially advisory. The owner
+must refresh, supersede, archive, or explicitly retain each overdue or stale
+page. Pilot evidence determines whether any finding should later become
+blocking; Fairway does not make that escalation implicitly.
 
 ### Promote
 
@@ -212,6 +225,24 @@ The two features remain separate:
 
 Knowledge must not become the place where an active task is claimed, blocked,
 approved, or completed.
+
+### Cold-Start Composition
+
+A provider cold start uses one bounded composed packet rather than independently
+loading both stores:
+
+1. `fairway memory cold-start` supplies the selected track's objective, current
+   state, blockers, decisions, evidence, and next action.
+2. The memory packet names zero or more knowledge topics relevant to that
+   objective.
+3. `fairway knowledge query --format packet` contributes only the selected
+   pages and their provenance within a separate knowledge budget.
+4. Duplicate source references are rendered once, with the higher authority
+   label preserved.
+
+Execution memory is required for task resumption. Knowledge is optional context
+for domain understanding and must not crowd out the objective, blocker, stop
+condition, or next action.
 
 ## Cold-Start And Query Acceptance
 

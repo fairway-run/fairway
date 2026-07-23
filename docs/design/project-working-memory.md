@@ -164,6 +164,14 @@ remaining cold-start increment should ensure the packet includes or links:
 The packet must select one track explicitly. It does not load every memory
 record or legacy file into provider context.
 
+When domain context is useful, this command composes with Engineering Knowledge
+through one bounded cold-start response. Track memory is rendered first and may
+name relevant knowledge topics; only those indexed pages are added within a
+separate knowledge budget. Duplicate citations are collapsed. Knowledge is
+optional and cannot displace the current objective, blocker, stop condition, or
+next action. The detailed composition contract is defined in
+`docs/design/engineering-knowledge.md`.
+
 ## Deterministic Migration Checks
 
 The first increment uses deterministic checks only:
@@ -221,4 +229,3 @@ file conventions without adding equivalent ceremony.
    documentation.
 5. Archive legacy memory gradually after coverage proof; do not bulk-delete
    historical files.
-

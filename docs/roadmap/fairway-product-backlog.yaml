@@ -6493,6 +6493,7 @@ tasks:
     acceptance_checks:
       - "Knowledge init creates the configured project-owned Markdown scaffold and manifest without overwriting existing files."
       - "Status and lint deterministically validate metadata, indexes, links, source revisions, path custody, duplicate identities, stale pages, and secret patterns."
+      - "Pages carry an owner and review-by date; configured local or CI lint reports overdue knowledge and requires an explicit refresh, retain, supersede, or archive disposition without silently changing authority."
       - "The implementation records references and digests only, keeps generated changes as normal reviewable Git diffs, and grants no workflow or documentation authority."
 
   - id: FW-375
@@ -6512,6 +6513,7 @@ tasks:
     acceptance_checks:
       - "Ingest previews bounded source-grounded page changes and applies them only through an explicit command that leaves a normal Git diff."
       - "Task-aware query packets select relevant indexed pages with provenance and verification labels instead of loading the full corpus."
+      - "Cold-start composition renders execution memory first, adds only explicitly relevant knowledge within a separate budget, and deduplicates shared source references."
       - "Promotion requires an explicit canonical target and reviewed commit reference; conflicts, unsafe content, and unverified-only citation chains fail closed."
 
   - id: FW-376
@@ -6531,4 +6533,5 @@ tasks:
     acceptance_checks:
       - "A provider with only repository and Fairway access resumes one GPUaaS workstream and answers one cross-task architecture question using bounded memory and knowledge packets."
       - "The pilot measures grounding, context size, lookup and resume time, stale or contradictory claims, maintenance cost, repeated investigation, and incorrect authority choices."
+      - "The pilot separately checks for synthesis errors that deterministic grounding and staleness lint cannot detect, and records whether owners disposition lint findings within the review window."
       - "A reviewed keep/refine/stop decision determines whether to expand adoption or defer semantic retrieval and automation."
