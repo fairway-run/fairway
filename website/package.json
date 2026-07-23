@@ -19,10 +19,11 @@
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "^3.8.1",
-    "wrangler": "^4.98.0"
+    "wrangler": "4.113.0"
   },
   "overrides": {
     "serialize-javascript": "^7.0.5",
+    "sharp": "0.35.3",
     "uuid": "^11.1.1"
   }
 }

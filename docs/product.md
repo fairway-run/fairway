@@ -26,6 +26,14 @@ through normal documentation review. See
 [Project working memory](design/project-working-memory.md) and
 [Engineering knowledge](design/engineering-knowledge.md).
 
+Reusable rule packs add a separate operating-knowledge layer. Fairway core
+owns loading, matching, evidence expectations, and closeout readback; projects
+and domain packs own the rules themselves. Assurance profiles then map recorded
+facts into bounded readiness and evidence-gap reports without converting those
+reports into certification or approval. Proposed execution profiles, including
+the large-migration profile, compose these primitives but are not implemented
+runtime capabilities until their release notes say otherwise.
+
 ## The Product Promise
 
 For every bounded work item, a team should be able to determine:
@@ -57,10 +65,10 @@ These labels are mandatory in public and canonical Fairway documentation.
 
 | Label | Meaning | Current Fairway examples |
 |---|---|---|
-| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; workflow and merge-readiness checks; read-oriented dashboards; packets and reports; release packaging. |
-| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, review/release coordination, environment rehearsal, and local shared-dashboard operation documented under `docs/assessment/`. |
+| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; read-oriented dashboards. |
+| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, memory/knowledge cold starts, review/release coordination, environment rehearsal, and local shared-dashboard operation documented under `docs/assessment/`. |
 | **Experimental** | Implemented as an explicit pilot or advisory surface and not the default authority path. | Shared-team server/write pilots, advisory provider narratives, notifier adapters, Postgres compatibility rehearsal, and prototype operating profiles. |
-| **Planned** | Designed or tracked but not implemented as a supported runtime capability. | A production Postgres runtime adapter, broad tracker API adapters, and a reviewed shared-team production deployment path. |
+| **Planned** | Designed or tracked but not implemented as a supported runtime capability. | Migration execution profiles, a production Postgres runtime adapter, broad tracker API adapters, and a reviewed shared-team production deployment path. |
 | **Non-goal** | Deliberately outside Fairway authority. | Autonomous approval, risk acceptance, merge, push, deploy, live mutation, credential custody, transcript-as-authority, or regulatory certification. |
 
 The dated [documentation inventory](assessment/fairway-documentation-inventory-2026-07-11.md)

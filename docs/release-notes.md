@@ -10,6 +10,113 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.2.0
+
+### What Changed
+
+- Track memory is now a first-class Fairway record with lifecycle, disposition,
+  cold-start, provider-replacement, and closeout behavior. Completed or
+  superseded work is archived instead of leaking into current next-action
+  guidance.
+- Engineering knowledge is project-owned and source-grounded. Deterministic
+  lint, ingest, snapshot binding, freshness checks, query packets, and
+  promotion surfaces keep derived synthesis separate from canonical source
+  authority.
+- GPUaaS adoption expanded the model across repair/recovery, failure and
+  upgrade domains, and logical workload identity. The bounded pilot showed
+  fast cold starts and correct source ranking without requiring embeddings,
+  hosted retrieval, or provider-private memory.
+- Generated `.fairway/AGENTS.md` files now carry an independent schema,
+  revision, generating-binary identity, and managed-content hash.
+  `agent-contract status|plan|apply` supports explicit upgrades, preserves
+  the complete legacy contract in `AGENTS.local.md` for manual migration,
+  detects local edits, and prevents older binaries from silently downgrading
+  newer contracts.
+- Fairway core implements rule-pack loading, matching, evidence checks, and
+  packet rendering while projects and domain packs own the rule definitions.
+  Migration execution profiles, rule-pack completeness bakeoffs, and verifier
+  qualification now have a reviewed design contract; they are not yet an
+  implemented migration engine.
+- Assurance profiles, evidence-gap reports, signed and offline bundles,
+  restricted advisory packaging, customer-key rehearsal, and sovereign
+  deployment baselines provide bounded evidence-acceleration capabilities.
+  They do not grant certification, legal, export, procurement, market-access,
+  or independent-assessment authority.
+- Fairway's pre-1.0 policy now explicitly favors correcting the durable product
+  model over retaining accidental behavior. Durable project data and policy
+  still require safe forward migration and downgrade protection.
+- The documentation deployment toolchain is pinned to Wrangler `4.113.0`.
+  Current transitive security fixes require this upgrade from `4.98.0`; the
+  release gate includes a real Cloudflare Pages deployment and public
+  documentation readback before tagging.
+
+### Upgrade
+
+1. Back up the project Fairway database and project control files.
+2. Install `v0.2.0`.
+3. Run `fairway config validate` and `fairway agent-contract status`.
+4. Review drift with `fairway agent-contract plan`.
+5. For an unversioned generated contract, run
+   `fairway agent-contract apply --adopt-legacy`. This losslessly copies the
+   entire old contract to `.fairway/AGENTS.local.md`; remove obsolete
+   Fairway-generated guidance and retain only project-owned instructions before
+   committing it.
+6. Run `fairway preflight`, `fairway knowledge lint`, and
+   `fairway reconcile active --dry-run`.
+
+Binary updates do not change project process when the embedded agent-contract
+revision is unchanged.
+
+Rollback requires the matching pre-upgrade backup:
+
+1. stop active Fairway sessions and dashboard processes for the project;
+2. restore the pre-upgrade `.fairway/state.db`;
+3. restore the pre-upgrade `.fairway/AGENTS.md` and other changed control files;
+4. reinstall `v0.1.13`;
+5. run `fairway config validate`, task readback, and
+   `fairway reconcile active --dry-run`.
+
+Do not point an older binary at a database or managed contract already migrated
+by a newer release and treat successful startup as rollback proof.
+
+### Known Limits
+
+- Migration execution profiles and verifier qualification are design-only in
+  this release.
+- Deterministic lexical retrieval remains the default. Embeddings and hosted
+  retrieval are intentionally deferred until measured project evidence shows a
+  concrete limitation.
+- Shared-team write APIs, trusted-proxy production verification, non-loopback
+  service exposure, Postgres runtime storage, autonomous approval, and
+  provider-send authority remain preview or unsupported.
+- Sovereign applicability, ECCN/EAR/ENC conclusions, jurisdictional claims,
+  certification, and independent security assessment remain blocked on
+  qualified external specialists. `v0.2.0` makes no such claim.
+
+### Release Checklist
+
+- Full unit, integration, race, vet, formatting, module-drift, and backlog
+  validation pass on the exact candidate.
+- Knowledge/memory tests, agent-contract lifecycle tests, release assurance,
+  offline distribution, restricted advisory, and sovereign rehearsal gates
+  pass.
+- Docusaurus production build, full dependency audit, and production-dependency
+  threshold pass.
+- The pushed release-preparation commit completes a real Cloudflare Pages
+  deployment with Wrangler `4.113.0`, followed by public route readback.
+- The retained npm dependency tree reports no known vulnerabilities at release
+  preparation time; the result is a dated scan, not a continuing guarantee.
+- A release-linked `0.2.0` binary reports the expected version and passes
+  config, contract-status, ready, and reconcile smoke.
+- A disposable project initialized by `v0.1.13` survives `v0.2.0` upgrade and
+  agent-contract adoption; restoring the pre-upgrade database and contract
+  returns the project to clean `v0.1.13` task and reconciliation readback.
+- The tag-triggered release workflow signs and notarizes Darwin binaries,
+  builds four archives, verifies the signed assurance bundle, and creates a
+  draft release.
+- A separate publish step verifies public assets, checksums, Homebrew,
+  provenance, and rollback to `v0.1.13`.
+
 ## v0.1.13
 
 ### What Changed

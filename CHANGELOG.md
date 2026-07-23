@@ -9,6 +9,58 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
+## v0.2.0 - 2026-07-23
+
+### Added
+
+- First-class database-backed track memory with lifecycle, cold-start,
+  provider-replacement, and closeout surfaces.
+- Project-owned engineering knowledge with deterministic ingest, lint,
+  authority/freshness checks, bounded query packets, and promotion workflow.
+- Versioned generated agent contracts with explicit status, planning, lossless
+  legacy preservation for manual adoption, upgrade, and downgrade protection.
+- Assurance profiles, evidence mapping, signed/offline packages, restricted
+  advisory packaging, customer-key rehearsal, and sovereign deployment
+  baseline tooling.
+- Design contracts for migration execution profiles, rule-pack completeness,
+  and verifier qualification.
+
+### Changed
+
+- Fairway now positions memory, engineering knowledge, reusable operating
+  rules, and assurance evidence as complementary accountability capabilities
+  rather than provider-private chat context.
+- Generated project guidance includes the minimal memory routine and reports
+  contract drift during preflight.
+- Pre-1.0 evolution explicitly favors correcting the durable product model over
+  preserving accidental behavior while still requiring safe forward migration
+  of project-owned data and policy.
+
+### Fixed
+
+- Cold-start packets distinguish current task state from memory disposition,
+  bind knowledge to linted source snapshots, label historical chronology, and
+  remove duplicate or synthetic next actions.
+- Memory migration and knowledge custody reject legacy files as canonical
+  authority, bound source roots and provenance, centralize secret scanning, and
+  keep retained packets within configured budgets.
+- Terminal-task memory is archived rather than presented as active execution
+  guidance, and closeout reports unresolved lifecycle debt.
+- The documentation deployment toolchain advances to Wrangler `4.113.0` and
+  overrides its vulnerable exact transitive image-processor pin with the
+  current patched release; the production portal build and full dependency
+  audit pass with no reported vulnerabilities.
+
+### Known Limits
+
+- The migration execution profile is a reviewed design, not an implemented
+  migration engine.
+- Shared-team write APIs, non-loopback production service operation, and
+  Postgres runtime storage remain preview or unsupported.
+- Sovereign tooling accelerates evidence preparation; it is not certification,
+  jurisdiction advice, export classification, or an independent security
+  assessment. Those external determinations remain explicitly blocked.
+
 ## v0.1.13
 
 ### Added
