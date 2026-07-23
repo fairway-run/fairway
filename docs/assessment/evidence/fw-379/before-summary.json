@@ -1,0 +1,12 @@
+{
+  "track_id": "ARCH-FAILURE-UPGRADE-DOMAINS-001",
+  "track_task_status": "done",
+  "memory_disposition": "active",
+  "current_objective": "Define domain and confidence semantics that work across MAAS, LXD, and Proxmox.",
+  "next_actions": [
+    "Draft the minimum domain schema and operator readback before implementation."
+  ],
+  "actionability_present": false,
+  "reconcile_findings": 0,
+  "source_packet": "/tmp/failure-domains-post-completion-cold-start.json"
+}

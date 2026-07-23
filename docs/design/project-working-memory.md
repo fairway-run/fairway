@@ -25,7 +25,7 @@ fairway memory update --track <track-id> ...
 fairway memory append --track <track-id> ...
 fairway memory packet --track <track-id> [--for <provider>]
 fairway memory stale [--older-than <duration>]
-fairway memory reconcile [--older-than <duration>]
+fairway memory reconcile [--track <track-id>] [--older-than <duration>]
 fairway memory disposition --track <track-id> ...
 fairway memory history [--track <track-id>]
 ```
@@ -170,6 +170,19 @@ describes the current Fairway task. Checkpoint excerpts are timestamped and
 declared `newest_first_historical`; an older `active` excerpt is therefore
 history, not current task state. Curated and generated blockers/actions are
 deduplicated, and packet construction does not invent inspect-status actions.
+
+When the track id is also a Fairway task id and that task is terminal, the
+packet retains the prior objective and next actions for traceability but marks
+both as non-actionable. `actionability=historical_terminal_task`,
+`current_objective_actionable=false`, and `next_actions_actionable=false`
+prevent a replacement provider from resuming completed work. Cold-start also
+emits a closeout warning.
+
+`fairway memory reconcile --track <track-id>` detects this state as
+`terminal_task_active_memory`. Reconciliation remains read-only: an accountable
+owner must decide whether stable cross-task value should be promoted or whether
+the completed track memory should be archived. Fairway does not infer that
+decision from task completion.
 
 When domain context is useful, this command composes with Engineering Knowledge
 through one bounded cold-start response. Track memory is rendered first and may

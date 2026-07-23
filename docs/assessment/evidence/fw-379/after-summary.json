@@ -1,0 +1,16 @@
+{
+  "track_id": "ARCH-FAILURE-UPGRADE-DOMAINS-001",
+  "track_task_status": "done",
+  "memory_disposition_before_closeout": "active",
+  "actionability": "historical_terminal_task",
+  "current_objective_actionable": false,
+  "next_actions_actionable": false,
+  "reconcile_finding": "terminal_task_active_memory",
+  "closeout_disposition": "archived",
+  "canonical_commit": "5d0be6cac",
+  "post_closeout_reconcile_findings": 0,
+  "post_closeout_cold_start": "excluded",
+  "clarifications_required": 0,
+  "provider_conversation_required": false,
+  "legacy_tmp_ux_required": false
+}

@@ -218,11 +218,16 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 			return fmt.Errorf("resolve cold-start source facts: %w", err)
 		}
 		tasks, sessions, checkpoints = trackScopedColdStartFacts(memory, rootTaskIDs, tasks, sessions, checkpoints)
-		packet, err := boundMemoryPacket(buildMemoryPacket(memory, *forProvider, tasks, sessions, checkpoints))
+		packet, err := boundMemoryPacket(buildMemoryPacket(memory, *forProvider, tasks, sessions, checkpoints, cfg.States.Terminal))
 		if err != nil {
 			return err
 		}
 		warnings := coldStartWarnings(memory, time.Now().UTC(), *olderThan)
+		if !packet.CurrentObjectiveActionable && packet.MemoryDisposition == "active" {
+			warnings = append(warnings, "track task is terminal while memory remains active; objective and next actions are historical until memory is promoted, archived, or refreshed for a successor track")
+		} else if !packet.CurrentObjectiveActionable && packet.MemoryDisposition == "promote" {
+			warnings = append(warnings, "track task is terminal and memory promotion remains pending; objective and next actions are historical until canonical promotion is completed")
+		}
 		gitReadback, err := boundColdStartGit(coldStartGit{Branch: fairwaygit.CurrentBranch(root), Commit: fairwaygit.LastCommit(root)})
 		if err != nil {
 			return err
@@ -558,7 +563,8 @@ func boundMemoryPacket(packet memoryPacket) (memoryPacket, error) {
 		&packet.Track.ActiveScope, &packet.Track.CurrentObjective, &packet.Track.Owner,
 		&packet.Track.ReviewBy, &packet.Track.Disposition, &packet.Track.PromotionTarget,
 		&packet.Track.CanonicalCommit, &packet.Track.SupersededByTrackID, &packet.Track.UpdatedAt,
-		&packet.MemoryDisposition, &packet.TrackTaskStatus, &packet.CheckpointChronology, &packet.ForProvider,
+		&packet.MemoryDisposition, &packet.TrackTaskStatus, &packet.Actionability,
+		&packet.CheckpointChronology, &packet.ForProvider,
 	}
 	for _, scalar := range scalars {
 		*scalar, err = boundString(*scalar)

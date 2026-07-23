@@ -13094,7 +13094,7 @@ func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdMemoryStale(ctx, opts, args[1:])
 	case "reconcile":
 		if len(args) > 1 && isHelpOnly(args[1:]) {
-			subcommandUsage("memory reconcile", "[--older-than <duration>]")
+			subcommandUsage("memory reconcile", "[--track <track-id>] [--older-than <duration>]")
 			return nil
 		}
 		return cmdMemoryReconcile(ctx, opts, args[1:])
@@ -14390,18 +14390,45 @@ type memoryReconcileFinding struct {
 func cmdMemoryReconcile(ctx context.Context, opts globalOptions, args []string) error {
 	fs := flag.NewFlagSet("memory reconcile", flag.ContinueOnError)
 	olderThan := fs.Duration("older-than", 30*24*time.Hour, "age that creates refresh or promotion debt")
+	track := fs.String("track", "", "optional exact track id")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected memory reconcile arguments: %s", strings.Join(fs.Args(), " "))
 	}
-	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		memories, err := s.TrackMemories(ctx)
 		if err != nil {
 			return err
 		}
-		findings := reconcileTrackMemories(memories, time.Now().UTC(), *olderThan)
+		trackID := strings.TrimSpace(*track)
+		if trackID != "" {
+			found := false
+			for _, memory := range memories {
+				if memory.TrackID == trackID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("track memory %q not found", strings.TrimSpace(*track))
+			}
+		}
+		tasks, err := s.AllTasks(ctx)
+		if err != nil {
+			return err
+		}
+		findings := reconcileTrackMemories(memories, tasks, cfg.States.Terminal, time.Now().UTC(), *olderThan)
+		if trackID != "" {
+			filtered := findings[:0]
+			for _, finding := range findings {
+				if finding.TrackID == trackID {
+					filtered = append(filtered, finding)
+				}
+			}
+			findings = filtered
+		}
 		if opts.JSON {
 			return printJSON(struct {
 				OK       bool                     `json:"ok"`
@@ -14422,9 +14449,13 @@ func cmdMemoryReconcile(ctx context.Context, opts globalOptions, args []string) 
 	})
 }
 
-func reconcileTrackMemories(memories []store.TrackMemory, now time.Time, olderThan time.Duration) []memoryReconcileFinding {
+func reconcileTrackMemories(memories []store.TrackMemory, tasks []store.Task, terminalStatuses []string, now time.Time, olderThan time.Duration) []memoryReconcileFinding {
 	if olderThan <= 0 {
 		olderThan = 30 * 24 * time.Hour
+	}
+	taskStatuses := map[string]string{}
+	for _, task := range tasks {
+		taskStatuses[task.Definition.ID] = task.Status
 	}
 	sharedFacts := map[string][]string{}
 	for _, mem := range memories {
@@ -14446,6 +14477,17 @@ func reconcileTrackMemories(memories []store.TrackMemory, now time.Time, olderTh
 	}
 	var out []memoryReconcileFinding
 	for _, mem := range memories {
+		if mem.Disposition == "active" && isTerminal(taskStatuses[mem.TrackID], terminalStatuses) {
+			add(
+				&out,
+				mem,
+				"terminal_task_active_memory",
+				"warning",
+				"track task is terminal while memory remains active; objective and next actions are historical until an accountable closeout decision is recorded",
+				"closeout",
+				"fairway memory disposition --track "+mem.TrackID+" --state <promote|archived> --reason <reason>",
+			)
+		}
 		if mem.Disposition == "active" && strings.TrimSpace(mem.Owner) == "" {
 			add(&out, mem, "missing_owner", "warning", "active memory has no accountable owner", "refresh", "fairway memory update --track "+mem.TrackID+" --owner <owner> --review-by <date> --source-evidence-id <id>")
 		}
@@ -14565,7 +14607,7 @@ func cmdMemoryPacket(ctx context.Context, opts globalOptions, args []string) err
 	if *track == "" {
 		return errors.New("--track is required")
 	}
-	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 		mem, err := s.TrackMemory(ctx, *track)
 		if err != nil {
 			return err
@@ -14582,7 +14624,7 @@ func cmdMemoryPacket(ctx context.Context, opts globalOptions, args []string) err
 		if err != nil {
 			return err
 		}
-		packet := buildMemoryPacket(mem, *forProvider, tasks, sessions, checkpoints)
+		packet := buildMemoryPacket(mem, *forProvider, tasks, sessions, checkpoints, cfg.States.Terminal)
 		if opts.JSON {
 			return printJSON(packet)
 		}
@@ -14618,29 +14660,40 @@ func cmdMemoryStale(ctx context.Context, opts globalOptions, args []string) erro
 }
 
 type memoryPacket struct {
-	Track                store.TrackMemory `json:"track"`
-	MemoryDisposition    string            `json:"memory_disposition"`
-	TrackTaskStatus      string            `json:"track_task_status,omitempty"`
-	CheckpointChronology string            `json:"checkpoint_chronology"`
-	ForProvider          string            `json:"for_provider,omitempty"`
-	ActiveTasks          []string          `json:"active_tasks,omitempty"`
-	ActiveSessions       []string          `json:"active_sessions,omitempty"`
-	Blockers             []string          `json:"blockers,omitempty"`
-	NextActions          []string          `json:"next_actions,omitempty"`
-	Checkpoints          []string          `json:"checkpoints,omitempty"`
+	Track                      store.TrackMemory `json:"track"`
+	MemoryDisposition          string            `json:"memory_disposition"`
+	TrackTaskStatus            string            `json:"track_task_status,omitempty"`
+	Actionability              string            `json:"actionability"`
+	CurrentObjectiveActionable bool              `json:"current_objective_actionable"`
+	NextActionsActionable      bool              `json:"next_actions_actionable"`
+	CheckpointChronology       string            `json:"checkpoint_chronology"`
+	ForProvider                string            `json:"for_provider,omitempty"`
+	ActiveTasks                []string          `json:"active_tasks,omitempty"`
+	ActiveSessions             []string          `json:"active_sessions,omitempty"`
+	Blockers                   []string          `json:"blockers,omitempty"`
+	NextActions                []string          `json:"next_actions,omitempty"`
+	Checkpoints                []string          `json:"checkpoints,omitempty"`
 }
 
-func buildMemoryPacket(mem store.TrackMemory, forProvider string, tasks []store.Task, sessions []store.Session, checkpoints []store.Checkpoint) memoryPacket {
+func buildMemoryPacket(mem store.TrackMemory, forProvider string, tasks []store.Task, sessions []store.Session, checkpoints []store.Checkpoint, terminalStatuses []string) memoryPacket {
 	packet := memoryPacket{
 		Track: mem, MemoryDisposition: firstNonEmpty(mem.Disposition, "active"),
-		CheckpointChronology: "newest_first_historical",
-		ForProvider:          strings.TrimSpace(forProvider),
-		Blockers:             append([]string{}, mem.Blockers...),
-		NextActions:          append([]string{}, mem.NextActions...),
+		Actionability:              "current",
+		CurrentObjectiveActionable: true,
+		NextActionsActionable:      true,
+		CheckpointChronology:       "newest_first_historical",
+		ForProvider:                strings.TrimSpace(forProvider),
+		Blockers:                   append([]string{}, mem.Blockers...),
+		NextActions:                append([]string{}, mem.NextActions...),
 	}
 	for _, task := range tasks {
 		if task.Definition.ID == mem.TrackID {
 			packet.TrackTaskStatus = task.Status
+			if isTerminal(task.Status, terminalStatuses) {
+				packet.Actionability = "historical_terminal_task"
+				packet.CurrentObjectiveActionable = false
+				packet.NextActionsActionable = false
+			}
 		}
 		if task.Status == "in_progress" || task.Status == "blocked" || task.Status == "todo" {
 			packet.ActiveTasks = append(packet.ActiveTasks, task.Definition.ID+" "+task.Status+" "+task.Definition.Title)
@@ -14722,12 +14775,16 @@ func printMemoryPacket(packet memoryPacket) {
 	if packet.ForProvider != "" {
 		fmt.Printf("for: %s\n", packet.ForProvider)
 	}
-	fmt.Printf("title: %s\nowner: %s\nreview_by: %s\nmemory_disposition: %s\ntrack_task_status: %s\ncheckpoint_chronology: %s\npromotion_target: %s\ncanonical_commit: %s\npurpose: %s\noperating_mode: %s\nactive_scope: %s\ncurrent_objective: %s\nupdated_at: %s\n",
-		mem.Title, mem.Owner, mem.ReviewBy, packet.MemoryDisposition, firstNonEmpty(packet.TrackTaskStatus, "unknown"), packet.CheckpointChronology, mem.PromotionTarget, mem.CanonicalCommit, mem.Purpose, mem.OperatingMode, mem.ActiveScope, mem.CurrentObjective, mem.UpdatedAt)
+	fmt.Printf("title: %s\nowner: %s\nreview_by: %s\nmemory_disposition: %s\ntrack_task_status: %s\nactionability: %s\ncurrent_objective_actionable: %t\nnext_actions_actionable: %t\ncheckpoint_chronology: %s\npromotion_target: %s\ncanonical_commit: %s\npurpose: %s\noperating_mode: %s\nactive_scope: %s\ncurrent_objective: %s\nupdated_at: %s\n",
+		mem.Title, mem.Owner, mem.ReviewBy, packet.MemoryDisposition, firstNonEmpty(packet.TrackTaskStatus, "unknown"), packet.Actionability, packet.CurrentObjectiveActionable, packet.NextActionsActionable, packet.CheckpointChronology, mem.PromotionTarget, mem.CanonicalCommit, mem.Purpose, mem.OperatingMode, mem.ActiveScope, mem.CurrentObjective, mem.UpdatedAt)
 	printStringSection("Decisions", mem.Decisions)
 	printStringSection("Blockers", packet.Blockers)
 	printStringSection("Open Questions", mem.OpenQuestions)
-	printStringSection("Next Actions", packet.NextActions)
+	nextActionsTitle := "Next Actions"
+	if !packet.NextActionsActionable {
+		nextActionsTitle = "Historical Next Actions (Not Actionable)"
+	}
+	printStringSection(nextActionsTitle, packet.NextActions)
 	printStringSection("Active Tasks", packet.ActiveTasks)
 	printStringSection("Active Sessions", packet.ActiveSessions)
 	printStringSection("Recent Checkpoints", packet.Checkpoints)

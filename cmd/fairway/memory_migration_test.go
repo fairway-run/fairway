@@ -26,7 +26,7 @@ func TestBuildMemoryPacketLabelsStateChronologyAndDeduplicatesGuidance(t *testin
 		{TaskID: "TRACK-1", State: "active", Summary: "older", CreatedAt: "2026-07-23T01:00:00Z"},
 	}
 
-	packet := buildMemoryPacket(memory, "isolated", tasks, nil, checkpoints)
+	packet := buildMemoryPacket(memory, "isolated", tasks, nil, checkpoints, []string{"done"})
 	if packet.MemoryDisposition != "active" || packet.TrackTaskStatus != "todo" ||
 		packet.CheckpointChronology != "newest_first_historical" {
 		t.Fatalf("state labels=%+v", packet)
@@ -56,12 +56,35 @@ func TestBuildMemoryPacketAddsOnlyCurrentTrackBlocker(t *testing.T) {
 		{Definition: store.TaskDefinition{ID: "TRACK-10", Title: "Related context"}, Status: "blocked"},
 	}
 
-	packet := buildMemoryPacket(memory, "", tasks, nil, nil)
+	packet := buildMemoryPacket(memory, "", tasks, nil, nil, []string{"done"})
 	if !reflect.DeepEqual(packet.Blockers, []string{"TRACK-1 blocked"}) {
 		t.Fatalf("blockers=%v", packet.Blockers)
 	}
 	if containsTaskReference([]string{"TRACK-10 blocked"}, "TRACK-1") {
 		t.Fatal("task reference matching accepted a partial task id")
+	}
+}
+
+func TestBuildMemoryPacketMarksTerminalTaskGuidanceHistorical(t *testing.T) {
+	memory := store.TrackMemory{
+		TrackID:          "TRACK-1",
+		Disposition:      "active",
+		CurrentObjective: "finish the old task",
+		NextActions:      []string{"perform the old next step"},
+	}
+	tasks := []store.Task{
+		{Definition: store.TaskDefinition{ID: "TRACK-1", Title: "Track"}, Status: "done"},
+	}
+
+	packet := buildMemoryPacket(memory, "", tasks, nil, nil, []string{"done"})
+	if packet.Actionability != "historical_terminal_task" {
+		t.Fatalf("actionability=%q", packet.Actionability)
+	}
+	if packet.CurrentObjectiveActionable || packet.NextActionsActionable {
+		t.Fatalf("terminal guidance remained actionable: %+v", packet)
+	}
+	if !reflect.DeepEqual(packet.NextActions, memory.NextActions) {
+		t.Fatalf("historical guidance was not preserved: %v", packet.NextActions)
 	}
 }
 

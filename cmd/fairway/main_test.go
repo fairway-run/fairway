@@ -711,6 +711,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"memory", "import", "--help"}, "fairway memory import --file <tmp-ux-memory.md> --track <track-id>"},
 		{[]string{"memory", "coverage", "--help"}, "fairway memory coverage [--root tmp-ux]"},
 		{[]string{"memory", "cold-start", "--help"}, "fairway memory cold-start --track <track-id>"},
+		{[]string{"memory", "reconcile", "--help"}, "fairway memory reconcile [--track <track-id>]"},
 		{[]string{"memory", "retire-file", "--help"}, "fairway memory retire-file --file <tmp-ux-memory.md> --track <track-id> --reason <text>"},
 		{[]string{"knowledge", "--help"}, "fairway knowledge init|status|lint|ingest|query|promote"},
 		{[]string{"wait", "--help"}, "fairway wait add|ack|list|tick|resolve|wake"},
@@ -4493,6 +4494,28 @@ func TestCLI_TrackMemoryPackets(t *testing.T) {
 
 	reconcile := runCapture(t, "memory", "reconcile")
 	assertContains(t, reconcile, "memory_reconcile: true")
+	runOK(t, "memory", "update",
+		"--track", "T-001",
+		"--owner", "backend",
+		"--review-by", "2099-01-01",
+		"--source-checkpoint-id", "1",
+		"--current-objective", "complete the original task",
+		"--next-action", "perform the original next step")
+	runOK(t, "set-status", "T-001", "done")
+	terminalReconcile := runCapture(t, "memory", "reconcile", "--track", "T-001")
+	assertContains(t, terminalReconcile, "kind=terminal_task_active_memory")
+	assertContains(t, terminalReconcile, "kind=potential_fact_conflict")
+	assertNotContains(t, terminalReconcile, "track=architecture-control kind=potential_fact_conflict")
+	terminalColdStart := runCapture(t, "--json", "memory", "cold-start", "--track", "T-001")
+	assertContains(t, terminalColdStart, `"track_task_status": "done"`)
+	assertContains(t, terminalColdStart, `"actionability": "historical_terminal_task"`)
+	assertContains(t, terminalColdStart, `"current_objective_actionable": false`)
+	assertContains(t, terminalColdStart, `"next_actions_actionable": false`)
+	assertContains(t, terminalColdStart, "objective and next actions are historical")
+	runOK(t, "memory", "disposition", "--track", "T-001", "--state", "promote", "--reason", "stable value pending promotion", "--promotion-target", "docs/design/task-result.md")
+	promotedTerminalColdStart := runCapture(t, "--json", "memory", "cold-start", "--track", "T-001")
+	assertContains(t, promotedTerminalColdStart, "memory promotion remains pending")
+	assertNotContains(t, promotedTerminalColdStart, "memory remains active")
 	runOK(t, "memory", "disposition", "--track", "architecture-control", "--state", "promote", "--reason", "stable cross-task rule", "--promotion-target", "docs/design/architecture.md")
 	debt := runCapture(t, "memory", "reconcile")
 	assertContains(t, debt, "kind=promotion_debt")
@@ -4515,8 +4538,8 @@ func TestCLI_TrackMemoryPackets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertContains(t, string(equivalence), `"track_memories": 1`)
-	assertContains(t, string(equivalence), `"track_memory_lifecycle": 2`)
+	assertContains(t, string(equivalence), `"track_memories": 2`)
+	assertContains(t, string(equivalence), `"track_memory_lifecycle": 3`)
 }
 
 func TestCLI_MemoryMigrationPreviewApplyCoverageColdStartAndRetirement(t *testing.T) {
@@ -4771,13 +4794,16 @@ func TestTrackMemoryReconcileFindings(t *testing.T) {
 		{TrackID: "promote", Owner: "governance", ReviewBy: "2026-08-01", Disposition: "promote", PromotionTarget: "docs/design/model.md", SourceReviewIDs: []int64{8}, UpdatedAt: now.Format(time.RFC3339Nano)},
 		{TrackID: "superseded", Disposition: "superseded", UpdatedAt: now.Format(time.RFC3339Nano)},
 	}
-	findings := reconcileTrackMemories(rows, now, 30*24*time.Hour)
+	tasks := []store.Task{
+		{Definition: store.TaskDefinition{ID: "one"}, Status: "done"},
+	}
+	findings := reconcileTrackMemories(rows, tasks, []string{"done"}, now, 30*24*time.Hour)
 	raw, err := json.Marshal(findings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	for _, expected := range []string{"missing_owner", "missing_source_facts", "missing_review_date", "review_overdue", "stale", "potential_fact_conflict", "promotion_debt", "missing_supersession"} {
+	for _, expected := range []string{"missing_owner", "missing_source_facts", "missing_review_date", "review_overdue", "stale", "potential_fact_conflict", "promotion_debt", "missing_supersession", "terminal_task_active_memory"} {
 		assertContains(t, text, expected)
 	}
 }
