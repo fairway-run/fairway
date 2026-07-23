@@ -166,9 +166,13 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		sources []QuerySource
 	}
 	candidates := []candidate{}
+	snapshotMismatches := 0
 	for _, page := range report.Pages {
 		if page.Path == "README.md" || page.Path == "index.md" || page.Path == "log.md" || page.Metadata.Status == "superseded" || !page.Reachable {
 			continue
+		}
+		if opts.CustodyHook != nil {
+			opts.CustodyHook("query_before_page_open")
 		}
 		data, _, readErr := readBoundProjectFile(
 			paths,
@@ -177,7 +181,14 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 			"query_page_after_open",
 			opts.CustodyHook,
 		)
-		if readErr != nil || containsSecret(data) {
+		if readErr != nil {
+			continue
+		}
+		if sha256.Sum256(data) != page.contentDigest {
+			snapshotMismatches++
+			continue
+		}
+		if containsSecret(data) {
 			continue
 		}
 		excerpt := pageExcerpt(data, queryExcerptBytes)
@@ -217,6 +228,9 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 	}
 	if excludedUnsafe > 0 {
 		packet.Warnings = append(packet.Warnings, fmt.Sprintf("%d unsafe or structurally invalid knowledge page(s) were excluded", excludedUnsafe))
+	}
+	if snapshotMismatches > 0 {
+		packet.Warnings = append(packet.Warnings, fmt.Sprintf("%d knowledge page(s) changed after lint and were excluded", snapshotMismatches))
 	}
 	sourceByKey := map[string]QuerySource{}
 	for _, item := range candidates {

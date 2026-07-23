@@ -3,6 +3,7 @@ package knowledge
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -210,7 +211,7 @@ func (s *scanState) readPage(path, rel string, size int64) error {
 		return fmt.Errorf("knowledge link count exceeds limit %d", s.opts.MaxLinks)
 	}
 	s.linkCount += len(links)
-	page := Page{Path: rel, LinkCount: len(links)}
+	page := Page{Path: rel, LinkCount: len(links), contentDigest: sha256.Sum256(data)}
 	if rel != "README.md" && rel != "log.md" {
 		meta, findings := parseMetadata(data, rel)
 		if !hasSecret {

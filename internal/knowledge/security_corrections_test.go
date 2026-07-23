@@ -233,6 +233,47 @@ func TestQueryReadsOpenedPageWhenParentDirectoryIsReplaced(t *testing.T) {
 	}
 }
 
+func TestQueryExcludesPageReplacedAfterLintBeforeDescriptorOpen(t *testing.T) {
+	project := querySwapProject(t)
+	revision := gitRevision(t, project)
+	pagePath := filepath.Join(project, DefaultRoot, "architecture", "node.md")
+	replaced := false
+	options := QueryOptions{
+		Options: Options{
+			ProjectRoot: project,
+			Now:         mustDate(t, "2026-07-22"),
+			CustodyHook: func(stage string) {
+				if stage != "query_before_page_open" || replaced {
+					return
+				}
+				replaced = true
+				if err := os.Rename(pagePath, pagePath+".lint-snapshot"); err != nil {
+					t.Fatal(err)
+				}
+				replacement := pageBody("Replacement metadata", "verified", "2026-12-31", revision, nil, "docs/source.md") +
+					"\nreplacement-after-lint\n"
+				if err := os.WriteFile(pagePath, []byte(replacement), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		Topic: "replacement-after-lint", BudgetBytes: 4096,
+	}
+	packet, err := Query(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replaced {
+		t.Fatal("replacement hook did not run")
+	}
+	if len(packet.Pages) != 0 || len(packet.Sources) != 0 {
+		t.Fatalf("query combined lint metadata with replaced page bytes: %+v", packet)
+	}
+	if !strings.Contains(strings.Join(packet.Warnings, "\n"), "changed after lint") {
+		t.Fatalf("query did not report fail-closed snapshot mismatch: %v", packet.Warnings)
+	}
+}
+
 func TestIngestReadsOpenedSourceWhenVisibleFileIsReplaced(t *testing.T) {
 	project, options := ingestSwapProject(t)
 	sourcePath := filepath.Join(project, "docs", "source.md")

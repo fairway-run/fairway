@@ -101,10 +101,11 @@ type FairwayReferenceRequirement struct {
 
 // Page is a bounded inventory entry.
 type Page struct {
-	Path      string       `json:"path"`
-	Metadata  PageMetadata `json:"metadata"`
-	LinkCount int          `json:"link_count"`
-	Reachable bool         `json:"reachable"`
+	Path          string       `json:"path"`
+	Metadata      PageMetadata `json:"metadata"`
+	LinkCount     int          `json:"link_count"`
+	Reachable     bool         `json:"reachable"`
+	contentDigest [32]byte
 }
 
 // Severity classifies a deterministic finding.
