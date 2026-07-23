@@ -13,6 +13,8 @@ const (
 	defaultMaxPages     = 2048
 	defaultMaxPageBytes = int64(1 << 20)
 	defaultMaxLinks     = 4096
+	defaultQueryBudget  = 12 * 1024
+	maxQueryBudget      = 32 * 1024
 )
 
 // Options controls a bounded knowledge scan.
@@ -69,6 +71,8 @@ type PageMetadata struct {
 	SourceSHA        string   `yaml:"source_sha" json:"source_sha"`
 	Sources          []Source `yaml:"sources" json:"sources"`
 	Supersedes       []string `yaml:"supersedes" json:"supersedes"`
+	PromotionTarget  string   `yaml:"promotion_target,omitempty" json:"promotion_target,omitempty"`
+	PromotionCommit  string   `yaml:"promotion_commit,omitempty" json:"promotion_commit,omitempty"`
 }
 
 // Source identifies one safe provenance reference.
@@ -131,4 +135,105 @@ type Report struct {
 	Pages             []Page                        `json:"pages"`
 	Findings          []Finding                     `json:"findings"`
 	FairwayReferences []FairwayReferenceRequirement `json:"fairway_references,omitempty"`
+}
+
+// Change describes one bounded project-file mutation proposed by a lifecycle
+// command. Content is generated metadata and prose, never copied source text.
+type Change struct {
+	Path   string `json:"path"`
+	Action string `json:"action"`
+	SHA256 string `json:"sha256"`
+	Bytes  int    `json:"bytes"`
+}
+
+// IngestOptions controls deterministic, preview-first page creation.
+type IngestOptions struct {
+	Options
+	SourcePath  string
+	SourceClass string
+	PagePath    string
+	Title       string
+	Owner       string
+	ReviewBy    string
+	Apply       bool
+}
+
+// IngestResult reports a bounded proposal and whether it was applied.
+type IngestResult struct {
+	Applied        bool     `json:"applied"`
+	Preview        bool     `json:"preview"`
+	SourcePath     string   `json:"source_path"`
+	SourceClass    string   `json:"source_class"`
+	SourceRevision string   `json:"source_revision"`
+	Changes        []Change `json:"changes"`
+}
+
+// QueryOptions controls deterministic task/topic-aware knowledge selection.
+type QueryOptions struct {
+	Options
+	Topic       string
+	TaskID      string
+	TaskTerms   []string
+	MaxResults  int
+	BudgetBytes int
+}
+
+// QuerySource is a deduplicated provenance reference.
+type QuerySource struct {
+	Key       string `json:"key"`
+	Class     string `json:"class"`
+	Authority string `json:"authority"`
+	Kind      string `json:"kind"`
+	Path      string `json:"path,omitempty"`
+	FairwayID string `json:"fairway_id,omitempty"`
+	Verified  bool   `json:"verified"`
+}
+
+// QueryPage is a bounded selected-page projection.
+type QueryPage struct {
+	Path        string `json:"path"`
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	Owner       string `json:"owner"`
+	ReviewBy    string `json:"review_by"`
+	SourceSHA   string `json:"source_sha"`
+	Excerpt     string `json:"excerpt,omitempty"`
+	Score       int    `json:"score"`
+	SourceCount int    `json:"source_count"`
+	Verified    bool   `json:"verified"`
+	Conflict    bool   `json:"conflict"`
+	Stale       bool   `json:"stale"`
+}
+
+// QueryPacket is the stable bounded retrieval surface.
+type QueryPacket struct {
+	Schema      string        `json:"schema"`
+	Topic       string        `json:"topic,omitempty"`
+	TaskID      string        `json:"task_id,omitempty"`
+	Pages       []QueryPage   `json:"pages"`
+	Sources     []QuerySource `json:"sources"`
+	Warnings    []string      `json:"warnings,omitempty"`
+	BudgetBytes int           `json:"budget_bytes"`
+	Bytes       int           `json:"bytes"`
+	Bounded     bool          `json:"bounded"`
+	ReadOnly    bool          `json:"read_only"`
+}
+
+// PromoteOptions controls preview-first promotion recording.
+type PromoteOptions struct {
+	Options
+	PagePath       string
+	TargetPath     string
+	ReviewedCommit string
+	Apply          bool
+}
+
+// PromoteResult reports the verified canonical target and page mutation.
+type PromoteResult struct {
+	Applied        bool     `json:"applied"`
+	Preview        bool     `json:"preview"`
+	PagePath       string   `json:"page_path"`
+	TargetPath     string   `json:"target_path"`
+	ReviewedCommit string   `json:"reviewed_commit"`
+	Changes        []Change `json:"changes"`
 }

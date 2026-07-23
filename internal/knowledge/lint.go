@@ -310,6 +310,7 @@ func (s *scanState) validateMetadata(path string, meta PageMetadata) {
 	if meta.Status == "verified" && validProvenance == 0 {
 		s.add("verified_provenance_missing", SeverityError, path, "verified page requires at least one validated source")
 	}
+	s.validatePromotion(path, meta)
 	for _, superseded := range meta.Supersedes {
 		target, err := safeRelativeReference(s.paths.root, filepath.Dir(filepath.Join(s.paths.root, filepath.FromSlash(path))), superseded)
 		if err != nil || target == "" {
@@ -320,6 +321,32 @@ func (s *scanState) validateMetadata(path string, meta PageMetadata) {
 		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 			s.add("supersedes_broken", SeverityError, path, "superseded page is missing or not a regular file")
 		}
+	}
+}
+
+func (s *scanState) validatePromotion(path string, meta PageMetadata) {
+	if meta.PromotionTarget == "" && meta.PromotionCommit == "" {
+		return
+	}
+	if meta.PromotionTarget == "" || meta.PromotionCommit == "" {
+		s.add("promotion_metadata_invalid", SeverityError, path, "promotion target and commit must be recorded together")
+		return
+	}
+	if meta.Status != "superseded" {
+		s.add("promotion_metadata_invalid", SeverityError, path, "promoted page status must be superseded")
+	}
+	if !shaPattern.MatchString(meta.PromotionCommit) || !commitIsAncestor(s.paths.project, meta.PromotionCommit) {
+		s.add("promotion_commit_invalid", SeverityError, path, "promotion commit is invalid or not an ancestor of HEAD")
+		return
+	}
+	_, target, err := resolveCanonicalTarget(s.paths, s.manifest, meta.PromotionTarget)
+	if err != nil {
+		s.add("promotion_target_invalid", SeverityError, path, "promotion target is missing, unsafe, or outside canonical roots")
+		return
+	}
+	match, err := sourceMatchesRevision(s.paths.project, target, meta.PromotionCommit, s.opts.MaxPageBytes)
+	if err != nil || !match {
+		s.add("promotion_target_stale", SeverityError, path, "promotion target differs from the recorded reviewed commit")
 	}
 }
 
