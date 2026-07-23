@@ -9,7 +9,16 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
-## v0.2.3 - 2026-07-23
+## v0.2.4 - 2026-07-23
+
+### Fixed
+
+- Release-assurance checksum files now contain the portable asset basename
+  instead of the release runner's absolute temporary path.
+- `v0.2.3` remains an immutable unpublished candidate after draft-asset
+  verification caught the non-portable checksum before publication.
+
+## v0.2.3 - 2026-07-23 (unpublished candidate)
 
 ### Fixed
 

@@ -32,7 +32,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("requires keygen, fingerprint, archive-file, archive-dir, scan-retained, scan-promote, or failure-packet")
+		return errors.New("requires keygen, fingerprint, archive-file, archive-dir, checksum-file, scan-retained, scan-promote, or failure-packet")
 	}
 	switch args[0] {
 	case "keygen":
@@ -85,6 +85,17 @@ func run(args []string) error {
 			return errors.New("archive-dir requires --dir, --root-name, and --out")
 		}
 		return archiveDirectory(*dir, *rootName, *out)
+	case "checksum-file":
+		fs := flag.NewFlagSet("checksum-file", flag.ContinueOnError)
+		input := fs.String("input", "", "input file")
+		out := fs.String("out", "", "new checksum output")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if fs.NArg() != 0 || *input == "" || *out == "" {
+			return errors.New("checksum-file requires --input and --out")
+		}
+		return checksumFile(*input, *out)
 	case "scan-retained":
 		fs := flag.NewFlagSet("scan-retained", flag.ContinueOnError)
 		dir := fs.String("dir", "", "retained output directory")
@@ -402,6 +413,45 @@ func archiveFile(input, name, out string) error {
 	return writeArchive(out, func(tw *tar.Writer) error {
 		return addArchiveFile(tw, input, name, info)
 	})
+}
+
+func checksumFile(input, out string) (returnErr error) {
+	info, err := os.Lstat(input)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("checksum input must be a regular non-symlink file")
+	}
+	if _, err := os.Lstat(out); !errors.Is(err, os.ErrNotExist) {
+		return errors.New("checksum output must not already exist")
+	}
+
+	source, err := os.Open(input)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, source); err != nil {
+		return err
+	}
+
+	output, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := output.Close(); returnErr == nil && err != nil {
+			returnErr = err
+		}
+		if returnErr != nil {
+			_ = os.Remove(out)
+		}
+	}()
+
+	if _, err := fmt.Fprintf(output, "%s  %s\n", hex.EncodeToString(hash.Sum(nil)), filepath.Base(input)); err != nil {
+		return err
+	}
+	return output.Sync()
 }
 
 func archiveDirectory(dir, rootName, out string) error {

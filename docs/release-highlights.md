@@ -11,3 +11,5 @@
   scheduler-sensitive SSE timing assumptions on the macOS signing runner.
 - Release assurance records the version of the exact pinned GoReleaser
   executable that built the signed candidate archives.
+- Release-assurance checksums are portable and reference only the published
+  asset basename, never a runner-local build path.

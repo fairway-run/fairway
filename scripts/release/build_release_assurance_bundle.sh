@@ -211,5 +211,5 @@ done < <(find "$dist_dir" -maxdepth 1 -type f -name 'fairway_*.tar.gz' -print | 
 archive="$output_root/fairway_${version}_release_assurance.tar.gz"
 helper_file=${FAIRWAY_REHEARSAL_HELPER_FILE:-scripts/release/internal/rehearsal_helper.go}
 go run "$helper_file" archive-dir --dir "$bundle_dir" --root-name "$(basename "$bundle_dir")" --out "$archive"
-shasum -a 256 "$archive" > "$archive.sha256"
+go run "$helper_file" checksum-file --input "$archive" --out "$archive.sha256"
 printf 'release assurance bundle: %s\n' "$archive"

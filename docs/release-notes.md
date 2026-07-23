@@ -10,18 +10,30 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
-## v0.2.3
+## v0.2.4
 
-`v0.2.3` is the publishable follow-up to the immutable unpublished `v0.2.2`
-candidate. The `v0.2.2` workflow completed tests and built signed, notarized
-archives, then failed closed before draft creation because the release-assurance
-builder could not resolve the GoReleaser executable installed privately by the
-GitHub Action.
+`v0.2.4` is the publishable follow-up to the immutable unpublished `v0.2.3`
+candidate. The `v0.2.3` workflow passed, created a gated draft, and produced
+verified signed archives and an assurance bundle. Pre-publication asset
+inspection then caught that the assurance checksum file named the runner's
+absolute temporary path instead of the downloadable asset basename.
+
+Checksum generation now uses the release helper to write a bounded SHA-256
+record containing only the assurance asset basename. Regression coverage proves
+that nested build paths are not retained and existing checksum outputs are not
+overwritten. Product behavior and the cumulative `v0.2.0` feature scope are
+unchanged. Install `v0.2.4`.
+
+## v0.2.3 (unpublished candidate)
+
+`v0.2.3` is an immutable unpublished candidate. It fixed pinned-builder
+provenance capture and created a gated draft, but pre-publication inspection
+rejected its non-portable assurance checksum.
 
 The tag workflow now pins GoReleaser `v2.17.0`, locates exactly one executable
 in the action tool cache, validates its custody, and passes that exact tool into
 build-provenance capture. Product behavior and the cumulative `v0.2.0` feature
-scope are unchanged. Install `v0.2.3`.
+scope are unchanged; the correction is carried forward into `v0.2.4`.
 
 ## v0.2.2 (unpublished candidate)
 
@@ -40,7 +52,7 @@ This release uses bounded behavioral synchronization for SSE stream startup,
 incremental event hydration, post-hydration completion, idle polling, and
 review-wait sweeps. Product behavior and the `v0.2.0` feature scope are
 otherwise unchanged. The `v0.2.0` and `v0.2.1` tags remain immutable and
-unpublished. Install `v0.2.3` and follow the cumulative upgrade procedure
+unpublished. Install `v0.2.4` and follow the cumulative upgrade procedure
 below.
 
 ## v0.2.1 (unpublished candidate)
@@ -92,7 +104,7 @@ artifact publication.
 ### Upgrade
 
 1. Back up the project Fairway database and project control files.
-2. Install `v0.2.3`, the published release carrying this feature scope.
+2. Install `v0.2.4`, the published release carrying this feature scope.
 3. Run `fairway config validate` and `fairway agent-contract status`.
 4. Review drift with `fairway agent-contract plan`.
 5. For an unversioned generated contract, run
@@ -130,7 +142,7 @@ by a newer release and treat successful startup as rollback proof.
   provider-send authority remain preview or unsupported.
 - Sovereign applicability, ECCN/EAR/ENC conclusions, jurisdictional claims,
   certification, and independent security assessment remain blocked on
-  qualified external specialists. `v0.2.3` makes no such claim.
+  qualified external specialists. `v0.2.4` makes no such claim.
 
 ### Release Checklist
 
@@ -145,9 +157,9 @@ by a newer release and treat successful startup as rollback proof.
   deployment with Wrangler `4.113.0`, followed by public route readback.
 - The retained npm dependency tree reports no known vulnerabilities at release
   preparation time; the result is a dated scan, not a continuing guarantee.
-- A release-linked `0.2.3` binary reports the expected version and passes
+- A release-linked `0.2.4` binary reports the expected version and passes
   config, contract-status, ready, and reconcile smoke.
-- A disposable project initialized by `v0.1.13` survives `v0.2.3` upgrade and
+- A disposable project initialized by `v0.1.13` survives `v0.2.4` upgrade and
   agent-contract adoption; restoring the pre-upgrade database and contract
   returns the project to clean `v0.1.13` task and reconciliation readback.
 - The tag-triggered release workflow signs and notarizes Darwin binaries,

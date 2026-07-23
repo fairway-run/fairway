@@ -61,6 +61,37 @@ func TestArchiveFileAndDirectoryAreDeterministic(t *testing.T) {
 	}
 }
 
+func TestChecksumFileUsesPortableBasename(t *testing.T) {
+	dir := t.TempDir()
+	inputDir := filepath.Join(dir, "nested", "artifacts")
+	if err := os.MkdirAll(inputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input := filepath.Join(inputDir, "fairway_v0.2.4_release_assurance.tar.gz")
+	if err := os.WriteFile(input, []byte("release assurance\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "checksum.txt")
+	if err := checksumFile(input, out); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := strings.TrimSpace(string(data))
+	fields := strings.Fields(line)
+	if len(fields) != 2 || fields[1] != filepath.Base(input) {
+		t.Fatalf("checksum = %q; want digest and portable basename", line)
+	}
+	if strings.Contains(line, inputDir) {
+		t.Fatalf("checksum retained build path: %q", line)
+	}
+	if err := checksumFile(input, out); err == nil {
+		t.Fatal("checksum overwrote existing output")
+	}
+}
+
 func TestGenerateKeyWritesPrivateModeAndFingerprint(t *testing.T) {
 	dir := t.TempDir()
 	privatePath := filepath.Join(dir, "private.b64")
