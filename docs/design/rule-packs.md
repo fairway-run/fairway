@@ -490,3 +490,10 @@ Evidence proves that the selected rules were handled.
 This lets Fairway support service platforms, security review, docs, release
 engineering, and future projects without hardcoding one project's operating
 model into the core product.
+
+Large structure-preserving code migrations may additionally use the optional
+[Migration Execution Profile](migration-execution-profile.md). That profile
+adds a bounded rule-pack completeness bakeoff and verifier qualification model.
+It does not change the rule-pack ownership model, permit automatic rule
+amendment, or make migration controls the default for ordinary engineering
+work.

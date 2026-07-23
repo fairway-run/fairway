@@ -96,6 +96,7 @@ prefix.
 | Transfer or wait on ownership | handoff, notification, generic wait, completion handback | [Coordinator loop](coordinator-loop.md), [Provider notifications](provider-notifications.md) |
 | Run related work together | hierarchy, work batch | [Hierarchy](hierarchy.md), [Work batch model](work-batch-model.md) |
 | Apply project policy | workstream profile, gate, rule pack, review profile | [Workstream profiles](workstream-profiles.md), [Rule packs](rule-packs.md) |
+| Govern a large code migration | migration execution profile, rule-pack completeness, verifier qualification | [Migration execution profile](migration-execution-profile.md) |
 | Observe deterministic side work | watcher, utility session, deploy run | [Watchers](watchers.md), [Delivery resources](delivery-resources.md) |
 | Coordinate a gated operation | live window, control room, closeout handback | [Live-operation control room](live-operation-control-room.md) |
 | Share visibility across projects | registry, multi-project dashboard | [Multi-project mode](multi-project.md) |
