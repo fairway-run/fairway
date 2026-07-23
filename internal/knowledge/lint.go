@@ -143,6 +143,9 @@ func (s *scanState) loadSourceManifest() {
 				if !safeSourceRoot(root) {
 					s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "project_file source class contains an unsafe allowed root")
 				}
+				if class.Authority == "canonical" && isLegacyMemoryRoot(root) {
+					s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "canonical source class cannot use legacy tmp-ux memory as an allowed root")
+				}
 			}
 		case "fairway":
 			if len(class.Roots) != 0 {
@@ -383,6 +386,11 @@ func (s *scanState) validateSource(pagePath, sourceSHA string, source Source) bo
 func safeSourceRoot(root string) bool {
 	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(root)))
 	return clean != "" && clean != "." && clean != ".." && !filepath.IsAbs(clean) && !strings.HasPrefix(clean, "../")
+}
+
+func isLegacyMemoryRoot(root string) bool {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(root)))
+	return clean == "tmp-ux" || strings.HasPrefix(clean, "tmp-ux/")
 }
 
 func sourceWithinAllowedRoots(sourcePath string, roots []string, knowledgeRoot string) bool {

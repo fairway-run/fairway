@@ -312,6 +312,28 @@ func TestLintRejectsProjectFileOutsideConfiguredRoots(t *testing.T) {
 	}
 }
 
+func TestLintRejectsCanonicalManifestRootedInLegacyMemory(t *testing.T) {
+	project := newKnowledgeProject(t)
+	manifest := `knowledge_sources_version: 1
+classes:
+  legacy:
+    kind: project_file
+    authority: canonical
+    roots: [tmp-ux]
+`
+	if err := os.WriteFile(filepath.Join(project, DefaultRoot, DefaultSourceManifest), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writePage(t, project, "index.md", "Index", "draft", "2026-12-31", gitRevision(t, project), nil, "docs/source.md")
+	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "source_class_invalid") {
+		t.Fatalf("canonical tmp-ux root was accepted: %+v", report.Findings)
+	}
+}
+
 func newKnowledgeProject(t *testing.T) string {
 	t.Helper()
 	project := t.TempDir()
