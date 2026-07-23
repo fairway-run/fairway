@@ -7,6 +7,8 @@ and uses semantic versioning.
 
 ## Unreleased
 
+## v0.2.5 - 2026-07-23
+
 ### Added
 
 - Pre-tag release rehearsals now build, test, sign, notarize, smoke, and package
@@ -14,17 +16,29 @@ and uses semantic versioning.
 - Release tags promote an immutable rehearsal packet bound by annotated tag
   metadata instead of rebuilding release assets after tagging.
 
+### Changed
+
+- Public product entry points now describe Fairway through execution control,
+  engineering continuity, operating knowledge, and evidence-backed assurance,
+  while distinguishing implemented capabilities from planned execution
+  profiles.
+
 ### Security
 
 - Rehearsal packets fail closed on source, version, builder, policy, inventory,
   checksum, size, symlink, or unexpected-file drift.
 - The tag promotion workflow has no build signing, notarization, or Homebrew
   credentials and verifies the signed candidate before creating a draft.
+- Immutable-tag recovery resolves and validates the remote annotated tag object,
+  source commit, and rehearsal binding, then revalidates the same tag identity
+  immediately before release creation.
 
 ### Fixed
 
 - Batched evidence reads use insertion order as the deterministic tie-breaker
   when adjacent evidence records have identical timestamps.
+- Manual recovery can promote an existing immutable annotated tag even when
+  checkout dereferences the tag locally; it does not move or recreate the tag.
 
 ## v0.2.4 - 2026-07-23
 
