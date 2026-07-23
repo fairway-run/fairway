@@ -28,6 +28,11 @@ This prevents a final tag from being the first realistic release execution and
 keeps failed candidate attempts free of tag, release, tap, or deployment side
 effects.
 
+The rehearsal also exposed and fixed an evidence-ordering race: when adjacent
+records shared the same timestamp, pass/fail supersession could be read in an
+undefined order. Batched evidence reads now use insertion identity as the
+deterministic tie-breaker.
+
 ## v0.2.4
 
 `v0.2.4` is the publishable follow-up to the immutable unpublished `v0.2.3`

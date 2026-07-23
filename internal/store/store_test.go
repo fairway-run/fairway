@@ -414,6 +414,9 @@ func TestBatchTaskFactsByTaskIDs(t *testing.T) {
 	if err := s.RecordEvidence(ctx, "T-001", Evidence{CommandText: "second", Result: "fail", ArtifactType: "test"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE task_evidence SET created_at='2026-07-23T12:00:00Z' WHERE project_id=? AND task_id='T-001'`, s.projectID); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.RecordEvidence(ctx, "T-003", Evidence{CommandText: "not requested", Result: "pass"}); err != nil {
 		t.Fatal(err)
 	}

@@ -21,6 +21,11 @@ and uses semantic versioning.
 - The tag promotion workflow has no build signing, notarization, or Homebrew
   credentials and verifies the signed candidate before creating a draft.
 
+### Fixed
+
+- Batched evidence reads use insertion order as the deterministic tie-breaker
+  when adjacent evidence records have identical timestamps.
+
 ## v0.2.4 - 2026-07-23
 
 ### Fixed

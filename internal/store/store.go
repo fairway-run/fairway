@@ -1490,7 +1490,7 @@ func (s *Store) EvidenceByTaskIDs(ctx context.Context, taskIDs []string) (map[st
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT task_id, COALESCE(command_text, ''), COALESCE(result, ''), COALESCE(artifact_path, ''), COALESCE(artifact_type, ''), duration_seconds, COALESCE(notes, ''), created_at FROM task_evidence WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY task_id, created_at`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT task_id, COALESCE(command_text, ''), COALESCE(result, ''), COALESCE(artifact_path, ''), COALESCE(artifact_type, ''), duration_seconds, COALESCE(notes, ''), created_at FROM task_evidence WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(ids))+`) ORDER BY task_id, created_at, id`, args...)
 	if err != nil {
 		return nil, err
 	}
