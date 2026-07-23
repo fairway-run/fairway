@@ -1,9 +1,13 @@
 # GPUaaS Integrated Memory and Knowledge Pilot
 
-Date: 2026-07-22  
-Fairway source: `8d0fe68`  
-Consumer: `/Users/subash/dev/GPUasService`  
-GPUaaS pilot commits: `5796695f5`, `6976aadd0`  
+Date: 2026-07-22
+
+Fairway source: `8d0fe68`
+
+Consumer: `/Users/subash/dev/GPUasService`
+
+GPUaaS pilot commits: `5796695f5`, `6976aadd0`, `333d20a84`
+
 Track: `HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001`
 
 ## Scope
@@ -91,8 +95,10 @@ The pilot exposed presentation and maintenance refinements:
 - equivalent blockers and generated inspect-status next actions should be
   deduplicated;
 - source SHA and current Git SHA need a clearer freshness explanation;
-- source frontmatter should eventually inform or validate configured authority
-  instead of relying entirely on manual source classes.
+- source frontmatter should eventually validate configured authority instead
+  of relying entirely on manual source classes. Until then, the scaffold's
+  broad default class is operational and canonical classes must be narrow and
+  explicit.
 
 The corrected packet intentionally cannot answer implementation-level details
 of one-way audited transport from these sources alone. That is correct

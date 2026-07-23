@@ -124,7 +124,16 @@ source classes, authority, and allowed file roots:
 ```yaml
 knowledge_sources_version: 1
 classes:
-  architecture:
+  project-file:
+    kind: project_file
+    authority: operational
+    roots:
+      - docs
+      - doc/api
+      - doc/architecture
+      - doc/operations
+      - doc/product
+  architecture-decision:
     kind: project_file
     authority: canonical
     roots:
@@ -140,6 +149,14 @@ classes:
     fairway_kind: evidence
     requires_store_validation: true
 ```
+
+The generated `project-file` class is deliberately operational because broad
+documentation roots commonly contain a mix of canonical contracts, proposed
+decisions, target-state models, and unassessed implementation notes. A project
+must add a narrower canonical class, such as `architecture-decision`, before
+promoting source-grounded synthesis to verified canonical authority. Source
+frontmatter remains part of semantic review; deterministic lint cannot infer
+authority from arbitrary document metadata.
 
 `project_file` sources must remain under a configured root and cannot cite the
 knowledge tree itself or legacy `tmp-ux` working memory as canonical authority.

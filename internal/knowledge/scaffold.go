@@ -72,7 +72,7 @@ supersedes: []
 classes:
   project-file:
     kind: project_file
-    authority: canonical
+    authority: operational
     roots:
       - docs
       - doc/api

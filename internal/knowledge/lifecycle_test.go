@@ -134,6 +134,7 @@ func TestQueryLabelsConflictedAndStalePagesWithoutTreatingThemVerified(t *testin
 
 func TestPromoteRequiresVerifiedPageAndReviewedCommittedCanonicalTarget(t *testing.T) {
 	project := newKnowledgeProject(t)
+	setProjectFileAuthority(t, project, "canonical")
 	if err := os.WriteFile(filepath.Join(project, "docs", "canonical.md"), []byte("# Canonical node trust\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

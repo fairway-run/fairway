@@ -372,6 +372,22 @@ func newKnowledgeProject(t *testing.T) string {
 	return project
 }
 
+func setProjectFileAuthority(t *testing.T, project, authority string) {
+	t.Helper()
+	path := filepath.Join(project, DefaultRoot, DefaultSourceManifest)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := strings.Replace(string(data), "authority: operational", "authority: "+authority, 1)
+	if updated == string(data) {
+		t.Fatal("project-file authority was not updated")
+	}
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func writePage(t *testing.T, project, rel, title, status, reviewBy, revision string, links []string, source string) {
 	t.Helper()
 	writeKnowledgeFile(t, project, rel, pageBody(title, status, reviewBy, revision, links, source))

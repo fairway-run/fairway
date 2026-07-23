@@ -488,6 +488,7 @@ func querySwapProject(t *testing.T) string {
 func promotionSwapProject(t *testing.T) (string, PromoteOptions) {
 	t.Helper()
 	project := newKnowledgeProject(t)
+	setProjectFileAuthority(t, project, "canonical")
 	if err := os.WriteFile(filepath.Join(project, "docs", "canonical.md"), []byte("# Canonical\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -52,6 +52,7 @@ func TestScaffoldCreatesTreeWithoutOverwriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	if manifest.Version != 1 || manifest.Classes["project-file"].Kind != "project_file" ||
+		manifest.Classes["project-file"].Authority != "operational" ||
 		manifest.Classes["fairway-decision"].FairwayKind != "decision" ||
 		!manifest.Classes["fairway-evidence"].RequiresStoreValidation {
 		t.Fatalf("unexpected scaffold source manifest: %+v", manifest)
