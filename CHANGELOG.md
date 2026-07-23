@@ -9,7 +9,16 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
-## v0.2.2 - 2026-07-23
+## v0.2.3 - 2026-07-23
+
+### Fixed
+
+- The tag workflow now pins GoReleaser and passes the exact action-installed
+  executable into release-assurance provenance capture.
+- `v0.2.2` remains an immutable unpublished candidate after its signed archive
+  build failed closed before draft creation.
+
+## v0.2.2 - 2026-07-23 (unpublished candidate)
 
 ### Fixed
 

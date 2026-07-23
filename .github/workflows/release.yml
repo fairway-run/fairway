@@ -86,12 +86,12 @@ jobs:
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version: "v2.17.0"
           args: check
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version: "v2.17.0"
           # Build the final tagged archives without creating a GitHub release or
           # mutating the Homebrew tap. Publication is gated on the signed bundle.
           args: release --clean --skip=publish
@@ -100,7 +100,13 @@ jobs:
           set -euo pipefail
           output="$RUNNER_TEMP/fairway-release-assurance"
           mkdir -p "$output"
-          scripts/release/build_release_assurance_bundle.sh \
+          goreleaser_tool=$(
+            scripts/release/resolve_goreleaser_action_tool.sh \
+              "$RUNNER_TOOL_CACHE" \
+              2.17.0
+          )
+          FAIRWAY_GORELEASER_TOOL="$goreleaser_tool" \
+            scripts/release/build_release_assurance_bundle.sh \
             "$GITHUB_REF_NAME" \
             "$GITHUB_SHA" \
             dist \

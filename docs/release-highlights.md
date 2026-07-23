@@ -9,3 +9,5 @@
   export-control, and independent-assessment claims outside Fairway authority.
 - Release validation now uses bounded behavioral synchronization instead of
   scheduler-sensitive SSE timing assumptions on the macOS signing runner.
+- Release assurance records the version of the exact pinned GoReleaser
+  executable that built the signed candidate archives.

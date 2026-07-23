@@ -19,6 +19,21 @@ else
   fairway_release_command=(go run ./cmd/fairway)
 fi
 
+if [[ -n "${FAIRWAY_GORELEASER_TOOL:-}" ]]; then
+  if [[ ! -f "$FAIRWAY_GORELEASER_TOOL" || -L "$FAIRWAY_GORELEASER_TOOL" || ! -x "$FAIRWAY_GORELEASER_TOOL" ]]; then
+    printf 'FAIRWAY_GORELEASER_TOOL must be an executable regular non-symlink file\n' >&2
+    exit 1
+  fi
+  goreleaser_command=("$FAIRWAY_GORELEASER_TOOL")
+else
+  goreleaser_path=$(command -v goreleaser || true)
+  [[ -n "$goreleaser_path" ]] || {
+    printf 'required release assurance tool is missing: goreleaser\n' >&2
+    exit 1
+  }
+  goreleaser_command=("$goreleaser_path")
+fi
+
 for tool in syft go-licenses govulncheck jq shasum; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'required release assurance tool is missing: %s\n' "$tool" >&2
@@ -122,7 +137,7 @@ jq -n \
   --arg runner_os "${RUNNER_OS:-local}" \
   --arg runner_arch "${RUNNER_ARCH:-local}" \
   --arg go_version "$(go version)" \
-  --arg goreleaser_version "$(goreleaser --version | tr '\n' ' ')" \
+  --arg goreleaser_version "$("${goreleaser_command[@]}" --version | tr '\n' ' ')" \
   --arg created_at "$created_at" \
   '{schema:"fairway.release-build-provenance.v1",builder_id:$builder_id,run_id:$run_id,run_attempt:$run_attempt,runner_os:$runner_os,runner_arch:$runner_arch,go_version:$go_version,goreleaser_version:$goreleaser_version,created_at:$created_at}' \
   > "$evidence_dir/build-provenance.json"

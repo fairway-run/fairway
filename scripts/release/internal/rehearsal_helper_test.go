@@ -364,6 +364,81 @@ func TestRehearsalBuilderFailureRetainsOnlyBoundedPacket(t *testing.T) {
 	}
 }
 
+func TestResolveGoReleaserActionTool(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is unavailable")
+	}
+	script, err := filepath.Abs(filepath.Join("..", "resolve_goreleaser_action_tool.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(t *testing.T, root string) (string, error) {
+		t.Helper()
+		cmd := exec.Command(bash, script, root, "2.17.0")
+		output, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(output)), err
+	}
+	writeTool := func(t *testing.T, root, arch string) string {
+		t.Helper()
+		path := filepath.Join(root, "goreleaser-action", "2.17.0", arch, "goreleaser")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	t.Run("zero", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, "goreleaser-action", "2.17.0"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		output, err := run(t, root)
+		if err == nil || !strings.Contains(output, "found 0") {
+			t.Fatalf("zero-match result = %q, %v", output, err)
+		}
+	})
+
+	t.Run("one", func(t *testing.T) {
+		root := t.TempDir()
+		want := writeTool(t, root, "arm64")
+		output, err := run(t, root)
+		if err != nil || output != want {
+			t.Fatalf("one-match result = %q, %v; want %q", output, err, want)
+		}
+	})
+
+	t.Run("multiple", func(t *testing.T) {
+		root := t.TempDir()
+		writeTool(t, root, "amd64")
+		writeTool(t, root, "arm64")
+		output, err := run(t, root)
+		if err == nil || !strings.Contains(output, "found 2") {
+			t.Fatalf("multiple-match result = %q, %v", output, err)
+		}
+	})
+
+	t.Run("symlink", func(t *testing.T) {
+		root := t.TempDir()
+		target := writeTool(t, t.TempDir(), "arm64")
+		link := filepath.Join(root, "goreleaser-action", "2.17.0", "arm64", "goreleaser")
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+		output, err := run(t, root)
+		if err == nil || !strings.Contains(output, "non-symlink") {
+			t.Fatalf("symlink result = %q, %v", output, err)
+		}
+	})
+}
+
 func regularFileInventory(t *testing.T, root string) []string {
 	t.Helper()
 	var files []string
