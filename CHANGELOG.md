@@ -9,7 +9,15 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
-## v0.2.1 - 2026-07-23
+## v0.2.2 - 2026-07-23
+
+### Fixed
+
+- Dashboard SSE stream tests now use bounded behavioral synchronization for
+  startup, incremental event delivery, and review-wait sweeps, removing the
+  remaining macOS release-runner timing assumptions.
+
+## v0.2.1 - 2026-07-23 (unpublished candidate)
 
 ### Fixed
 

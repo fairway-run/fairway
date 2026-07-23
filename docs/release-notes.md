@@ -10,19 +10,29 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
-## v0.2.1
+## v0.2.2
 
-`v0.2.1` is the publishable follow-up to the unpublished `v0.2.0` candidate.
+`v0.2.2` is the publishable follow-up to the unpublished `v0.2.0` and `v0.2.1`
+candidates.
 The `v0.2.0` workflow built signed and notarized archives but failed closed
 before draft creation because the release-assurance trust configuration was not
 configured. After that trust root was provisioned, the retry exposed a
-scheduler-sensitive dashboard SSE test on the macOS release runner.
+scheduler-sensitive dashboard SSE test on the macOS release runner. `v0.2.1`
+fixed that assertion but exposed another fixed-sleep race in the same SSE
+stream helper before release artifacts were built.
 
-This release replaces the fixed sleep in that test with a bounded
-condition-based wait for the asserted idle polls. Product behavior and the
-`v0.2.0` feature scope are otherwise unchanged. The `v0.2.0` tag remains
-immutable and unpublished. Install `v0.2.1` and follow the cumulative upgrade
-procedure below.
+This release uses bounded behavioral synchronization for SSE stream startup,
+incremental event hydration, post-hydration completion, idle polling, and
+review-wait sweeps. Product behavior and the `v0.2.0` feature scope are
+otherwise unchanged. The `v0.2.0` and `v0.2.1` tags remain immutable and
+unpublished. Install `v0.2.2` and follow the cumulative upgrade procedure
+below.
+
+## v0.2.1 (unpublished candidate)
+
+`v0.2.1` replaced one fixed idle-poll sleep with a bounded condition wait, but
+the macOS release runner exposed a second scheduler-sensitive SSE helper before
+artifact publication.
 
 ## v0.2.0 (unpublished candidate)
 
@@ -67,7 +77,7 @@ procedure below.
 ### Upgrade
 
 1. Back up the project Fairway database and project control files.
-2. Install `v0.2.1`, the published release carrying this feature scope.
+2. Install `v0.2.2`, the published release carrying this feature scope.
 3. Run `fairway config validate` and `fairway agent-contract status`.
 4. Review drift with `fairway agent-contract plan`.
 5. For an unversioned generated contract, run
@@ -105,7 +115,7 @@ by a newer release and treat successful startup as rollback proof.
   provider-send authority remain preview or unsupported.
 - Sovereign applicability, ECCN/EAR/ENC conclusions, jurisdictional claims,
   certification, and independent security assessment remain blocked on
-  qualified external specialists. `v0.2.0` makes no such claim.
+  qualified external specialists. `v0.2.2` makes no such claim.
 
 ### Release Checklist
 
@@ -120,9 +130,9 @@ by a newer release and treat successful startup as rollback proof.
   deployment with Wrangler `4.113.0`, followed by public route readback.
 - The retained npm dependency tree reports no known vulnerabilities at release
   preparation time; the result is a dated scan, not a continuing guarantee.
-- A release-linked `0.2.0` binary reports the expected version and passes
+- A release-linked `0.2.2` binary reports the expected version and passes
   config, contract-status, ready, and reconcile smoke.
-- A disposable project initialized by `v0.1.13` survives `v0.2.0` upgrade and
+- A disposable project initialized by `v0.1.13` survives `v0.2.2` upgrade and
   agent-contract adoption; restoring the pre-upgrade database and contract
   returns the project to clean `v0.1.13` task and reconciliation readback.
 - The tag-triggered release workflow signs and notarizes Darwin binaries,

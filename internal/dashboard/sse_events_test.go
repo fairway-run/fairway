@@ -197,12 +197,12 @@ func TestEventsIdlePollDoesNotHydrateFullSources(t *testing.T) {
 		server.events(rec, req)
 		close(done)
 	}()
-	deadline := time.Now().Add(2 * time.Second)
-	for server.sseStats.cursorChecks.Load() < 3 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
+	defer cleanupSSEStream(t, cancel, done)
+	waitForSSECondition(t, "three idle cursor checks", func() bool {
+		return server.sseStats.cursorChecks.Load() >= 3
+	})
 	cancel()
-	<-done
+	waitForSSECompletion(t, done)
 
 	if checks := server.sseStats.cursorChecks.Load(); checks < 3 {
 		t.Fatalf("cursor checks = %d; want at least 3", checks)
@@ -282,9 +282,12 @@ func TestEventsSweepEmitsStaleReviewWait(t *testing.T) {
 		server.events(rec, req)
 		close(done)
 	}()
-	time.Sleep(40 * time.Millisecond)
+	defer cleanupSSEStream(t, cancel, done)
+	waitForSSECondition(t, "two review-wait sweeps", func() bool {
+		return server.sseStats.reviewWaitSweeps.Load() >= 2
+	})
 	cancel()
-	<-done
+	waitForSSECompletion(t, done)
 	if !strings.Contains(rec.Body.String(), "event: review_wait.stale\n") {
 		t.Fatalf("stale stream = %q", rec.Body.String())
 	}
@@ -303,12 +306,58 @@ func runTestEventStream(t *testing.T, server *Server, lastEventID string, mutate
 		server.events(rec, req)
 		close(done)
 	}()
-	time.Sleep(15 * time.Millisecond)
+	defer cleanupSSEStream(t, cancel, done)
+	startChecks := server.sseStats.cursorChecks.Load()
+	waitForSSECondition(t, "event stream startup", func() bool {
+		return server.sseStats.cursorChecks.Load() > startChecks
+	})
+	startHydrations := server.sseStats.sourceHydrations.Load()
 	mutate()
-	time.Sleep(50 * time.Millisecond)
+	waitForSSECondition(t, "incremental event hydration", func() bool {
+		return server.sseStats.sourceHydrations.Load() > startHydrations
+	})
+	hydrationChecks := server.sseStats.cursorChecks.Load()
+	waitForSSECondition(t, "post-hydration poll", func() bool {
+		return server.sseStats.cursorChecks.Load() > hydrationChecks
+	})
 	cancel()
-	<-done
+	waitForSSECompletion(t, done)
 	return rec.Body.String()
+}
+
+func waitForSSECondition(t *testing.T, description string, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !condition() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if !condition() {
+		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
+func waitForSSECompletion(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	if !awaitSSECompletion(done) {
+		t.Fatal("timed out waiting for event stream shutdown")
+	}
+}
+
+func cleanupSSEStream(t *testing.T, cancel context.CancelFunc, done <-chan struct{}) {
+	t.Helper()
+	cancel()
+	if !awaitSSECompletion(done) {
+		t.Error("timed out cleaning up event stream")
+	}
+}
+
+func awaitSSECompletion(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	case <-time.After(2 * time.Second):
+		return false
+	}
 }
 
 func TestReviewWaitEventsUseSharedProjection(t *testing.T) {

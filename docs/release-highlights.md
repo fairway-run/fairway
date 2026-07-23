@@ -7,5 +7,5 @@
 - Assurance profiles and signed/offline evidence packages strengthen
   restricted-environment readiness while keeping certification, legal,
   export-control, and independent-assessment claims outside Fairway authority.
-- Release validation now avoids scheduler-sensitive SSE timing assumptions on
-  the macOS signing runner.
+- Release validation now uses bounded behavioral synchronization instead of
+  scheduler-sensitive SSE timing assumptions on the macOS signing runner.
