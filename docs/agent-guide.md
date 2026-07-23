@@ -34,6 +34,20 @@ minimal working-memory routine directly in that generated contract. Existing
 projects inherit it only after an intentional refresh so local agent
 instructions are never silently overwritten.
 
+Current generated contracts are versioned managed files. Inspect or update
+them with:
+
+```bash
+fairway agent-contract status
+fairway agent-contract plan
+fairway agent-contract apply
+```
+
+Keep repository-specific additions in `.fairway/AGENTS.local.md`. For an older
+unversioned contract, `fairway agent-contract apply --adopt-legacy` preserves
+the prior file there before writing the managed contract. Binary upgrades do
+not change project process unless the embedded agent-contract revision changes.
+
 For agents without a Fairway source checkout or network access, the installed
 binary carries this guide:
 

@@ -11,6 +11,16 @@ Legacy `tmp-ux/*memory*.md` files are non-authoritative migration inputs. Memory
 import is preview-first and does not store the source file or raw body. The
 configured Fairway database remains the only durable working-memory authority.
 
+Agent-contract compatibility is intentionally not inferred from project config
+or binary SemVer. `.fairway/AGENTS.md` carries its own schema, revision,
+generating binary, and managed-content hash. Use `fairway agent-contract
+status|plan|apply` to inspect or update it.
+
+Repository-specific instructions belong in `.fairway/AGENTS.local.md`.
+`fairway init --refresh-agent-contract` and `fairway agent-contract apply` use
+the same safe managed-contract update path; locally modified managed content is
+never overwritten automatically.
+
 Engineering knowledge is project-owned Markdown. Configure its project-relative
 root when the conventional location is unsuitable:
 

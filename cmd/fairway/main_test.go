@@ -478,6 +478,9 @@ func TestCLI_CommandHelpCleanExit(t *testing.T) {
 
 	out = runCapture(t, "agent-guide", "--help")
 	assertContains(t, out, "fairway agent-guide [--path | --output <path>]")
+
+	out = runCapture(t, "agent-contract", "--help")
+	assertContains(t, out, "fairway agent-contract status|plan|apply")
 }
 
 func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
@@ -812,6 +815,10 @@ func TestCLI_InitWritesAgentBreadcrumb(t *testing.T) {
 	}
 	contract := string(body)
 	assertContains(t, contract, "Execution Source Of Truth")
+	assertContains(t, contract, agentContractStartPrefix)
+	assertContains(t, contract, `"schema":1`)
+	assertContains(t, contract, `"revision":"`+agentContractRevision+`"`)
+	assertContains(t, contract, "AGENTS.local.md")
 	assertContains(t, contract, "Start Of Session Ritual")
 	assertContains(t, contract, "fairway config validate")
 	assertContains(t, contract, "fairway session upsert")
@@ -823,6 +830,14 @@ func TestCLI_InitWritesAgentBreadcrumb(t *testing.T) {
 	assertContains(t, contract, "fairway workflow closeout <task-id> --dry-run")
 	assertContains(t, contract, "Short single-burst tasks do not require memory.")
 	assertContains(t, contract, "Full Guide")
+
+	status := runCapture(t, "--json", "agent-contract", "status")
+	assertContains(t, status, `"state": "current"`)
+	assertContains(t, status, `"target_revision": "`+agentContractRevision+`"`)
+	assertContains(t, status, `"target_content_sha256":`)
+	plan := runCapture(t, "agent-contract", "plan")
+	assertContains(t, plan, "agent_contract_plan: current")
+	assertContains(t, plan, "action: none")
 }
 
 func TestCLI_InitPreservesEditedAgentBreadcrumb(t *testing.T) {
@@ -863,6 +878,13 @@ func TestCLI_InitPreservesEditedAgentBreadcrumb(t *testing.T) {
 	assertContains(t, string(body), "Fairway Agent Contract")
 	assertContains(t, string(body), "Working Memory Routine")
 	assertNotContains(t, string(body), "Do not overwrite this file.")
+	localBody, err := os.ReadFile(".fairway/AGENTS.local.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(localBody) != custom {
+		t.Fatalf("legacy local agent instructions were not preserved:\n%s", localBody)
+	}
 }
 
 func TestCLI_DashboardStatusIncludesVersionReadback(t *testing.T) {
@@ -1548,8 +1570,23 @@ func TestCLI_Preflight(t *testing.T) {
 	runOK(t, "init")
 	git(t, repo, "add", ".")
 	git(t, repo, "commit", "-m", "init")
-	runOK(t, "preflight", "--role", "backend")
-	runOK(t, "--json", "preflight", "--role", "backend")
+	preflight := runCapture(t, "preflight", "--role", "backend")
+	assertContains(t, preflight, "agent_contract: current")
+	jsonPreflight := runCapture(t, "--json", "preflight", "--role", "backend")
+	assertContains(t, jsonPreflight, `"state": "current"`)
+	contractData, err := os.ReadFile(".fairway/AGENTS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	modifiedContract := strings.Replace(string(contractData), "Execution Source Of Truth", "Modified Source Of Truth", 1)
+	if err := os.WriteFile(".fairway/AGENTS.md", []byte(modifiedContract), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	modifiedPreflight := runCaptureAllowError(t, "preflight", "--role", "backend")
+	assertContains(t, modifiedPreflight, "agent contract locally_modified")
+	if err := os.WriteFile(".fairway/AGENTS.md", contractData, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	runOK(t, "add", "T-001", "--title", "Merge", "--role", "backend")
 	runOK(t, "merge-ready", "T-001")
 	runOK(t, "--json", "merge-ready", "T-001")

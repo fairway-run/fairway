@@ -36,6 +36,7 @@ From the repository root:
 
 ```bash
 fairway init
+fairway agent-contract status
 git add .fairway/.gitignore .fairway/AGENTS.md .fairway/config.toml
 git commit -m "chore: initialize Fairway"
 fairway doctor
@@ -44,6 +45,11 @@ fairway doctor
 `fairway init` creates local configuration, an ignored SQLite DB, and the
 agent breadcrumb. Commit the generated control files before completing work;
 `fairway work close` fails closed on an uncommitted worktree.
+
+After upgrading Fairway, `fairway preflight` reports agent-contract drift.
+Review it with `fairway agent-contract plan`, then apply a compatible update
+with `fairway agent-contract apply`. Keep project-specific additions in
+`.fairway/AGENTS.local.md`.
 
 `fairway doctor` should report `doctor_ok: true`. Follow a failing diagnostic
 before continuing. Warnings name their owner and suggested command.

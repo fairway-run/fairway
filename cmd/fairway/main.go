@@ -259,6 +259,8 @@ func run(ctx context.Context, args []string) error {
 		}
 	case "agent-guide":
 		return cmdAgentGuide(args[1:])
+	case "agent-contract":
+		return cmdAgentContract(opts, args[1:])
 	case "dashboard":
 		return cmdDashboard(ctx, opts, args[1:])
 	case "server":
@@ -1897,11 +1899,13 @@ func cmdGitCheck(opts globalOptions, args []string) error {
 }
 
 type preflightReport struct {
-	OK     bool               `json:"ok"`
-	Role   string             `json:"role"`
-	Git    fairwaygit.Status  `json:"git"`
-	Issues []string           `json:"issues"`
-	Config preflightConfigRef `json:"config"`
+	OK            bool                `json:"ok"`
+	Role          string              `json:"role"`
+	Git           fairwaygit.Status   `json:"git"`
+	Issues        []string            `json:"issues"`
+	Warnings      []string            `json:"warnings,omitempty"`
+	Config        preflightConfigRef  `json:"config"`
+	AgentContract agentContractStatus `json:"agent_contract"`
 }
 
 type preflightConfigRef struct {
@@ -1985,6 +1989,19 @@ func cmdPreflight(opts globalOptions, args []string) error {
 		Git:    gitStatus,
 		Config: preflightConfigRef{Path: path, Root: root},
 	}
+	contractStatus, err := inspectAgentContract(filepath.Join(filepath.Dir(path), "AGENTS.md"))
+	if err != nil {
+		report.Issues = append(report.Issues, "agent contract status unavailable: "+err.Error())
+	} else {
+		report.AgentContract = contractStatus
+		switch contractStatus.State {
+		case "current":
+		case "locally_modified", "incompatible":
+			report.Issues = append(report.Issues, "agent contract "+contractStatus.State+": "+contractStatus.Reason)
+		default:
+			report.Warnings = append(report.Warnings, "agent contract "+contractStatus.State+": "+contractStatus.Reason)
+		}
+	}
 	roleSet := config.RoleSet(cfg)
 	roleBranches := map[string]string{}
 	for _, configured := range cfg.Roles {
@@ -2015,10 +2032,17 @@ func cmdPreflight(opts globalOptions, args []string) error {
 		}
 	} else {
 		fmt.Printf("preflight: %t\nrole: %s\nbranch: %s\nbase: %s\n", report.OK, report.Role, report.Git.Branch, report.Git.Base)
+		fmt.Printf("agent_contract: %s revision=%s target=%s\n", firstNonEmpty(report.AgentContract.State, "unavailable"), firstNonEmpty(report.AgentContract.Revision, "none"), firstNonEmpty(report.AgentContract.TargetRevision, "none"))
 		if len(report.Issues) > 0 {
 			fmt.Println("issues:")
 			for _, issue := range report.Issues {
 				fmt.Printf("- %s\n", issue)
+			}
+		}
+		if len(report.Warnings) > 0 {
+			fmt.Println("warnings:")
+			for _, warning := range report.Warnings {
+				fmt.Printf("- %s\n", warning)
 			}
 		}
 	}
@@ -17381,30 +17405,34 @@ func cmdAgentGuide(args []string) error {
 }
 
 func ensureInitAgentContract(path string, refresh bool) error {
-	if _, err := os.Stat(path); err == nil && !refresh {
-		fmt.Printf("%s already exists; leaving edited agent contract unchanged (use fairway init --refresh-agent-contract to regenerate)\n", path)
+	status, err := inspectAgentContract(path)
+	if err != nil {
+		return err
+	}
+	if status.State != agentContractStateMissing && !refresh {
+		fmt.Printf("%s already exists; state=%s, leaving agent contract unchanged (run fairway agent-contract plan before fairway init --refresh-agent-contract or fairway agent-contract apply)\n", path, status.State)
 		return nil
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, []byte(initAgentContract()), 0o644); err != nil {
+	applied, err := applyAgentContract(path, refresh)
+	if err != nil {
 		return err
 	}
 	if refresh {
-		fmt.Printf("refreshed %s\n", path)
+		fmt.Printf("refreshed %s state=%s\n", path, applied.State)
 	} else {
-		fmt.Printf("wrote %s\n", path)
+		fmt.Printf("wrote %s state=%s\n", path, applied.State)
 	}
 	return nil
 }
 
-func initAgentContract() string {
+func agentContractBody() string {
 	return fmt.Sprintf(`# Fairway Agent Contract
 
 This repository uses Fairway for multi-agent engineering coordination.
+
+This managed contract is maintained by Fairway. Keep repository-specific
+instructions in `+"`.fairway/AGENTS.local.md`"+`; read that file after this one
+when it exists.
 
 ## Execution Source Of Truth
 
@@ -17463,11 +17491,11 @@ For an offline copy embedded in the installed binary, run:
 fairway agent-guide
 `+"```"+`
 
-Read the source guide that matches the installed Fairway release:
+To locate the source guide that matches the installed Fairway release, run:
 
 %s
 
-`, fairwayVersionedAgentGuideURL())
+`, "`fairway agent-guide --path`")
 }
 
 func fairwayVersionedAgentGuideURL() string {
@@ -21168,7 +21196,7 @@ func usage() {
 	fmt.Println("  fairway <command> --help")
 	fmt.Println()
 	fmt.Println("Queue and task state:")
-	fmt.Println("  init, agent-guide, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail, decision")
+	fmt.Println("  init, agent-guide, agent-contract, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail, decision")
 	fmt.Println("Evidence and review:")
 	fmt.Println("  record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
@@ -21188,6 +21216,7 @@ func printCommandHelp(command string) bool {
 	help := map[string]string{
 		"init":                       "fairway init [--refresh-agent-contract]\n  Scaffold .fairway/config.toml, the SQLite DB, and .fairway/AGENTS.md.",
 		"agent-guide":                "fairway agent-guide [--path | --output <path>]\n  Print the embedded offline agent guide, show its source/version path, or write it to a file.",
+		"agent-contract":             "fairway agent-contract status|plan|apply [--adopt-legacy]\n  Inspect, preview, or apply the versioned managed project agent contract.",
 		"import":                     "fairway import <yaml-or-json-path> [--state-once]\n  Import task definitions from YAML or JSON.",
 		"add":                        "fairway add <task-id> --title <title> [--role <role>] [metadata flags]\n  Add one task definition.",
 		"spawn":                      "fairway spawn --id <task-id> --title <title> [--child|--sibling|--root] [metadata flags]\n  Spawn related work from an existing task context.",
