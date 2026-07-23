@@ -1,7 +1,9 @@
 # Fairway v0.2.4 release verification
 
-Date: 2026-07-23  
-Task: `FW-383`  
+Date: 2026-07-23
+
+Task: `FW-383`
+
 Result: pass
 
 ## Release Identity
