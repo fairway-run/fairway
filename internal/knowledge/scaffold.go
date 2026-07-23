@@ -68,6 +68,22 @@ supersedes: []
 # Open Questions
 `,
 	"log.md": "# Knowledge Log\n",
+	DefaultSourceManifest: `knowledge_sources_version: 1
+classes:
+  project-file:
+    kind: project_file
+    authority: canonical
+  fairway-decision:
+    kind: fairway
+    authority: operational
+    fairway_kind: decision
+    requires_store_validation: true
+  fairway-evidence:
+    kind: fairway
+    authority: evidence
+    fairway_kind: evidence
+    requires_store_validation: true
+`,
 }
 
 // Scaffold creates the conventional project-owned knowledge tree without

@@ -8,6 +8,22 @@ import (
 )
 
 func TestLoadExtractsBoundedMemoryWithoutRawBody(t *testing.T) {
+	for _, prose := range []string{
+		"Keep provider-neutral context.",
+		"Finish migration.",
+		"- Fairway is authoritative.",
+		"- Store curated facts only.",
+		"- None.",
+		"- Which pilot runs first?",
+		"1. Run focused tests.",
+		"backend",
+		"2099-01-01",
+		"- 7",
+	} {
+		if looksRawContent(prose) {
+			t.Fatalf("ordinary structured memory classified as raw: %q", prose)
+		}
+	}
 	root := t.TempDir()
 	path := writeMemoryFile(t, root, "tmp-ux/program-memory.md", `# Program Memory
 
@@ -105,7 +121,14 @@ func TestLoadRejectsUnsafePathsAndSensitiveContent(t *testing.T) {
 		"# Secret Memory\npassword=supersecret\n",
 		"# Secret Memory\nAuthorization: Bearer abcdefghijklmnopqrstuvwxyz\n",
 		"# Secret Memory\n-----BEGIN PRIVATE KEY-----\n",
+		"# Secret Memory\n-----BEGIN OPENSSH PRIVATE KEY-----\n",
+		"# Secret Memory\n-----BEGIN EC PRIVATE KEY-----\n",
+		"# Secret Memory\n-----BEGIN DSA PRIVATE KEY-----\n",
+		"# Secret Memory\n-----BEGIN ENCRYPTED PRIVATE KEY-----\n",
+		"# Secret Memory\n-----BEGIN CERTIFICATE-----\n",
 		"# Secret Memory\naccess_token: eyJabcdefgh.abcdefgh.abcdefgh\n",
+		"# Secret Memory\npassword=<redacted\n",
+		"# Secret Memory\npassword=$<PASSWORD>\n",
 	}
 	for index, body := range secrets {
 		path := writeMemoryFile(t, root, filepath.Join("tmp-ux", "secret-memory-"+string(rune('a'+index))+".md"), body)
@@ -117,6 +140,33 @@ func TestLoadRejectsUnsafePathsAndSensitiveContent(t *testing.T) {
 	raw := writeMemoryFile(t, root, "tmp-ux/raw-memory.md", "# Raw Memory\n## Raw Logs\nrequest body\n")
 	if _, err := Load(root, raw); err == nil {
 		t.Fatal("raw log section accepted")
+	}
+
+	for index, body := range []string{
+		"# Raw Memory\n## Decisions\n- $ curl https://example.invalid\n",
+		"# Raw Memory\n## Current Objective\n2026-07-22T12:00:00Z ERROR request failed\n",
+		"# Raw Memory\n## Next Actions\n- tool output: request body\n",
+		"# Raw Memory\n## Blockers\n- {\"status\":\"failed\"}\n",
+		"# Raw Memory\n## Decisions\ncommand output without a list marker\n",
+		"# Raw Memory\n## Decisions\n```text\ncommand output\n```\n",
+	} {
+		path := writeMemoryFile(t, root, filepath.Join("tmp-ux", "embedded-raw-memory-"+string(rune('a'+index))+".md"), body)
+		if _, err := Load(root, path); err == nil {
+			t.Fatalf("embedded raw case %d accepted", index)
+		}
+	}
+}
+
+func TestValidateSafeTextRequiresClosedPlaceholders(t *testing.T) {
+	for _, value := range []string{"password=<redacted>", "password=${PASSWORD}", "password=redacted", "password=unset"} {
+		if err := ValidateSafeText(value); err != nil {
+			t.Fatalf("safe placeholder %q rejected: %v", value, err)
+		}
+	}
+	for _, value := range []string{"password=<redacted", "password=<anything>", "password=${PASSWORD", "password=$<PASSWORD>"} {
+		if err := ValidateSafeText(value); err == nil {
+			t.Fatalf("malformed or unapproved placeholder %q accepted", value)
+		}
 	}
 }
 

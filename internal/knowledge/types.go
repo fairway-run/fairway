@@ -7,6 +7,8 @@ import "time"
 const (
 	// DefaultRoot is the conventional project-relative knowledge directory.
 	DefaultRoot = "doc/agent-wiki"
+	// DefaultSourceManifest is the conventional source-class manifest.
+	DefaultSourceManifest = "sources.yaml"
 
 	defaultMaxPages     = 2048
 	defaultMaxPageBytes = int64(1 << 20)
@@ -22,6 +24,10 @@ type Options struct {
 	MaxPages       int
 	MaxPageBytes   int64
 	MaxLinks       int
+	// ValidateFairwayReference resolves a structurally valid Fairway reference
+	// against the coordinator store. Without it, Fairway references are
+	// reported as requiring validation and do not satisfy verified provenance.
+	ValidateFairwayReference func(FairwayReferenceRequirement) error
 }
 
 // ScaffoldOptions controls creation of the initial knowledge tree.
@@ -35,6 +41,20 @@ type ScaffoldResult struct {
 	Root     string   `json:"root"`
 	Created  []string `json:"created"`
 	Existing []string `json:"existing,omitempty"`
+}
+
+// SourceManifest defines the source classes accepted by maintained pages.
+type SourceManifest struct {
+	Version int                    `yaml:"knowledge_sources_version" json:"knowledge_sources_version"`
+	Classes map[string]SourceClass `yaml:"classes" json:"classes"`
+}
+
+// SourceClass defines one configured provenance class.
+type SourceClass struct {
+	Kind                    string `yaml:"kind" json:"kind"`
+	Authority               string `yaml:"authority" json:"authority"`
+	FairwayKind             string `yaml:"fairway_kind,omitempty" json:"fairway_kind,omitempty"`
+	RequiresStoreValidation bool   `yaml:"requires_store_validation,omitempty" json:"requires_store_validation,omitempty"`
 }
 
 // PageMetadata is the maintained Markdown frontmatter contract.
@@ -52,9 +72,23 @@ type PageMetadata struct {
 
 // Source identifies one safe provenance reference.
 type Source struct {
-	Path            string `yaml:"path,omitempty" json:"path,omitempty"`
-	FairwayDecision string `yaml:"fairway_decision,omitempty" json:"fairway_decision,omitempty"`
-	FairwayEvidence string `yaml:"fairway_evidence,omitempty" json:"fairway_evidence,omitempty"`
+	Class   string            `yaml:"class" json:"class"`
+	Path    string            `yaml:"path,omitempty" json:"path,omitempty"`
+	Fairway *FairwayReference `yaml:"fairway,omitempty" json:"fairway,omitempty"`
+}
+
+// FairwayReference is a typed coordinator/store-backed provenance identity.
+type FairwayReference struct {
+	Kind string `yaml:"kind" json:"kind"`
+	ID   string `yaml:"id" json:"id"`
+}
+
+// FairwayReferenceRequirement exposes a reference that the CLI/store
+// integration must validate before it can satisfy verified provenance.
+type FairwayReferenceRequirement struct {
+	PagePath    string           `json:"page_path"`
+	SourceClass string           `json:"source_class"`
+	Reference   FairwayReference `json:"reference"`
 }
 
 // Page is a bounded inventory entry.
@@ -85,14 +119,15 @@ type Finding struct {
 
 // Report is the stable output of Status and Lint.
 type Report struct {
-	Root            string    `json:"root"`
-	SourceRevision  string    `json:"source_revision,omitempty"`
-	PageCount       int       `json:"page_count"`
-	VerifiedCount   int       `json:"verified_count"`
-	DraftCount      int       `json:"draft_count"`
-	StaleCount      int       `json:"stale_count"`
-	ConflictedCount int       `json:"conflicted_count"`
-	SupersededCount int       `json:"superseded_count"`
-	Pages           []Page    `json:"pages"`
-	Findings        []Finding `json:"findings"`
+	Root              string                        `json:"root"`
+	SourceRevision    string                        `json:"source_revision,omitempty"`
+	PageCount         int                           `json:"page_count"`
+	VerifiedCount     int                           `json:"verified_count"`
+	DraftCount        int                           `json:"draft_count"`
+	StaleCount        int                           `json:"stale_count"`
+	ConflictedCount   int                           `json:"conflicted_count"`
+	SupersededCount   int                           `json:"superseded_count"`
+	Pages             []Page                        `json:"pages"`
+	Findings          []Finding                     `json:"findings"`
+	FairwayReferences []FairwayReferenceRequirement `json:"fairway_references,omitempty"`
 }

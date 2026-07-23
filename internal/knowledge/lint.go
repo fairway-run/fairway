@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -19,6 +20,8 @@ import (
 var (
 	markdownLinkPattern = regexp.MustCompile(`!?\[[^\]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)`)
 	shaPattern          = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
+	sourceClassPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+	fairwayIDPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$`)
 	secretPatterns      = []regexp.Regexp{
 		*regexp.MustCompile(`(?i)-----BEGIN [A-Z ]*PRIVATE KEY-----`),
 		*regexp.MustCompile(`(?i)\bauthorization\s*:\s*(?:bearer|basic)\s+\S+`),
@@ -39,6 +42,7 @@ type scanState struct {
 	pageByPath map[string]int
 	links      map[string][]string
 	identities map[string][]string
+	manifest   SourceManifest
 	linkCount  int
 }
 
@@ -82,6 +86,7 @@ func scan(opts Options) (Report, error) {
 		report:     Report{Root: paths.relRoot, SourceRevision: opts.SourceRevision, Pages: []Page{}, Findings: []Finding{}},
 		pageByPath: map[string]int{}, links: map[string][]string{}, identities: map[string][]string{},
 	}
+	state.loadSourceManifest()
 	if err := state.walk(); err != nil {
 		return Report{}, err
 	}
@@ -90,6 +95,58 @@ func scan(opts Options) (Report, error) {
 	state.validateIndex()
 	state.sort()
 	return state.report, nil
+}
+
+func (s *scanState) loadSourceManifest() {
+	path := filepath.Join(s.paths.root, DefaultSourceManifest)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		s.add("source_manifest_missing", SeverityError, DefaultSourceManifest, "configured source manifest is required")
+		return
+	}
+	if info.Size() > s.opts.MaxPageBytes {
+		s.add("source_manifest_invalid", SeverityError, DefaultSourceManifest, "source manifest exceeds the configured size limit")
+		return
+	}
+	data, err := readBounded(path, s.opts.MaxPageBytes)
+	if err != nil {
+		s.add("source_manifest_invalid", SeverityError, DefaultSourceManifest, "source manifest cannot be read safely")
+		return
+	}
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&s.manifest); err != nil {
+		s.add("source_manifest_invalid", SeverityError, DefaultSourceManifest, "source manifest does not match the configured schema")
+		return
+	}
+	if s.manifest.Version != 1 || len(s.manifest.Classes) == 0 {
+		s.add("source_manifest_invalid", SeverityError, DefaultSourceManifest, "source manifest requires version 1 and at least one source class")
+		return
+	}
+	for name, class := range s.manifest.Classes {
+		if !sourceClassPattern.MatchString(name) {
+			s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "source class name is invalid")
+			continue
+		}
+		if strings.TrimSpace(class.Authority) == "" {
+			s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "source class authority is required")
+		}
+		switch class.Kind {
+		case "project_file":
+			if class.FairwayKind != "" || class.RequiresStoreValidation {
+				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "project_file source class has incompatible Fairway settings")
+			}
+		case "fairway":
+			if class.FairwayKind != "decision" && class.FairwayKind != "evidence" {
+				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "fairway source class requires decision or evidence kind")
+			}
+			if !class.RequiresStoreValidation {
+				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "fairway source class must require store validation")
+			}
+		default:
+			s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "source class kind is unsupported")
+		}
+	}
 }
 
 func (s *scanState) walk() error {
@@ -226,14 +283,18 @@ func (s *scanState) validateMetadata(path string, meta PageMetadata) {
 	}
 	if !shaPattern.MatchString(meta.SourceSHA) {
 		s.add("source_revision_invalid", SeverityError, path, "source_sha must be a 7-64 character hexadecimal revision")
-	} else if s.opts.SourceRevision != "" && !sameRevision(meta.SourceSHA, s.opts.SourceRevision) {
-		s.add("source_revision_stale", SeverityWarning, path, "page source revision differs from the requested revision")
 	}
 	if len(meta.Sources) == 0 {
 		s.add("sources_missing", SeverityWarning, path, "page has no provenance sources")
 	}
+	validProvenance := 0
 	for _, source := range meta.Sources {
-		s.validateSource(path, source)
+		if s.validateSource(path, meta.SourceSHA, source) {
+			validProvenance++
+		}
+	}
+	if meta.Status == "verified" && validProvenance == 0 {
+		s.add("verified_provenance_missing", SeverityError, path, "verified page requires at least one validated source")
 	}
 	for _, superseded := range meta.Supersedes {
 		target, err := safeRelativeReference(s.paths.root, filepath.Dir(filepath.Join(s.paths.root, filepath.FromSlash(path))), superseded)
@@ -248,27 +309,92 @@ func (s *scanState) validateMetadata(path string, meta PageMetadata) {
 	}
 }
 
-func (s *scanState) validateSource(pagePath string, source Source) {
-	count := 0
-	if source.Path != "" {
-		count++
+func (s *scanState) validateSource(pagePath, sourceSHA string, source Source) bool {
+	class, ok := s.manifest.Classes[source.Class]
+	if !ok || strings.TrimSpace(source.Class) == "" {
+		s.add("source_class_unknown", SeverityError, pagePath, "source class is not configured")
+		return false
 	}
-	if source.FairwayDecision != "" {
-		count++
+	switch class.Kind {
+	case "project_file":
+		if source.Path == "" || source.Fairway != nil {
+			s.add("source_identity_invalid", SeverityError, pagePath, "project_file source requires only a path identity")
+			return false
+		}
+		path, err := safeProjectFile(s.paths, source.Path)
+		if err != nil {
+			s.add("source_path_invalid", SeverityError, pagePath, "cited source is missing, unsafe, or not a regular file")
+			return false
+		}
+		if !shaPattern.MatchString(sourceSHA) {
+			return false
+		}
+		match, err := sourceMatchesRevision(s.paths.project, path, sourceSHA, s.opts.MaxPageBytes)
+		if err != nil {
+			s.add("source_revision_unverifiable", SeverityError, pagePath, "cited source cannot be verified at source_sha")
+			return false
+		}
+		if !match {
+			s.add("source_revision_stale", SeverityWarning, pagePath, "cited source content differs from source_sha")
+			return false
+		}
+		return true
+	case "fairway":
+		if source.Path != "" || source.Fairway == nil {
+			s.add("source_identity_invalid", SeverityError, pagePath, "fairway source requires only a typed Fairway identity")
+			return false
+		}
+		ref := *source.Fairway
+		if ref.Kind != class.FairwayKind || !fairwayIDPattern.MatchString(ref.ID) {
+			s.add("fairway_source_invalid", SeverityError, pagePath, "Fairway source kind or id is invalid")
+			return false
+		}
+		requirement := FairwayReferenceRequirement{PagePath: pagePath, SourceClass: source.Class, Reference: ref}
+		s.report.FairwayReferences = append(s.report.FairwayReferences, requirement)
+		if s.opts.ValidateFairwayReference == nil {
+			s.add("fairway_source_validation_required", SeverityError, pagePath, "Fairway source requires coordinator store validation")
+			return false
+		}
+		if err := s.opts.ValidateFairwayReference(requirement); err != nil {
+			s.add("fairway_source_not_found", SeverityError, pagePath, "Fairway source was not validated by the coordinator store")
+			return false
+		}
+		return true
+	default:
+		return false
 	}
-	if source.FairwayEvidence != "" {
-		count++
+}
+
+func sourceMatchesRevision(projectRoot, currentPath, revision string, limit int64) (bool, error) {
+	rel, err := filepath.Rel(projectRoot, currentPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false, errors.New("source path escapes project")
 	}
-	if count != 1 {
-		s.add("source_identity_invalid", SeverityError, pagePath, "each source must contain exactly one supported identity")
-		return
+	current, err := readBounded(currentPath, limit)
+	if err != nil {
+		return false, err
 	}
-	if source.Path == "" {
-		return
+	var committed boundedBuffer
+	committed.limit = limit
+	cmd := exec.Command("git", "-C", projectRoot, "show", revision+":"+filepath.ToSlash(rel))
+	cmd.Stdout = &committed
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return false, errors.New("read source at revision")
 	}
-	if _, err := safeProjectFile(s.paths, source.Path); err != nil {
-		s.add("source_path_invalid", SeverityError, pagePath, "cited source is missing, unsafe, or not a regular file")
+	return bytes.Equal(current, committed.Bytes()), nil
+}
+
+type boundedBuffer struct {
+	bytes.Buffer
+	limit int64
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if int64(b.Len()+len(p)) > b.limit {
+		return 0, errors.New("source revision content exceeds configured limit")
 	}
+	return b.Buffer.Write(p)
 }
 
 func (s *scanState) validateIdentities() {
@@ -410,12 +536,6 @@ func normalizedIdentity(title string) string {
 	return strings.ToLower(strings.Join(strings.Fields(title), " "))
 }
 
-func sameRevision(page, current string) bool {
-	page = strings.ToLower(strings.TrimSpace(page))
-	current = strings.ToLower(strings.TrimSpace(current))
-	return strings.HasPrefix(page, current) || strings.HasPrefix(current, page)
-}
-
 func dateOnly(value time.Time) time.Time {
 	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
 }
@@ -441,6 +561,19 @@ func (s *scanState) add(code string, severity Severity, path, detail string) {
 
 func (s *scanState) sort() {
 	sort.Slice(s.report.Pages, func(i, j int) bool { return s.report.Pages[i].Path < s.report.Pages[j].Path })
+	sort.Slice(s.report.FairwayReferences, func(i, j int) bool {
+		a, b := s.report.FairwayReferences[i], s.report.FairwayReferences[j]
+		if a.PagePath != b.PagePath {
+			return a.PagePath < b.PagePath
+		}
+		if a.SourceClass != b.SourceClass {
+			return a.SourceClass < b.SourceClass
+		}
+		if a.Reference.Kind != b.Reference.Kind {
+			return a.Reference.Kind < b.Reference.Kind
+		}
+		return a.Reference.ID < b.Reference.ID
+	})
 	sort.Slice(s.report.Findings, func(i, j int) bool {
 		a, b := s.report.Findings[i], s.report.Findings[j]
 		if a.Path != b.Path {

@@ -113,6 +113,13 @@ var (
 	bearerPattern  = regexp.MustCompile(`(?i)\bauthorization\s*:\s*bearer\s+\S+|\bbearer\s+[A-Za-z0-9._~+/=-]{16,}`)
 	jwtPattern     = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b`)
 	knownSecret    = regexp.MustCompile(`\b(?:sk_live_|rk_live_|ghp_|github_pat_|AKIA)[A-Za-z0-9_-]{8,}`)
+	pemBoundary    = regexp.MustCompile(`(?i)-----BEGIN [A-Z0-9][A-Z0-9 _-]*-----`)
+	placeholderVar = regexp.MustCompile(`^\$\{[A-Za-z_][A-Za-z0-9_]*\}$`)
+	placeholderTag = regexp.MustCompile(`^<(?:redacted|masked|unset|none|example|changeme|secret|token|password)>$`)
+	shellPrompt    = regexp.MustCompile(`^(?:[$#>]\s+|[A-Za-z0-9_.-]+@[^[:space:]:]+:[^$#]*[$#]\s+)`)
+	logPrefix      = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ][0-9:.+-]+(?:Z|[+-][0-9:]+)?\s+(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\b`)
+	stackFrame     = regexp.MustCompile(`^(?:goroutine \d+|panic:|at [A-Za-z0-9_.$/<>-]+\(|\s*File ".+", line \d+)`)
+	commandPrefix  = regexp.MustCompile(`^(?:bash|sh|zsh|fish|curl|wget|git|go|make|docker|kubectl|helm|terraform|python3?|node|npm|pnpm|yarn|psql|ssh)\s+`)
 )
 
 // Load reads and extracts one repo-local tmp-ux memory Markdown file.
@@ -214,6 +221,24 @@ func ValidateProposal(proposal Proposal) error {
 		if err := rejectSensitive([]byte(value)); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// ValidateSafeText applies the migration secret scanner without retaining or
+// returning the inspected value.
+func ValidateSafeText(value string) error {
+	return rejectSensitive([]byte(value))
+}
+
+// ValidateRendered applies an aggregate size bound and the same secret scan to
+// a fully rendered packet.
+func ValidateRendered(rendered []byte, maxBytes int) error {
+	if maxBytes <= 0 || len(rendered) > maxBytes {
+		return errors.New("rendered memory packet exceeds the aggregate size limit")
+	}
+	if err := rejectSensitive(rendered); err != nil {
+		return errors.New("rendered memory packet contains prohibited secret-like material")
 	}
 	return nil
 }
@@ -368,8 +393,7 @@ func isMemoryMarkdown(name string) bool {
 
 func rejectSensitive(body []byte) error {
 	text := string(body)
-	lower := strings.ToLower(text)
-	if strings.Contains(lower, "-----begin private key") || strings.Contains(lower, "-----begin rsa private key") || bearerPattern.MatchString(text) || jwtPattern.MatchString(text) || knownSecret.MatchString(text) {
+	if pemBoundary.MatchString(text) || bearerPattern.MatchString(text) || jwtPattern.MatchString(text) || knownSecret.MatchString(text) {
 		return errors.New("legacy memory file contains prohibited secret-like material")
 	}
 	for _, match := range secretAssign.FindAllStringSubmatch(text, -1) {
@@ -383,10 +407,10 @@ func rejectSensitive(body []byte) error {
 
 func placeholder(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
-	if strings.HasPrefix(value, "${") || strings.HasPrefix(value, "$<") || strings.HasPrefix(value, "<") {
+	if placeholderVar.MatchString(value) || placeholderTag.MatchString(value) {
 		return true
 	}
-	value = strings.Trim(value, "<>[]{}()*,.;")
+	value = strings.Trim(value, "[]{}()*,.;")
 	if value == "" || value == "redacted" || value == "none" || value == "unset" || value == "example" || value == "changeme" || value == "masked" || value == "xxx" {
 		return true
 	}
@@ -404,6 +428,9 @@ func extract(body []byte) (Proposal, []string, error) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			if !inFence && current != "" {
+				return Proposal{}, nil, errors.New("legacy memory file contains raw or transcript-like content")
+			}
 			inFence = !inFence
 			if inFence {
 				warnings = appendUnique(warnings, "fenced code was omitted from extraction")
@@ -425,10 +452,19 @@ func extract(body []byte) (Proposal, []string, error) {
 			continue
 		}
 		if key, value, ok := inlineField(line); ok {
+			if looksRawContent(value) {
+				return Proposal{}, nil, errors.New("legacy memory file contains raw or transcript-like content")
+			}
 			sections[key] = append(sections[key], value)
 			continue
 		}
 		if current != "" {
+			if looksRawContent(line) {
+				return Proposal{}, nil, errors.New("legacy memory file contains raw or transcript-like content")
+			}
+			if listSection(current) && listPattern.FindStringSubmatch(line) == nil {
+				return Proposal{}, nil, errors.New("legacy memory list fields require explicit Markdown list items")
+			}
 			sections[current] = append(sections[current], line)
 		}
 	}
@@ -507,6 +543,44 @@ func prohibitedSection(label string) bool {
 	default:
 		return false
 	}
+}
+
+func listSection(section string) bool {
+	switch section {
+	case "decisions", "blockers", "open_questions", "next_actions", "source_checkpoint_ids", "source_evidence_ids", "source_review_ids":
+		return true
+	default:
+		return false
+	}
+}
+
+func looksRawContent(line string) bool {
+	line = strings.TrimSpace(line)
+	if match := listPattern.FindStringSubmatch(line); len(match) == 2 {
+		line = strings.TrimSpace(match[1])
+	}
+	lower := strings.ToLower(line)
+	if line == "" {
+		return false
+	}
+	if shellPrompt.MatchString(line) || logPrefix.MatchString(line) || stackFrame.MatchString(line) || commandPrefix.MatchString(lower) {
+		return true
+	}
+	if (strings.HasPrefix(line, "{") && strings.HasSuffix(line, "}")) ||
+		(strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") && strings.Contains(line, `"`)) {
+		return true
+	}
+	for _, prefix := range []string{
+		"tool call:", "tool output:", "tool result:", "command output:", "stdout:", "stderr:",
+		"exit code:", "process exited", "script running with cell id", "transcript:", "assistant:", "user:",
+	} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return strings.Contains(lower, "<codex_delegation") ||
+		strings.Contains(lower, "<tool_call") ||
+		strings.Contains(lower, "custom_tool_call_output")
 }
 
 func inlineField(line string) (string, string, bool) {

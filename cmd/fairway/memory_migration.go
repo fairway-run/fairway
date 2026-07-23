@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/subashram/fairway/internal/config"
 	fairwaygit "github.com/subashram/fairway/internal/git"
@@ -163,6 +165,11 @@ type coldStartGit struct {
 	ChangedFiles []string `json:"changed_files,omitempty"`
 }
 
+const (
+	coldStartStringBytes = 512
+	coldStartTotalBytes  = 64 * 1024
+)
+
 func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) error {
 	fs := flag.NewFlagSet("memory cold-start", flag.ContinueOnError)
 	track := fs.String("track", "", "track id")
@@ -200,16 +207,37 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 		if err != nil {
 			return err
 		}
-		packet := boundMemoryPacket(buildMemoryPacket(memory, *forProvider, tasks, sessions, checkpoints, cfg.States.Terminal))
+		tasks, sessions, checkpoints = trackScopedColdStartFacts(memory, tasks, sessions, checkpoints)
+		packet, err := boundMemoryPacket(buildMemoryPacket(memory, *forProvider, tasks, sessions, checkpoints, cfg.States.Terminal))
+		if err != nil {
+			return err
+		}
 		warnings := coldStartWarnings(memory, time.Now().UTC(), *olderThan)
-		gitReadback := coldStartGit{Branch: fairwaygit.CurrentBranch(root), Commit: fairwaygit.LastCommit(root)}
+		gitReadback, err := boundColdStartGit(coldStartGit{Branch: fairwaygit.CurrentBranch(root), Commit: fairwaygit.LastCommit(root)})
+		if err != nil {
+			return err
+		}
 		if status, statusErr := fairwaygit.Check(root, ""); statusErr == nil {
 			gitReadback.Dirty = status.Dirty
-			gitReadback.ChangedFiles = boundStrings(status.ChangedFiles, 12)
+			gitReadback.ChangedFiles, err = boundStrings(status.ChangedFiles, 12)
+			if err != nil {
+				return err
+			}
 		} else {
 			warnings = append(warnings, "git posture unavailable")
 		}
-		report := memoryColdStart{Schema: "fairway.memory-cold-start.v1", Packet: packet, Git: gitReadback, Warnings: uniqueSorted(warnings), Bounded: true, ReadOnly: true}
+		warnings, err = boundStrings(uniqueSorted(warnings), 12)
+		if err != nil {
+			return err
+		}
+		report := memoryColdStart{Schema: "fairway.memory-cold-start.v1", Packet: packet, Git: gitReadback, Warnings: warnings, Bounded: true, ReadOnly: true}
+		rendered, err := json.Marshal(report)
+		if err != nil {
+			return fmt.Errorf("marshal bounded cold-start packet: %w", err)
+		}
+		if err := memorymigration.ValidateRendered(rendered, coldStartTotalBytes); err != nil {
+			return err
+		}
 		if opts.JSON {
 			return printJSON(report)
 		}
@@ -353,24 +381,152 @@ func printMemoryImportResult(opts globalOptions, result memoryImportResult) erro
 	return nil
 }
 
-func boundMemoryPacket(packet memoryPacket) memoryPacket {
-	packet.Track.Decisions = boundStrings(packet.Track.Decisions, 12)
-	packet.Track.Blockers = boundStrings(packet.Track.Blockers, 12)
-	packet.Track.OpenQuestions = boundStrings(packet.Track.OpenQuestions, 12)
-	packet.Track.NextActions = boundStrings(packet.Track.NextActions, 12)
-	packet.ActiveTasks = boundStrings(packet.ActiveTasks, 12)
-	packet.ActiveSessions = boundStrings(packet.ActiveSessions, 8)
-	packet.Blockers = boundStrings(packet.Blockers, 12)
-	packet.NextActions = boundStrings(packet.NextActions, 12)
-	packet.Checkpoints = boundStrings(packet.Checkpoints, 8)
-	return packet
+func trackScopedColdStartFacts(memory store.TrackMemory, tasks []store.Task, sessions []store.Session, checkpoints []store.Checkpoint) ([]store.Task, []store.Session, []store.Checkpoint) {
+	sourceCheckpointIDs := make(map[int64]bool, len(memory.SourceCheckpointIDs))
+	for _, id := range memory.SourceCheckpointIDs {
+		if id > 0 {
+			sourceCheckpointIDs[id] = true
+		}
+	}
+	roots := map[string]bool{}
+	for _, task := range tasks {
+		if task.Definition.ID == memory.TrackID {
+			roots[task.Definition.ID] = true
+		}
+	}
+	for _, checkpoint := range checkpoints {
+		if sourceCheckpointIDs[checkpoint.ID] && strings.TrimSpace(checkpoint.TaskID) != "" {
+			roots[checkpoint.TaskID] = true
+		}
+	}
+	parents := make(map[string]string, len(tasks))
+	for _, task := range tasks {
+		parents[task.Definition.ID] = task.Definition.ParentID
+	}
+	members := map[string]bool{}
+	for _, task := range tasks {
+		if taskInTrack(task.Definition.ID, parents, roots) {
+			members[task.Definition.ID] = true
+		}
+	}
+	scopedTasks := make([]store.Task, 0, len(members))
+	for _, task := range tasks {
+		if members[task.Definition.ID] {
+			scopedTasks = append(scopedTasks, task)
+		}
+	}
+	scopedSessions := make([]store.Session, 0)
+	for _, session := range sessions {
+		if members[session.TaskID] {
+			scopedSessions = append(scopedSessions, session)
+		}
+	}
+	scopedCheckpoints := make([]store.Checkpoint, 0)
+	for _, checkpoint := range checkpoints {
+		if members[checkpoint.TaskID] {
+			scopedCheckpoints = append(scopedCheckpoints, checkpoint)
+		}
+	}
+	return scopedTasks, scopedSessions, scopedCheckpoints
 }
 
-func boundStrings(values []string, limit int) []string {
-	if len(values) <= limit {
-		return append([]string{}, values...)
+func taskInTrack(taskID string, parents map[string]string, roots map[string]bool) bool {
+	seen := map[string]bool{}
+	for cursor := strings.TrimSpace(taskID); cursor != ""; cursor = strings.TrimSpace(parents[cursor]) {
+		if roots[cursor] {
+			return true
+		}
+		if seen[cursor] {
+			return false
+		}
+		seen[cursor] = true
 	}
-	return append([]string{}, values[:limit]...)
+	return false
+}
+
+func boundMemoryPacket(packet memoryPacket) (memoryPacket, error) {
+	var err error
+	packet.Track.TrackID, err = boundString(packet.Track.TrackID)
+	if err != nil {
+		return memoryPacket{}, err
+	}
+	scalars := []*string{
+		&packet.Track.Title, &packet.Track.Purpose, &packet.Track.OperatingMode,
+		&packet.Track.ActiveScope, &packet.Track.CurrentObjective, &packet.Track.Owner,
+		&packet.Track.ReviewBy, &packet.Track.Disposition, &packet.Track.PromotionTarget,
+		&packet.Track.CanonicalCommit, &packet.Track.SupersededByTrackID, &packet.Track.UpdatedAt,
+		&packet.ForProvider,
+	}
+	for _, scalar := range scalars {
+		*scalar, err = boundString(*scalar)
+		if err != nil {
+			return memoryPacket{}, err
+		}
+	}
+	for target, limit := range map[*[]string]int{
+		&packet.Track.Decisions: 12, &packet.Track.Blockers: 12,
+		&packet.Track.OpenQuestions: 12, &packet.Track.NextActions: 12,
+		&packet.ActiveTasks: 12, &packet.ActiveSessions: 8,
+		&packet.Blockers: 12, &packet.NextActions: 12, &packet.Checkpoints: 8,
+	} {
+		*target, err = boundStrings(*target, limit)
+		if err != nil {
+			return memoryPacket{}, err
+		}
+	}
+	packet.Track.SourceCheckpointIDs = boundInt64s(packet.Track.SourceCheckpointIDs, 24)
+	packet.Track.SourceEvidenceIDs = boundInt64s(packet.Track.SourceEvidenceIDs, 24)
+	packet.Track.SourceReviewIDs = boundInt64s(packet.Track.SourceReviewIDs, 24)
+	return packet, nil
+}
+
+func boundColdStartGit(readback coldStartGit) (coldStartGit, error) {
+	var err error
+	readback.Branch, err = boundString(readback.Branch)
+	if err != nil {
+		return coldStartGit{}, err
+	}
+	readback.Commit, err = boundString(readback.Commit)
+	if err != nil {
+		return coldStartGit{}, err
+	}
+	return readback, nil
+}
+
+func boundStrings(values []string, limit int) ([]string, error) {
+	if len(values) > limit {
+		values = values[:limit]
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		bounded, err := boundString(value)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, bounded)
+	}
+	return out, nil
+}
+
+func boundString(value string) (string, error) {
+	if err := memorymigration.ValidateSafeText(value); err != nil {
+		return "", errors.New("cold-start packet contains prohibited secret-like material")
+	}
+	if len(value) <= coldStartStringBytes {
+		return value, nil
+	}
+	value = value[:coldStartStringBytes]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return strings.TrimSpace(value), nil
+}
+
+func boundInt64s(values []int64, limit int) []int64 {
+	if len(values) > limit {
+		values = values[:limit]
+	}
+	return append([]int64{}, values...)
 }
 
 func coldStartWarnings(memory store.TrackMemory, now time.Time, olderThan time.Duration) []string {

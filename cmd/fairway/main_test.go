@@ -4535,6 +4535,13 @@ func TestCLI_MemoryMigrationPreviewApplyCoverageColdStartAndRetirement(t *testin
 	runOK(t, "add", "T-001", "--title", "Memory migration source", "--role", "backend")
 	runOK(t, "claim", "T-001")
 	runOK(t, "checkpoint", "record", "T-001", "--state", "active", "--owner", "backend", "--summary", "migrate legacy memory")
+	longChildTitle := "Track child " + strings.Repeat("x", 1800)
+	runOK(t, "add", "T-002", "--title", longChildTitle, "--role", "backend", "--parent", "T-001")
+	runOK(t, "claim", "T-002")
+	runOK(t, "checkpoint", "record", "T-002", "--state", "active", "--owner", "backend", "--summary", strings.Repeat("bounded checkpoint ", 200))
+	runOK(t, "add", "T-999", "--title", "Unrelated project work", "--role", "backend")
+	runOK(t, "claim", "T-999")
+	runOK(t, "checkpoint", "record", "T-999", "--state", "active", "--owner", "backend", "--summary", "authorization: Bearer UNRELATED_PACKET_SECRET_123456789")
 	writeFile(t, filepath.Join(repo, "tmp-ux", "program-memory.md"), `# Program Memory
 
 ## Purpose
@@ -4583,7 +4590,27 @@ MIGRATION_RAW_SENTINEL must not be retained.
 	for _, want := range []string{`"schema": "fairway.memory-cold-start.v1"`, `"bounded": true`, `"read_only": true`, `"branch": "main"`, `"current_objective": "Finish the migration commands."`, `"T-001 in_progress Memory migration source"`} {
 		assertContains(t, coldStart, want)
 	}
+	assertContains(t, coldStart, `"T-002 in_progress Track child`)
+	assertNotContains(t, coldStart, strings.Repeat("x", 1800))
+	assertNotContains(t, coldStart, "T-999")
+	assertNotContains(t, coldStart, "UNRELATED_PACKET_SECRET")
 	assertNotContains(t, coldStart, "MIGRATION_RAW_SENTINEL")
+	if len(coldStart) > coldStartTotalBytes {
+		t.Fatalf("cold-start JSON exceeded aggregate bound: %d", len(coldStart))
+	}
+
+	secretGitPath := filepath.Join(repo, "tmp-ux", "password=GIT_PACKET_SECRET_123456789-memory.md")
+	writeFile(t, secretGitPath, "# ignored\n")
+	if out, err := captureRun("--json", "memory", "cold-start", "--track", "program"); err == nil || strings.Contains(out, "GIT_PACKET_SECRET") || strings.Contains(err.Error(), "GIT_PACKET_SECRET") {
+		t.Fatalf("secret Git posture output=%q err=%v", out, err)
+	}
+	if err := os.Remove(secretGitPath); err != nil {
+		t.Fatal(err)
+	}
+	runOK(t, "checkpoint", "record", "T-002", "--state", "active", "--owner", "backend", "--summary", "authorization: Bearer RELATED_PACKET_SECRET_123456789")
+	if out, err := captureRun("--json", "memory", "cold-start", "--track", "program"); err == nil || strings.Contains(out, "RELATED_PACKET_SECRET") || strings.Contains(err.Error(), "RELATED_PACKET_SECRET") {
+		t.Fatalf("secret checkpoint output=%q err=%v", out, err)
+	}
 
 	activePlan := runCaptureAllowError(t, "memory", "retire-file", "--file", "tmp-ux/program-memory.md", "--track", "program", "--reason", "migrated")
 	assertContains(t, activePlan, "memory_retire_file: false")

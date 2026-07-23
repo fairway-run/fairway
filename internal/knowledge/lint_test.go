@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -12,14 +13,13 @@ import (
 	"time"
 )
 
-const testRevision = "abcdef1234567890"
-
 func TestLintValidKnowledgeTree(t *testing.T) {
 	project := newKnowledgeProject(t)
-	writePage(t, project, "index.md", "Engineering index", "verified", "2026-12-31", testRevision, []string{"current-state.md"}, "source.md")
-	writePage(t, project, "current-state.md", "Current state", "verified", "2026-12-31", testRevision, nil, "source.md")
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Engineering index", "verified", "2026-12-31", revision, []string{"current-state.md"}, "source.md")
+	writePage(t, project, "current-state.md", "Current state", "verified", "2026-12-31", revision, nil, "source.md")
 
-	report, err := Lint(Options{ProjectRoot: project, SourceRevision: testRevision, Now: mustDate(t, "2026-07-22")})
+	report, err := Lint(Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestLintValidKnowledgeTree(t *testing.T) {
 		t.Fatalf("pages not sorted or counted: %+v", report.Pages)
 	}
 
-	status, err := Status(Options{ProjectRoot: project, SourceRevision: testRevision, Now: mustDate(t, "2026-07-22")})
+	status, err := Status(Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")})
 	if err != nil || !reflect.DeepEqual(report, status) {
 		t.Fatalf("status differs from lint: err=%v\nlint=%+v\nstatus=%+v", err, report, status)
 	}
@@ -41,9 +41,13 @@ func TestLintValidKnowledgeTree(t *testing.T) {
 
 func TestLintReportsMetadataIndexLinkSourceAndRevisionFindings(t *testing.T) {
 	project := newKnowledgeProject(t)
-	writePage(t, project, "index.md", "Duplicate title", "verified", "2026-01-01", "1111111", []string{"a.md", "missing.md", "../../../outside.md"}, "missing-source.md")
-	writePage(t, project, "a.md", "Duplicate title", "verified", "2026-01-01", "1111111", nil, "source.md")
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Duplicate title", "verified", "2026-01-01", revision, []string{"a.md", "missing.md", "../../../outside.md"}, "missing-source.md")
+	writePage(t, project, "a.md", "Duplicate title", "verified", "2026-01-01", revision, nil, "source.md")
 	writePage(t, project, "orphan.md", "Orphan", "unknown", "bad-date", "not-a-sha", nil, "source.md")
+	if err := os.WriteFile(filepath.Join(project, "source.md"), []byte("# Changed source\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	orphanPath := filepath.Join(project, DefaultRoot, "orphan.md")
 	orphanData, err := os.ReadFile(orphanPath)
 	if err != nil {
@@ -53,7 +57,7 @@ func TestLintReportsMetadataIndexLinkSourceAndRevisionFindings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Lint(Options{ProjectRoot: project, SourceRevision: testRevision, Now: mustDate(t, "2026-07-22")})
+	report, err := Lint(Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,12 +81,13 @@ func TestLintReportsMetadataIndexLinkSourceAndRevisionFindings(t *testing.T) {
 
 func TestLintSecretFindingDoesNotEchoContent(t *testing.T) {
 	project := newKnowledgeProject(t)
-	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", testRevision, []string{"secret.md"}, "source.md")
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"secret.md"}, "source.md")
 	secret := "SHOULD_NOT_RENDER_12345"
-	body := pageBody("Sensitive "+secret, "verified", "2026-12-31", testRevision, nil, "source.md") + "\naccess_token=" + secret + "\n"
+	body := pageBody("Sensitive "+secret, "verified", "2026-12-31", revision, nil, "source.md") + "\naccess_token=" + secret + "\n"
 	writeKnowledgeFile(t, project, "secret.md", body)
 
-	report, err := Lint(Options{ProjectRoot: project, SourceRevision: testRevision, Now: mustDate(t, "2026-07-22")})
+	report, err := Lint(Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +105,7 @@ func TestLintSecretFindingDoesNotEchoContent(t *testing.T) {
 
 func TestLintRejectsUnknownMetadataField(t *testing.T) {
 	project := newKnowledgeProject(t)
-	body := pageBody("Index", "verified", "2026-12-31", testRevision, nil, "source.md")
+	body := pageBody("Index", "verified", "2026-12-31", gitRevision(t, project), nil, "source.md")
 	body = strings.Replace(body, "supersedes: []", "unexpected_field: value\nsupersedes: []", 1)
 	writeKnowledgeFile(t, project, "index.md", body)
 
@@ -137,7 +142,7 @@ func TestLintPathCustody(t *testing.T) {
 		if err := os.Symlink(outside, filepath.Join(project, "linked-source.md")); err != nil {
 			t.Fatal(err)
 		}
-		writePage(t, project, "index.md", "Index", "verified", "2026-12-31", testRevision, nil, "linked-source.md")
+		writePage(t, project, "index.md", "Index", "verified", "2026-12-31", gitRevision(t, project), nil, "linked-source.md")
 		report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
 		if err != nil {
 			t.Fatal(err)
@@ -150,8 +155,9 @@ func TestLintPathCustody(t *testing.T) {
 
 func TestLintEnforcesBounds(t *testing.T) {
 	project := newKnowledgeProject(t)
-	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", testRevision, []string{"a.md", "missing.md"}, "source.md")
-	writePage(t, project, "a.md", "A", "verified", "2026-12-31", testRevision, nil, "source.md")
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"a.md", "missing.md"}, "source.md")
+	writePage(t, project, "a.md", "A", "verified", "2026-12-31", revision, nil, "source.md")
 	if _, err := Lint(Options{ProjectRoot: project, MaxPages: 1}); err == nil || !strings.Contains(err.Error(), "page count") {
 		t.Fatalf("expected page count bound, got %v", err)
 	}
@@ -174,6 +180,116 @@ func TestLintRejectsInvalidRequestedRevision(t *testing.T) {
 	}
 }
 
+func TestLintRequiresConfiguredSourceManifest(t *testing.T) {
+	project := newKnowledgeProject(t)
+	if err := os.Remove(filepath.Join(project, DefaultRoot, DefaultSourceManifest)); err != nil {
+		t.Fatal(err)
+	}
+	writePage(t, project, "index.md", "Index", "draft", "2026-12-31", gitRevision(t, project), nil, "source.md")
+	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "source_manifest_missing") || !hasFinding(report, "source_class_unknown") {
+		t.Fatalf("missing manifest findings: %+v", report.Findings)
+	}
+}
+
+func TestLintExposesTypedFairwayReferencesForStoreValidation(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writeKnowledgeFile(t, project, "index.md", fairwayPageBody("Index", revision, "fairway-decision", "decision", "DEC-123"))
+
+	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "fairway_source_validation_required") || !hasFinding(report, "verified_provenance_missing") {
+		t.Fatalf("unvalidated Fairway source counted as provenance: %+v", report.Findings)
+	}
+	want := []FairwayReferenceRequirement{{
+		PagePath: "index.md", SourceClass: "fairway-decision",
+		Reference: FairwayReference{Kind: "decision", ID: "DEC-123"},
+	}}
+	if !reflect.DeepEqual(report.FairwayReferences, want) {
+		t.Fatalf("unexpected Fairway validation requirements: %+v", report.FairwayReferences)
+	}
+
+	validated, err := Lint(Options{
+		ProjectRoot: project, Now: mustDate(t, "2026-07-22"),
+		ValidateFairwayReference: func(requirement FairwayReferenceRequirement) error {
+			if requirement.PagePath != "index.md" || requirement.SourceClass != "fairway-decision" ||
+				requirement.Reference.Kind != "decision" || requirement.Reference.ID != "DEC-123" {
+				return fmt.Errorf("unexpected reference")
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasFinding(validated, "fairway_source_validation_required") || hasFinding(validated, "verified_provenance_missing") {
+		t.Fatalf("validated Fairway source rejected: %+v", validated.Findings)
+	}
+}
+
+func TestLintRejectsMalformedOrMismatchedFairwayReferences(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writeKnowledgeFile(t, project, "index.md", fairwayPageBody("Index", revision, "fairway-decision", "evidence", "bad id with spaces"))
+	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "fairway_source_invalid") || len(report.FairwayReferences) != 0 {
+		t.Fatalf("malformed Fairway source was exposed as valid: %+v", report)
+	}
+}
+
+func TestLintLegacyFreeFormFairwaySourceCannotSatisfyProvenance(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	body := fmt.Sprintf("---\nknowledge_version: 1\ntitle: Index\nstatus: verified\nowner: platform\nlast_verified: 2026-07-20\nreview_by: 2026-12-31\nsource_sha: %s\nsources:\n  - fairway_decision: arbitrary-value\nsupersedes: []\n---\n\n# Index\n", revision)
+	writeKnowledgeFile(t, project, "index.md", body)
+	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "metadata_invalid") || !hasFinding(report, "verified_provenance_missing") || len(report.FairwayReferences) != 0 {
+		t.Fatalf("legacy free-form Fairway source counted as provenance: %+v", report)
+	}
+}
+
+func TestLintSourceRevisionTracksCitedFileNotRepositoryHead(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, nil, "source.md")
+
+	if err := os.WriteFile(filepath.Join(project, "unrelated.md"), []byte("unrelated\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "add", "unrelated.md")
+	gitRun(t, project, "commit", "-m", "unrelated")
+	report, err := Lint(Options{ProjectRoot: project, SourceRevision: gitRevision(t, project), Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasFinding(report, "source_revision_stale") || hasFinding(report, "source_revision_unverifiable") {
+		t.Fatalf("unrelated commit made cited source stale: %+v", report.Findings)
+	}
+
+	if err := os.WriteFile(filepath.Join(project, "source.md"), []byte("# Dirty source\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err = Lint(Options{ProjectRoot: project, SourceRevision: gitRevision(t, project), Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "source_revision_stale") {
+		t.Fatalf("dirty cited source did not become stale: %+v", report.Findings)
+	}
+}
+
 func newKnowledgeProject(t *testing.T) string {
 	t.Helper()
 	project := t.TempDir()
@@ -183,8 +299,16 @@ func newKnowledgeProject(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(project, "source.md"), []byte("# Canonical source\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(project, DefaultRoot, DefaultSourceManifest), []byte(scaffoldFiles[DefaultSourceManifest]), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	writeKnowledgeFile(t, project, "README.md", "# Knowledge\n")
 	writeKnowledgeFile(t, project, "log.md", "# Log\n")
+	gitRun(t, project, "init")
+	gitRun(t, project, "config", "user.email", "knowledge-test@example.invalid")
+	gitRun(t, project, "config", "user.name", "Knowledge Test")
+	gitRun(t, project, "add", "source.md")
+	gitRun(t, project, "commit", "-m", "source")
 	return project
 }
 
@@ -195,11 +319,15 @@ func writePage(t *testing.T, project, rel, title, status, reviewBy, revision str
 
 func pageBody(title, status, reviewBy, revision string, links []string, source string) string {
 	var body strings.Builder
-	fmt.Fprintf(&body, "---\nknowledge_version: 1\ntitle: %s\nstatus: %s\nowner: platform\nlast_verified: 2026-07-20\nreview_by: %s\nsource_sha: %s\nsources:\n  - path: %s\nsupersedes: []\n---\n\n# %s\n", title, status, reviewBy, revision, source, title)
+	fmt.Fprintf(&body, "---\nknowledge_version: 1\ntitle: %s\nstatus: %s\nowner: platform\nlast_verified: 2026-07-20\nreview_by: %s\nsource_sha: %s\nsources:\n  - class: project-file\n    path: %s\nsupersedes: []\n---\n\n# %s\n", title, status, reviewBy, revision, source, title)
 	for _, link := range links {
 		fmt.Fprintf(&body, "- [Page](%s)\n", link)
 	}
 	return body.String()
+}
+
+func fairwayPageBody(title, revision, class, kind, id string) string {
+	return fmt.Sprintf("---\nknowledge_version: 1\ntitle: %s\nstatus: verified\nowner: platform\nlast_verified: 2026-07-20\nreview_by: 2026-12-31\nsource_sha: %s\nsources:\n  - class: %s\n    fairway:\n      kind: %s\n      id: %s\nsupersedes: []\n---\n\n# %s\n", title, revision, class, kind, id, title)
 }
 
 func writeKnowledgeFile(t *testing.T, project, rel, body string) {
@@ -229,4 +357,19 @@ func mustDate(t *testing.T, value string) time.Time {
 		t.Fatal(err)
 	}
 	return parsed
+}
+
+func gitRevision(t *testing.T, project string) string {
+	t.Helper()
+	return strings.TrimSpace(gitRun(t, project, "rev-parse", "HEAD"))
+}
+
+func gitRun(t *testing.T, project string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", project}, args...)...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, output)
+	}
+	return string(output)
 }

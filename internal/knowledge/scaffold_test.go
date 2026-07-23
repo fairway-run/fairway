@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestScaffoldCreatesTreeWithoutOverwriting(t *testing.T) {
@@ -38,8 +40,21 @@ func TestScaffoldCreatesTreeWithoutOverwriting(t *testing.T) {
 	if err != nil || string(data) != "owned by project\n" {
 		t.Fatalf("existing file changed: %q err=%v", data, err)
 	}
-	if !reflect.DeepEqual(result.Created, []string{"README.md", "current-state.md", "index.md", "log.md", "open-questions.md"}) {
+	if !reflect.DeepEqual(result.Created, []string{"README.md", "current-state.md", "index.md", "log.md", "open-questions.md", "sources.yaml"}) {
 		t.Fatalf("created files are not deterministic: %v", result.Created)
+	}
+	manifestData, err := os.ReadFile(filepath.Join(project, DefaultRoot, DefaultSourceManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest SourceManifest
+	if err := yaml.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Version != 1 || manifest.Classes["project-file"].Kind != "project_file" ||
+		manifest.Classes["fairway-decision"].FairwayKind != "decision" ||
+		!manifest.Classes["fairway-evidence"].RequiresStoreValidation {
+		t.Fatalf("unexpected scaffold source manifest: %+v", manifest)
 	}
 	report, err := Status(Options{ProjectRoot: project, Now: time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)})
 	if err != nil {
