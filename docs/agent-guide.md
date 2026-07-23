@@ -29,7 +29,10 @@ agents are directed to the Fairway contract before editing.
 
 Re-running `fairway init` preserves an edited `.fairway/AGENTS.md`. Use
 `fairway init --refresh-agent-contract` only when intentionally replacing the
-local breadcrumb with the current generated contract.
+local breadcrumb with the current generated contract. New projects receive the
+minimal working-memory routine directly in that generated contract. Existing
+projects inherit it only after an intentional refresh so local agent
+instructions are never silently overwritten.
 
 For agents without a Fairway source checkout or network access, the installed
 binary carries this guide:

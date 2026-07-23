@@ -818,6 +818,10 @@ func TestCLI_InitWritesAgentBreadcrumb(t *testing.T) {
 	assertContains(t, contract, "fairway agent-guide")
 	assertContains(t, contract, "Role Resolution Order")
 	assertContains(t, contract, "Session Registration Expectation")
+	assertContains(t, contract, "Working Memory Routine")
+	assertContains(t, contract, "fairway memory cold-start --track <task-id>")
+	assertContains(t, contract, "fairway workflow closeout <task-id> --dry-run")
+	assertContains(t, contract, "Short single-burst tasks do not require memory.")
 	assertContains(t, contract, "Full Guide")
 }
 
@@ -857,6 +861,7 @@ func TestCLI_InitPreservesEditedAgentBreadcrumb(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertContains(t, string(body), "Fairway Agent Contract")
+	assertContains(t, string(body), "Working Memory Routine")
 	assertNotContains(t, string(body), "Do not overwrite this file.")
 }
 

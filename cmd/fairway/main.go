@@ -17440,6 +17440,21 @@ register or refresh the provider attachment with `+"`fairway session upsert`"+`
 and record an active checkpoint or provider event. Provider chat is useful
 context, but Fairway remains the coordination source of truth.
 
+## Working Memory Routine
+
+Use track memory only for work that crosses context loss, provider replacement,
+long waits, or multiple execution bursts:
+
+`+"```text"+`
+start:      fairway memory cold-start --track <task-id>
+gear shift: update memory only when the objective, blocker, decision, or next action materially changes
+closeout:   fairway workflow closeout <task-id> --dry-run
+`+"```"+`
+
+If closeout reports terminal memory debt, explicitly promote stable cross-task
+value or archive completed execution memory. The warning is advisory and does
+not create a review gate. Short single-burst tasks do not require memory.
+
 ## Full Guide
 
 For an offline copy embedded in the installed binary, run:
