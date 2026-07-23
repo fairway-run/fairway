@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/subashram/fairway/internal/knowledge"
 	"github.com/subashram/fairway/internal/store"
 )
 
@@ -30,6 +31,21 @@ func TestTrackScopedColdStartFactsIncludesSourceTasksDescendantsAndDependencies(
 	}
 	if got := checkpointIDs(scopedCheckpoints); !reflect.DeepEqual(got, []int64{1, 2}) {
 		t.Fatalf("checkpoint ids=%v", got)
+	}
+}
+
+func TestDedupeKnowledgeSourcesWithMemoryRendersSharedEvidenceOnce(t *testing.T) {
+	sources := []knowledge.QuerySource{
+		{Key: "fairway:evidence:7"},
+		{Key: "fairway:decision:8"},
+		{Key: "file:docs/design/example.md"},
+	}
+	result := dedupeKnowledgeSourcesWithMemory(sources, store.TrackMemory{SourceEvidenceIDs: []int64{7}})
+	if len(result) != 2 {
+		t.Fatalf("deduplicated sources=%+v", result)
+	}
+	if got := []string{result[0].Key, result[1].Key}; !reflect.DeepEqual(got, []string{"fairway:decision:8", "file:docs/design/example.md"}) {
+		t.Fatalf("deduplicated sources=%v", got)
 	}
 }
 

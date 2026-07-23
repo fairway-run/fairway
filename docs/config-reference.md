@@ -19,6 +19,13 @@ root when the conventional location is unsuitable:
 root = "doc/agent-wiki"
 ```
 
+Knowledge lifecycle commands use command-local bounds rather than hidden
+provider settings. `knowledge query --budget-bytes` and
+`memory cold-start --knowledge-budget-bytes` cap optional knowledge context
+separately from execution memory. Ingest and promotion remain preview-first and
+write only with explicit `--apply`; the configured root grants no canonical
+documentation or review authority.
+
 Supply-chain provenance exports are derived from existing task, evidence,
 review, session, checkpoint, batch, usage, and release records. There is no
 provenance-specific credential, provider, or content-capture setting in the

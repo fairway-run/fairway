@@ -234,11 +234,28 @@ Project-owned engineering knowledge is separate from execution memory:
 fairway knowledge init
 fairway knowledge status
 fairway knowledge lint
+fairway knowledge ingest --source docs/design/example.md --page architecture/example.md --owner architecture --review-by 2026-10-22
+fairway knowledge query --task FW-375 --topic "knowledge lifecycle" --format packet
+fairway knowledge promote architecture/example.md --target docs/design/example.md --reviewed-commit <sha>
 ```
 
 Knowledge pages are derived context, not task state or canonical authority.
 Treat lint warnings as owner work and lint errors as unsafe knowledge state;
 neither command approves architecture, risk, merge, release, or deployment.
+Ingest and promotion are preview-first and write only with explicit `--apply`.
+Ingest creates a source-linked draft and index entry without copying source
+content. Query selects a bounded set of indexed pages with status and
+deduplicated provenance labels. Promotion fails closed unless the page and
+citation chain are verified and current, the target is under a configured
+canonical root, and its bytes match the explicitly supplied reviewed commit.
+Apply records only a normal Git diff; it never creates review approval or
+writes the canonical target.
+
+Use `memory cold-start --knowledge-topic <text>` when domain context is needed
+for a resume. Execution memory renders first. Optional knowledge has a separate
+`--knowledge-budget-bytes` limit and cannot displace the current objective,
+blocker, stop condition, or next action. Shared Fairway evidence references are
+deduplicated from the knowledge portion.
 
 Use the active backlog selected by `.fairway/config.toml` as the implementation
 queue. In this repository that is

@@ -13,6 +13,7 @@ import (
 
 	"github.com/subashram/fairway/internal/config"
 	fairwaygit "github.com/subashram/fairway/internal/git"
+	"github.com/subashram/fairway/internal/knowledge"
 	"github.com/subashram/fairway/internal/memorymigration"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -150,12 +151,14 @@ func cmdMemoryCoverage(ctx context.Context, opts globalOptions, args []string) e
 }
 
 type memoryColdStart struct {
-	Schema   string       `json:"schema"`
-	Packet   memoryPacket `json:"packet"`
-	Git      coldStartGit `json:"git"`
-	Warnings []string     `json:"warnings,omitempty"`
-	Bounded  bool         `json:"bounded"`
-	ReadOnly bool         `json:"read_only"`
+	Schema          string                 `json:"schema"`
+	Packet          memoryPacket           `json:"packet"`
+	Knowledge       *knowledge.QueryPacket `json:"knowledge,omitempty"`
+	KnowledgeBudget int                    `json:"knowledge_budget_bytes,omitempty"`
+	Git             coldStartGit           `json:"git"`
+	Warnings        []string               `json:"warnings,omitempty"`
+	Bounded         bool                   `json:"bounded"`
+	ReadOnly        bool                   `json:"read_only"`
 }
 
 type coldStartGit struct {
@@ -175,6 +178,9 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 	track := fs.String("track", "", "track id")
 	forProvider := fs.String("for", "", "target provider or surface")
 	olderThan := fs.Duration("older-than", 24*time.Hour, "age that creates a stale warning")
+	knowledgeTopics := multiStringFlag{}
+	fs.Var(&knowledgeTopics, "knowledge-topic", "optional relevant engineering knowledge topic; repeatable")
+	knowledgeBudget := fs.Int("knowledge-budget-bytes", 12*1024, "separate optional engineering knowledge budget")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -235,11 +241,31 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 			return err
 		}
 		report := memoryColdStart{Schema: "fairway.memory-cold-start.v1", Packet: packet, Git: gitReadback, Warnings: warnings, Bounded: true, ReadOnly: true}
+		if len(knowledgeTopics) > 0 {
+			query, queryErr := knowledge.Query(knowledge.QueryOptions{
+				Options: knowledgeStoreOptions(ctx, cfg, root, "", s),
+				Topic:   strings.Join(knowledgeTopics, " "), TaskID: memory.TrackID,
+				TaskTerms:   []string{memory.Title, memory.Purpose, memory.ActiveScope, memory.CurrentObjective},
+				BudgetBytes: *knowledgeBudget,
+			})
+			if queryErr != nil {
+				return fmt.Errorf("compose cold-start knowledge: %w", queryErr)
+			}
+			query.Sources = dedupeKnowledgeSourcesWithMemory(query.Sources, memory)
+			query.Bytes = 0
+			queryBytes, marshalErr := json.Marshal(query)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			query.Bytes = len(queryBytes)
+			report.Knowledge = &query
+			report.KnowledgeBudget = *knowledgeBudget
+		}
 		rendered, err := json.Marshal(report)
 		if err != nil {
 			return fmt.Errorf("marshal bounded cold-start packet: %w", err)
 		}
-		if err := memorymigration.ValidateRendered(rendered, coldStartTotalBytes); err != nil {
+		if err := memorymigration.ValidateRendered(rendered, coldStartTotalBytes+maxInt(report.KnowledgeBudget, 0)); err != nil {
 			return err
 		}
 		if opts.JSON {
@@ -250,8 +276,33 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 		printStringSection("Warnings", report.Warnings)
 		fmt.Println()
 		printMemoryPacket(report.Packet)
+		if report.Knowledge != nil {
+			fmt.Println()
+			printKnowledgePacket(*report.Knowledge)
+		}
 		return nil
 	})
+}
+
+func dedupeKnowledgeSourcesWithMemory(sources []knowledge.QuerySource, memory store.TrackMemory) []knowledge.QuerySource {
+	memoryEvidence := map[string]bool{}
+	for _, id := range memory.SourceEvidenceIDs {
+		memoryEvidence[fmt.Sprintf("fairway:evidence:%d", id)] = true
+	}
+	result := make([]knowledge.QuerySource, 0, len(sources))
+	for _, source := range sources {
+		if !memoryEvidence[source.Key] {
+			result = append(result, source)
+		}
+	}
+	return result
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func cmdMemoryRetireFile(ctx context.Context, opts globalOptions, args []string) error {

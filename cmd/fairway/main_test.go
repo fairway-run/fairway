@@ -712,7 +712,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"memory", "coverage", "--help"}, "fairway memory coverage [--root tmp-ux]"},
 		{[]string{"memory", "cold-start", "--help"}, "fairway memory cold-start --track <track-id>"},
 		{[]string{"memory", "retire-file", "--help"}, "fairway memory retire-file --file <tmp-ux-memory.md> --track <track-id> --reason <text>"},
-		{[]string{"knowledge", "--help"}, "fairway knowledge init|status|lint"},
+		{[]string{"knowledge", "--help"}, "fairway knowledge init|status|lint|ingest|query|promote"},
 		{[]string{"wait", "--help"}, "fairway wait add|ack|list|tick|resolve|wake"},
 		{[]string{"wait", "add", "--help"}, "fairway wait add --task <task-id> --track <track-id> --on <condition>"},
 		{[]string{"wait", "ack", "--help"}, "fairway wait ack <wait-id>"},
@@ -4691,6 +4691,64 @@ func TestCLI_KnowledgeInitStatusAndLint(t *testing.T) {
 
 	if out, err := captureRun("knowledge", "status", "--root", "../outside"); err == nil {
 		t.Fatalf("unsafe knowledge root succeeded:\n%s", out)
+	}
+}
+
+func TestCLI_KnowledgeIngestTaskQueryAndColdStartComposition(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	gitInit(t, repo)
+	runOK(t, "init")
+	writeFile(t, filepath.Join(repo, "docs", "node-trust.md"), "# Node trust architecture\n")
+	gitAddCommit(t, repo, "canonical source")
+	runOK(t, "knowledge", "init")
+
+	preview := runCapture(t, "--json", "knowledge", "ingest",
+		"--source", "docs/node-trust.md",
+		"--page", "architecture/node-trust.md",
+		"--owner", "security",
+		"--review-by", "2099-01-01")
+	assertContains(t, preview, `"applied": false`)
+	if _, err := os.Stat(filepath.Join(repo, "doc", "agent-wiki", "architecture", "node-trust.md")); !os.IsNotExist(err) {
+		t.Fatalf("knowledge preview wrote page: %v", err)
+	}
+	applied := runCapture(t, "--json", "knowledge", "ingest",
+		"--source", "docs/node-trust.md",
+		"--page", "architecture/node-trust.md",
+		"--owner", "security",
+		"--review-by", "2099-01-01",
+		"--apply")
+	assertContains(t, applied, `"applied": true`)
+
+	runOK(t, "add", "K-001", "--title", "Validate node trust architecture", "--role", "backend", "--owning-domain", "security", "--owning-layer", "node-trust")
+	runOK(t, "claim", "K-001")
+	runOK(t, "checkpoint", "record", "K-001", "--state", "active", "--owner", "backend", "--summary", "validate node trust")
+	query := runCapture(t, "--json", "knowledge", "query", "--task", "K-001", "--topic", "node trust", "--budget-bytes", "4096")
+	for _, expected := range []string{`"schema": "fairway.knowledge-query.v1"`, `"task_id": "K-001"`, `"path": "architecture/node-trust.md"`, `"status": "draft"`, `"bounded": true`} {
+		assertContains(t, query, expected)
+	}
+
+	runOK(t, "memory", "update",
+		"--track", "K-001",
+		"--owner", "backend",
+		"--review-by", "2099-01-01",
+		"--source-checkpoint-id", "1",
+		"--title", "Node trust work",
+		"--current-objective", "Validate node trust architecture")
+	coldStart := runCapture(t, "--json", "memory", "cold-start", "--track", "K-001", "--knowledge-topic", "node trust", "--knowledge-budget-bytes", "4096")
+	assertContains(t, coldStart, `"schema": "fairway.memory-cold-start.v1"`)
+	assertContains(t, coldStart, `"knowledge_budget_bytes": 4096`)
+	assertContains(t, coldStart, `"schema": "fairway.knowledge-query.v1"`)
+	if strings.Index(coldStart, `"packet"`) > strings.Index(coldStart, `"knowledge"`) {
+		t.Fatalf("knowledge rendered before execution memory:\n%s", coldStart)
 	}
 }
 
