@@ -17,17 +17,50 @@ jobs:
       - run: gofmt -w cmd internal && git diff --exit-code
       - run: go test ./...
       - run: go vet ./...
-      - run: bash -n scripts/release/build_release_assurance_bundle.sh
-      - name: Verify release assurance gates publication
+      - run: bash -n scripts/release/*.sh
+      - run: bash scripts/release/download_release_rehearsal_test.sh
+      - name: Verify release rehearsal gates publication
         run: |
           set -euo pipefail
-          candidate_line=$(grep -n 'args: release --clean --skip=publish' .github/workflows/release.yml | cut -d: -f1)
-          assurance_line=$(grep -n 'name: Build and verify release assurance bundle' .github/workflows/release.yml | cut -d: -f1)
+          candidate_line=$(grep -n 'args: release --clean --skip=publish' .github/workflows/release-rehearsal.yml | cut -d: -f1)
+          assurance_line=$(grep -n 'name: Build and verify signed release assurance' .github/workflows/release-rehearsal.yml | cut -d: -f1)
+          smoke_line=$(grep -n 'name: Smoke the signed candidate binary' .github/workflows/release-rehearsal.yml | cut -d: -f1)
+          upload_line=$(grep -n 'uses: actions/upload-artifact@v6' .github/workflows/release-rehearsal.yml | cut -d: -f1)
+          download_line=$(grep -n 'name: Download exact successful rehearsal packet' .github/workflows/release.yml | cut -d: -f1)
+          verify_line=$(grep -n 'name: Verify candidate packet and signed assurance' .github/workflows/release.yml | cut -d: -f1)
           draft_line=$(grep -n 'gh release create' .github/workflows/release.yml | cut -d: -f1)
-          [[ -n "$candidate_line" && -n "$assurance_line" && -n "$draft_line" ]]
-          (( candidate_line < assurance_line && assurance_line < draft_line ))
-          ! grep -Eq 'args: release --clean[[:space:]]*$' .github/workflows/release.yml
-          ! grep -q 'HOMEBREW_TAP_GITHUB_TOKEN' .github/workflows/release.yml
+          [[ -n "$candidate_line" && -n "$assurance_line" && -n "$smoke_line" && -n "$upload_line" ]]
+          [[ -n "$download_line" && -n "$verify_line" && -n "$draft_line" ]]
+          (( candidate_line < assurance_line && assurance_line < smoke_line && smoke_line < upload_line ))
+          (( download_line < verify_line && verify_line < draft_line ))
+          grep -q 'fairway-rehearsal-run:' .github/workflows/release.yml
+          grep -q 'release rehearsal verify' .github/workflows/release.yml
+          grep -q 'release rehearsal extract-assurance' .github/workflows/release.yml
+          grep -q 'persist-credentials: false' .github/workflows/release.yml
+          grep -q 'needs: verify' .github/workflows/release.yml
+          grep -q 'contents: read' .github/workflows/release.yml
+          grep -q 'contents: write' .github/workflows/release.yml
+          if grep -q 'goreleaser/goreleaser-action' .github/workflows/release.yml; then
+            printf 'tag promotion workflow must not rebuild with GoReleaser\n' >&2
+            exit 1
+          fi
+          if grep -Eq 'MACOS_SIGN_P12|MACOS_NOTARY_KEY|FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY' .github/workflows/release.yml; then
+            printf 'tag promotion workflow must not receive build signing secrets\n' >&2
+            exit 1
+          fi
+          if grep -Eq 'args: release --clean[[:space:]]*$' .github/workflows/release-rehearsal.yml; then
+            printf 'rehearsal must build without publishing\n' >&2
+            exit 1
+          fi
+          if grep -q 'HOMEBREW_TAP_GITHUB_TOKEN' .github/workflows/release-rehearsal.yml; then
+            printf 'rehearsal must not receive Homebrew publication authority\n' >&2
+            exit 1
+          fi
+          if sed -n '/^    env:/,/^    steps:/p' .github/workflows/release-rehearsal.yml |
+            grep -Eq 'MACOS_SIGN|MACOS_NOTARY|FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY'; then
+            printf 'rehearsal signing secrets must be scoped to their required steps\n' >&2
+            exit 1
+          fi
       - name: Rehearse small-team read-only lifecycle
         run: |
           FAIRWAY_PILOT_ARTIFACTS="$RUNNER_TEMP/fairway-small-team-pilot" \
@@ -36,7 +69,7 @@ jobs:
         with:
           name: fairway-small-team-readonly-pilot
           path: ${{ runner.temp }}/fairway-small-team-pilot
-      - uses: goreleaser/goreleaser-action@v7
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: latest

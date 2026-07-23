@@ -1,0 +1,193 @@
+name: Release Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Final release version to rehearse (vX.Y.Z)
+        required: true
+        type: string
+      source_sha:
+        description: Exact pushed main commit to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY: ${{ vars.FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY }}
+      FAIRWAY_RELEASE_POLICY_VERSION: sovereign-release-v1
+      CANDIDATE_VERSION: ${{ inputs.version }}
+      CANDIDATE_SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: Validate pre-tag candidate identity
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$CANDIDATE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$CANDIDATE_SOURCE_SHA" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$CANDIDATE_SOURCE_SHA" ]]
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$CANDIDATE_SOURCE_SHA" origin/main
+          if git ls-remote --exit-code --tags origin "refs/tags/$CANDIDATE_VERSION" >/dev/null 2>&1; then
+            printf 'remote release tag already exists: %s\n' "$CANDIDATE_VERSION" >&2
+            exit 1
+          fi
+          git \
+            -c user.name=fairway-release-rehearsal \
+            -c user.email=release@fairway.run \
+            tag -a "$CANDIDATE_VERSION" -m "local rehearsal for $CANDIDATE_VERSION"
+      - name: Install pinned Syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.46.0
+      - name: Install pinned release assurance tools
+        run: |
+          set -euo pipefail
+          go install github.com/google/go-licenses@v1.6.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Test
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Load release highlights
+        run: |
+          set -euo pipefail
+          test -s docs/release-highlights.md
+          {
+            echo "FAIRWAY_RELEASE_HIGHLIGHTS<<EOF"
+            cat docs/release-highlights.md
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+      - name: Import macOS signing certificate
+        env:
+          KEYCHAIN_PASSWORD: ${{ runner.temp }}/fairway-keychain-password
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/fairway-release.keychain-db"
+          p12_path="$RUNNER_TEMP/developer-id-application.p12"
+          intermediate_path="$RUNNER_TEMP/developer-id-g2-ca.cer"
+          printf '%s' "$MACOS_SIGN_P12" | base64 -D > "$p12_path"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$intermediate_path"
+          uuidgen > "$KEYCHAIN_PASSWORD"
+          security create-keychain -p "$(cat "$KEYCHAIN_PASSWORD")" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$(cat "$KEYCHAIN_PASSWORD")" "$keychain_path"
+          security import "$p12_path" -k "$keychain_path" -P "$MACOS_SIGN_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security import "$intermediate_path" -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$(cat "$KEYCHAIN_PASSWORD")" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" ~/Library/Keychains/login.keychain-db
+          security default-keychain -s "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
+          echo "MACOS_CODESIGN_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: "v2.17.0"
+          args: check
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        with:
+          distribution: goreleaser
+          version: "v2.17.0"
+          args: release --clean --skip=publish
+      - name: Lock signing keychain
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -n "${MACOS_CODESIGN_KEYCHAIN:-}" && -f "$MACOS_CODESIGN_KEYCHAIN" ]]; then
+            security lock-keychain "$MACOS_CODESIGN_KEYCHAIN"
+          fi
+          rm -f \
+            "$RUNNER_TEMP/developer-id-application.p12" \
+            "$RUNNER_TEMP/fairway-keychain-password"
+      - name: Build and verify signed release assurance
+        env:
+          FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY: ${{ secrets.FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/fairway-release-assurance"
+          mkdir -p "$output"
+          goreleaser_tool=$(
+            scripts/release/resolve_goreleaser_action_tool.sh \
+              "$RUNNER_TOOL_CACHE" \
+              2.17.0
+          )
+          FAIRWAY_GORELEASER_TOOL="$goreleaser_tool" \
+            scripts/release/build_release_assurance_bundle.sh \
+            "$CANDIDATE_VERSION" \
+            "$CANDIDATE_SOURCE_SHA" \
+            dist \
+            "$output"
+      - name: Smoke the signed candidate binary
+        run: |
+          set -euo pipefail
+          smoke="$RUNNER_TEMP/fairway-release-candidate-smoke"
+          mkdir -m 0700 "$smoke"
+          tar -xzf "dist/fairway_${CANDIDATE_VERSION#v}_darwin_arm64.tar.gz" -C "$smoke"
+          [[ "$("$smoke/fairway" version)" == "${CANDIDATE_VERSION#v}" ]]
+          codesign --verify --deep --strict --verbose=4 "$smoke/fairway"
+      - name: Assemble and verify exact promotion packet
+        run: |
+          set -euo pipefail
+          packet="$RUNNER_TEMP/fairway-release-rehearsal"
+          assurance="$RUNNER_TEMP/fairway-release-assurance"
+          bundle="$assurance/fairway-${CANDIDATE_VERSION}-release-assurance"
+          mkdir -m 0700 "$packet"
+          cp "$bundle/artifacts/"fairway_*.tar.gz "$packet/"
+          cp "dist/fairway_${CANDIDATE_VERSION#v}_checksums.txt" "$packet/"
+          cp "$assurance/fairway_${CANDIDATE_VERSION}_release_assurance.tar.gz" "$packet/"
+          cp "$assurance/fairway_${CANDIDATE_VERSION}_release_assurance.tar.gz.sha256" "$packet/"
+          go run ./cmd/fairway release rehearsal create \
+            --dir "$packet" \
+            --version "$CANDIDATE_VERSION" \
+            --source-sha "$CANDIDATE_SOURCE_SHA" \
+            --builder-id "$GITHUB_WORKFLOW_REF" \
+            --policy-version "$FAIRWAY_RELEASE_POLICY_VERSION"
+          go run ./cmd/fairway release rehearsal verify \
+            --dir "$packet" \
+            --version "$CANDIDATE_VERSION" \
+            --source-sha "$CANDIDATE_SOURCE_SHA" \
+            --builder-id "$GITHUB_WORKFLOW_REF" \
+            --policy-version "$FAIRWAY_RELEASE_POLICY_VERSION"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: fairway-release-rehearsal-${{ inputs.version }}-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/fairway-release-rehearsal
+          if-no-files-found: error
+          retention-days: 30
+      - name: Print promotion instruction
+        run: |
+          {
+            echo "## Approved candidate"
+            echo
+            echo "Create an annotated tag that binds promotion to this run:"
+            echo
+            echo '```bash'
+            printf "git tag -a %s -m \\$'%s\\\\n\\\\nfairway-rehearsal-run: %s'\\n" \
+              "$CANDIDATE_VERSION" \
+              "$CANDIDATE_VERSION" \
+              "$GITHUB_RUN_ID"
+            echo "git push fairway-run $CANDIDATE_VERSION"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -10035,10 +10035,12 @@ type releaseAssetResult struct {
 
 func cmdRelease(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("release", "verify|assurance|offline")
+		subcommandUsage("release", "rehearsal|verify|assurance|offline")
 		return nil
 	}
 	switch args[0] {
+	case "rehearsal":
+		return cmdReleaseRehearsal(opts, args[1:])
 	case "assurance":
 		return cmdReleaseAssurance(opts, args[1:])
 	case "offline":
@@ -21265,7 +21267,7 @@ func printCommandHelp(command string) bool {
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"server":                     "fairway server --read-only [--listen <addr>] | fairway server start|status|logs|stop|restart --read-only | fairway server --mode api-write-pilot --write\n  Run or manage the loopback shared-team API. Managed lifecycle is read-only only.",
 		"binary":                     "fairway binary install --source <local-binary> [--cache-dir <path>] | fairway binary status|rollback|cleanup [--cache-dir <path>]\n  Install and manage verified Fairway binaries in the user cache outside consumer worktrees.",
-		"release":                    "fairway release verify ... | fairway release assurance export|verify ... | fairway release offline export|verify ...\n  Verify publication state, release assurance, or a signed current/rollback offline distribution.",
+		"release":                    "fairway release rehearsal create|verify|extract-assurance ... | fairway release verify ... | fairway release assurance export|verify ... | fairway release offline export|verify ...\n  Build or verify pre-tag rehearsal identity, safely extract assurance, verify publication state, or manage signed assurance and offline distribution.",
 		"config":                     "fairway config validate\n  Validate .fairway/config.toml.",
 		"db":                         "fairway db backup|export|migrate|compat|rehearsal ...\n  Manage the local Fairway database.",
 		"audit":                      "fairway audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog ...\n  Export and verify signed sovereign audit checkpoints or run advisory coverage and lifecycle reports.",

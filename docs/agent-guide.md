@@ -1033,7 +1033,11 @@ risk, claim work, merge, push, deploy, run live actions, or mutate an
 environment.
 
 For Fairway release attempts, create one release-run task/checkpoint and render
-a release-run packet before tagging:
+a release-run packet before tagging. Run the manual `Release Rehearsal`
+workflow against the exact pushed `main` SHA, then bind its successful numeric
+run id into the final annotated tag as
+`fairway-rehearsal-run: <run-id>`. The tag workflow promotes that exact packet
+without rebuilding:
 
 ```bash
 fairway packet release-run <release-task-id> \

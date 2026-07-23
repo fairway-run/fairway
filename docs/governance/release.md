@@ -15,7 +15,14 @@ permission for silent loss or downgrade.
 
 - Tag format: `vX.Y.Z`. No `v0.0.1-rc1` shenanigans during week 1.
 - Tag from `main` only.
-- Annotated tags: `git tag -a v0.1.1 -m "v0.1.1"`.
+- Run the production release rehearsal before creating the remote tag.
+- Annotated tags must bind the approved rehearsal run:
+
+```bash
+git tag -a v0.2.5 -m $'v0.2.5\n\nfairway-rehearsal-run: <run-id>'
+```
+
+See [Release Candidate Promotion](../design/release-candidate-promotion.md).
 
 ## Changelog
 
@@ -76,14 +83,17 @@ the publish task.
 
 ## CI release flow
 
-1. Tag pushed → GitHub Actions runs `goreleaser release --skip=publish`.
-2. Fairway generates and pinned-verifies the signed assurance bundle over the
-   exact candidate archives.
-3. Only after verification, the workflow creates a GitHub draft and attaches
-   the verified archives, GoReleaser checksums, and assurance package.
-4. The separately reviewed publish step makes the draft public and updates the
+1. Dispatch `Release Rehearsal` with the proposed version and exact pushed
+   `main` SHA.
+2. The rehearsal runs tests, GoReleaser, signing, notarization, candidate binary
+   smoke, and signed assurance verification before uploading one immutable
+   promotion packet.
+3. Create and push an annotated tag containing the successful rehearsal run id.
+4. The tag workflow verifies the run identity and exact packet, then creates a
+   GitHub draft from those assets without rebuilding.
+5. The separately reviewed publish step makes the draft public and updates the
    Homebrew cask from the verified archive digests.
-5. No automatic publishing to other package registries until v1.0.
+6. No automatic publishing to other package registries until v1.0.
 
 ## GitHub Actions runtime posture
 
@@ -94,7 +104,12 @@ runtime deprecation warnings:
 - `actions/setup-go@v6`
 - `actions/setup-node@v5`
 - `actions/upload-artifact@v6`
-- `goreleaser/goreleaser-action@v7`
+- `goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94`
+  (`v7.2.3`)
+
+GoReleaser action invocations are commit-pinned because the rehearsal build
+step receives notarization authority. Updating the action requires an explicit
+review of the new upstream commit before changing the pin.
 
 The release workflow must pass `goreleaser check` before the next tag. The Docs
 Portal workflow must still run `npm ci` and `npm run build`; the deploy step is
@@ -150,6 +165,11 @@ release tag:
 | `MACOS_NOTARY_KEY` | Base64-encoded App Store Connect `.p8` API key. |
 | `MACOS_NOTARY_KEY_ID` | App Store Connect API key id. |
 | `MACOS_NOTARY_ISSUER_ID` | App Store Connect issuer id. |
+| `FAIRWAY_RELEASE_ASSURANCE_SIGNING_KEY` | Private Ed25519 key used only while building signed release assurance. |
+
+Set `FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY` as a separately pinned GitHub
+Actions variable. Promotion verifies assurance with that public key and does
+not receive the private signing key.
 
 For local/manual signing experiments, `.apple-app-specific.env` may hold local
 Apple credential material. It is ignored by git and must never be committed,
@@ -312,20 +332,34 @@ not expose internal-only URLs or sensitive artifact paths. This is the Fairway
 control-plane input for future SLSA or in-toto attestations; it does not require
 or replace those systems in the first implementation.
 
-Cut the release tag from a clean, pushed `main`:
+Push the clean candidate commit, then dispatch the production rehearsal before
+creating a remote tag:
 
 ```bash
 git fetch --all --tags
 git status --short --branch
-git tag -a v0.1.1 -m "v0.1.1"
-git push fairway-run v0.1.1
+source_sha=$(git rev-parse HEAD)
+gh workflow run release-rehearsal.yml \
+  --repo fairway-run/fairway \
+  --ref main \
+  -f version=v0.2.5 \
+  -f source_sha="$source_sha"
+gh run list \
+  --repo fairway-run/fairway \
+  --workflow release-rehearsal.yml \
+  --limit 5
 ```
 
-Watch the release workflow:
+After the rehearsal succeeds, use its numeric run id in the annotated tag.
+The tag promotion workflow rejects lightweight tags, missing or duplicate run
+bindings, runs for another SHA, and expired or mutated candidate packets:
 
 ```bash
+rehearsal_run=<successful-run-id>
+git tag -a v0.2.5 \
+  -m $'v0.2.5\n\nfairway-rehearsal-run: '"$rehearsal_run"
+git push fairway-run v0.2.5
 gh run list --repo fairway-run/fairway --workflow release.yml --limit 5
-gh run watch --repo fairway-run/fairway
 ```
 
 The GitHub Release is intentionally created as a draft. Review artifacts,
@@ -420,7 +454,7 @@ never reuse a version number.
 
 ### Sovereign release assurance bundle
 
-The tag-triggered release workflow first runs GoReleaser with
+The manually dispatched release-rehearsal workflow first runs GoReleaser with
 `--skip=publish`, then builds and verifies one
 `fairway.release-assurance-manifest.v1` package over those exact candidate
 archives. Repository configuration must provide secret
@@ -435,13 +469,13 @@ archives or evidence are absent. A govulncheck finding stops the automatic
 no-findings path; it requires a separate reviewed vulnerability disposition
 rather than silently publishing an empty VEX.
 
-No GitHub release or Homebrew side effect occurs before pinned bundle
-verification succeeds. After the gate, the workflow creates a draft release
-from the verified archive copies and attaches the GoReleaser checksum plus the
-assurance archive/checksum. A failed assurance step therefore leaves no draft
-or tap mutation to clean up. The workflow does not publish the draft, update
-Homebrew, or authorize deployment; those remain separately reviewed publish
-actions.
+No tag, GitHub release, or Homebrew side effect occurs when rehearsal fails.
+After the final annotated tag binds an approved run, the promotion workflow
+downloads and verifies the exact rehearsal packet and signed assurance before
+creating a draft release. It does not rebuild, sign, or notarize. A failed
+assurance or promotion step therefore leaves no public release or tap mutation
+to clean up. Publishing the draft, updating Homebrew, and authorizing deployment
+remain separately reviewed actions.
 
 Offline verification requires exact expected version, source, builder, policy,
 and pinned public key. Measured SLSA fields do not assign a level. Hermeticity

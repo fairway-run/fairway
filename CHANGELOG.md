@@ -7,7 +7,19 @@ and uses semantic versioning.
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- Pre-tag release rehearsals now build, test, sign, notarize, smoke, and package
+  the exact pushed `main` source before a final version tag exists.
+- Release tags promote an immutable rehearsal packet bound by annotated tag
+  metadata instead of rebuilding release assets after tagging.
+
+### Security
+
+- Rehearsal packets fail closed on source, version, builder, policy, inventory,
+  checksum, size, symlink, or unexpected-file drift.
+- The tag promotion workflow has no build signing, notarization, or Homebrew
+  credentials and verifies the signed candidate before creating a draft.
 
 ## v0.2.4 - 2026-07-23
 

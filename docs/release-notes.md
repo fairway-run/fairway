@@ -10,6 +10,24 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.2.5
+
+`v0.2.5` changes Fairway releases from tag-first builds to qualified candidate
+promotion. A manual production rehearsal builds, tests, signs, notarizes,
+smokes, and packages an exact pushed `main` commit before the final remote tag
+exists.
+
+The resulting immutable packet binds version, source SHA, workflow identity,
+release policy, seven release assets, sizes, and SHA-256 digests. The final
+annotated tag names one successful rehearsal run. Its workflow downloads and
+verifies that exact packet and signed assurance before creating a draft; it
+does not rebuild and receives no signing, notarization, or Homebrew
+credentials.
+
+This prevents a final tag from being the first realistic release execution and
+keeps failed candidate attempts free of tag, release, tap, or deployment side
+effects.
+
 ## v0.2.4
 
 `v0.2.4` is the publishable follow-up to the immutable unpublished `v0.2.3`
