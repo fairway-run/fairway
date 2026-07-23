@@ -81,7 +81,7 @@ func Ingest(opts IngestOptions) (IngestResult, error) {
 		Supersedes:       []string{},
 	}
 	body := fmt.Sprintf("# %s\n\nThis draft is derived from [%s](%s). Verify conclusions against the cited source before changing its status.\n",
-		meta.Title, sourceRel, relativeMarkdownLink(pageRel, sourceRel))
+		meta.Title, sourceRel, relativeMarkdownLink(paths.relRoot, pageRel, sourceRel))
 	pageData, err := renderPage(meta, body)
 	if err != nil {
 		return IngestResult{}, err
@@ -533,8 +533,9 @@ func titleFromPath(path string) string {
 	return strings.Join(words, " ")
 }
 
-func relativeMarkdownLink(pageRel, sourceRel string) string {
-	link, err := filepath.Rel(filepath.Dir(filepath.FromSlash(pageRel)), filepath.FromSlash(sourceRel))
+func relativeMarkdownLink(knowledgeRoot, pageRel, sourceRel string) string {
+	pageProjectPath := filepath.Join(filepath.FromSlash(knowledgeRoot), filepath.FromSlash(pageRel))
+	link, err := filepath.Rel(filepath.Dir(pageProjectPath), filepath.FromSlash(sourceRel))
 	if err != nil {
 		return sourceRel
 	}

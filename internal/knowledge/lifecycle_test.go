@@ -62,6 +62,15 @@ func TestIngestIsPreviewFirstAndDoesNotCopySourceBody(t *testing.T) {
 	if !strings.Contains(string(index), "(architecture/node-trust.md)") {
 		t.Fatalf("index missing applied link:\n%s", index)
 	}
+	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range report.Findings {
+		if finding.Path == "architecture/node-trust.md" && finding.Severity == SeverityError {
+			t.Fatalf("applied ingest page failed lint: %+v", report.Findings)
+		}
+	}
 	if _, err := Ingest(options); err == nil {
 		t.Fatal("second ingest overwrote existing page")
 	}
