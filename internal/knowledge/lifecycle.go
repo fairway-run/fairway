@@ -170,7 +170,13 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		if page.Path == "README.md" || page.Path == "index.md" || page.Path == "log.md" || page.Metadata.Status == "superseded" || !page.Reachable {
 			continue
 		}
-		data, readErr := readBounded(filepath.Join(paths.root, filepath.FromSlash(page.Path)), effectivePageLimit(opts.MaxPageBytes))
+		data, _, readErr := readBoundProjectFile(
+			paths,
+			filepath.ToSlash(filepath.Join(paths.relRoot, page.Path)),
+			effectivePageLimit(opts.MaxPageBytes),
+			"query_page_after_open",
+			opts.CustodyHook,
+		)
 		if readErr != nil || containsSecret(data) {
 			continue
 		}

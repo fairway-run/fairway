@@ -255,7 +255,10 @@ Use `memory cold-start --knowledge-topic <text>` when domain context is needed
 for a resume. Execution memory renders first. Optional knowledge has a separate
 `--knowledge-budget-bytes` limit and cannot displace the current objective,
 blocker, stop condition, or next action. Shared Fairway evidence references are
-deduplicated from the knowledge portion.
+rendered once: when knowledge cites evidence already named by track memory, the
+knowledge provenance entry owns the rendered identity, carries
+`memory_referenced: true`, and preserves its highest authority label. The
+embedded memory packet omits only that duplicate evidence ID.
 
 Use the active backlog selected by `.fairway/config.toml` as the implementation
 queue. In this repository that is

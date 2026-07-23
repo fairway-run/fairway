@@ -161,6 +161,78 @@ func TestQueryPacketByteAccountingIsExactFixedPoint(t *testing.T) {
 	}
 }
 
+func TestQueryReadsOpenedPageWhenVisibleFileIsReplaced(t *testing.T) {
+	project := querySwapProject(t)
+	pagePath := filepath.Join(project, DefaultRoot, "architecture", "node.md")
+	options := QueryOptions{
+		Options: Options{
+			ProjectRoot: project,
+			Now:         mustDate(t, "2026-07-22"),
+			CustodyHook: func(stage string) {
+				if stage != "query_page_after_open" {
+					return
+				}
+				if err := os.Rename(pagePath, pagePath+".original"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(pagePath, []byte("secret=QUERY_REPLACEMENT\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		Topic: "descriptor-bound-original", BudgetBytes: 4096,
+	}
+	packet, err := Query(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packet.Pages) != 1 || !strings.Contains(packet.Pages[0].Excerpt, "descriptor-bound-original") {
+		t.Fatalf("query did not read originally opened page: %+v", packet.Pages)
+	}
+	rendered, _ := json.Marshal(packet)
+	if bytes.Contains(rendered, []byte("QUERY_REPLACEMENT")) {
+		t.Fatalf("replacement page leaked into query: %s", rendered)
+	}
+}
+
+func TestQueryReadsOpenedPageWhenParentDirectoryIsReplaced(t *testing.T) {
+	project := querySwapProject(t)
+	architecture := filepath.Join(project, DefaultRoot, "architecture")
+	original := filepath.Join(project, DefaultRoot, "architecture-original")
+	options := QueryOptions{
+		Options: Options{
+			ProjectRoot: project,
+			Now:         mustDate(t, "2026-07-22"),
+			CustodyHook: func(stage string) {
+				if stage != "query_page_after_open" {
+					return
+				}
+				if err := os.Rename(architecture, original); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(architecture, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(architecture, "node.md"), []byte("secret=QUERY_PARENT_REPLACEMENT\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		Topic: "descriptor-bound-original", BudgetBytes: 4096,
+	}
+	packet, err := Query(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packet.Pages) != 1 || !strings.Contains(packet.Pages[0].Excerpt, "descriptor-bound-original") {
+		t.Fatalf("query did not retain opened parent custody: %+v", packet.Pages)
+	}
+	rendered, _ := json.Marshal(packet)
+	if bytes.Contains(rendered, []byte("QUERY_PARENT_REPLACEMENT")) {
+		t.Fatalf("replacement parent content leaked into query: %s", rendered)
+	}
+}
+
 func TestIngestReadsOpenedSourceWhenVisibleFileIsReplaced(t *testing.T) {
 	project, options := ingestSwapProject(t)
 	sourcePath := filepath.Join(project, "docs", "source.md")
@@ -305,6 +377,41 @@ func TestPromoteFailsClosedOnFinalFileSwap(t *testing.T) {
 	}
 }
 
+func TestPromoteFailsClosedOnLateFileSwapBeforeConditionalReplacement(t *testing.T) {
+	project, options := promotionSwapProject(t)
+	options.Apply = true
+	pagePath := filepath.Join(project, DefaultRoot, "architecture", "node.md")
+	options.CustodyHook = func(stage string) {
+		if stage != "promote_before_replace_before_exchange" {
+			return
+		}
+		if err := os.Rename(pagePath, pagePath+".original"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(pagePath, []byte("LATE_PAGE_REPLACEMENT\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Promote(options); err == nil {
+		t.Fatal("promotion accepted target inode replacement in late exchange window")
+	}
+	replacement, _ := os.ReadFile(pagePath)
+	if string(replacement) != "LATE_PAGE_REPLACEMENT\n" {
+		t.Fatalf("late replacement page was overwritten: %s", replacement)
+	}
+	original, _ := os.ReadFile(pagePath + ".original")
+	if strings.Contains(string(original), "promotion_target:") {
+		t.Fatalf("failed promotion modified displaced original page: %s", original)
+	}
+	residue, err := filepath.Glob(filepath.Join(filepath.Dir(pagePath), ".fairway-knowledge-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(residue) != 0 {
+		t.Fatalf("conditional replacement retained custody residue: %v", residue)
+	}
+}
+
 func ingestSwapProject(t *testing.T) (string, IngestOptions) {
 	t.Helper()
 	project := newKnowledgeProject(t)
@@ -315,6 +422,26 @@ func ingestSwapProject(t *testing.T) (string, IngestOptions) {
 		SourcePath: "docs/source.md", PagePath: "architecture/node-trust.md",
 		Owner: "security", ReviewBy: "2026-12-31",
 	}
+}
+
+func querySwapProject(t *testing.T) string {
+	t.Helper()
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"architecture/node.md"}, "docs/source.md")
+	writePage(t, project, "architecture/node.md", "Node trust", "verified", "2026-12-31", revision, nil, "docs/source.md")
+	pagePath := filepath.Join(project, DefaultRoot, "architecture", "node.md")
+	file, err := os.OpenFile(pagePath, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("\ndescriptor-bound-original\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return project
 }
 
 func promotionSwapProject(t *testing.T) (string, PromoteOptions) {

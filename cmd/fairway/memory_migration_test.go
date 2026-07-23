@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/subashram/fairway/internal/knowledge"
@@ -35,18 +36,36 @@ func TestTrackScopedColdStartFactsIncludesSourceTasksDescendantsAndDependencies(
 	}
 }
 
-func TestDedupeKnowledgeSourcesWithMemoryRendersSharedEvidenceOnce(t *testing.T) {
-	sources := []knowledge.QuerySource{
-		{Key: "fairway:evidence:7", Authority: "evidence"},
-		{Key: "fairway:decision:8"},
-		{Key: "file:docs/design/example.md"},
+func TestComposeColdStartKnowledgeRendersSharedEvidenceIdentityOnce(t *testing.T) {
+	packet := memoryPacket{Track: store.TrackMemory{SourceEvidenceIDs: []int64{7, 9}}}
+	query := knowledge.QueryPacket{
+		Schema: "fairway.knowledge-query.v1",
+		Sources: []knowledge.QuerySource{
+			{Key: "fairway:evidence:7", Authority: "canonical"},
+			{Key: "fairway:decision:8"},
+			{Key: "file:docs/design/example.md"},
+		},
+		Bounded: true, ReadOnly: true,
 	}
-	result := dedupeKnowledgeSourcesWithMemory(sources, store.TrackMemory{SourceEvidenceIDs: []int64{7}})
-	if len(result) != 3 {
-		t.Fatalf("deduplicated sources=%+v", result)
+	composedPacket, composedQuery, err := composeColdStartKnowledge(packet, query, 4096)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !result[0].MemoryReferenced || result[0].Key != "fairway:evidence:7" || result[0].Authority != "evidence" {
-		t.Fatalf("memory reference lost source identity or authority: %+v", result[0])
+	if !reflect.DeepEqual(composedPacket.Track.SourceEvidenceIDs, []int64{9}) {
+		t.Fatalf("shared evidence remained in memory packet: %v", composedPacket.Track.SourceEvidenceIDs)
+	}
+	if !composedQuery.Sources[0].MemoryReferenced || composedQuery.Sources[0].Authority != "canonical" {
+		t.Fatalf("shared evidence lost memory relationship or authority: %+v", composedQuery.Sources[0])
+	}
+	rendered, err := json.Marshal(struct {
+		Packet    memoryPacket          `json:"packet"`
+		Knowledge knowledge.QueryPacket `json:"knowledge"`
+	}{Packet: composedPacket, Knowledge: composedQuery})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(rendered), "fairway:evidence:7") != 1 {
+		t.Fatalf("shared evidence identity was not rendered exactly once: %s", rendered)
 	}
 }
 
@@ -65,12 +84,12 @@ func TestFinalizeColdStartKnowledgeRechecksSeparateBudgetAfterMemoryAnnotation(t
 		t.Fatal(err)
 	}
 	beforeAnnotation := packet.Bytes
-	memory := store.TrackMemory{SourceEvidenceIDs: []int64{7}}
-	if _, err := finalizeColdStartKnowledge(packet, memory, beforeAnnotation); err == nil {
+	memoryPacket := memoryPacket{Track: store.TrackMemory{SourceEvidenceIDs: []int64{7}}}
+	if _, _, err := composeColdStartKnowledge(memoryPacket, packet, beforeAnnotation); err == nil {
 		t.Fatal("cold-start accepted packet that exceeded budget after memory annotation")
 	}
 
-	result, err := finalizeColdStartKnowledge(packet, memory, beforeAnnotation+256)
+	resultPacket, result, err := composeColdStartKnowledge(memoryPacket, packet, beforeAnnotation+256)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +102,9 @@ func TestFinalizeColdStartKnowledgeRechecksSeparateBudgetAfterMemoryAnnotation(t
 	}
 	if !result.Sources[0].MemoryReferenced || result.Sources[0].Authority != "canonical" {
 		t.Fatalf("memory annotation discarded source authority: %+v", result.Sources[0])
+	}
+	if len(resultPacket.Track.SourceEvidenceIDs) != 0 {
+		t.Fatalf("shared evidence identity remained duplicated: %v", resultPacket.Track.SourceEvidenceIDs)
 	}
 }
 

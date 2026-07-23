@@ -251,7 +251,7 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 			if queryErr != nil {
 				return fmt.Errorf("compose cold-start knowledge: %w", queryErr)
 			}
-			query, queryErr = finalizeColdStartKnowledge(query, memory, *knowledgeBudget)
+			report.Packet, query, queryErr = composeColdStartKnowledge(report.Packet, query, *knowledgeBudget)
 			if queryErr != nil {
 				return queryErr
 			}
@@ -281,29 +281,33 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 	})
 }
 
-func dedupeKnowledgeSourcesWithMemory(sources []knowledge.QuerySource, memory store.TrackMemory) []knowledge.QuerySource {
-	memoryEvidence := map[string]bool{}
-	for _, id := range memory.SourceEvidenceIDs {
-		memoryEvidence[fmt.Sprintf("fairway:evidence:%d", id)] = true
+func composeColdStartKnowledge(packet memoryPacket, query knowledge.QueryPacket, budget int) (memoryPacket, knowledge.QueryPacket, error) {
+	memoryEvidence := map[string]int64{}
+	for _, id := range packet.Track.SourceEvidenceIDs {
+		memoryEvidence[fmt.Sprintf("fairway:evidence:%d", id)] = id
 	}
-	result := append([]knowledge.QuerySource{}, sources...)
-	for index := range result {
-		if memoryEvidence[result[index].Key] {
-			result[index].MemoryReferenced = true
+	sharedEvidence := map[int64]bool{}
+	query.Sources = append([]knowledge.QuerySource{}, query.Sources...)
+	for index := range query.Sources {
+		if id, ok := memoryEvidence[query.Sources[index].Key]; ok {
+			query.Sources[index].MemoryReferenced = true
+			sharedEvidence[id] = true
 		}
 	}
-	return result
-}
-
-func finalizeColdStartKnowledge(query knowledge.QueryPacket, memory store.TrackMemory, budget int) (knowledge.QueryPacket, error) {
-	query.Sources = dedupeKnowledgeSourcesWithMemory(query.Sources, memory)
+	remainingEvidence := make([]int64, 0, len(packet.Track.SourceEvidenceIDs))
+	for _, id := range packet.Track.SourceEvidenceIDs {
+		if !sharedEvidence[id] {
+			remainingEvidence = append(remainingEvidence, id)
+		}
+	}
+	packet.Track.SourceEvidenceIDs = remainingEvidence
 	if err := knowledge.FinalizeQueryPacket(&query); err != nil {
-		return knowledge.QueryPacket{}, fmt.Errorf("finalize cold-start knowledge packet: %w", err)
+		return memoryPacket{}, knowledge.QueryPacket{}, fmt.Errorf("finalize cold-start knowledge packet: %w", err)
 	}
 	if query.Bytes > budget {
-		return knowledge.QueryPacket{}, errors.New("composed cold-start knowledge exceeds its separate byte budget")
+		return memoryPacket{}, knowledge.QueryPacket{}, errors.New("composed cold-start knowledge exceeds its separate byte budget")
 	}
-	return query, nil
+	return packet, query, nil
 }
 
 func maxInt(a, b int) int {

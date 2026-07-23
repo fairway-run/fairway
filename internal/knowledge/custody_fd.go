@@ -176,9 +176,56 @@ func replaceBoundFile(dir *boundDirectory, name string, expected, next []byte, m
 	if err := createBoundFile(dir, tempName, next, mode); err != nil {
 		return err
 	}
-	if err := unix.Renameat(int(dir.file.Fd()), tempName, int(dir.file.Fd()), name); err != nil {
-		_ = unix.Unlinkat(int(dir.file.Fd()), tempName, 0)
-		return errors.New("promote bound knowledge temp file")
+	tempPresent := true
+	defer func() {
+		if tempPresent {
+			_ = unix.Unlinkat(int(dir.file.Fd()), tempName, 0)
+		}
+	}()
+	backupName := fmt.Sprintf(".fairway-knowledge-backup-%d-%d", os.Getpid(), tempSequence.Add(1))
+	if hook != nil && stage != "" {
+		hook(stage + "_before_exchange")
+	}
+	if err := unix.Renameat(int(dir.file.Fd()), name, int(dir.file.Fd()), backupName); err != nil {
+		return errors.New("bind current knowledge file for conditional replacement")
+	}
+	backupPresent := true
+	defer func() {
+		if backupPresent {
+			_ = restoreBoundBackup(dir, backupName, name)
+		}
+	}()
+	if !boundFileHasIdentity(dir, backupName, identity) {
+		return errors.New("knowledge file identity changed before conditional replacement")
+	}
+	if err := unix.Linkat(int(dir.file.Fd()), tempName, int(dir.file.Fd()), name, 0); err != nil {
+		return errors.New("install conditional knowledge replacement")
+	}
+	if err := unix.Unlinkat(int(dir.file.Fd()), tempName, 0); err != nil {
+		return errors.New("remove linked knowledge temp file")
+	}
+	tempPresent = false
+	if err := unix.Unlinkat(int(dir.file.Fd()), backupName, 0); err != nil {
+		return errors.New("remove replaced knowledge backup")
+	}
+	backupPresent = false
+	return nil
+}
+
+func boundFileHasIdentity(dir *boundDirectory, name string, identity boundIdentity) bool {
+	var stat unix.Stat_t
+	return unix.Fstatat(int(dir.file.Fd()), name, &stat, unix.AT_SYMLINK_NOFOLLOW) == nil &&
+		stat.Mode&unix.S_IFMT == unix.S_IFREG &&
+		uint64(stat.Dev) == identity.dev &&
+		uint64(stat.Ino) == identity.ino
+}
+
+func restoreBoundBackup(dir *boundDirectory, backupName, name string) error {
+	if err := unix.Linkat(int(dir.file.Fd()), backupName, int(dir.file.Fd()), name, 0); err != nil {
+		return errors.New("restore displaced knowledge file")
+	}
+	if err := unix.Unlinkat(int(dir.file.Fd()), backupName, 0); err != nil {
+		return errors.New("remove restored knowledge backup")
 	}
 	return nil
 }

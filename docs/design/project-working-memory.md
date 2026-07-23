@@ -172,6 +172,11 @@ optional and cannot displace the current objective, blocker, stop condition, or
 next action. The detailed composition contract is defined in
 `docs/design/engineering-knowledge.md`.
 
+When both stores reference the same Fairway evidence, the composed packet emits
+that evidence identity only in knowledge provenance, marks it as referenced by
+memory, and preserves the highest authority label. Memory-only evidence IDs
+remain in the embedded track-memory packet.
+
 ## Deterministic Migration Checks
 
 The first increment uses deterministic checks only:

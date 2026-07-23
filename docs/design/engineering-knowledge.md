@@ -252,6 +252,14 @@ loading both stores:
 4. Duplicate source references are rendered once, with the higher authority
    label preserved.
 
+For shared Fairway evidence, the composed JSON contract uses the knowledge
+source as the single rendered identity. That source carries
+`memory_referenced: true` and retains the highest authority selected across its
+page citations. The embedded track-memory copy omits the corresponding raw
+`source_evidence_ids` entry. Evidence referenced only by memory remains in the
+memory packet, and evidence referenced only by knowledge remains in knowledge
+provenance.
+
 Execution memory is required for task resumption. Knowledge is optional context
 for domain understanding and must not crowd out the objective, blocker, stop
 condition, or next action.
