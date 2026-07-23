@@ -50,6 +50,7 @@ doc/agent-wiki/
 ├── README.md
 ├── index.md
 ├── current-state.md
+├── sources.yaml
 ├── architecture/
 ├── product-domains/
 ├── environments/
@@ -84,9 +85,16 @@ last_verified: 2026-07-22
 review_by: 2026-10-22
 source_sha: b3b346cd3499bc2ef69dbff28d28890228e11d73
 sources:
-  - path: doc/architecture/node-trust.md
-  - fairway_decision: 123
-  - fairway_evidence: 456
+  - class: architecture
+    path: doc/architecture/node-trust.md
+  - class: fairway-decision
+    fairway:
+      kind: decision
+      id: "123"
+  - class: fairway-evidence
+    fairway:
+      kind: evidence
+      id: "456"
 supersedes: []
 ---
 ```
@@ -110,30 +118,34 @@ require normal human review at the boundary where they influence a decision.
 
 ## Source Classes
 
-The project manifest registers source classes and their authority:
+The project knowledge root contains a `sources.yaml` manifest that registers
+source classes, authority, and allowed file roots:
 
-```toml
-[knowledge]
-root = "doc/agent-wiki"
-
-[[knowledge.sources]]
-name = "contracts"
-path = "doc/api"
-authority = "canonical"
-
-[[knowledge.sources]]
-name = "architecture"
-path = "doc/architecture"
-authority = "canonical"
-
-[[knowledge.sources]]
-name = "fairway-track-memory"
-kind = "fairway_memory"
-authority = "operational"
+```yaml
+knowledge_sources_version: 1
+classes:
+  architecture:
+    kind: project_file
+    authority: canonical
+    roots:
+      - doc/architecture
+  fairway-decision:
+    kind: fairway
+    authority: operational
+    fairway_kind: decision
+    requires_store_validation: true
+  fairway-evidence:
+    kind: fairway
+    authority: evidence
+    fairway_kind: evidence
+    requires_store_validation: true
 ```
 
-Fairway records source references and digests, not unrestricted copies of
-source content in its database.
+`project_file` sources must remain under a configured root and cannot cite the
+knowledge tree itself or legacy `tmp-ux` working memory as canonical authority.
+Fairway references must resolve in the current project's coordinator store.
+Fairway records source references and digests, not unrestricted copies of source
+content in its database.
 
 ## Operations
 

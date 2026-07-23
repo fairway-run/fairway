@@ -73,6 +73,12 @@ classes:
   project-file:
     kind: project_file
     authority: canonical
+    roots:
+      - docs
+      - doc/api
+      - doc/architecture
+      - doc/operations
+      - doc/product
   fairway-decision:
     kind: fairway
     authority: operational

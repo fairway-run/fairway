@@ -2104,6 +2104,35 @@ func (s *Store) validateTrackMemorySources(ctx context.Context, mem TrackMemory)
 	return nil
 }
 
+// SourceFactTaskID resolves a project-scoped source fact to its owning task.
+func (s *Store) SourceFactTaskID(ctx context.Context, kind string, id int64) (string, error) {
+	if id <= 0 {
+		return "", fmt.Errorf("invalid %s source id %d", kind, id)
+	}
+	var table string
+	switch strings.TrimSpace(kind) {
+	case "checkpoint":
+		table = "task_checkpoints"
+	case "evidence":
+		table = "task_evidence"
+	case "review":
+		table = "task_reviews"
+	case "decision":
+		table = "task_decisions"
+	default:
+		return "", fmt.Errorf("unsupported source fact kind %q", kind)
+	}
+	var taskID string
+	query := `SELECT task_id FROM ` + table + ` WHERE project_id=? AND id=?`
+	if err := s.db.QueryRowContext(ctx, query, s.projectID, id).Scan(&taskID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return taskID, nil
+}
+
 func scanTrackMemory(row rowScanner, mem *TrackMemory) error {
 	var decisions, blockers, openQuestions, nextActions string
 	var checkpointIDs, evidenceIDs, reviewIDs string

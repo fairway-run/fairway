@@ -1047,6 +1047,44 @@ func TestProviderUsage_NullCountsAndDerivedSnapshots(t *testing.T) {
 	}
 }
 
+func TestSourceFactTaskIDIsProjectScoped(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Source owner", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	evidenceID, err := s.RecordEvidenceWithID(ctx, "T-001", Evidence{CommandText: "go test ./...", Result: "pass"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.SourceFactTaskID(ctx, "evidence", evidenceID); err != nil || got != "T-001" {
+		t.Fatalf("resolved task=%q err=%v", got, err)
+	}
+	if _, err := s.SourceFactTaskID(ctx, "evidence", evidenceID+1000); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing source error=%v", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO task_definitions (project_id, id, title, role, created_at, updated_at) VALUES ('other', 'T-001', 'other', 'backend', '2026-07-22T00:00:00Z', '2026-07-22T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO task_state (project_id, task_id, status, updated_at) VALUES ('other', 'T-001', 'todo', '2026-07-22T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO task_evidence (project_id, task_id, command_text, result, artifact_path, artifact_type, notes, created_at) VALUES ('other', 'T-001', 'test', 'pass', '', '', '', '2026-07-22T00:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SourceFactTaskID(ctx, "evidence", otherID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-project source error=%v", err)
+	}
+	if _, err := s.SourceFactTaskID(ctx, "unknown", evidenceID); err == nil {
+		t.Fatal("unsupported source kind was accepted")
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), "test")

@@ -5,13 +5,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/subashram/fairway/internal/config"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/knowledge"
+	"github.com/subashram/fairway/internal/store"
 )
 
-func cmdKnowledge(_ context.Context, opts globalOptions, args []string) error {
+func cmdKnowledge(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
 		subcommandUsage("knowledge", "init|status|lint [--root <project-relative-path>]")
 		return nil
@@ -20,7 +23,7 @@ func cmdKnowledge(_ context.Context, opts globalOptions, args []string) error {
 	case "init":
 		return cmdKnowledgeInit(opts, args[1:])
 	case "status", "lint":
-		return cmdKnowledgeReport(opts, args[0], args[1:])
+		return cmdKnowledgeReport(ctx, opts, args[0], args[1:])
 	default:
 		return fmt.Errorf("unknown knowledge subcommand %q", args[0])
 	}
@@ -50,7 +53,7 @@ func cmdKnowledgeInit(opts globalOptions, args []string) error {
 	return nil
 }
 
-func cmdKnowledgeReport(opts globalOptions, command string, args []string) error {
+func cmdKnowledgeReport(ctx context.Context, opts globalOptions, command string, args []string) error {
 	fs := flag.NewFlagSet("knowledge "+command, flag.ContinueOnError)
 	rootFlag := fs.String("root", "", "project-relative knowledge root")
 	if err := fs.Parse(args); err != nil {
@@ -59,34 +62,41 @@ func cmdKnowledgeReport(opts globalOptions, command string, args []string) error
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected knowledge %s arguments: %s", command, strings.Join(fs.Args(), " "))
 	}
-	cfg, projectRoot, _, err := loadConfig(opts)
-	if err != nil {
-		return err
-	}
-	options := knowledge.Options{ProjectRoot: projectRoot, KnowledgeRoot: firstNonEmpty(strings.TrimSpace(*rootFlag), cfg.Knowledge.Root), SourceRevision: fairwaygit.LastCommit(projectRoot)}
-	var report knowledge.Report
-	if command == "lint" {
-		report, err = knowledge.Lint(options)
-	} else {
-		report, err = knowledge.Status(options)
-	}
-	if err != nil {
-		return err
-	}
-	if opts.JSON {
-		if err := printJSON(report); err != nil {
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, projectRoot string, s *store.Store) error {
+		validator := func(requirement knowledge.FairwayReferenceRequirement) error {
+			id, err := strconv.ParseInt(requirement.Reference.ID, 10, 64)
+			if err != nil {
+				return err
+			}
+			_, err = s.SourceFactTaskID(ctx, requirement.Reference.Kind, id)
 			return err
 		}
-	} else {
-		fmt.Printf("knowledge_%s: %t\nroot: %s\npages: %d\nfindings: %d\n", command, !hasKnowledgeErrors(report), report.Root, report.PageCount, len(report.Findings))
-		for _, finding := range report.Findings {
-			fmt.Printf("- severity=%s code=%s path=%s detail=%s\n", finding.Severity, finding.Code, firstNonEmpty(finding.Path, "none"), finding.Detail)
+		options := knowledge.Options{ProjectRoot: projectRoot, KnowledgeRoot: firstNonEmpty(strings.TrimSpace(*rootFlag), cfg.Knowledge.Root), SourceRevision: fairwaygit.LastCommit(projectRoot), ValidateFairwayReference: validator}
+		var report knowledge.Report
+		var err error
+		if command == "lint" {
+			report, err = knowledge.Lint(options)
+		} else {
+			report, err = knowledge.Status(options)
 		}
-	}
-	if command == "lint" && hasKnowledgeErrors(report) {
-		return errors.New("engineering knowledge lint found errors")
-	}
-	return nil
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			if err := printJSON(report); err != nil {
+				return err
+			}
+		} else {
+			fmt.Printf("knowledge_%s: %t\nroot: %s\npages: %d\nfindings: %d\n", command, !hasKnowledgeErrors(report), report.Root, report.PageCount, len(report.Findings))
+			for _, finding := range report.Findings {
+				fmt.Printf("- severity=%s code=%s path=%s detail=%s\n", finding.Severity, finding.Code, firstNonEmpty(finding.Path, "none"), finding.Detail)
+			}
+		}
+		if command == "lint" && hasKnowledgeErrors(report) {
+			return errors.New("engineering knowledge lint found errors")
+		}
+		return nil
+	})
 }
 
 func hasKnowledgeErrors(report knowledge.Report) bool {

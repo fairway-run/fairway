@@ -207,7 +207,11 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 		if err != nil {
 			return err
 		}
-		tasks, sessions, checkpoints = trackScopedColdStartFacts(memory, tasks, sessions, checkpoints)
+		rootTaskIDs, err := memorySourceTaskIDs(ctx, s, memory)
+		if err != nil {
+			return fmt.Errorf("resolve cold-start source facts: %w", err)
+		}
+		tasks, sessions, checkpoints = trackScopedColdStartFacts(memory, rootTaskIDs, tasks, sessions, checkpoints)
 		packet, err := boundMemoryPacket(buildMemoryPacket(memory, *forProvider, tasks, sessions, checkpoints, cfg.States.Terminal))
 		if err != nil {
 			return err
@@ -381,32 +385,68 @@ func printMemoryImportResult(opts globalOptions, result memoryImportResult) erro
 	return nil
 }
 
-func trackScopedColdStartFacts(memory store.TrackMemory, tasks []store.Task, sessions []store.Session, checkpoints []store.Checkpoint) ([]store.Task, []store.Session, []store.Checkpoint) {
-	sourceCheckpointIDs := make(map[int64]bool, len(memory.SourceCheckpointIDs))
-	for _, id := range memory.SourceCheckpointIDs {
-		if id > 0 {
-			sourceCheckpointIDs[id] = true
+func memorySourceTaskIDs(ctx context.Context, s *store.Store, memory store.TrackMemory) ([]string, error) {
+	kinds := []struct {
+		kind string
+		ids  []int64
+	}{
+		{kind: "checkpoint", ids: memory.SourceCheckpointIDs},
+		{kind: "evidence", ids: memory.SourceEvidenceIDs},
+		{kind: "review", ids: memory.SourceReviewIDs},
+	}
+	seen := map[string]bool{}
+	result := []string{}
+	for _, group := range kinds {
+		for _, id := range group.ids {
+			taskID, err := s.SourceFactTaskID(ctx, group.kind, id)
+			if err != nil {
+				return nil, fmt.Errorf("%s %d: %w", group.kind, id, err)
+			}
+			if !seen[taskID] {
+				seen[taskID] = true
+				result = append(result, taskID)
+			}
 		}
 	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func trackScopedColdStartFacts(memory store.TrackMemory, sourceTaskIDs []string, tasks []store.Task, sessions []store.Session, checkpoints []store.Checkpoint) ([]store.Task, []store.Session, []store.Checkpoint) {
 	roots := map[string]bool{}
 	for _, task := range tasks {
 		if task.Definition.ID == memory.TrackID {
 			roots[task.Definition.ID] = true
 		}
 	}
-	for _, checkpoint := range checkpoints {
-		if sourceCheckpointIDs[checkpoint.ID] && strings.TrimSpace(checkpoint.TaskID) != "" {
-			roots[checkpoint.TaskID] = true
+	for _, taskID := range sourceTaskIDs {
+		if strings.TrimSpace(taskID) != "" {
+			roots[taskID] = true
 		}
 	}
 	parents := make(map[string]string, len(tasks))
+	byID := make(map[string]store.Task, len(tasks))
 	for _, task := range tasks {
 		parents[task.Definition.ID] = task.Definition.ParentID
+		byID[task.Definition.ID] = task
 	}
 	members := map[string]bool{}
-	for _, task := range tasks {
-		if taskInTrack(task.Definition.ID, parents, roots) {
-			members[task.Definition.ID] = true
+	changed := true
+	for changed {
+		changed = false
+		for _, task := range tasks {
+			if !members[task.Definition.ID] && taskInTrack(task.Definition.ID, parents, roots) {
+				members[task.Definition.ID] = true
+				changed = true
+			}
+		}
+		for taskID := range members {
+			for _, dependency := range byID[taskID].Definition.Dependencies {
+				if !roots[dependency] {
+					roots[dependency] = true
+					changed = true
+				}
+			}
 		}
 	}
 	scopedTasks := make([]store.Task, 0, len(members))

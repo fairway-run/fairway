@@ -136,7 +136,18 @@ func (s *scanState) loadSourceManifest() {
 			if class.FairwayKind != "" || class.RequiresStoreValidation {
 				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "project_file source class has incompatible Fairway settings")
 			}
+			if len(class.Roots) == 0 {
+				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "project_file source class requires at least one allowed root")
+			}
+			for _, root := range class.Roots {
+				if !safeSourceRoot(root) {
+					s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "project_file source class contains an unsafe allowed root")
+				}
+			}
 		case "fairway":
+			if len(class.Roots) != 0 {
+				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "fairway source class cannot define file roots")
+			}
 			if class.FairwayKind != "decision" && class.FairwayKind != "evidence" {
 				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "fairway source class requires decision or evidence kind")
 			}
@@ -326,6 +337,10 @@ func (s *scanState) validateSource(pagePath, sourceSHA string, source Source) bo
 			s.add("source_path_invalid", SeverityError, pagePath, "cited source is missing, unsafe, or not a regular file")
 			return false
 		}
+		if !sourceWithinAllowedRoots(source.Path, class.Roots, s.paths.relRoot) {
+			s.add("source_root_invalid", SeverityError, pagePath, "cited source is outside the source class allowed roots")
+			return false
+		}
 		if !shaPattern.MatchString(sourceSHA) {
 			return false
 		}
@@ -363,6 +378,26 @@ func (s *scanState) validateSource(pagePath, sourceSHA string, source Source) bo
 	default:
 		return false
 	}
+}
+
+func safeSourceRoot(root string) bool {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(root)))
+	return clean != "" && clean != "." && clean != ".." && !filepath.IsAbs(clean) && !strings.HasPrefix(clean, "../")
+}
+
+func sourceWithinAllowedRoots(sourcePath string, roots []string, knowledgeRoot string) bool {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(sourcePath)))
+	knowledge := filepath.ToSlash(filepath.Clean(knowledgeRoot))
+	if clean == knowledge || strings.HasPrefix(clean, knowledge+"/") {
+		return false
+	}
+	for _, root := range roots {
+		allowed := filepath.ToSlash(filepath.Clean(strings.TrimSpace(root)))
+		if clean == allowed || strings.HasPrefix(clean, allowed+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func sourceMatchesRevision(projectRoot, currentPath, revision string, limit int64) (bool, error) {

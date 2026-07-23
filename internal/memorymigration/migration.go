@@ -175,6 +175,9 @@ func Discover(repositoryRoot, scanRoot string) ([]Document, error) {
 			return walkErr
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
+			if isMemoryMarkdown(entry.Name()) {
+				names = append(names, candidate)
+			}
 			return nil
 		}
 		if entry.IsDir() {
@@ -194,10 +197,11 @@ func Discover(repositoryRoot, scanRoot string) ([]Document, error) {
 	for _, name := range names {
 		document, err := Load(repositoryRoot, name)
 		if err != nil {
-			rel, relErr := filepath.Rel(repositoryRoot, name)
+			relToScan, relErr := filepath.Rel(path, name)
 			if relErr != nil {
 				return nil, errors.New("resolve rejected legacy memory inventory path")
 			}
+			rel := filepath.Join(scanRoot, relToScan)
 			documents = append(documents, Document{Path: filepath.ToSlash(rel), RawOmitted: true, IssueCode: migrationIssueCode(err), Warnings: []string{"file rejected by bounded migration safety checks"}})
 			continue
 		}

@@ -170,7 +170,7 @@ func TestValidateSafeTextRequiresClosedPlaceholders(t *testing.T) {
 	}
 }
 
-func TestDiscoverSkipsSymlinksAndInventoriesMemoryMarkdown(t *testing.T) {
+func TestDiscoverReportsSymlinkedMemoryAsRejected(t *testing.T) {
 	root := t.TempDir()
 	writeMemoryFile(t, root, "tmp-ux/a-memory.md", "# A Memory\n## Purpose\nA\n")
 	writeMemoryFile(t, root, "tmp-ux/not-notes.md", "# Notes\n")
@@ -182,7 +182,7 @@ func TestDiscoverSkipsSymlinksAndInventoriesMemoryMarkdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(documents) != 2 || documents[0].Path != "tmp-ux/a-memory.md" || documents[1].Path != "tmp-ux/nested/b-memory.markdown" {
+	if len(documents) != 3 || documents[0].Path != "tmp-ux/a-memory.md" || documents[1].Path != "tmp-ux/linked-memory.md" || documents[1].IssueCode == "" || documents[2].Path != "tmp-ux/nested/b-memory.markdown" {
 		t.Fatalf("documents = %+v", documents)
 	}
 }

@@ -51,10 +51,11 @@ type SourceManifest struct {
 
 // SourceClass defines one configured provenance class.
 type SourceClass struct {
-	Kind                    string `yaml:"kind" json:"kind"`
-	Authority               string `yaml:"authority" json:"authority"`
-	FairwayKind             string `yaml:"fairway_kind,omitempty" json:"fairway_kind,omitempty"`
-	RequiresStoreValidation bool   `yaml:"requires_store_validation,omitempty" json:"requires_store_validation,omitempty"`
+	Kind                    string   `yaml:"kind" json:"kind"`
+	Authority               string   `yaml:"authority" json:"authority"`
+	Roots                   []string `yaml:"roots,omitempty" json:"roots,omitempty"`
+	FairwayKind             string   `yaml:"fairway_kind,omitempty" json:"fairway_kind,omitempty"`
+	RequiresStoreValidation bool     `yaml:"requires_store_validation,omitempty" json:"requires_store_validation,omitempty"`
 }
 
 // PageMetadata is the maintained Markdown frontmatter contract.

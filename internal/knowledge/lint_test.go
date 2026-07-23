@@ -16,8 +16,8 @@ import (
 func TestLintValidKnowledgeTree(t *testing.T) {
 	project := newKnowledgeProject(t)
 	revision := gitRevision(t, project)
-	writePage(t, project, "index.md", "Engineering index", "verified", "2026-12-31", revision, []string{"current-state.md"}, "source.md")
-	writePage(t, project, "current-state.md", "Current state", "verified", "2026-12-31", revision, nil, "source.md")
+	writePage(t, project, "index.md", "Engineering index", "verified", "2026-12-31", revision, []string{"current-state.md"}, "docs/source.md")
+	writePage(t, project, "current-state.md", "Current state", "verified", "2026-12-31", revision, nil, "docs/source.md")
 
 	report, err := Lint(Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")})
 	if err != nil {
@@ -42,10 +42,10 @@ func TestLintValidKnowledgeTree(t *testing.T) {
 func TestLintReportsMetadataIndexLinkSourceAndRevisionFindings(t *testing.T) {
 	project := newKnowledgeProject(t)
 	revision := gitRevision(t, project)
-	writePage(t, project, "index.md", "Duplicate title", "verified", "2026-01-01", revision, []string{"a.md", "missing.md", "../../../outside.md"}, "missing-source.md")
-	writePage(t, project, "a.md", "Duplicate title", "verified", "2026-01-01", revision, nil, "source.md")
-	writePage(t, project, "orphan.md", "Orphan", "unknown", "bad-date", "not-a-sha", nil, "source.md")
-	if err := os.WriteFile(filepath.Join(project, "source.md"), []byte("# Changed source\n"), 0o644); err != nil {
+	writePage(t, project, "index.md", "Duplicate title", "verified", "2026-01-01", revision, []string{"a.md", "missing.md", "../../../outside.md"}, "docs/missing-source.md")
+	writePage(t, project, "a.md", "Duplicate title", "verified", "2026-01-01", revision, nil, "docs/source.md")
+	writePage(t, project, "orphan.md", "Orphan", "unknown", "bad-date", "not-a-sha", nil, "docs/source.md")
+	if err := os.WriteFile(filepath.Join(project, "docs/source.md"), []byte("# Changed source\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	orphanPath := filepath.Join(project, DefaultRoot, "orphan.md")
@@ -82,9 +82,9 @@ func TestLintReportsMetadataIndexLinkSourceAndRevisionFindings(t *testing.T) {
 func TestLintSecretFindingDoesNotEchoContent(t *testing.T) {
 	project := newKnowledgeProject(t)
 	revision := gitRevision(t, project)
-	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"secret.md"}, "source.md")
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"secret.md"}, "docs/source.md")
 	secret := "SHOULD_NOT_RENDER_12345"
-	body := pageBody("Sensitive "+secret, "verified", "2026-12-31", revision, nil, "source.md") + "\naccess_token=" + secret + "\n"
+	body := pageBody("Sensitive "+secret, "verified", "2026-12-31", revision, nil, "docs/source.md") + "\naccess_token=" + secret + "\n"
 	writeKnowledgeFile(t, project, "secret.md", body)
 
 	report, err := Lint(Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")})
@@ -105,7 +105,7 @@ func TestLintSecretFindingDoesNotEchoContent(t *testing.T) {
 
 func TestLintRejectsUnknownMetadataField(t *testing.T) {
 	project := newKnowledgeProject(t)
-	body := pageBody("Index", "verified", "2026-12-31", gitRevision(t, project), nil, "source.md")
+	body := pageBody("Index", "verified", "2026-12-31", gitRevision(t, project), nil, "docs/source.md")
 	body = strings.Replace(body, "supersedes: []", "unexpected_field: value\nsupersedes: []", 1)
 	writeKnowledgeFile(t, project, "index.md", body)
 
@@ -139,10 +139,13 @@ func TestLintPathCustody(t *testing.T) {
 		if err := os.WriteFile(outside, []byte("outside\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(outside, filepath.Join(project, "linked-source.md")); err != nil {
+		if err := os.MkdirAll(filepath.Join(project, "docs"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		writePage(t, project, "index.md", "Index", "verified", "2026-12-31", gitRevision(t, project), nil, "linked-source.md")
+		if err := os.Symlink(outside, filepath.Join(project, "docs", "linked-source.md")); err != nil {
+			t.Fatal(err)
+		}
+		writePage(t, project, "index.md", "Index", "verified", "2026-12-31", gitRevision(t, project), nil, "docs/linked-source.md")
 		report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
 		if err != nil {
 			t.Fatal(err)
@@ -156,8 +159,8 @@ func TestLintPathCustody(t *testing.T) {
 func TestLintEnforcesBounds(t *testing.T) {
 	project := newKnowledgeProject(t)
 	revision := gitRevision(t, project)
-	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"a.md", "missing.md"}, "source.md")
-	writePage(t, project, "a.md", "A", "verified", "2026-12-31", revision, nil, "source.md")
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"a.md", "missing.md"}, "docs/source.md")
+	writePage(t, project, "a.md", "A", "verified", "2026-12-31", revision, nil, "docs/source.md")
 	if _, err := Lint(Options{ProjectRoot: project, MaxPages: 1}); err == nil || !strings.Contains(err.Error(), "page count") {
 		t.Fatalf("expected page count bound, got %v", err)
 	}
@@ -185,7 +188,7 @@ func TestLintRequiresConfiguredSourceManifest(t *testing.T) {
 	if err := os.Remove(filepath.Join(project, DefaultRoot, DefaultSourceManifest)); err != nil {
 		t.Fatal(err)
 	}
-	writePage(t, project, "index.md", "Index", "draft", "2026-12-31", gitRevision(t, project), nil, "source.md")
+	writePage(t, project, "index.md", "Index", "draft", "2026-12-31", gitRevision(t, project), nil, "docs/source.md")
 	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
 	if err != nil {
 		t.Fatal(err)
@@ -263,7 +266,7 @@ func TestLintLegacyFreeFormFairwaySourceCannotSatisfyProvenance(t *testing.T) {
 func TestLintSourceRevisionTracksCitedFileNotRepositoryHead(t *testing.T) {
 	project := newKnowledgeProject(t)
 	revision := gitRevision(t, project)
-	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, nil, "source.md")
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, nil, "docs/source.md")
 
 	if err := os.WriteFile(filepath.Join(project, "unrelated.md"), []byte("unrelated\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -278,7 +281,7 @@ func TestLintSourceRevisionTracksCitedFileNotRepositoryHead(t *testing.T) {
 		t.Fatalf("unrelated commit made cited source stale: %+v", report.Findings)
 	}
 
-	if err := os.WriteFile(filepath.Join(project, "source.md"), []byte("# Dirty source\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(project, "docs/source.md"), []byte("# Dirty source\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	report, err = Lint(Options{ProjectRoot: project, SourceRevision: gitRevision(t, project), Now: mustDate(t, "2026-07-22")})
@@ -290,13 +293,35 @@ func TestLintSourceRevisionTracksCitedFileNotRepositoryHead(t *testing.T) {
 	}
 }
 
+func TestLintRejectsProjectFileOutsideConfiguredRoots(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	if err := os.MkdirAll(filepath.Join(project, "tmp-ux"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "tmp-ux", "memory.md"), []byte("# Legacy memory\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, nil, "tmp-ux/memory.md")
+	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "source_root_invalid") || !hasFinding(report, "verified_provenance_missing") {
+		t.Fatalf("outside-root source satisfied provenance: %+v", report.Findings)
+	}
+}
+
 func newKnowledgeProject(t *testing.T) string {
 	t.Helper()
 	project := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(project, DefaultRoot), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(project, "source.md"), []byte("# Canonical source\n"), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(project, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "docs/source.md"), []byte("# Canonical source\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(project, DefaultRoot, DefaultSourceManifest), []byte(scaffoldFiles[DefaultSourceManifest]), 0o644); err != nil {
@@ -307,7 +332,7 @@ func newKnowledgeProject(t *testing.T) string {
 	gitRun(t, project, "init")
 	gitRun(t, project, "config", "user.email", "knowledge-test@example.invalid")
 	gitRun(t, project, "config", "user.name", "Knowledge Test")
-	gitRun(t, project, "add", "source.md")
+	gitRun(t, project, "add", "docs/source.md")
 	gitRun(t, project, "commit", "-m", "source")
 	return project
 }
