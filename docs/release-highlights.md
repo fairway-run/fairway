@@ -11,3 +11,8 @@
   executable that built the signed candidate archives.
 - Release-assurance checksums are portable and reference only the published
   asset basename, never a runner-local build path.
+- Public product entry points now explain Fairway as engineering continuity and
+  control: execution records, track memory, engineering knowledge, reusable
+  rule packs, and bounded assurance are presented as distinct capabilities.
+- Implemented capabilities are labeled separately from planned execution
+  profiles such as the large-migration profile.

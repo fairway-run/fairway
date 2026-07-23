@@ -17,6 +17,12 @@ promotion. A manual production rehearsal builds, tests, signs, notarizes,
 smokes, and packages an exact pushed `main` commit before the final remote tag
 exists.
 
+The public product entry points now present more of Fairway's current product
+model: execution control, engineering continuity, operating knowledge, and
+assurance. Implemented memory, knowledge, rule-pack, and assurance capabilities
+are distinguished from planned execution profiles instead of remaining
+underrepresented in the earlier public positioning.
+
 The resulting immutable packet binds version, source SHA, workflow identity,
 release policy, seven release assets, sizes, and SHA-256 digests. The final
 annotated tag names one successful rehearsal run. Its workflow downloads and

@@ -3,7 +3,7 @@
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Fairway',
-  tagline: 'Engineering control for agent-driven delivery',
+  tagline: 'Engineering continuity and control for agent-driven delivery',
   favicon: 'img/logo.svg',
   url: 'https://fairway.run',
   baseUrl: '/',

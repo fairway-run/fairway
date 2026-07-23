@@ -36,6 +36,7 @@
 }
 
 .kicker,
+.modelHeading span,
 .sectionHeading > span,
 .proofCopy > span,
 .startBand > div > span,
@@ -83,6 +84,99 @@
   margin: 34px 0 0;
   max-width: 720px;
   padding-left: 16px;
+}
+
+.productModel {
+  background: #172531;
+  color: #f7fafb;
+  padding: 76px max(28px, calc((100vw - 1184px) / 2)) 82px;
+}
+
+.modelHeading {
+  align-items: end;
+  display: grid;
+  gap: 56px;
+  grid-template-columns: minmax(340px, 1.1fr) minmax(280px, 0.9fr);
+}
+
+.modelHeading span {
+  color: #9ed0dd;
+}
+
+.modelHeading h2 {
+  color: #f7fafb;
+  font-size: clamp(2rem, 4vw, 3.15rem);
+  letter-spacing: 0;
+  line-height: 1.12;
+  margin: 0;
+}
+
+.modelHeading > p {
+  color: #bdcbd4;
+  font-size: 1.04rem;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.productLayers {
+  border-top: 1px solid #405563;
+  margin-top: 46px;
+}
+
+.productLayer {
+  align-items: center;
+  border-bottom: 1px solid #405563;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 48px minmax(180px, 0.7fr) minmax(280px, 1.3fr) minmax(220px, 0.8fr);
+  min-height: 126px;
+  padding: 22px 0;
+}
+
+.layerIndex {
+  color: #9ed0dd;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+}
+
+.layerName h3 {
+  color: #f7fafb;
+  font-size: 1.16rem;
+  margin: 0 0 7px;
+}
+
+.layerName span {
+  color: #e4aaa1;
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.productLayer p {
+  color: #c6d1d8;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.productLayer strong {
+  color: #9ed0dd;
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.modelLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 26px;
+  margin-top: 28px;
+}
+
+.modelLinks a {
+  color: #b7dce5;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .accountability {
@@ -263,8 +357,17 @@
 
   .productProof,
   .startBand,
-  .authority {
+  .authority,
+  .modelHeading {
     grid-template-columns: 1fr;
+  }
+
+  .productLayer {
+    grid-template-columns: 40px minmax(180px, 0.8fr) minmax(280px, 1.2fr);
+  }
+
+  .productLayer strong {
+    grid-column: 2 / -1;
   }
 
   .authority {
@@ -299,6 +402,27 @@
   .startBand {
     padding-left: 20px;
     padding-right: 20px;
+  }
+
+  .productModel {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .modelHeading {
+    gap: 22px;
+  }
+
+  .productLayer {
+    align-items: start;
+    gap: 12px;
+    grid-template-columns: 28px 1fr;
+    padding: 24px 0;
+  }
+
+  .productLayer p,
+  .productLayer strong {
+    grid-column: 2;
   }
 
   .accountability {

@@ -12,6 +12,37 @@ const accountability = [
   { step: '05', title: 'Promote explicitly', body: 'Make merge, release, deploy, and live-operation boundaries visible without granting them to Fairway.' }
 ];
 
+const productLayers = [
+  {
+    index: '01',
+    name: 'Execution control',
+    status: 'Implemented',
+    summary: 'Bound work to durable intent, ownership, decisions, evidence, review, and promotion state.',
+    detail: 'Tasks · sessions · checkpoints · evidence · reviews'
+  },
+  {
+    index: '02',
+    name: 'Engineering continuity',
+    status: 'Implemented',
+    summary: 'Resume after context loss or provider replacement without making chat history the system of record.',
+    detail: 'Track memory · cold starts · handoffs · waits'
+  },
+  {
+    index: '03',
+    name: 'Operating knowledge',
+    status: 'Implemented',
+    summary: 'Carry source-grounded project knowledge and reusable engineering rules across work items.',
+    detail: 'Knowledge packets · rule packs · provenance · freshness'
+  },
+  {
+    index: '04',
+    name: 'Assurance and profiles',
+    status: 'Implemented + planned',
+    summary: 'Map recorded facts to bounded readiness claims, then compose them into specialized execution profiles.',
+    detail: 'Assurance profiles implemented · migration profile planned'
+  }
+];
+
 function AccountabilityStep({ step, title, body }) {
   return (
     <article className={styles.step}>
@@ -22,11 +53,25 @@ function AccountabilityStep({ step, title, body }) {
   );
 }
 
+function ProductLayer({ index, name, status, summary, detail }) {
+  return (
+    <article className={styles.productLayer}>
+      <span className={styles.layerIndex}>{index}</span>
+      <div className={styles.layerName}>
+        <h3>{name}</h3>
+        <span>{status}</span>
+      </div>
+      <p>{summary}</p>
+      <strong>{detail}</strong>
+    </article>
+  );
+}
+
 export default function Home() {
   return (
     <Layout
-      title="Engineering control for agent-driven delivery"
-      description="Fairway is the independent engineering record and control layer for accountable intent, decisions, evidence, review, and promotion in agent-driven delivery."
+      title="Engineering continuity and control for agent-driven delivery"
+      description="Fairway keeps agent-driven engineering governed, resumable, and reviewable through durable execution records, memory, knowledge, rules, and assurance."
     >
       <main>
         <section className={styles.hero}>
@@ -34,11 +79,13 @@ export default function Home() {
           <div className={styles.heroInner}>
             <img src="/img/logo-lockup.svg" alt="Fairway" className={styles.logo} />
             <Heading as="h1">Fairway</Heading>
-            <p className={styles.kicker}>Engineering control for agent-driven delivery</p>
+            <p className={styles.kicker}>Engineering continuity and control</p>
             <p className={styles.lede}>
-              Keep accountable intent, material decisions, evidence,
-              independent judgment, and promotion state durable when coding
-              agents and provider sessions change.
+              Keep agent-driven engineering governed, resumable, and
+              reviewable across providers, tools, and time. Fairway connects
+              execution records, working memory, project knowledge, reusable
+              rules, and promotion evidence without taking authority from the
+              systems that perform the work.
             </p>
             <div className={styles.actions}>
               <Link className={clsx('button button--primary button--lg', styles.primary)} to="/docs/quickstart">
@@ -55,13 +102,35 @@ export default function Home() {
           </div>
         </section>
 
+        <section className={styles.productModel}>
+          <div className={styles.modelHeading}>
+            <div>
+              <span>One durable engineering record</span>
+              <Heading as="h2">Control today&apos;s work. Preserve what the next agent needs.</Heading>
+            </div>
+            <p>
+              Fairway begins with accountable execution and extends into
+              continuity, operating knowledge, and evidence-backed assurance.
+              Each layer has a distinct job and an explicit authority boundary.
+            </p>
+          </div>
+          <div className={styles.productLayers}>
+            {productLayers.map((item) => <ProductLayer key={item.index} {...item} />)}
+          </div>
+          <div className={styles.modelLinks}>
+            <Link to="/docs/design/project-working-memory">How track memory works</Link>
+            <Link to="/docs/design/engineering-knowledge">How engineering knowledge stays grounded</Link>
+            <Link to="/docs/design/rule-packs">How reusable rules compose</Link>
+          </div>
+        </section>
+
         <section className={styles.accountability}>
           <div className={styles.sectionHeading}>
-            <span>One accountability chain</span>
+            <span>The control path</span>
             <Heading as="h2">From declared intent to explicit promotion</Heading>
             <p>
-              Fairway connects the facts that other systems produce without
-              absorbing their authority.
+              The same accountability chain applies whether one agent handles
+              a small fix or several providers execute a long-running program.
             </p>
           </div>
           <div className={styles.steps}>
@@ -75,8 +144,9 @@ export default function Home() {
             <Heading as="h2">See work, waits, evidence, and review state without turning the dashboard into a control console.</Heading>
             <p>
               The read-only dashboard projects the same Fairway record used by
-              the CLI. Mutating work stays in trusted command and provider
-              surfaces with explicit policy checks.
+              the CLI, memory packets, and knowledge queries. Mutating work
+              stays in trusted command and provider surfaces with explicit
+              policy checks.
             </p>
             <div className={styles.textLinks}>
               <Link to="/docs/design/dashboard">Explore the dashboard model</Link>

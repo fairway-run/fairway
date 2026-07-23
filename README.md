@@ -4,9 +4,14 @@
 
 # Fairway
 
-**Engineering control and accountability for agent-driven delivery.**
+**Engineering continuity and control for agent-driven delivery.**
 
-Fairway gives a software team a durable answer to five questions:
+Fairway keeps agent-driven engineering governed, resumable, and reviewable
+across providers, tools, and time. It connects an accountable execution record
+with working memory, source-grounded project knowledge, reusable rule packs,
+and evidence-backed assurance.
+
+It gives a software team a durable answer to five questions:
 
 1. What work was authorized, and who owns it now?
 2. Which material decisions shaped the work?
@@ -64,6 +69,24 @@ Coordination is part of this chain. Sessions, checkpoints, handoffs, waits,
 notifications, lanes, and dashboards make ownership and next actions visible,
 but they are capabilities rather than Fairway's category definition.
 
+## The Product Model
+
+Fairway builds four distinct capabilities on one local engineering record:
+
+1. **Execution control:** intent, ownership, decisions, evidence, review, and
+   promotion state.
+2. **Engineering continuity:** track memory, cold starts, waits, and handoffs
+   that survive provider replacement and context loss.
+3. **Operating knowledge:** source-grounded project synthesis and reusable rule
+   packs with provenance and freshness checks.
+4. **Assurance and execution profiles:** bounded evidence mapping is
+   implemented; specialized profiles such as large-migration execution remain
+   explicitly planned until released.
+
+These capabilities compose, but they do not share authority. Memory is curated
+operating context, knowledge is derived until promoted, rule packs define
+reusable expectations, and assurance reports readiness without approving it.
+
 ## What Is Implemented
 
 The current binary provides:
@@ -72,6 +95,9 @@ The current binary provides:
 - task, session, checkpoint, decision, evidence, handoff, review, wait, and
   notification records;
 - workflow, review, merge-readiness, release, and reconciliation checks;
+- database-backed track memory and deterministic engineering-knowledge packets;
+- local rule-pack loading, matching, lint, and evidence expectations;
+- assurance profiles and signed offline evidence packages with bounded claims;
 - provider-neutral adapters and structured packets with bounded authority;
 - read-only wall, board, task-detail, diagnostics, and report views;
 - multi-project and shared-team pilot surfaces with explicit identity and
