@@ -12,7 +12,7 @@ import (
 func TestExtractAssurance(t *testing.T) {
 	dir := t.TempDir()
 	writeAssuranceArchive(t, filepath.Join(dir, "fairway_"+testVersion+"_release_assurance.tar.gz"), []tarEntry{
-		{name: "fairway-" + testVersion + "-release-assurance", kind: tar.TypeDir},
+		{name: "fairway-" + testVersion + "-release-assurance/", kind: tar.TypeDir},
 		{name: "fairway-" + testVersion + "-release-assurance/manifest.json", body: "{}"},
 		{name: "fairway-" + testVersion + "-release-assurance/evidence/test.txt", body: "evidence"},
 	})
@@ -40,7 +40,7 @@ func TestExtractAssuranceRejectsUnsafeArchive(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeAssuranceArchive(t, filepath.Join(dir, "fairway_"+testVersion+"_release_assurance.tar.gz"), []tarEntry{
-				{name: "fairway-" + testVersion + "-release-assurance", kind: tar.TypeDir},
+				{name: "fairway-" + testVersion + "-release-assurance/", kind: tar.TypeDir},
 				{name: "fairway-" + testVersion + "-release-assurance/manifest.json", body: "{}"},
 				test.entry,
 			})

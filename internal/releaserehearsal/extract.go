@@ -88,8 +88,12 @@ func ExtractAssurance(dir, version, output string) error {
 			return errors.New("read assurance archive")
 		}
 		name := header.Name
-		clean := path.Clean(name)
-		if name == "" || clean != name || path.IsAbs(name) || strings.Contains(name, `\`) ||
+		normalized := name
+		if header.Typeflag == tar.TypeDir {
+			normalized = strings.TrimSuffix(name, "/")
+		}
+		clean := path.Clean(normalized)
+		if normalized == "" || clean != normalized || path.IsAbs(normalized) || strings.Contains(normalized, `\`) ||
 			(clean != root && !strings.HasPrefix(clean, root+"/")) {
 			return fmt.Errorf("assurance archive contains unsafe path: %q", name)
 		}
