@@ -888,6 +888,24 @@ requirement to rewrite history.
 Use `workflow check` at task, review, and deploy boundaries. It keeps the
 operating model short by turning the repeated manual checks into one command.
 
+### Minimal Working-Memory Routine
+
+Use working memory only for tasks that cross provider replacement, context
+loss, long waits, or multiple execution bursts:
+
+```text
+start:      memory cold-start --track <task-id>
+gear shift: record one checkpoint and update memory only when objective,
+            blocker, decision, or next action materially changes
+closeout:   workflow closeout <task-id> --dry-run
+```
+
+When closeout reports `terminal_task_active_memory`, choose one disposition:
+promote stable cross-task value into a reviewed canonical target, or archive the
+completed execution memory. Do not keep completed guidance active and do not
+create a review task solely to make this decision. Short single-burst tasks do
+not require a memory record.
+
 ```bash
 # Normal task boundary: warns on dirty files and unpushed commits.
 fairway workflow check

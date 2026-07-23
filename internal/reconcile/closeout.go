@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/subashram/fairway/internal/reviewstate"
@@ -100,6 +101,10 @@ func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (Closeo
 	if err != nil {
 		return CloseoutReport{}, err
 	}
+	memory, memoryErr := s.TrackMemory(ctx, opts.TaskID)
+	if memoryErr != nil && !errors.Is(memoryErr, store.ErrNotFound) {
+		return CloseoutReport{}, memoryErr
+	}
 
 	branch := firstNonEmpty(opts.Git.Branch, task.Branch)
 	role := firstNonEmpty(opts.Role, task.Definition.Role)
@@ -129,6 +134,23 @@ func Closeout(ctx context.Context, s *store.Store, opts CloseoutOptions) (Closeo
 
 	if !isTerminal(task.Status, opts.Terminal) {
 		add(CloseoutFinding{Kind: "task_not_terminal", Severity: "blocker", Action: "finish_or_reopen_task", Reason: "lane closeout requires a terminal task status"})
+	} else if memoryErr == nil {
+		switch memory.Disposition {
+		case "active":
+			add(CloseoutFinding{
+				Kind:     "terminal_task_active_memory",
+				Severity: "warning",
+				Action:   "promote_or_archive_memory",
+				Reason:   "task is terminal while same-id working memory remains active; its objective and next actions are historical until disposition is recorded",
+			})
+		case "promote":
+			add(CloseoutFinding{
+				Kind:     "terminal_task_memory_promotion_pending",
+				Severity: "warning",
+				Action:   "complete_memory_promotion",
+				Reason:   "task is terminal while same-id working memory still has pending canonical promotion",
+			})
+		}
 	}
 	if len(evidence) == 0 {
 		add(CloseoutFinding{Kind: "missing_evidence", Severity: "warning", Action: "record_evidence_or_exception", Reason: "task has no recorded evidence for closeout"})

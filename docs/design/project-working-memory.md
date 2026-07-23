@@ -184,6 +184,11 @@ owner must decide whether stable cross-task value should be promoted or whether
 the completed track memory should be archived. Fairway does not infer that
 decision from task completion.
 
+The standard `fairway workflow closeout <task-id> --dry-run` surface reports the
+same condition as a warning. It does not block task completion or branch
+cleanup. This keeps memory hygiene visible in the normal closeout path without
+creating a separate approval gate.
+
 When domain context is useful, this command composes with Engineering Knowledge
 through one bounded cold-start response. Track memory is rendered first and may
 name relevant knowledge topics; only those indexed pages are added within a

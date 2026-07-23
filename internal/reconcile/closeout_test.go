@@ -33,6 +33,58 @@ func TestCloseoutCleanMergedBranchIsEligible(t *testing.T) {
 	}
 }
 
+func TestCloseoutReportsTerminalTaskMemoryMaintenanceWithoutBlocking(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		disposition string
+		wantKind    string
+	}{
+		{name: "active", disposition: "active", wantKind: "terminal_task_active_memory"},
+		{name: "promotion pending", disposition: "promote", wantKind: "terminal_task_memory_promotion_pending"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := newReconcileTestStore(t)
+			if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Done", Role: "backend"}}); err != nil {
+				t.Fatal(err)
+			}
+			seedDoneState(t, ctx, s, "T-001", "agent/backend", "abc123")
+			if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass"}); err != nil {
+				t.Fatal(err)
+			}
+			checkpointID, err := s.RecordCheckpointWithID(ctx, store.Checkpoint{
+				TaskID: "T-001", State: "done", Owner: "backend", Summary: "task completed",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.UpsertTrackMemory(ctx, store.TrackMemory{
+				TrackID: "T-001", Owner: "backend", ReviewBy: "2099-01-01",
+				SourceCheckpointIDs: []int64{checkpointID},
+			}, false); err != nil {
+				t.Fatal(err)
+			}
+			if tc.disposition == "promote" {
+				if _, err := s.RecordTrackMemoryDisposition(ctx, "T-001", "promote", "stable value", "docs/design/result.md", "", ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			report, err := Closeout(ctx, s, CloseoutOptions{
+				TaskID:   "T-001",
+				Terminal: []string{"done"},
+				Git:      CloseoutGit{Branch: "agent/backend", BranchExists: true, BranchMerged: true},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !report.OK || report.Summary.Warnings != 1 || !hasCloseoutFinding(report, tc.wantKind) {
+				t.Fatalf("report=%+v, want advisory memory-maintenance finding", report)
+			}
+		})
+	}
+}
+
 func TestCloseoutReportsReviewSessionWatcherAndUnmergedBranchBlockers(t *testing.T) {
 	ctx := context.Background()
 	s := newReconcileTestStore(t)
