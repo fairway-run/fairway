@@ -6367,3 +6367,168 @@ tasks:
       - "Every canonical sovereign reference and assessor-input document passes fairway assurance claims validate without weakening positive unsupported-claim rejection."
       - "Threat-model wording continues to require explicit customer policy permission for connected dependencies without being misread as product or regulatory approval."
       - "Focused claim validation, full tests, vet, config, workflow, diff, and reconciliation checks pass; no certification, compliance, release, deploy, credential, public, or live authority is introduced."
+
+  - id: FW-368
+    title: Formalize project working memory
+    kind: epic
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: project-working-memory
+    source_paths: [docs/design/project-working-memory.md, docs/design/task-decision-memory.md, docs/design/context-packets.md, internal/store, cmd/fairway]
+    target_paths: [docs/design, docs/agent-guide.md, docs/config-reference.md, internal, cmd/fairway]
+    review_domains: [arch, backend, governance]
+    risk_level: medium
+    migration_type: working-memory-product
+    acceptance_checks:
+      - "Fairway defines a machine-discoverable project working-memory contract that formalizes tmp-ux without making local memory canonical or duplicating task state."
+      - "A new provider can discover the relevant active track, render bounded resume context, follow source facts, and identify the exact next action without prior chat history."
+      - "A measured GPUaaS pilot demonstrates lower context-reconstruction cost without equivalent process overhead, and durable knowledge is explicitly promoted or archived."
+
+  - id: FW-369
+    title: Define project working-memory contract and tmp-ux lifecycle
+    kind: docs
+    parent_id: FW-368
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: project-working-memory-design
+    source_paths: [docs/design/backlog-sources.md, docs/design/task-decision-memory.md, docs/design/context-packets.md, docs/agent-guide.md]
+    target_paths: [docs/design/project-working-memory.md, docs/product.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, governance]
+    risk_level: low
+    migration_type: working-memory-design
+    acceptance_checks:
+      - "The design separates Fairway runtime facts, local working memory, agent knowledge, canonical documentation, and provider conversation history."
+      - "The design defines layout, metadata, authority order, lifecycle, deterministic lint, privacy rules, and a cold-start acceptance test."
+      - "Implementation and GPUaaS migration tasks depend on this reviewed contract."
+
+  - id: FW-370
+    title: Implement project working-memory manifest, lint, and cold-start bridge
+    kind: task
+    parent_id: FW-368
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: project-working-memory-runtime
+    source_paths: [docs/design/project-working-memory.md, internal/store, internal/packet, cmd/fairway]
+    target_paths: [internal, cmd/fairway, docs/agent-guide.md, docs/config-reference.md]
+    review_domains: [arch, backend, governance, security]
+    risk_level: medium
+    migration_type: working-memory-runtime
+    dependencies: [FW-369]
+    acceptance_checks:
+      - "Fairway discovers the configured project memory index and validates active-memory metadata, required sections, task references, source SHA, freshness, size, and authority labels."
+      - "Cold-start output combines only the selected local track memory with current Fairway task, session, checkpoint, decision, evidence, and review facts."
+      - "Secret-pattern, unsafe-path, archive-exclusion, and preview-before-rewrite regressions pass without storing local memory content in Fairway by default."
+
+  - id: FW-371
+    title: Pilot formal working memory and tmp-ux migration in GPUaaS
+    kind: task
+    parent_id: FW-368
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: project-working-memory-pilot
+    source_paths: [docs/design/project-working-memory.md, docs/assessment, ../GPUasService/tmp-ux]
+    target_paths: [docs/assessment, docs/agent-guide.md, docs/design/project-working-memory.md]
+    review_domains: [arch, governance, ops]
+    risk_level: medium
+    migration_type: working-memory-consumer-pilot
+    dependencies: [FW-370]
+    acceptance_checks:
+      - "One active GPUaaS track is migrated without breaking existing memory references or moving secrets into version control."
+      - "A cold-start provider identifies current objective, verified state, source SHA, blockers, evidence, and next action without conversation history."
+      - "The pilot records resume time, clarification count, stale findings, repeated investigation, maintenance time, and a keep/refine/stop decision."
+
+  - id: FW-372
+    title: Add source-grounded engineering knowledge
+    kind: epic
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: engineering-knowledge
+    source_paths: [docs/design/engineering-knowledge.md, docs/design/project-working-memory.md, docs/design/task-decision-memory.md, internal/provenance]
+    target_paths: [docs/design, docs/agent-guide.md, docs/config-reference.md, internal, cmd/fairway, examples]
+    review_domains: [arch, backend, governance, security]
+    risk_level: medium
+    migration_type: engineering-knowledge-product
+    acceptance_checks:
+      - "Fairway provides a reusable framework for project-owned, source-grounded, agent-maintained engineering knowledge without becoming canonical documentation or a transcript store."
+      - "Knowledge pages expose authority, verification state, source revision, provenance, conflict state, and promotion history in inspectable Markdown and Git."
+      - "A measured GPUaaS pilot proves useful cold-start and task-query behavior before semantic retrieval or hosted knowledge infrastructure is considered."
+
+  - id: FW-373
+    title: Define engineering knowledge schema, lifecycle, and authority model
+    kind: docs
+    parent_id: FW-372
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: engineering-knowledge-design
+    source_paths: [docs/design/task-decision-memory.md, docs/design/product-boundaries.md, docs/design/supply-chain-provenance.md, docs/design/project-working-memory.md]
+    target_paths: [docs/design/engineering-knowledge.md, docs/product.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, governance, security]
+    risk_level: low
+    migration_type: engineering-knowledge-design
+    acceptance_checks:
+      - "The design assigns framework ownership to Fairway and knowledge-content ownership to each consumer repository."
+      - "The design defines page metadata, source classes, ingest/query/lint/promote operations, security boundaries, and derived-versus-canonical authority."
+      - "The MVP explicitly avoids embeddings, hosted services, automatic canonical writes, and cross-project retrieval until measured need exists."
+
+  - id: FW-374
+    title: Implement engineering knowledge scaffold, status, and deterministic lint
+    kind: task
+    parent_id: FW-372
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: engineering-knowledge-foundation
+    source_paths: [docs/design/engineering-knowledge.md, internal/config, internal/provenance, cmd/fairway]
+    target_paths: [internal/knowledge, internal/config, cmd/fairway, examples, docs/agent-guide.md, docs/config-reference.md]
+    review_domains: [arch, backend, governance, security]
+    risk_level: medium
+    migration_type: engineering-knowledge-foundation
+    dependencies: [FW-373]
+    acceptance_checks:
+      - "Knowledge init creates the configured project-owned Markdown scaffold and manifest without overwriting existing files."
+      - "Status and lint deterministically validate metadata, indexes, links, source revisions, path custody, duplicate identities, stale pages, and secret patterns."
+      - "The implementation records references and digests only, keeps generated changes as normal reviewable Git diffs, and grants no workflow or documentation authority."
+
+  - id: FW-375
+    title: Add bounded knowledge ingest, query packet, and promotion workflow
+    kind: task
+    parent_id: FW-372
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: engineering-knowledge-lifecycle
+    source_paths: [docs/design/engineering-knowledge.md, docs/design/project-working-memory.md, internal/knowledge, internal/packet, internal/provenance]
+    target_paths: [internal/knowledge, internal/packet, cmd/fairway, docs/agent-guide.md, docs/config-reference.md]
+    review_domains: [arch, backend, governance, security]
+    risk_level: medium
+    migration_type: engineering-knowledge-lifecycle
+    dependencies: [FW-370, FW-374]
+    acceptance_checks:
+      - "Ingest previews bounded source-grounded page changes and applies them only through an explicit command that leaves a normal Git diff."
+      - "Task-aware query packets select relevant indexed pages with provenance and verification labels instead of loading the full corpus."
+      - "Promotion requires an explicit canonical target and reviewed commit reference; conflicts, unsafe content, and unverified-only citation chains fail closed."
+
+  - id: FW-376
+    title: Run integrated GPUaaS memory and engineering-knowledge cold-start pilot
+    kind: task
+    parent_id: FW-372
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: engineering-knowledge-pilot
+    source_paths: [docs/design/project-working-memory.md, docs/design/engineering-knowledge.md, docs/assessment, ../GPUasService]
+    target_paths: [docs/assessment, docs/design/project-working-memory.md, docs/design/engineering-knowledge.md, docs/product.md]
+    review_domains: [arch, governance, ops, security]
+    risk_level: medium
+    migration_type: engineering-memory-consumer-pilot
+    dependencies: [FW-371, FW-375]
+    acceptance_checks:
+      - "A provider with only repository and Fairway access resumes one GPUaaS workstream and answers one cross-task architecture question using bounded memory and knowledge packets."
+      - "The pilot measures grounding, context size, lookup and resume time, stale or contradictory claims, maintenance cost, repeated investigation, and incorrect authority choices."
+      - "A reviewed keep/refine/stop decision determines whether to expand adoption or defer semantic retrieval and automation."
