@@ -4688,6 +4688,13 @@ func TestCLI_KnowledgeInitStatusAndLint(t *testing.T) {
 	lint := runCapture(t, "knowledge", "lint")
 	assertContains(t, lint, "knowledge_lint: true")
 	assertContains(t, lint, "severity=warning code=review_overdue")
+	if out, err := captureRun("knowledge", "lint", "--fail-on-warning"); err == nil ||
+		!strings.Contains(out, "review_overdue") || !strings.Contains(out, "knowledge_lint: false") {
+		t.Fatalf("fail-on-warning output=%q err=%v", out, err)
+	}
+	if out, err := captureRun("knowledge", "status", "--fail-on-warning"); err == nil || !strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("status accepted lint-only warning gate: output=%q err=%v", out, err)
+	}
 
 	if out, err := captureRun("knowledge", "status", "--root", "../outside"); err == nil {
 		t.Fatalf("unsafe knowledge root succeeded:\n%s", out)
@@ -4732,7 +4739,7 @@ func TestCLI_KnowledgeIngestTaskQueryAndColdStartComposition(t *testing.T) {
 	runOK(t, "claim", "K-001")
 	runOK(t, "checkpoint", "record", "K-001", "--state", "active", "--owner", "backend", "--summary", "validate node trust")
 	query := runCapture(t, "--json", "knowledge", "query", "--task", "K-001", "--topic", "node trust", "--budget-bytes", "4096")
-	for _, expected := range []string{`"schema": "fairway.knowledge-query.v1"`, `"task_id": "K-001"`, `"path": "architecture/node-trust.md"`, `"status": "draft"`, `"bounded": true`} {
+	for _, expected := range []string{`"schema": "fairway.knowledge-query.v1"`, `"task_id": "K-001"`, `"repository_revision":`, `"source_freshness":`, `"path": "architecture/node-trust.md"`, `"status": "draft"`, `"bounded": true`} {
 		assertContains(t, query, expected)
 	}
 
@@ -4747,6 +4754,9 @@ func TestCLI_KnowledgeIngestTaskQueryAndColdStartComposition(t *testing.T) {
 	assertContains(t, coldStart, `"schema": "fairway.memory-cold-start.v1"`)
 	assertContains(t, coldStart, `"knowledge_budget_bytes": 4096`)
 	assertContains(t, coldStart, `"schema": "fairway.knowledge-query.v1"`)
+	assertContains(t, coldStart, `"memory_disposition": "active"`)
+	assertContains(t, coldStart, `"track_task_status": "in_progress"`)
+	assertContains(t, coldStart, `"checkpoint_chronology": "newest_first_historical"`)
 	if strings.Index(coldStart, `"packet"`) > strings.Index(coldStart, `"knowledge"`) {
 		t.Fatalf("knowledge rendered before execution memory:\n%s", coldStart)
 	}

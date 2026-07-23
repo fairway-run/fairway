@@ -62,6 +62,10 @@ func cmdKnowledgeInit(opts globalOptions, args []string) error {
 func cmdKnowledgeReport(ctx context.Context, opts globalOptions, command string, args []string) error {
 	fs := flag.NewFlagSet("knowledge "+command, flag.ContinueOnError)
 	rootFlag := fs.String("root", "", "project-relative knowledge root")
+	failOnWarning := false
+	if command == "lint" {
+		fs.BoolVar(&failOnWarning, "fail-on-warning", false, "return nonzero when lint reports warnings")
+	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -88,18 +92,19 @@ func cmdKnowledgeReport(ctx context.Context, opts globalOptions, command string,
 		if err != nil {
 			return err
 		}
+		failed := hasKnowledgeErrors(report) || (command == "lint" && failOnWarning && hasKnowledgeWarnings(report))
 		if opts.JSON {
 			if err := printJSON(report); err != nil {
 				return err
 			}
 		} else {
-			fmt.Printf("knowledge_%s: %t\nroot: %s\npages: %d\nfindings: %d\n", command, !hasKnowledgeErrors(report), report.Root, report.PageCount, len(report.Findings))
+			fmt.Printf("knowledge_%s: %t\nroot: %s\npages: %d\nfindings: %d\n", command, !failed, report.Root, report.PageCount, len(report.Findings))
 			for _, finding := range report.Findings {
 				fmt.Printf("- severity=%s code=%s path=%s detail=%s\n", finding.Severity, finding.Code, firstNonEmpty(finding.Path, "none"), finding.Detail)
 			}
 		}
-		if command == "lint" && hasKnowledgeErrors(report) {
-			return errors.New("engineering knowledge lint found errors")
+		if command == "lint" && failed {
+			return errors.New("engineering knowledge lint found findings at or above the configured severity")
 		}
 		return nil
 	})
@@ -250,11 +255,11 @@ func knowledgeTaskTerms(ctx context.Context, s *store.Store, taskID string) ([]s
 }
 
 func printKnowledgePacket(packet knowledge.QueryPacket) {
-	fmt.Printf("# Fairway Knowledge Query\n\nschema: %s\nbounded: true\nread_only: true\nbytes: %d/%d\ntopic: %s\ntask: %s\n",
-		packet.Schema, packet.Bytes, packet.BudgetBytes, firstNonEmpty(packet.Topic, "none"), firstNonEmpty(packet.TaskID, "none"))
+	fmt.Printf("# Fairway Knowledge Query\n\nschema: %s\nbounded: true\nread_only: true\nbytes: %d/%d\ntopic: %s\ntask: %s\nrepository_revision: %s\n",
+		packet.Schema, packet.Bytes, packet.BudgetBytes, firstNonEmpty(packet.Topic, "none"), firstNonEmpty(packet.TaskID, "none"), firstNonEmpty(packet.RepositoryRevision, "unknown"))
 	for _, page := range packet.Pages {
-		fmt.Printf("- page=%s title=%q status=%s verified=%t stale=%t conflict=%t score=%d owner=%s review_by=%s sources=%d\n",
-			page.Path, page.Title, page.Status, page.Verified, page.Stale, page.Conflict, page.Score, page.Owner, page.ReviewBy, page.SourceCount)
+		fmt.Printf("- page=%s title=%q status=%s verified=%t stale=%t conflict=%t score=%d owner=%s review_by=%s source_freshness=%s sources=%d\n",
+			page.Path, page.Title, page.Status, page.Verified, page.Stale, page.Conflict, page.Score, page.Owner, page.ReviewBy, page.SourceFreshness, page.SourceCount)
 		if page.Excerpt != "" {
 			fmt.Printf("  excerpt: %s\n", page.Excerpt)
 		}
@@ -270,6 +275,15 @@ func printKnowledgePacket(packet knowledge.QueryPacket) {
 func hasKnowledgeErrors(report knowledge.Report) bool {
 	for _, finding := range report.Findings {
 		if finding.Severity == knowledge.SeverityError {
+			return true
+		}
+	}
+	return false
+}
+
+func hasKnowledgeWarnings(report knowledge.Report) bool {
+	for _, finding := range report.Findings {
+		if finding.Severity == knowledge.SeverityWarning {
 			return true
 		}
 	}

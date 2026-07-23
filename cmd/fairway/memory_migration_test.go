@@ -10,6 +10,61 @@ import (
 	"github.com/subashram/fairway/internal/store"
 )
 
+func TestBuildMemoryPacketLabelsStateChronologyAndDeduplicatesGuidance(t *testing.T) {
+	memory := store.TrackMemory{
+		TrackID: "TRACK-1", Disposition: "active",
+		Blockers:    []string{"DEP-1 is blocked", "DEP-1 is blocked"},
+		NextActions: []string{"run dependency-safe cases", "run dependency-safe cases"},
+	}
+	tasks := []store.Task{
+		{Definition: store.TaskDefinition{ID: "TRACK-1", Title: "Track"}, Status: "todo"},
+		{Definition: store.TaskDefinition{ID: "DEP-1", Title: "Dependency"}, Status: "blocked"},
+		{Definition: store.TaskDefinition{ID: "UNRELATED-1", Title: "Unrelated"}, Status: "blocked"},
+	}
+	checkpoints := []store.Checkpoint{
+		{TaskID: "TRACK-1", State: "done", Summary: "newer", CreatedAt: "2026-07-23T02:00:00Z"},
+		{TaskID: "TRACK-1", State: "active", Summary: "older", CreatedAt: "2026-07-23T01:00:00Z"},
+	}
+
+	packet := buildMemoryPacket(memory, "isolated", tasks, nil, checkpoints)
+	if packet.MemoryDisposition != "active" || packet.TrackTaskStatus != "todo" ||
+		packet.CheckpointChronology != "newest_first_historical" {
+		t.Fatalf("state labels=%+v", packet)
+	}
+	if !reflect.DeepEqual(packet.Blockers, []string{"DEP-1 is blocked"}) {
+		t.Fatalf("blockers=%v", packet.Blockers)
+	}
+	if !reflect.DeepEqual(packet.NextActions, []string{"run dependency-safe cases"}) {
+		t.Fatalf("next actions=%v", packet.NextActions)
+	}
+	if len(packet.Checkpoints) != 2 ||
+		!strings.Contains(packet.Checkpoints[0], "at=2026-07-23T02:00:00Z") ||
+		!strings.Contains(packet.Checkpoints[0], "historical=true") {
+		t.Fatalf("checkpoint chronology=%v", packet.Checkpoints)
+	}
+	for _, action := range packet.NextActions {
+		if strings.HasPrefix(action, "inspect ") {
+			t.Fatalf("synthetic inspect action remained: %v", packet.NextActions)
+		}
+	}
+}
+
+func TestBuildMemoryPacketAddsOnlyCurrentTrackBlocker(t *testing.T) {
+	memory := store.TrackMemory{TrackID: "TRACK-1", Disposition: "active"}
+	tasks := []store.Task{
+		{Definition: store.TaskDefinition{ID: "TRACK-1", Title: "Track"}, Status: "blocked"},
+		{Definition: store.TaskDefinition{ID: "TRACK-10", Title: "Related context"}, Status: "blocked"},
+	}
+
+	packet := buildMemoryPacket(memory, "", tasks, nil, nil)
+	if !reflect.DeepEqual(packet.Blockers, []string{"TRACK-1 blocked"}) {
+		t.Fatalf("blockers=%v", packet.Blockers)
+	}
+	if containsTaskReference([]string{"TRACK-10 blocked"}, "TRACK-1") {
+		t.Fatal("task reference matching accepted a partial task id")
+	}
+}
+
 func TestTrackScopedColdStartFactsIncludesSourceTasksDescendantsAndDependencies(t *testing.T) {
 	priority := 1
 	tasks := []store.Task{

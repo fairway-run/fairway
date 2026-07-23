@@ -164,6 +164,13 @@ remaining cold-start increment should ensure the packet includes or links:
 The packet must select one track explicitly. It does not load every memory
 record or legacy file into provider context.
 
+The implemented packet labels memory lifecycle and execution state separately:
+`memory_disposition` describes the memory record, while `track_task_status`
+describes the current Fairway task. Checkpoint excerpts are timestamped and
+declared `newest_first_historical`; an older `active` excerpt is therefore
+history, not current task state. Curated and generated blockers/actions are
+deduplicated, and packet construction does not invent inspect-status actions.
+
 When domain context is useful, this command composes with Engineering Knowledge
 through one bounded cold-start response. Track memory is rendered first and may
 name relevant knowledge topics; only those indexed pages are added within a

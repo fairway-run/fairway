@@ -293,6 +293,100 @@ func TestLintSourceRevisionTracksCitedFileNotRepositoryHead(t *testing.T) {
 	}
 }
 
+func TestLintRejectsCanonicalClassWhenSourceFrontmatterDeniesAuthority(t *testing.T) {
+	project := newKnowledgeProject(t)
+	setProjectFileAuthority(t, project, "canonical")
+	source := `---
+source_of_truth: false
+implementation_state: not-assessed
+---
+# Operational target model
+`
+	if err := os.WriteFile(filepath.Join(project, "docs", "source.md"), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "add", "docs/source.md")
+	gitRun(t, project, "commit", "-m", "operational source metadata")
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, nil, "docs/source.md")
+
+	report, err := Lint(Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "source_authority_conflict") || !hasFinding(report, "verified_provenance_missing") {
+		t.Fatalf("canonical authority contradiction was not rejected: %+v", report.Findings)
+	}
+}
+
+func TestLintWarnsWhenCanonicalSourceDoesNotAssessImplementation(t *testing.T) {
+	project := newKnowledgeProject(t)
+	setProjectFileAuthority(t, project, "canonical")
+	source := `---
+source_of_truth: true
+implementation_state: not-assessed
+---
+# Canonical target decision
+`
+	if err := os.WriteFile(filepath.Join(project, "docs", "source.md"), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "add", "docs/source.md")
+	gitRun(t, project, "commit", "-m", "canonical source metadata")
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, nil, "docs/source.md")
+
+	report, err := Lint(Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(report, "source_implementation_not_assessed") || hasFinding(report, "verified_provenance_missing") {
+		t.Fatalf("implementation-state warning is incorrect: %+v", report.Findings)
+	}
+}
+
+func TestLintParsesCanonicalAuthorityFromVerifiedSourceSnapshot(t *testing.T) {
+	project := newKnowledgeProject(t)
+	setProjectFileAuthority(t, project, "canonical")
+	original := `---
+source_of_truth: true
+implementation_state: current
+---
+# Canonical source
+`
+	replacement := strings.Replace(original, "source_of_truth: true", "source_of_truth: false", 1)
+	sourcePath := filepath.Join(project, "docs", "source.md")
+	if err := os.WriteFile(sourcePath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "add", "docs/source.md")
+	gitRun(t, project, "commit", "-m", "canonical source")
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, nil, "docs/source.md")
+	swapped := false
+
+	report, err := Lint(Options{
+		ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22"),
+		CustodyHook: func(stage string) {
+			if stage == "lint_source_before_authority" && !swapped {
+				swapped = true
+				if err := os.WriteFile(sourcePath, []byte(replacement), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !swapped {
+		t.Fatal("source replacement hook did not run")
+	}
+	if hasFinding(report, "source_authority_conflict") || hasFinding(report, "verified_provenance_missing") {
+		t.Fatalf("authority was parsed from a replacement path instead of the verified snapshot: %+v", report.Findings)
+	}
+}
+
 func TestLintRejectsProjectFileOutsideConfiguredRoots(t *testing.T) {
 	project := newKnowledgeProject(t)
 	revision := gitRevision(t, project)

@@ -201,7 +201,8 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		projected := QueryPage{
 			Path: page.Path, Title: page.Metadata.Title, Status: page.Metadata.Status,
 			Owner: page.Metadata.Owner, ReviewBy: page.Metadata.ReviewBy, SourceSHA: page.Metadata.SourceSHA,
-			Excerpt: excerpt, Score: score, SourceCount: len(page.Metadata.Sources),
+			SourceFreshness: sourceFreshness(page.Metadata.SourceSHA, report.SourceRevision, findings),
+			Excerpt:         excerpt, Score: score, SourceCount: len(page.Metadata.Sources),
 			Verified: verified, Conflict: page.Metadata.Status == "conflicted", Stale: page.Metadata.Status == "stale" || hasStaleFinding(findings),
 		}
 		candidates = append(candidates, candidate{page: projected, sources: projectQuerySources(page.Path, page.Metadata.Sources, manifest, verified)})
@@ -217,7 +218,8 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 	})
 	packet := QueryPacket{
 		Schema: "fairway.knowledge-query.v1", Topic: strings.TrimSpace(opts.Topic),
-		TaskID: strings.TrimSpace(opts.TaskID), Pages: []QueryPage{}, Sources: []QuerySource{},
+		TaskID: strings.TrimSpace(opts.TaskID), RepositoryRevision: report.SourceRevision,
+		Pages: []QueryPage{}, Sources: []QuerySource{},
 		BudgetBytes: opts.BudgetBytes, Bounded: true, ReadOnly: true,
 	}
 	excludedUnsafe := 0
@@ -265,6 +267,26 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		return QueryPacket{}, errors.New("knowledge query packet exceeded budget")
 	}
 	return packet, nil
+}
+
+func sourceFreshness(sourceRevision, repositoryRevision string, findings []Finding) string {
+	for _, finding := range findings {
+		if finding.Code == "source_revision_stale" {
+			return "stale"
+		}
+	}
+	for _, finding := range findings {
+		if finding.Severity == SeverityError &&
+			(strings.HasPrefix(finding.Code, "source_") ||
+				strings.HasPrefix(finding.Code, "fairway_source_") ||
+				finding.Code == "verified_provenance_missing") {
+			return "unverifiable"
+		}
+	}
+	if sourceRevision != "" && sourceRevision == repositoryRevision {
+		return "current_repository_revision"
+	}
+	return "current_content_at_recorded_revision"
 }
 
 // Promote verifies the page and reviewed canonical target, then records the

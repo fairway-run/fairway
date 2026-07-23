@@ -1,0 +1,39 @@
+{
+  "schema": "fairway.gpuaas-knowledge-adoption-evaluation.v1",
+  "source_sha": "ec2b93f67f586281f4dd338af353aceea2fb7e9c",
+  "isolated_execution": true,
+  "repository_access_required_for_evaluation": false,
+  "checks": {
+    "explicit_memory_and_task_state": true,
+    "historical_checkpoint_labels": true,
+    "deduplicated_guidance": true,
+    "no_synthetic_inspect_actions": true,
+    "source_freshness_explained": true,
+    "intended_page_ranked_first": true,
+    "separate_knowledge_budget_respected": true,
+    "clean_repository_revision": true
+  },
+  "runs": [
+    {
+      "track": "ARCH-REPAIR-QUARANTINE-RECOVERY-001",
+      "wall_seconds": 0.50,
+      "packet_bytes": 14274,
+      "knowledge_bytes": 7836,
+      "knowledge_budget_bytes": 8192
+    },
+    {
+      "track": "ARCH-FAILURE-UPGRADE-DOMAINS-001",
+      "wall_seconds": 0.17,
+      "packet_bytes": 12122,
+      "knowledge_bytes": 7841,
+      "knowledge_budget_bytes": 8192
+    },
+    {
+      "track": "ARCH-LOGICAL-WORKLOAD-IDENTITY-RESOLUTION-001",
+      "wall_seconds": 0.18,
+      "packet_bytes": 12162,
+      "knowledge_bytes": 7817,
+      "knowledge_budget_bytes": 8192
+    }
+  ]
+}

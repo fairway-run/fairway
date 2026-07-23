@@ -24,7 +24,9 @@ provider settings. `knowledge query --budget-bytes` and
 `memory cold-start --knowledge-budget-bytes` cap optional knowledge context
 separately from execution memory. Ingest and promotion remain preview-first and
 write only with explicit `--apply`; the configured root grants no canonical
-documentation or review authority.
+documentation or review authority. `knowledge lint` fails on errors;
+`knowledge lint --fail-on-warning` also fails on overdue review and other
+warning findings when a project deliberately chooses that stricter CI policy.
 
 Supply-chain provenance exports are derived from existing task, evidence,
 review, session, checkpoint, batch, usage, and release records. There is no

@@ -1,0 +1,284 @@
+{
+  "schema": "fairway.memory-cold-start.v1",
+  "packet": {
+    "track": {
+      "track_id": "ARCH-FAILURE-UPGRADE-DOMAINS-001",
+      "title": "Failure and upgrade domain architecture",
+      "purpose": "Resume topology-aware placement design from provider-neutral source boundaries.",
+      "operating_mode": "contract-first architecture; no placement or provider mutation",
+      "active_scope": "inventory, scheduling, network topology, maintenance waves",
+      "current_objective": "Define domain and confidence semantics that work across MAAS, LXD, and Proxmox.",
+      "decisions": [
+        "Physical failure domains and software upgrade domains remain distinct.",
+        "Unknown topology must be explicit residual risk, not inferred safety."
+      ],
+      "next_actions": [
+        "Draft the minimum domain schema and operator readback before implementation."
+      ],
+      "source_checkpoint_ids": [
+        4349
+      ],
+      "owner": "platform-architecture",
+      "review_by": "2026-10-23",
+      "disposition": "active",
+      "updated_at": "2026-07-23T14:12:20.674694Z"
+    },
+    "memory_disposition": "active",
+    "track_task_status": "todo",
+    "checkpoint_chronology": "newest_first_historical",
+    "for_provider": "isolated-provider",
+    "active_tasks": [
+      "ARCH-FAILURE-UPGRADE-DOMAINS-001 todo Formalize failure and upgrade domains across inventory and scheduling"
+    ],
+    "next_actions": [
+      "Draft the minimum domain schema and operator readback before implementation."
+    ],
+    "checkpoints": [
+      "at=2026-07-23T14:11:45.219024Z task=ARCH-FAILURE-UPGRADE-DOMAINS-001 state=planned historical=true summary=Knowledge adoption baseline recorded; task remains todo and must define provider-neutral domain and confidence contracts before schema work."
+    ]
+  },
+  "knowledge": {
+    "schema": "fairway.knowledge-query.v1",
+    "topic": "failure upgrade domains inventory scheduling topology",
+    "task_id": "ARCH-FAILURE-UPGRADE-DOMAINS-001",
+    "repository_revision": "ec2b93f67",
+    "pages": [
+      {
+        "path": "architecture/failure-upgrade-domains.md",
+        "title": "Failure and Upgrade Domains",
+        "status": "draft",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-23",
+        "source_sha": "333d20a84f1386d2d4fdaffda1f6c3fc87b49f3c",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "Failure and Upgrade Domains This page is bounded context for `ARCH-FAILURE-UPGRADE-DOMAINS-001`. Its sources are non-authoritative, implementation-not-assessed architecture and operations models. The page records the design boundary; it does not claim that topology-aware placement or staged upgrades are implemented. Problem boundary Provider-neutral capacity is not enough to make placement resilient. The control plane also needs explicit topology and confidence facts so sched",
+        "score": 17,
+        "source_count": 4,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/logical-workload-identity-resolution.md",
+        "title": "Logical Workload Identity and Resolution",
+        "status": "draft",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-23",
+        "source_sha": "333d20a84f1386d2d4fdaffda1f6c3fc87b49f3c",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "Logical Workload Identity and Resolution This page is bounded context for `ARCH-LOGICAL-WORKLOAD-IDENTITY-RESOLUTION-001`. Its sources explicitly describe target models rather than current implementation authority. The page must not be used as proof that generation-aware routing, migration, or split-brain prevention is already complete. Problem boundary Allocations, app instances, inference endpoints, scheduler control planes, terminal sessions, and platform services need sta",
+        "score": 8,
+        "source_count": 3,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/repair-quarantine-recovery.md",
+        "title": "Repair, Quarantine, and Recovery",
+        "status": "draft",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-23",
+        "source_sha": "333d20a84f1386d2d4fdaffda1f6c3fc87b49f3c",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "Repair, Quarantine, and Recovery This page is bounded context for `ARCH-REPAIR-QUARANTINE-RECOVERY-001`. Both sources are operational models that declare `source_of_truth: false` and `implementation_state: not-assessed`. The page therefore describes design constraints for the workstream, not implemented product behavior. Problem boundary Node health, workload health, and control-plane reachability are separate facts. A stale heartbeat does not prove that a workload stopped, t",
+        "score": 8,
+        "source_count": 2,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/node-agent-lifecycle.md",
+        "title": "Node Agent Lifecycle",
+        "status": "draft",
+        "owner": "platform-runtime",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "Node Agent Lifecycle This page summarizes a target-state architecture model. Its source declares `source_of_truth: false` and `implementation_state: not-assessed`; therefore the behaviors below are requirements and design intent, not a claim that every path is implemented. In that model, the node agent is the constrained execution boundary between control-plane intent and host-side effects. The control plane registers versioned operation definitions, enforces authorization an",
+        "score": 6,
+        "source_count": 1,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/spiffe-node-terminal-identity.md",
+        "title": "SPIFFE Node and Terminal Identity",
+        "status": "verified",
+        "owner": "platform-security",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "SPIFFE Node and Terminal Identity The proposed durable identity contract uses SPIFFE IDs and the SPIFFE Workload API for node-agent-to-platform and node-agent-to-terminal-gateway channels. SPIRE is the preferred reference implementation and pilot candidate, not yet the unconditional production implementation. Authority boundaries | Concern | Authority | |---|---| | Human sign-in | Keycloak/OIDC | | Tenant and project authorization | IAM, policy, and authoritative platform sta",
+        "score": 5,
+        "source_count": 1,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      }
+    ],
+    "sources": [
+      {
+        "key": "file:doc/architecture/Allocation_Capacity_Shapes_and_GPU_Slices_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Allocation_Capacity_Shapes_and_GPU_Slices_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/failure-upgrade-domains.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/GPUaaS_Network_And_Isolation_Model_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/GPUaaS_Network_And_Isolation_Model_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/failure-upgrade-domains.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Network_Attachment_Contract_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Network_Attachment_Contract_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/logical-workload-identity-resolution.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Node_Operations_and_Agent_Lifecycle_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Node_Operations_and_Agent_Lifecycle_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/node-agent-lifecycle.md",
+            "verified": false
+          },
+          {
+            "page": "architecture/repair-quarantine-recovery.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Platform_DNS_Cert_Endpoint_Model_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Platform_DNS_Cert_Endpoint_Model_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/logical-workload-identity-resolution.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Platform_Proxy_Provider_Neutral_Edge_Model_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Platform_Proxy_Provider_Neutral_Edge_Model_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/logical-workload-identity-resolution.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Provider_Capacity_Inventory_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Provider_Capacity_Inventory_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/failure-upgrade-domains.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/SPIFFE_Node_Agent_Terminal_Identity_ADR_v1.md",
+        "class": "architecture-decision",
+        "authority": "canonical",
+        "kind": "project_file",
+        "path": "doc/architecture/SPIFFE_Node_Agent_Terminal_Identity_ADR_v1.md",
+        "verified": true,
+        "citations": [
+          {
+            "page": "architecture/spiffe-node-terminal-identity.md",
+            "verified": true
+          }
+        ]
+      },
+      {
+        "key": "file:doc/operations/Kubernetes_Runtime_Topology_Target_v1.md",
+        "class": "operations-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/operations/Kubernetes_Runtime_Topology_Target_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/failure-upgrade-domains.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/operations/Node_Agent_Airgapped_Reliability_Failure_Matrix_v1.md",
+        "class": "operations-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/operations/Node_Agent_Airgapped_Reliability_Failure_Matrix_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/repair-quarantine-recovery.md",
+            "verified": false
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "knowledge budget reached before all matching pages were included"
+    ],
+    "budget_bytes": 8192,
+    "bytes": 7841,
+    "bounded": true,
+    "read_only": true
+  },
+  "knowledge_budget_bytes": 8192,
+  "git": {
+    "branch": "master",
+    "commit": "ec2b93f67",
+    "dirty": false
+  },
+  "bounded": true,
+  "read_only": true
+}

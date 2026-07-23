@@ -199,10 +199,17 @@ The latter are advisory until a person or configured review accepts them.
 
 Lint is part of the normal project quality loop, not an optional cleanup sweep.
 Each page has an owner and `review_by` date. Projects run deterministic lint in
-their configured local or CI documentation gate, initially advisory. The owner
-must refresh, supersede, archive, or explicitly retain each overdue or stale
-page. Pilot evidence determines whether any finding should later become
-blocking; Fairway does not make that escalation implicitly.
+their configured local or CI documentation gate. Errors fail `knowledge lint`.
+Warnings remain advisory by default and become CI-blocking only when the caller
+uses `knowledge lint --fail-on-warning`. The owner must refresh, supersede,
+archive, or explicitly retain each overdue or stale page.
+
+For a source class configured as canonical, source-document frontmatter is an
+additional authority constraint. `source_of_truth: false` is a hard
+contradiction and fails lint. `implementation_state: not-assessed` remains
+usable as canonical design evidence but produces a warning so target-state
+language is not mistaken for implementation proof. Sources without
+frontmatter retain their configured class.
 
 ### Promote
 
@@ -219,6 +226,7 @@ fairway knowledge status
 fairway knowledge ingest --source <name-or-path> [--apply]
 fairway knowledge query --topic <text> --format packet
 fairway knowledge lint
+fairway knowledge lint --fail-on-warning
 fairway knowledge promote <page> --target <canonical-path>
 fairway knowledge archive <page> --reason <text>
 ```
@@ -268,6 +276,13 @@ loading both stores:
    pages and their provenance within a separate knowledge budget.
 4. Duplicate source references are rendered once, with the higher authority
    label preserved.
+
+Query packets report the current `repository_revision` and a
+`source_freshness` label for every selected page. A page is either current at
+the repository revision, current at its recorded source revision after
+unrelated repository changes, stale because cited bytes changed, or
+unverifiable. This keeps an older but content-current citation from being
+misreported as stale while still exposing the exact source SHA.
 
 For shared Fairway evidence, the composed JSON contract uses the knowledge
 source as the single rendered identity. That source carries

@@ -218,7 +218,7 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 			return fmt.Errorf("resolve cold-start source facts: %w", err)
 		}
 		tasks, sessions, checkpoints = trackScopedColdStartFacts(memory, rootTaskIDs, tasks, sessions, checkpoints)
-		packet, err := boundMemoryPacket(buildMemoryPacket(memory, *forProvider, tasks, sessions, checkpoints, cfg.States.Terminal))
+		packet, err := boundMemoryPacket(buildMemoryPacket(memory, *forProvider, tasks, sessions, checkpoints))
 		if err != nil {
 			return err
 		}
@@ -558,7 +558,7 @@ func boundMemoryPacket(packet memoryPacket) (memoryPacket, error) {
 		&packet.Track.ActiveScope, &packet.Track.CurrentObjective, &packet.Track.Owner,
 		&packet.Track.ReviewBy, &packet.Track.Disposition, &packet.Track.PromotionTarget,
 		&packet.Track.CanonicalCommit, &packet.Track.SupersededByTrackID, &packet.Track.UpdatedAt,
-		&packet.ForProvider,
+		&packet.MemoryDisposition, &packet.TrackTaskStatus, &packet.CheckpointChronology, &packet.ForProvider,
 	}
 	for _, scalar := range scalars {
 		*scalar, err = boundString(*scalar)

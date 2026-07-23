@@ -100,6 +100,9 @@ The pilot exposed presentation and maintenance refinements:
   broad default class is operational and canonical classes must be narrow and
   explicit.
 
+These five refinements were implemented and re-measured under `FW-377`; see
+[GPUaaS Memory and Knowledge Adoption](gpuaas-memory-knowledge-adoption-2026-07-23.md).
+
 The corrected packet intentionally cannot answer implementation-level details
 of one-way audited transport from these sources alone. That is correct
 fail-closed behavior: the operational lifecycle design is not evidence that

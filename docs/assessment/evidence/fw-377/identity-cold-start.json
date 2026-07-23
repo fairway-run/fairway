@@ -1,0 +1,284 @@
+{
+  "schema": "fairway.memory-cold-start.v1",
+  "packet": {
+    "track": {
+      "track_id": "ARCH-LOGICAL-WORKLOAD-IDENTITY-RESOLUTION-001",
+      "title": "Logical workload identity and resolution",
+      "purpose": "Resume generation-aware endpoint design without coupling product identity to worker addresses.",
+      "operating_mode": "contract-first architecture; reuse platform proxy and DNS/TLS contracts",
+      "active_scope": "allocations, app instances, inference, terminal, route generations",
+      "current_objective": "Align stable workload identity and route generations with current runtime read models.",
+      "decisions": [
+        "Stable logical identity is independent of mutable worker location.",
+        "Stale route generations fail closed and cannot remain active owners."
+      ],
+      "next_actions": [
+        "Map create, move, failover, and decommission ownership transitions."
+      ],
+      "source_checkpoint_ids": [
+        4350
+      ],
+      "owner": "platform-architecture",
+      "review_by": "2026-10-23",
+      "disposition": "active",
+      "updated_at": "2026-07-23T14:12:21.136194Z"
+    },
+    "memory_disposition": "active",
+    "track_task_status": "todo",
+    "checkpoint_chronology": "newest_first_historical",
+    "for_provider": "isolated-provider",
+    "active_tasks": [
+      "ARCH-LOGICAL-WORKLOAD-IDENTITY-RESOLUTION-001 todo Unify logical workload identity endpoint resolution and route generations"
+    ],
+    "next_actions": [
+      "Map create, move, failover, and decommission ownership transitions."
+    ],
+    "checkpoints": [
+      "at=2026-07-23T14:11:45.682254Z task=ARCH-LOGICAL-WORKLOAD-IDENTITY-RESOLUTION-001 state=planned historical=true summary=Knowledge adoption baseline recorded; task remains todo and must align route generations with current runtime read models before implementation."
+    ]
+  },
+  "knowledge": {
+    "schema": "fairway.knowledge-query.v1",
+    "topic": "logical workload identity route generation platform proxy",
+    "task_id": "ARCH-LOGICAL-WORKLOAD-IDENTITY-RESOLUTION-001",
+    "repository_revision": "ec2b93f67",
+    "pages": [
+      {
+        "path": "architecture/logical-workload-identity-resolution.md",
+        "title": "Logical Workload Identity and Resolution",
+        "status": "draft",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-23",
+        "source_sha": "333d20a84f1386d2d4fdaffda1f6c3fc87b49f3c",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "Logical Workload Identity and Resolution This page is bounded context for `ARCH-LOGICAL-WORKLOAD-IDENTITY-RESOLUTION-001`. Its sources explicitly describe target models rather than current implementation authority. The page must not be used as proof that generation-aware routing, migration, or split-brain prevention is already complete. Problem boundary Allocations, app instances, inference endpoints, scheduler control planes, terminal sessions, and platform services need sta",
+        "score": 19,
+        "source_count": 3,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/spiffe-node-terminal-identity.md",
+        "title": "SPIFFE Node and Terminal Identity",
+        "status": "verified",
+        "owner": "platform-security",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "SPIFFE Node and Terminal Identity The proposed durable identity contract uses SPIFFE IDs and the SPIFFE Workload API for node-agent-to-platform and node-agent-to-terminal-gateway channels. SPIRE is the preferred reference implementation and pilot candidate, not yet the unconditional production implementation. Authority boundaries | Concern | Authority | |---|---| | Human sign-in | Keycloak/OIDC | | Tenant and project authorization | IAM, policy, and authoritative platform sta",
+        "score": 8,
+        "source_count": 1,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/repair-quarantine-recovery.md",
+        "title": "Repair, Quarantine, and Recovery",
+        "status": "draft",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-23",
+        "source_sha": "333d20a84f1386d2d4fdaffda1f6c3fc87b49f3c",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "Repair, Quarantine, and Recovery This page is bounded context for `ARCH-REPAIR-QUARANTINE-RECOVERY-001`. Both sources are operational models that declare `source_of_truth: false` and `implementation_state: not-assessed`. The page therefore describes design constraints for the workstream, not implemented product behavior. Problem boundary Node health, workload health, and control-plane reachability are separate facts. A stale heartbeat does not prove that a workload stopped, t",
+        "score": 8,
+        "source_count": 2,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "current-state.md",
+        "title": "Current state",
+        "status": "verified",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "Current State Human identity and role authorization remain in OIDC, IAM, and policy. Terminal access requires an API-minted, allocation-bound, single-use capability. Workload identity does not replace that authorization. The current host identity path still relies on application-managed node certificates and a transitional recovery bearer. The canonical ADR records a disposable-kind SPIFFE proof. It does not claim external-host attestation, production HA, terminal session aut",
+        "score": 7,
+        "source_count": 1,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/failure-upgrade-domains.md",
+        "title": "Failure and Upgrade Domains",
+        "status": "draft",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-23",
+        "source_sha": "333d20a84f1386d2d4fdaffda1f6c3fc87b49f3c",
+        "source_freshness": "current_content_at_recorded_revision",
+        "excerpt": "Failure and Upgrade Domains This page is bounded context for `ARCH-FAILURE-UPGRADE-DOMAINS-001`. Its sources are non-authoritative, implementation-not-assessed architecture and operations models. The page records the design boundary; it does not claim that topology-aware placement or staged upgrades are implemented. Problem boundary Provider-neutral capacity is not enough to make placement resilient. The control plane also needs explicit topology and confidence facts so sched",
+        "score": 7,
+        "source_count": 4,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      }
+    ],
+    "sources": [
+      {
+        "key": "file:doc/architecture/Allocation_Capacity_Shapes_and_GPU_Slices_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Allocation_Capacity_Shapes_and_GPU_Slices_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/failure-upgrade-domains.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/GPUaaS_Network_And_Isolation_Model_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/GPUaaS_Network_And_Isolation_Model_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/failure-upgrade-domains.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Network_Attachment_Contract_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Network_Attachment_Contract_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/logical-workload-identity-resolution.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Node_Operations_and_Agent_Lifecycle_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Node_Operations_and_Agent_Lifecycle_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/repair-quarantine-recovery.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Platform_DNS_Cert_Endpoint_Model_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Platform_DNS_Cert_Endpoint_Model_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/logical-workload-identity-resolution.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Platform_Proxy_Provider_Neutral_Edge_Model_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Platform_Proxy_Provider_Neutral_Edge_Model_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/logical-workload-identity-resolution.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/Provider_Capacity_Inventory_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Provider_Capacity_Inventory_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/failure-upgrade-domains.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/SPIFFE_Node_Agent_Terminal_Identity_ADR_v1.md",
+        "class": "architecture-decision",
+        "authority": "canonical",
+        "kind": "project_file",
+        "path": "doc/architecture/SPIFFE_Node_Agent_Terminal_Identity_ADR_v1.md",
+        "verified": true,
+        "citations": [
+          {
+            "page": "architecture/spiffe-node-terminal-identity.md",
+            "verified": true
+          },
+          {
+            "page": "current-state.md",
+            "verified": true
+          }
+        ]
+      },
+      {
+        "key": "file:doc/operations/Kubernetes_Runtime_Topology_Target_v1.md",
+        "class": "operations-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/operations/Kubernetes_Runtime_Topology_Target_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/failure-upgrade-domains.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/operations/Node_Agent_Airgapped_Reliability_Failure_Matrix_v1.md",
+        "class": "operations-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/operations/Node_Agent_Airgapped_Reliability_Failure_Matrix_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/repair-quarantine-recovery.md",
+            "verified": false
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "knowledge budget reached before all matching pages were included"
+    ],
+    "budget_bytes": 8192,
+    "bytes": 7817,
+    "bounded": true,
+    "read_only": true
+  },
+  "knowledge_budget_bytes": 8192,
+  "git": {
+    "branch": "master",
+    "commit": "ec2b93f67",
+    "dirty": false
+  },
+  "bounded": true,
+  "read_only": true
+}

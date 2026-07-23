@@ -38,6 +38,12 @@ must preserve the rules in [Product boundaries](design/product-boundaries.md).
   compatibility material.
 - The docs backlog audit now emits `consumer_lessons`. The previous
   `gpuaas_lessons` JSON field remains populated for one compatibility window.
+- Cold-start packets now separate memory disposition from current task status,
+  label checkpoint chronology, deduplicate guidance, and explain cited-source
+  freshness relative to the current repository revision.
+- Engineering-knowledge lint detects canonical source/frontmatter authority
+  conflicts. Projects can opt into warning-blocking CI with
+  `knowledge lint --fail-on-warning`; warnings remain advisory by default.
 
 ### Known Limits
 

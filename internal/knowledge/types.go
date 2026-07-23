@@ -206,32 +206,34 @@ type QuerySourceCitation struct {
 
 // QueryPage is a bounded selected-page projection.
 type QueryPage struct {
-	Path        string `json:"path"`
-	Title       string `json:"title"`
-	Status      string `json:"status"`
-	Owner       string `json:"owner"`
-	ReviewBy    string `json:"review_by"`
-	SourceSHA   string `json:"source_sha"`
-	Excerpt     string `json:"excerpt,omitempty"`
-	Score       int    `json:"score"`
-	SourceCount int    `json:"source_count"`
-	Verified    bool   `json:"verified"`
-	Conflict    bool   `json:"conflict"`
-	Stale       bool   `json:"stale"`
+	Path            string `json:"path"`
+	Title           string `json:"title"`
+	Status          string `json:"status"`
+	Owner           string `json:"owner"`
+	ReviewBy        string `json:"review_by"`
+	SourceSHA       string `json:"source_sha"`
+	SourceFreshness string `json:"source_freshness"`
+	Excerpt         string `json:"excerpt,omitempty"`
+	Score           int    `json:"score"`
+	SourceCount     int    `json:"source_count"`
+	Verified        bool   `json:"verified"`
+	Conflict        bool   `json:"conflict"`
+	Stale           bool   `json:"stale"`
 }
 
 // QueryPacket is the stable bounded retrieval surface.
 type QueryPacket struct {
-	Schema      string        `json:"schema"`
-	Topic       string        `json:"topic,omitempty"`
-	TaskID      string        `json:"task_id,omitempty"`
-	Pages       []QueryPage   `json:"pages"`
-	Sources     []QuerySource `json:"sources"`
-	Warnings    []string      `json:"warnings,omitempty"`
-	BudgetBytes int           `json:"budget_bytes"`
-	Bytes       int           `json:"bytes"`
-	Bounded     bool          `json:"bounded"`
-	ReadOnly    bool          `json:"read_only"`
+	Schema             string        `json:"schema"`
+	Topic              string        `json:"topic,omitempty"`
+	TaskID             string        `json:"task_id,omitempty"`
+	RepositoryRevision string        `json:"repository_revision,omitempty"`
+	Pages              []QueryPage   `json:"pages"`
+	Sources            []QuerySource `json:"sources"`
+	Warnings           []string      `json:"warnings,omitempty"`
+	BudgetBytes        int           `json:"budget_bytes"`
+	Bytes              int           `json:"bytes"`
+	Bounded            bool          `json:"bounded"`
+	ReadOnly           bool          `json:"read_only"`
 }
 
 // PromoteOptions controls preview-first promotion recording.

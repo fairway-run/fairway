@@ -40,6 +40,11 @@ type scanState struct {
 	linkCount  int
 }
 
+type sourceDocumentMetadata struct {
+	SourceOfTruth       *bool  `yaml:"source_of_truth"`
+	ImplementationState string `yaml:"implementation_state"`
+}
+
 // Status inventories the knowledge tree and returns deterministic validation
 // findings without changing project files.
 func Status(opts Options) (Report, error) {
@@ -368,13 +373,19 @@ func (s *scanState) validateSource(pagePath, sourceSHA string, source Source) bo
 		if !shaPattern.MatchString(sourceSHA) {
 			return false
 		}
-		match, err := sourceMatchesRevision(s.paths.project, path, sourceSHA, s.opts.MaxPageBytes)
+		data, match, err := sourceSnapshotMatchesRevision(s.paths.project, path, sourceSHA, s.opts.MaxPageBytes)
 		if err != nil {
 			s.add("source_revision_unverifiable", SeverityError, pagePath, "cited source cannot be verified at source_sha")
 			return false
 		}
 		if !match {
 			s.add("source_revision_stale", SeverityWarning, pagePath, "cited source content differs from source_sha")
+			return false
+		}
+		if s.opts.CustodyHook != nil {
+			s.opts.CustodyHook("lint_source_before_authority")
+		}
+		if !s.validateSourceDocumentAuthority(pagePath, data, class) {
 			return false
 		}
 		return true
@@ -404,6 +415,52 @@ func (s *scanState) validateSource(pagePath, sourceSHA string, source Source) bo
 	}
 }
 
+func (s *scanState) validateSourceDocumentAuthority(pagePath string, data []byte, class SourceClass) bool {
+	if class.Authority != "canonical" {
+		return true
+	}
+	metadata, present, err := parseSourceDocumentMetadata(data)
+	if err != nil {
+		s.add("source_frontmatter_invalid", SeverityError, pagePath, "canonical source frontmatter is invalid")
+		return false
+	}
+	if !present {
+		return true
+	}
+	if metadata.SourceOfTruth != nil && !*metadata.SourceOfTruth {
+		s.add("source_authority_conflict", SeverityError, pagePath, "canonical source class conflicts with source_of_truth=false")
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(metadata.ImplementationState), "not-assessed") {
+		s.add("source_implementation_not_assessed", SeverityWarning, pagePath, "canonical source does not assess implementation state")
+	}
+	return true
+}
+
+func parseSourceDocumentMetadata(data []byte) (sourceDocumentMetadata, bool, error) {
+	if !bytes.HasPrefix(data, []byte("---\n")) && !bytes.HasPrefix(data, []byte("---\r\n")) {
+		return sourceDocumentMetadata{}, false, nil
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 1024), int(defaultMaxPageBytes))
+	if !scanner.Scan() {
+		return sourceDocumentMetadata{}, true, errors.New("empty source frontmatter")
+	}
+	var frontmatter strings.Builder
+	for scanner.Scan() {
+		if scanner.Text() == "---" {
+			var metadata sourceDocumentMetadata
+			if err := yaml.Unmarshal([]byte(frontmatter.String()), &metadata); err != nil {
+				return sourceDocumentMetadata{}, true, err
+			}
+			return metadata, true, nil
+		}
+		frontmatter.WriteString(scanner.Text())
+		frontmatter.WriteByte('\n')
+	}
+	return sourceDocumentMetadata{}, true, errors.New("source frontmatter closing delimiter is missing")
+}
+
 func safeSourceRoot(root string) bool {
 	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(root)))
 	return clean != "" && clean != "." && clean != ".." && !filepath.IsAbs(clean) && !strings.HasPrefix(clean, "../")
@@ -430,13 +487,18 @@ func sourceWithinAllowedRoots(sourcePath string, roots []string, knowledgeRoot s
 }
 
 func sourceMatchesRevision(projectRoot, currentPath, revision string, limit int64) (bool, error) {
+	_, match, err := sourceSnapshotMatchesRevision(projectRoot, currentPath, revision, limit)
+	return match, err
+}
+
+func sourceSnapshotMatchesRevision(projectRoot, currentPath, revision string, limit int64) ([]byte, bool, error) {
 	rel, err := filepath.Rel(projectRoot, currentPath)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return false, errors.New("source path escapes project")
+		return nil, false, errors.New("source path escapes project")
 	}
 	current, err := readBounded(currentPath, limit)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	var committed boundedBuffer
 	committed.limit = limit
@@ -444,9 +506,9 @@ func sourceMatchesRevision(projectRoot, currentPath, revision string, limit int6
 	cmd.Stdout = &committed
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
-		return false, errors.New("read source at revision")
+		return nil, false, errors.New("read source at revision")
 	}
-	return bytes.Equal(current, committed.Bytes()), nil
+	return current, bytes.Equal(current, committed.Bytes()), nil
 }
 
 type boundedBuffer struct {

@@ -87,7 +87,7 @@ func TestQuerySelectsRelevantPagesAndDeduplicatesProvenance(t *testing.T) {
 	writePage(t, project, "operations/billing.md", "Billing operations", "draft", "2026-12-31", revision, nil, "docs/source.md")
 
 	packet, err := Query(QueryOptions{
-		Options: Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")},
+		Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")},
 		Topic:   "node trust identity", TaskID: "SEC-101",
 		TaskTerms: []string{"node certificate trust"}, BudgetBytes: 4096,
 	})
@@ -102,6 +102,66 @@ func TestQuerySelectsRelevantPagesAndDeduplicatesProvenance(t *testing.T) {
 	}
 	if packet.Bytes > packet.BudgetBytes || !packet.Bounded || !packet.ReadOnly {
 		t.Fatalf("packet bound invalid: %+v", packet)
+	}
+	if packet.RepositoryRevision != revision || packet.Pages[0].SourceFreshness != "current_repository_revision" {
+		t.Fatalf("source freshness is ambiguous: %+v", packet)
+	}
+}
+
+func TestQueryExplainsRecordedSourceRevisionWhenRepositoryAdvanced(t *testing.T) {
+	project := newKnowledgeProject(t)
+	sourceRevision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", sourceRevision, []string{"architecture/node.md"}, "docs/source.md")
+	writePage(t, project, "architecture/node.md", "Node identity", "verified", "2026-12-31", sourceRevision, nil, "docs/source.md")
+	if err := os.WriteFile(filepath.Join(project, "unrelated.md"), []byte("new revision\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "add", "unrelated.md")
+	gitRun(t, project, "commit", "-m", "advance repository")
+	repositoryRevision := gitRevision(t, project)
+
+	packet, err := Query(QueryOptions{
+		Options: Options{ProjectRoot: project, SourceRevision: repositoryRevision, Now: mustDate(t, "2026-07-22")},
+		Topic:   "node identity", BudgetBytes: 4096,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet.RepositoryRevision != repositoryRevision || len(packet.Pages) != 1 ||
+		packet.Pages[0].SourceSHA != sourceRevision ||
+		packet.Pages[0].SourceFreshness != "current_content_at_recorded_revision" ||
+		packet.Pages[0].Stale {
+		t.Fatalf("source freshness readback=%+v", packet)
+	}
+}
+
+func TestQueryLabelsInvalidSourceAuthorityUnverifiable(t *testing.T) {
+	project := newKnowledgeProject(t)
+	setProjectFileAuthority(t, project, "canonical")
+	source := `---
+source_of_truth: false
+implementation_state: not-assessed
+---
+# Operational model
+`
+	if err := os.WriteFile(filepath.Join(project, "docs", "source.md"), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, project, "add", "docs/source.md")
+	gitRun(t, project, "commit", "-m", "source denies canonical authority")
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"architecture/node.md"}, "docs/source.md")
+	writePage(t, project, "architecture/node.md", "Node model", "verified", "2026-12-31", revision, nil, "docs/source.md")
+
+	packet, err := Query(QueryOptions{
+		Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")},
+		Topic:   "node model", BudgetBytes: 4096,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packet.Pages) != 1 || packet.Pages[0].SourceFreshness != "unverifiable" || packet.Pages[0].Verified {
+		t.Fatalf("invalid authority freshness=%+v", packet)
 	}
 }
 

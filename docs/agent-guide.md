@@ -234,6 +234,7 @@ Project-owned engineering knowledge is separate from execution memory:
 fairway knowledge init
 fairway knowledge status
 fairway knowledge lint
+fairway knowledge lint --fail-on-warning
 fairway knowledge ingest --source docs/design/example.md --page architecture/example.md --owner architecture --review-by 2026-10-22
 fairway knowledge query --task FW-375 --topic "knowledge lifecycle" --format packet
 fairway knowledge promote architecture/example.md --target docs/design/example.md --reviewed-commit <sha>
@@ -241,13 +242,20 @@ fairway knowledge promote architecture/example.md --target docs/design/example.m
 
 Knowledge pages are derived context, not task state or canonical authority.
 Treat lint warnings as owner work and lint errors as unsafe knowledge state;
-neither command approves architecture, risk, merge, release, or deployment.
+use `--fail-on-warning` only when the project intentionally promotes warnings
+into a CI gate. A canonical source class conflicts with source frontmatter that
+declares `source_of_truth: false`; canonical sources that declare
+`implementation_state: not-assessed` remain queryable but produce a warning.
+Neither command approves architecture, risk, merge, release, or deployment.
 Ingest and promotion are preview-first and write only with explicit `--apply`.
 Ingest creates a source-linked draft and index entry without copying source
 content. Query selects a bounded set of indexed pages with status and
-deduplicated provenance labels. Promotion fails closed unless the page and
-citation chain are verified and current, the target is under a configured
-canonical root, and its bytes match the explicitly supplied reviewed commit.
+deduplicated provenance labels. Its packet reports the current repository
+revision and whether each page is current at that revision, current at its
+recorded source revision, stale, or unverifiable. Promotion fails closed unless
+the page and citation chain are verified and current, the target is under a
+configured canonical root, and its bytes match the explicitly supplied
+reviewed commit.
 Apply records only a normal Git diff; it never creates review approval or
 writes the canonical target.
 
