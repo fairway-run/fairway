@@ -42,11 +42,15 @@ func Ingest(opts IngestOptions) (IngestResult, error) {
 	if err != nil {
 		return IngestResult{}, err
 	}
-	sourceRel, sourceAbs, className, err := resolveIngestSource(paths, manifest, opts)
+	sourceRel, className, err := resolveIngestSource(paths, manifest, opts)
 	if err != nil {
 		return IngestResult{}, err
 	}
-	match, err := sourceMatchesRevision(paths.project, sourceAbs, opts.SourceRevision, effectivePageLimit(opts.MaxPageBytes))
+	sourceData, _, err := readBoundProjectFile(paths, sourceRel, effectivePageLimit(opts.MaxPageBytes), "ingest_source_after_open", opts.CustodyHook)
+	if err != nil {
+		return IngestResult{}, errors.New("read bound knowledge ingest source")
+	}
+	match, err := sourceContentMatchesRevision(paths.project, sourceRel, sourceData, opts.SourceRevision, effectivePageLimit(opts.MaxPageBytes))
 	if err != nil || !match {
 		return IngestResult{}, errors.New("knowledge ingest source is uncommitted or does not match source revision")
 	}
@@ -89,8 +93,7 @@ func Ingest(opts IngestOptions) (IngestResult, error) {
 	if containsSecret(pageData) {
 		return IngestResult{}, errors.New("knowledge ingest proposal contains prohibited secret-like material")
 	}
-	indexPath := filepath.Join(paths.root, "index.md")
-	indexData, err := readBounded(indexPath, effectivePageLimit(opts.MaxPageBytes))
+	indexData, _, err := readBoundProjectFile(paths, filepath.ToSlash(filepath.Join(paths.relRoot, "index.md")), effectivePageLimit(opts.MaxPageBytes), "ingest_index_after_open", opts.CustodyHook)
 	if err != nil {
 		return IngestResult{}, errors.New("read knowledge index")
 	}
@@ -112,7 +115,7 @@ func Ingest(opts IngestOptions) (IngestResult, error) {
 	if !opts.Apply {
 		return result, nil
 	}
-	if err := applyNewPageAndIndex(paths, pageAbs, pageData, indexPath, indexData, indexNext); err != nil {
+	if err := applyNewPageAndIndex(paths, pageRel, pageData, indexData, indexNext, opts.CustodyHook); err != nil {
 		return IngestResult{}, err
 	}
 	return result, nil
@@ -146,6 +149,9 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 	if err != nil {
 		return QueryPacket{}, err
 	}
+	if hasGlobalSourceErrors(report.Findings) {
+		return QueryPacket{}, errors.New("knowledge query requires a valid sources manifest and source classes")
+	}
 	paths, err := resolvePaths(opts.ProjectRoot, opts.KnowledgeRoot, false)
 	if err != nil {
 		return QueryPacket{}, err
@@ -161,7 +167,7 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 	}
 	candidates := []candidate{}
 	for _, page := range report.Pages {
-		if page.Path == "README.md" || page.Path == "index.md" || page.Path == "log.md" || page.Metadata.Status == "superseded" {
+		if page.Path == "README.md" || page.Path == "index.md" || page.Path == "log.md" || page.Metadata.Status == "superseded" || !page.Reachable {
 			continue
 		}
 		data, readErr := readBounded(filepath.Join(paths.root, filepath.FromSlash(page.Path)), effectivePageLimit(opts.MaxPageBytes))
@@ -181,7 +187,7 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 			Excerpt: excerpt, Score: score, SourceCount: len(page.Metadata.Sources),
 			Verified: verified, Conflict: page.Metadata.Status == "conflicted", Stale: page.Metadata.Status == "stale" || hasStaleFinding(findings),
 		}
-		candidates = append(candidates, candidate{page: projected, sources: projectQuerySources(page.Metadata.Sources, manifest, verified)})
+		candidates = append(candidates, candidate{page: projected, sources: projectQuerySources(page.Path, page.Metadata.Sources, manifest, verified)})
 	}
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].page.Score != candidates[j].page.Score {
@@ -215,14 +221,13 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		next.Pages = append(append([]QueryPage{}, packet.Pages...), item.page)
 		nextSources := cloneSourceMap(sourceByKey)
 		for _, source := range item.sources {
-			nextSources[source.Key] = source
+			nextSources[source.Key] = mergeQuerySource(nextSources[source.Key], source)
 		}
 		next.Sources = sortedSources(nextSources)
-		size, sizeErr := packetSize(next)
-		if sizeErr != nil {
-			return QueryPacket{}, sizeErr
+		if err := FinalizeQueryPacket(&next); err != nil {
+			return QueryPacket{}, err
 		}
-		if size > opts.BudgetBytes {
+		if next.Bytes > opts.BudgetBytes {
 			packet.Warnings = append(packet.Warnings, "knowledge budget reached before all matching pages were included")
 			break
 		}
@@ -233,8 +238,7 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		packet.Warnings = append(packet.Warnings, "no indexed knowledge page matched the requested context")
 	}
 	packet.Sources = sortedSources(sourceByKey)
-	packet.Bytes, err = packetSize(packet)
-	if err != nil {
+	if err := FinalizeQueryPacket(&packet); err != nil {
 		return QueryPacket{}, err
 	}
 	if packet.Bytes > packet.BudgetBytes {
@@ -259,13 +263,16 @@ func Promote(opts PromoteOptions) (PromoteResult, error) {
 	if err != nil {
 		return PromoteResult{}, err
 	}
-	pageRel, pageAbs, err := resolveKnowledgePage(paths, opts.PagePath, true)
+	pageRel, _, err := resolveKnowledgePage(paths, opts.PagePath, true)
 	if err != nil {
 		return PromoteResult{}, err
 	}
 	report, err := Lint(opts.Options)
 	if err != nil {
 		return PromoteResult{}, err
+	}
+	if hasGlobalSourceErrors(report.Findings) {
+		return PromoteResult{}, errors.New("knowledge promotion requires a valid sources manifest and source classes")
 	}
 	var page *Page
 	for index := range report.Pages {
@@ -284,23 +291,30 @@ func Promote(opts PromoteOptions) (PromoteResult, error) {
 	if err != nil {
 		return PromoteResult{}, err
 	}
-	targetRel, targetAbs, err := resolveCanonicalTarget(paths, manifest, opts.TargetPath)
+	targetRel, _, err := resolveCanonicalTarget(paths, manifest, opts.TargetPath)
 	if err != nil {
 		return PromoteResult{}, err
 	}
 	if !commitIsAncestor(paths.project, opts.ReviewedCommit) {
 		return PromoteResult{}, errors.New("reviewed commit is not an ancestor of the current source revision")
 	}
-	match, err := sourceMatchesRevision(paths.project, targetAbs, opts.ReviewedCommit, effectivePageLimit(opts.MaxPageBytes))
+	targetData, _, err := readBoundProjectFile(paths, targetRel, effectivePageLimit(opts.MaxPageBytes), "promote_target_after_open", opts.CustodyHook)
+	if err != nil {
+		return PromoteResult{}, errors.New("read bound canonical promotion target")
+	}
+	match, err := sourceContentMatchesRevision(paths.project, targetRel, targetData, opts.ReviewedCommit, effectivePageLimit(opts.MaxPageBytes))
 	if err != nil || !match {
 		return PromoteResult{}, errors.New("canonical target is missing, unsafe, uncommitted, or differs from reviewed commit")
 	}
-	data, err := readBounded(pageAbs, effectivePageLimit(opts.MaxPageBytes))
+	data, _, err := readBoundProjectFile(paths, filepath.ToSlash(filepath.Join(paths.relRoot, pageRel)), effectivePageLimit(opts.MaxPageBytes), "promote_page_after_open", opts.CustodyHook)
 	if err != nil || containsSecret(data) {
 		return PromoteResult{}, errors.New("knowledge promotion page cannot be read safely")
 	}
 	meta, body, err := splitPage(data)
 	if err != nil {
+		return PromoteResult{}, err
+	}
+	if err := validatePromotionSourcesBound(paths, manifest, meta, opts); err != nil {
 		return PromoteResult{}, err
 	}
 	meta.Status = "superseded"
@@ -321,7 +335,7 @@ func Promote(opts PromoteOptions) (PromoteResult, error) {
 	if !opts.Apply {
 		return result, nil
 	}
-	if err := atomicReplace(pageAbs, data, next, 0o644); err != nil {
+	if err := replaceBoundProjectFile(paths, filepath.ToSlash(filepath.Join(paths.relRoot, pageRel)), data, next, 0o644, "promote_before_replace", opts.CustodyHook); err != nil {
 		return PromoteResult{}, err
 	}
 	return result, nil
@@ -335,35 +349,136 @@ func (opts Options) NowOrCurrent() time.Time {
 }
 
 func readManifest(paths resolvedPaths, opts Options) (SourceManifest, error) {
-	data, err := readBounded(filepath.Join(paths.root, DefaultSourceManifest), effectivePageLimit(opts.MaxPageBytes))
+	data, _, err := readBoundProjectFile(paths, filepath.ToSlash(filepath.Join(paths.relRoot, DefaultSourceManifest)), effectivePageLimit(opts.MaxPageBytes), "manifest_after_open", opts.CustodyHook)
 	if err != nil {
 		return SourceManifest{}, errors.New("read knowledge source manifest")
 	}
 	var manifest SourceManifest
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
-	if err := decoder.Decode(&manifest); err != nil || manifest.Version != 1 {
+	if err := decoder.Decode(&manifest); err != nil || validateSourceManifest(manifest, paths.relRoot) != nil {
 		return SourceManifest{}, errors.New("knowledge source manifest is invalid")
 	}
 	return manifest, nil
 }
 
-func resolveIngestSource(paths resolvedPaths, manifest SourceManifest, opts IngestOptions) (string, string, string, error) {
+func validateSourceManifest(manifest SourceManifest, knowledgeRoot string) error {
+	if manifest.Version != 1 || len(manifest.Classes) == 0 {
+		return errors.New("source manifest requires version 1 and source classes")
+	}
+	for name, class := range manifest.Classes {
+		if !sourceClassPattern.MatchString(name) || strings.TrimSpace(class.Authority) == "" {
+			return errors.New("source manifest contains invalid source class")
+		}
+		switch class.Kind {
+		case "project_file":
+			if class.FairwayKind != "" || class.RequiresStoreValidation || len(class.Roots) == 0 {
+				return errors.New("project-file source class is invalid")
+			}
+			for _, root := range class.Roots {
+				if !safeSourceRoot(root) || (class.Authority == "canonical" && isLegacyMemoryRoot(root)) ||
+					sourceWithinAllowedRoots(filepath.ToSlash(filepath.Clean(knowledgeRoot)), []string{root}, "") {
+					return errors.New("project-file source class root is unsafe")
+				}
+			}
+		case "fairway":
+			if len(class.Roots) != 0 || (class.FairwayKind != "decision" && class.FairwayKind != "evidence") || !class.RequiresStoreValidation {
+				return errors.New("Fairway source class is invalid")
+			}
+		default:
+			return errors.New("source class kind is unsupported")
+		}
+	}
+	return nil
+}
+
+func validatePromotionSourcesBound(paths resolvedPaths, manifest SourceManifest, meta PageMetadata, opts PromoteOptions) error {
+	if meta.Status != "verified" {
+		return errors.New("knowledge promotion requires verified page metadata")
+	}
+	reviewBy, err := parseDate(meta.ReviewBy)
+	if err != nil || reviewBy.Before(dateOnly(opts.NowOrCurrent())) {
+		return errors.New("knowledge promotion page review date is invalid or overdue")
+	}
+	if len(meta.Sources) == 0 || !shaPattern.MatchString(meta.SourceSHA) {
+		return errors.New("knowledge promotion requires a verified citation chain")
+	}
+	valid := 0
+	for _, source := range meta.Sources {
+		class, ok := manifest.Classes[source.Class]
+		if !ok {
+			return errors.New("knowledge promotion source class is invalid")
+		}
+		switch class.Kind {
+		case "project_file":
+			if source.Path == "" || source.Fairway != nil || !sourceWithinAllowedRoots(source.Path, class.Roots, paths.relRoot) {
+				return errors.New("knowledge promotion project source is unsafe")
+			}
+			data, _, readErr := readBoundProjectFile(paths, source.Path, effectivePageLimit(opts.MaxPageBytes), "promote_source_after_open", opts.CustodyHook)
+			if readErr != nil {
+				return errors.New("knowledge promotion source cannot be read safely")
+			}
+			match, matchErr := sourceContentMatchesRevision(paths.project, source.Path, data, meta.SourceSHA, effectivePageLimit(opts.MaxPageBytes))
+			if matchErr != nil || !match {
+				return errors.New("knowledge promotion source differs from cited revision")
+			}
+			valid++
+		case "fairway":
+			if source.Fairway == nil || source.Path != "" || opts.ValidateFairwayReference == nil {
+				return errors.New("knowledge promotion Fairway source is unverified")
+			}
+			requirement := FairwayReferenceRequirement{SourceClass: source.Class, Reference: *source.Fairway}
+			if requirement.Reference.Kind != class.FairwayKind || opts.ValidateFairwayReference(requirement) != nil {
+				return errors.New("knowledge promotion Fairway source is unverified")
+			}
+			valid++
+		default:
+			return errors.New("knowledge promotion source kind is unsupported")
+		}
+	}
+	if valid == 0 {
+		return errors.New("knowledge promotion has no verified citation")
+	}
+	return nil
+}
+
+func sourceContentMatchesRevision(projectRoot, relativePath string, current []byte, revision string, limit int64) (bool, error) {
+	var committed boundedBuffer
+	committed.limit = limit
+	cmd := exec.Command("git", "-C", projectRoot, "show", revision+":"+filepath.ToSlash(relativePath))
+	cmd.Stdout = &committed
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return false, errors.New("read source at revision")
+	}
+	return bytes.Equal(current, committed.Bytes()), nil
+}
+
+func replaceBoundProjectFile(paths resolvedPaths, relativePath string, expected, next []byte, mode uint32, stage string, hook func(string)) error {
+	dirRel, name, err := splitBoundPath(relativePath)
+	if err != nil {
+		return err
+	}
+	dir, err := openBoundDirectory(paths.project, dirRel, false)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return replaceBoundFile(dir, name, expected, next, mode, stage, hook)
+}
+
+func resolveIngestSource(paths resolvedPaths, manifest SourceManifest, opts IngestOptions) (string, string, error) {
 	source := filepath.ToSlash(filepath.Clean(strings.TrimSpace(opts.SourcePath)))
 	if source == "" || source == "." || filepath.IsAbs(source) || source == ".." || strings.HasPrefix(source, "../") {
-		return "", "", "", errors.New("knowledge ingest source path is unsafe")
-	}
-	abs, err := safeProjectFile(paths, source)
-	if err != nil {
-		return "", "", "", err
+		return "", "", errors.New("knowledge ingest source path is unsafe")
 	}
 	className := strings.TrimSpace(opts.SourceClass)
 	if className != "" {
 		class, ok := manifest.Classes[className]
 		if !ok || class.Kind != "project_file" || !sourceWithinAllowedRoots(source, class.Roots, paths.relRoot) {
-			return "", "", "", errors.New("knowledge ingest source does not satisfy requested source class")
+			return "", "", errors.New("knowledge ingest source does not satisfy requested source class")
 		}
-		return source, abs, className, nil
+		return source, className, nil
 	}
 	names := make([]string, 0, len(manifest.Classes))
 	for name := range manifest.Classes {
@@ -373,10 +488,10 @@ func resolveIngestSource(paths resolvedPaths, manifest SourceManifest, opts Inge
 	for _, name := range names {
 		class := manifest.Classes[name]
 		if class.Kind == "project_file" && sourceWithinAllowedRoots(source, class.Roots, paths.relRoot) {
-			return source, abs, name, nil
+			return source, name, nil
 		}
 	}
-	return "", "", "", errors.New("knowledge ingest source is outside configured project-file roots")
+	return "", "", errors.New("knowledge ingest source is outside configured project-file roots")
 }
 
 func resolveKnowledgePage(paths resolvedPaths, requested string, mustExist bool) (string, string, error) {
@@ -463,57 +578,39 @@ func appendIndexLink(index []byte, pagePath, title string) ([]byte, error) {
 	return append(append(bytes.TrimRight(index, "\r\n"), '\n'), []byte(link+"\n")...), nil
 }
 
-func applyNewPageAndIndex(paths resolvedPaths, pagePath string, pageData []byte, indexPath string, indexOld, indexNext []byte) error {
-	if err := os.MkdirAll(filepath.Dir(pagePath), 0o755); err != nil {
-		return errors.New("create knowledge page directory")
-	}
-	if err := validateExistingPathChain(paths.project, filepath.Dir(pagePath)); err != nil {
+func applyNewPageAndIndex(paths resolvedPaths, pageRel string, pageData, indexOld, indexNext []byte, hook func(string)) error {
+	pageProjectRel := filepath.ToSlash(filepath.Join(paths.relRoot, pageRel))
+	pageDirRel, pageName, err := splitBoundPath(pageProjectRel)
+	if err != nil {
 		return err
 	}
-	file, err := os.OpenFile(pagePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	pageDir, err := openBoundDirectory(paths.project, pageDirRel, true)
 	if err != nil {
-		return errors.New("create knowledge page")
-	}
-	if _, err = file.Write(pageData); err == nil {
-		err = file.Close()
-	} else {
-		_ = file.Close()
-	}
-	if err != nil {
-		_ = os.Remove(pagePath)
-		return errors.New("write knowledge page")
-	}
-	if err := atomicReplace(indexPath, indexOld, indexNext, 0o644); err != nil {
-		_ = os.Remove(pagePath)
 		return err
 	}
-	return nil
-}
-
-func atomicReplace(path string, expected, next []byte, mode os.FileMode) error {
-	current, err := os.ReadFile(path)
-	if err != nil || !bytes.Equal(current, expected) {
-		return errors.New("knowledge file changed during operation")
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".fairway-knowledge-*")
+	defer pageDir.Close()
+	indexDir, err := openBoundDirectory(paths.project, paths.relRoot, false)
 	if err != nil {
-		return errors.New("create knowledge temp file")
+		return err
 	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if err := tmp.Chmod(mode); err != nil {
-		_ = tmp.Close()
-		return errors.New("set knowledge temp mode")
+	defer indexDir.Close()
+	currentIndex, _, err := readBoundFileAt(indexDir, "index.md", int64(max(len(indexOld), len(indexNext)))+1, "", nil)
+	if err != nil || !bytes.Equal(currentIndex, indexOld) {
+		return errors.New("knowledge index changed during ingest")
 	}
-	if _, err := tmp.Write(next); err != nil {
-		_ = tmp.Close()
-		return errors.New("write knowledge temp file")
+	exists, err := boundFileExists(pageDir, pageName)
+	if err != nil || exists {
+		return errors.New("knowledge ingest target already exists or is unsafe")
 	}
-	if err := tmp.Close(); err != nil {
-		return errors.New("close knowledge temp file")
+	if hook != nil {
+		hook("ingest_after_bind")
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return errors.New("promote knowledge temp file")
+	if err := createBoundFile(pageDir, pageName, pageData, 0o644); err != nil {
+		return err
+	}
+	if err := replaceBoundFile(indexDir, "index.md", indexOld, indexNext, 0o644, "ingest_before_index_replace", hook); err != nil {
+		removeBoundFile(pageDir, pageName)
+		return err
 	}
 	return nil
 }
@@ -662,11 +759,11 @@ func hasStaleFinding(findings []Finding) bool {
 	return false
 }
 
-func projectQuerySources(sources []Source, manifest SourceManifest, verified bool) []QuerySource {
+func projectQuerySources(pagePath string, sources []Source, manifest SourceManifest, verified bool) []QuerySource {
 	result := []QuerySource{}
 	for _, source := range sources {
 		class := manifest.Classes[source.Class]
-		projected := QuerySource{Class: source.Class, Authority: class.Authority, Kind: class.Kind, Verified: verified}
+		projected := QuerySource{Class: source.Class, Authority: class.Authority, Kind: class.Kind, Verified: verified, Citations: []QuerySourceCitation{{Page: pagePath, Verified: verified}}}
 		if source.Path != "" {
 			projected.Path = source.Path
 			projected.Key = "file:" + source.Path
@@ -680,6 +777,47 @@ func projectQuerySources(sources []Source, manifest SourceManifest, verified boo
 		}
 	}
 	return result
+}
+
+func mergeQuerySource(existing, candidate QuerySource) QuerySource {
+	if existing.Key == "" {
+		return candidate
+	}
+	if authorityRank(candidate.Authority) > authorityRank(existing.Authority) ||
+		(authorityRank(candidate.Authority) == authorityRank(existing.Authority) && candidate.Class < existing.Class) {
+		existing.Class = candidate.Class
+		existing.Authority = candidate.Authority
+		existing.Kind = candidate.Kind
+		existing.Path = candidate.Path
+		existing.FairwayID = candidate.FairwayID
+	}
+	existing.Verified = existing.Verified || candidate.Verified
+	existing.MemoryReferenced = existing.MemoryReferenced || candidate.MemoryReferenced
+	seen := map[string]bool{}
+	for _, citation := range existing.Citations {
+		seen[citation.Page] = true
+	}
+	for _, citation := range candidate.Citations {
+		if !seen[citation.Page] {
+			existing.Citations = append(existing.Citations, citation)
+			seen[citation.Page] = true
+		}
+	}
+	sort.Slice(existing.Citations, func(i, j int) bool { return existing.Citations[i].Page < existing.Citations[j].Page })
+	return existing
+}
+
+func authorityRank(authority string) int {
+	switch authority {
+	case "canonical":
+		return 3
+	case "operational":
+		return 2
+	case "evidence":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func cloneSourceMap(source map[string]QuerySource) map[string]QuerySource {
@@ -699,10 +837,23 @@ func sortedSources(source map[string]QuerySource) []QuerySource {
 	return result
 }
 
-func packetSize(packet QueryPacket) (int, error) {
+// FinalizeQueryPacket sets Bytes to the exact rendered JSON size, including
+// the Bytes field itself. The decimal width converges in a bounded number of
+// iterations.
+func FinalizeQueryPacket(packet *QueryPacket) error {
 	packet.Bytes = 0
-	data, err := json.Marshal(packet)
-	return len(data), err
+	for range 8 {
+		data, err := json.Marshal(packet)
+		if err != nil {
+			return err
+		}
+		size := len(data)
+		if packet.Bytes == size {
+			return nil
+		}
+		packet.Bytes = size
+	}
+	return errors.New("knowledge query packet byte accounting did not converge")
 }
 
 func commitIsAncestor(projectRoot, revision string) bool {
@@ -729,6 +880,19 @@ func validateLifecycleInputs(values ...string) error {
 		}
 	}
 	return nil
+}
+
+func hasGlobalSourceErrors(findings []Finding) bool {
+	for _, finding := range findings {
+		if finding.Severity != SeverityError {
+			continue
+		}
+		switch finding.Code {
+		case "source_manifest_missing", "source_manifest_invalid", "source_class_invalid":
+			return true
+		}
+	}
+	return false
 }
 
 func parseDate(value string) (time.Time, error) {

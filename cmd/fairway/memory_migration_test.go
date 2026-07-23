@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -36,16 +37,52 @@ func TestTrackScopedColdStartFactsIncludesSourceTasksDescendantsAndDependencies(
 
 func TestDedupeKnowledgeSourcesWithMemoryRendersSharedEvidenceOnce(t *testing.T) {
 	sources := []knowledge.QuerySource{
-		{Key: "fairway:evidence:7"},
+		{Key: "fairway:evidence:7", Authority: "evidence"},
 		{Key: "fairway:decision:8"},
 		{Key: "file:docs/design/example.md"},
 	}
 	result := dedupeKnowledgeSourcesWithMemory(sources, store.TrackMemory{SourceEvidenceIDs: []int64{7}})
-	if len(result) != 2 {
+	if len(result) != 3 {
 		t.Fatalf("deduplicated sources=%+v", result)
 	}
-	if got := []string{result[0].Key, result[1].Key}; !reflect.DeepEqual(got, []string{"fairway:decision:8", "file:docs/design/example.md"}) {
-		t.Fatalf("deduplicated sources=%v", got)
+	if !result[0].MemoryReferenced || result[0].Key != "fairway:evidence:7" || result[0].Authority != "evidence" {
+		t.Fatalf("memory reference lost source identity or authority: %+v", result[0])
+	}
+}
+
+func TestFinalizeColdStartKnowledgeRechecksSeparateBudgetAfterMemoryAnnotation(t *testing.T) {
+	packet := knowledge.QueryPacket{
+		Schema: "fairway.knowledge-query.v1",
+		Topic:  "node trust",
+		Sources: []knowledge.QuerySource{{
+			Key:       "fairway:evidence:7",
+			Authority: "canonical",
+			Citations: []knowledge.QuerySourceCitation{{Page: "architecture/node.md", Verified: true}},
+		}},
+		Bounded: true, ReadOnly: true,
+	}
+	if err := knowledge.FinalizeQueryPacket(&packet); err != nil {
+		t.Fatal(err)
+	}
+	beforeAnnotation := packet.Bytes
+	memory := store.TrackMemory{SourceEvidenceIDs: []int64{7}}
+	if _, err := finalizeColdStartKnowledge(packet, memory, beforeAnnotation); err == nil {
+		t.Fatal("cold-start accepted packet that exceeded budget after memory annotation")
+	}
+
+	result, err := finalizeColdStartKnowledge(packet, memory, beforeAnnotation+256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Bytes != len(rendered) {
+		t.Fatalf("bytes=%d rendered=%d", result.Bytes, len(rendered))
+	}
+	if !result.Sources[0].MemoryReferenced || result.Sources[0].Authority != "canonical" {
+		t.Fatalf("memory annotation discarded source authority: %+v", result.Sources[0])
 	}
 }
 

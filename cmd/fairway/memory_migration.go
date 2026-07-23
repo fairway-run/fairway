@@ -251,13 +251,10 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 			if queryErr != nil {
 				return fmt.Errorf("compose cold-start knowledge: %w", queryErr)
 			}
-			query.Sources = dedupeKnowledgeSourcesWithMemory(query.Sources, memory)
-			query.Bytes = 0
-			queryBytes, marshalErr := json.Marshal(query)
-			if marshalErr != nil {
-				return marshalErr
+			query, queryErr = finalizeColdStartKnowledge(query, memory, *knowledgeBudget)
+			if queryErr != nil {
+				return queryErr
 			}
-			query.Bytes = len(queryBytes)
 			report.Knowledge = &query
 			report.KnowledgeBudget = *knowledgeBudget
 		}
@@ -289,13 +286,24 @@ func dedupeKnowledgeSourcesWithMemory(sources []knowledge.QuerySource, memory st
 	for _, id := range memory.SourceEvidenceIDs {
 		memoryEvidence[fmt.Sprintf("fairway:evidence:%d", id)] = true
 	}
-	result := make([]knowledge.QuerySource, 0, len(sources))
-	for _, source := range sources {
-		if !memoryEvidence[source.Key] {
-			result = append(result, source)
+	result := append([]knowledge.QuerySource{}, sources...)
+	for index := range result {
+		if memoryEvidence[result[index].Key] {
+			result[index].MemoryReferenced = true
 		}
 	}
 	return result
+}
+
+func finalizeColdStartKnowledge(query knowledge.QueryPacket, memory store.TrackMemory, budget int) (knowledge.QueryPacket, error) {
+	query.Sources = dedupeKnowledgeSourcesWithMemory(query.Sources, memory)
+	if err := knowledge.FinalizeQueryPacket(&query); err != nil {
+		return knowledge.QueryPacket{}, fmt.Errorf("finalize cold-start knowledge packet: %w", err)
+	}
+	if query.Bytes > budget {
+		return knowledge.QueryPacket{}, errors.New("composed cold-start knowledge exceeds its separate byte budget")
+	}
+	return query, nil
 }
 
 func maxInt(a, b int) int {
