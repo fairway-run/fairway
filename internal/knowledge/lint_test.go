@@ -313,24 +313,37 @@ func TestLintRejectsProjectFileOutsideConfiguredRoots(t *testing.T) {
 }
 
 func TestLintRejectsCanonicalManifestRootedInLegacyMemory(t *testing.T) {
-	project := newKnowledgeProject(t)
-	manifest := `knowledge_sources_version: 1
+	for _, tc := range []struct {
+		name   string
+		root   string
+		reject bool
+	}{
+		{name: "exact", root: "tmp-ux", reject: true},
+		{name: "descendant", root: "tmp-ux/private", reject: true},
+		{name: "normalized descendant", root: "./tmp-ux/private", reject: true},
+		{name: "prefix boundary", root: "tmp-ux2", reject: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			project := newKnowledgeProject(t)
+			manifest := fmt.Sprintf(`knowledge_sources_version: 1
 classes:
   legacy:
     kind: project_file
     authority: canonical
-    roots: [tmp-ux]
-`
-	if err := os.WriteFile(filepath.Join(project, DefaultRoot, DefaultSourceManifest), []byte(manifest), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writePage(t, project, "index.md", "Index", "draft", "2026-12-31", gitRevision(t, project), nil, "docs/source.md")
-	report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hasFinding(report, "source_class_invalid") {
-		t.Fatalf("canonical tmp-ux root was accepted: %+v", report.Findings)
+    roots: [%s]
+`, tc.root)
+			if err := os.WriteFile(filepath.Join(project, DefaultRoot, DefaultSourceManifest), []byte(manifest), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			writePage(t, project, "index.md", "Index", "draft", "2026-12-31", gitRevision(t, project), nil, "docs/source.md")
+			report, err := Lint(Options{ProjectRoot: project, Now: mustDate(t, "2026-07-22")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := hasFinding(report, "source_class_invalid"); got != tc.reject {
+				t.Fatalf("source_class_invalid=%t want %t for root %q: %+v", got, tc.reject, tc.root, report.Findings)
+			}
+		})
 	}
 }
 
