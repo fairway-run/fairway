@@ -54,6 +54,7 @@ type Document struct {
 	Proposal   Proposal `json:"proposal"`
 	Warnings   []string `json:"warnings,omitempty"`
 	RawOmitted bool     `json:"raw_omitted"`
+	IssueCode  string   `json:"issue_code,omitempty"`
 }
 
 // Memory is the track-memory projection required for coverage comparison.
@@ -186,7 +187,12 @@ func Discover(repositoryRoot, scanRoot string) ([]Document, error) {
 	for _, name := range names {
 		document, err := Load(repositoryRoot, name)
 		if err != nil {
-			return nil, fmt.Errorf("inventory legacy memory file: %w", err)
+			rel, relErr := filepath.Rel(repositoryRoot, name)
+			if relErr != nil {
+				return nil, errors.New("resolve rejected legacy memory inventory path")
+			}
+			documents = append(documents, Document{Path: filepath.ToSlash(rel), RawOmitted: true, IssueCode: migrationIssueCode(err), Warnings: []string{"file rejected by bounded migration safety checks"}})
+			continue
 		}
 		documents = append(documents, document)
 	}
@@ -216,6 +222,11 @@ func ValidateProposal(proposal Proposal) error {
 // track restricts comparison and prevents accidental cross-track attribution.
 func AssessCoverage(document Document, memories []Memory, track string) Coverage {
 	result := Coverage{Path: document.Path, SHA256: document.SHA256, Status: "uncovered", Reason: "no authoritative track memory represents the extracted facts"}
+	if document.IssueCode != "" {
+		result.Status = "rejected"
+		result.Reason = document.IssueCode
+		return result
+	}
 	extracted := factCount(document.Proposal)
 	result.ExtractedFacts = extracted
 	if extracted == 0 {
@@ -247,6 +258,18 @@ func AssessCoverage(document Document, memories []Memory, track string) Coverage
 		result.Reason = "selected track memory does not represent all extracted bounded facts"
 	}
 	return result
+}
+
+func migrationIssueCode(err error) string {
+	text := err.Error()
+	switch {
+	case strings.Contains(text, "secret-like"), strings.Contains(text, "raw or transcript-like"):
+		return "unsafe_content"
+	case strings.Contains(text, "exceeds"):
+		return "size_limit"
+	default:
+		return "invalid_legacy_memory"
+	}
 }
 
 // PlanRetirement produces a non-mutating plan only when the selected track

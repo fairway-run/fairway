@@ -137,6 +137,23 @@ func TestDiscoverSkipsSymlinksAndInventoriesMemoryMarkdown(t *testing.T) {
 	}
 }
 
+func TestDiscoverReportsRejectedFilesWithoutAbortingInventory(t *testing.T) {
+	root := t.TempDir()
+	writeMemoryFile(t, root, "tmp-ux/a-memory.md", "# A Memory\n## Purpose\nA\n")
+	writeMemoryFile(t, root, "tmp-ux/secret-memory.md", "# Secret Memory\npassword=supersecret\n")
+	documents, err := Discover(root, "tmp-ux")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(documents) != 2 || documents[1].IssueCode != "unsafe_content" || !documents[1].RawOmitted {
+		t.Fatalf("documents = %+v", documents)
+	}
+	coverage := AssessCoverage(documents[1], nil, "")
+	if coverage.Status != "rejected" || coverage.Reason != "unsafe_content" || coverage.SHA256 != "" {
+		t.Fatalf("coverage = %+v", coverage)
+	}
+}
+
 func TestAssessCoverageRequiresExactUnambiguousRepresentation(t *testing.T) {
 	document := Document{Path: "tmp-ux/program-memory.md", SHA256: strings.Repeat("a", 64), Proposal: Proposal{Title: "Program Memory", CurrentObjective: "Finish migration", Decisions: []string{"Fairway is authoritative"}, SourceEvidenceIDs: []int64{8}}}
 	exact := Memory{TrackID: "program", Title: "Program Memory", CurrentObjective: "Finish migration", Decisions: []string{"Fairway is authoritative"}, SourceEvidenceIDs: []int64{8}, Disposition: "active"}
