@@ -122,10 +122,9 @@ path = "doc/architecture"
 authority = "canonical"
 
 [[knowledge.sources]]
-name = "working-memory"
-path = "tmp-ux/memory/active"
-authority = "advisory"
-tracked = false
+name = "fairway-track-memory"
+kind = "fairway_memory"
+authority = "operational"
 ```
 
 Fairway records source references and digests, not unrestricted copies of
@@ -193,8 +192,8 @@ dependencies.
 Fairway task facts and project sources
                  |
                  v
-         project working memory
-          (active and temporary)
+          Fairway track memory
+       (durable operating context)
                  |
         verified cross-task value
                  v
@@ -266,4 +265,3 @@ Deferred until measured need:
 At moderate scale, Markdown, Git, explicit indexes, and repository search are
 the preferred implementation. More infrastructure requires evidence that the
 simple model no longer meets retrieval or maintenance goals.
-

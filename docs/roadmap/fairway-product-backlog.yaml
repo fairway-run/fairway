@@ -6369,7 +6369,7 @@ tasks:
       - "Focused claim validation, full tests, vet, config, workflow, diff, and reconciliation checks pass; no certification, compliance, release, deploy, credential, public, or live authority is introduced."
 
   - id: FW-368
-    title: Formalize project working memory
+    title: Complete migration from tmp-ux memory to Fairway track memory
     kind: epic
     role: arch
     profile: fairway-adoption
@@ -6381,12 +6381,12 @@ tasks:
     risk_level: medium
     migration_type: working-memory-product
     acceptance_checks:
-      - "Fairway defines a machine-discoverable project working-memory contract that formalizes tmp-ux without making local memory canonical or duplicating task state."
-      - "A new provider can discover the relevant active track, render bounded resume context, follow source facts, and identify the exact next action without prior chat history."
-      - "A measured GPUaaS pilot demonstrates lower context-reconstruction cost without equivalent process overhead, and durable knowledge is explicitly promoted or archived."
+      - "Existing database-backed Fairway track memory remains the sole durable working-memory authority; tmp-ux memory files are inventoried as migration inputs rather than formalized as a second store."
+      - "A new provider can render bounded Fairway resume context, follow source facts, and identify the exact next action without prior chat history or local memory files."
+      - "A measured GPUaaS migration demonstrates lower context-reconstruction cost without equivalent process overhead, and legacy files receive explicit promote, archive, or supersede disposition."
 
   - id: FW-369
-    title: Define project working-memory contract and tmp-ux lifecycle
+    title: Document Fairway memory authority and tmp-ux retirement lifecycle
     kind: docs
     parent_id: FW-368
     role: arch
@@ -6399,12 +6399,12 @@ tasks:
     risk_level: low
     migration_type: working-memory-design
     acceptance_checks:
-      - "The design separates Fairway runtime facts, local working memory, agent knowledge, canonical documentation, and provider conversation history."
-      - "The design defines layout, metadata, authority order, lifecycle, deterministic lint, privacy rules, and a cold-start acceptance test."
-      - "Implementation and GPUaaS migration tasks depend on this reviewed contract."
+      - "The design documents existing Fairway track-memory commands, schema, source-fact validation, lifecycle, and authority."
+      - "The design classifies tmp-ux memory as a migration source and defines preview-first import, coverage, retirement, privacy, and cold-start rules."
+      - "Migration tooling and the GPUaaS pilot depend on this reviewed contract."
 
   - id: FW-370
-    title: Implement project working-memory manifest, lint, and cold-start bridge
+    title: Add tmp-ux memory import, coverage audit, and cold-start completion
     kind: task
     parent_id: FW-368
     role: backend
@@ -6418,12 +6418,12 @@ tasks:
     migration_type: working-memory-runtime
     dependencies: [FW-369]
     acceptance_checks:
-      - "Fairway discovers the configured project memory index and validates active-memory metadata, required sections, task references, source SHA, freshness, size, and authority labels."
-      - "Cold-start output combines only the selected local track memory with current Fairway task, session, checkpoint, decision, evidence, and review facts."
-      - "Secret-pattern, unsafe-path, archive-exclusion, and preview-before-rewrite regressions pass without storing local memory content in Fairway by default."
+      - "Fairway inventories legacy tmp-ux memory and previews a bounded mapping into the existing track-memory schema without creating a filesystem memory authority."
+      - "Coverage and cold-start output combine the selected Fairway track with current task, session, checkpoint, decision, evidence, review, Git, and stale-source facts."
+      - "Secret-pattern, unsafe-path, unrelated-track, archive-exclusion, and explicit-apply regressions pass; raw legacy file content is not stored by default."
 
   - id: FW-371
-    title: Pilot formal working memory and tmp-ux migration in GPUaaS
+    title: Migrate GPUaaS active memory into Fairway and retire legacy files
     kind: task
     parent_id: FW-368
     role: governance
@@ -6437,9 +6437,9 @@ tasks:
     migration_type: working-memory-consumer-pilot
     dependencies: [FW-370]
     acceptance_checks:
-      - "One active GPUaaS track is migrated without breaking existing memory references or moving secrets into version control."
-      - "A cold-start provider identifies current objective, verified state, source SHA, blockers, evidence, and next action without conversation history."
-      - "The pilot records resume time, clarification count, stale findings, repeated investigation, maintenance time, and a keep/refine/stop decision."
+      - "One active GPUaaS legacy memory file is mapped into existing Fairway track memory without moving secrets or raw file contents into the database or version control."
+      - "A cold-start provider identifies current objective, verified state, source posture, blockers, evidence, and next action without conversation history or tmp-ux memory."
+      - "The pilot records resume time, clarification count, stale findings, repeated investigation, maintenance time, and explicit disposition for the migrated file."
 
   - id: FW-372
     title: Add source-grounded engineering knowledge

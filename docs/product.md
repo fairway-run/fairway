@@ -16,12 +16,14 @@ execution store, a CLI, and read-oriented dashboards. Coordination primitives
 such as sessions, checkpoints, handoffs, waits, notifications, lanes, and
 worktrees support the accountability model; they do not define the category.
 
-Fairway also defines two complementary continuity capabilities. Project
-working memory keeps active execution resumable across provider replacement and
-context loss. Engineering knowledge maintains source-grounded, project-owned
-synthesis across tasks. Memory remains temporary operating context; knowledge
-remains derived and non-canonical until promoted through normal documentation
-review. See [Project working memory](design/project-working-memory.md) and
+Fairway also defines two complementary continuity capabilities. Its existing
+database-backed track memory keeps active execution resumable across provider
+replacement and context loss; legacy project-local memory files are migration
+inputs, not a second authority. Engineering knowledge maintains
+source-grounded, project-owned synthesis across tasks. Memory remains curated
+operating context; knowledge remains derived and non-canonical until promoted
+through normal documentation review. See
+[Project working memory](design/project-working-memory.md) and
 [Engineering knowledge](design/engineering-knowledge.md).
 
 ## The Product Promise
