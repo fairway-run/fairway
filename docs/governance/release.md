@@ -362,6 +362,24 @@ git push fairway-run v0.2.5
 gh run list --repo fairway-run/fairway --workflow release.yml --limit 5
 ```
 
+If the tag-push workflow fails before publication because the runner cannot
+resolve remote tag metadata, fix the verifier on `main` without moving or
+recreating the immutable tag. Then dispatch the recovery path against the
+existing tag:
+
+```bash
+gh workflow run release.yml \
+  --repo fairway-run/fairway \
+  --ref main \
+  -f version=v0.2.5
+```
+
+The recovery workflow checks out the existing tag target, verifies the remote
+annotated tag object, source commit, rehearsal binding, candidate packet, and
+signed assurance, and revalidates the tag object and commit again immediately
+before draft creation. It must not accept a lightweight, moved, recreated, or
+missing tag and must never rewrite the tag as part of recovery.
+
 The GitHub Release is intentionally created as a draft. Review artifacts,
 checksums, signing/notarization logs, and the proposed Homebrew cask digests
 before publishing the draft and updating the tap.

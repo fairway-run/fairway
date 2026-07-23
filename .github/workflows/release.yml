@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing immutable annotated release tag to promote
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -12,6 +18,10 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.rehearsal.outputs.version }}
+      tag_oid: ${{ steps.rehearsal.outputs.tag_oid }}
+      source_sha: ${{ steps.rehearsal.outputs.source_sha }}
     env:
       FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY: ${{ vars.FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY }}
       FAIRWAY_RELEASE_POLICY_VERSION: sovereign-release-v1
@@ -20,27 +30,51 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref }}
       - uses: actions/setup-go@v6
         with:
           go-version: "1.22"
           cache: true
       - name: Resolve approved rehearsal run from annotated tag
         id: rehearsal
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
         run: |
           set -euo pipefail
-          [[ "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" == "tag" ]] || {
+          [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            printf 'release version must match vX.Y.Z\n' >&2
+            exit 1
+          }
+          tag_ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_VERSION")
+          tag_type=$(jq -r '.object.type' <<<"$tag_ref")
+          tag_oid=$(jq -r '.object.sha' <<<"$tag_ref")
+          [[ "$tag_type" == "tag" && "$tag_oid" =~ ^[0-9a-f]{40}$ ]] || {
             printf 'release promotion requires an annotated tag\n' >&2
             exit 1
           }
-          tag_message=$(git for-each-ref --format='%(contents)' "refs/tags/$GITHUB_REF_NAME")
+          tag_object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_oid")
+          [[ "$(jq -r '.object.type' <<<"$tag_object")" == "commit" ]] || {
+            printf 'annotated release tag must resolve directly to a commit\n' >&2
+            exit 1
+          }
+          tag_message=$(jq -r '.message' <<<"$tag_object")
           run_ids=$(awk '/^fairway-rehearsal-run: [1-9][0-9]*$/ { print $2 }' <<<"$tag_message")
           [[ $(wc -w <<<"$run_ids" | tr -d ' ') == "1" ]] || {
             printf 'annotated tag must contain exactly one fairway-rehearsal-run: <id> line\n' >&2
             exit 1
           }
-          source_sha=$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")
-          printf 'run_id=%s\n' "$run_ids" >> "$GITHUB_OUTPUT"
-          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          source_sha=$(jq -r '.object.sha' <<<"$tag_object")
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ && "$(git rev-parse HEAD)" == "$source_sha" ]] || {
+            printf 'checked-out candidate does not match annotated tag target\n' >&2
+            exit 1
+          }
+          {
+            printf 'version=%s\n' "$RELEASE_VERSION"
+            printf 'tag_oid=%s\n' "$tag_oid"
+            printf 'run_id=%s\n' "$run_ids"
+            printf 'source_sha=%s\n' "$source_sha"
+          } >> "$GITHUB_OUTPUT"
       - name: Download exact successful rehearsal packet
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -48,7 +82,7 @@ jobs:
           set -euo pipefail
           scripts/release/download_release_rehearsal.sh \
             "$GITHUB_REPOSITORY" \
-            "$GITHUB_REF_NAME" \
+            "${{ steps.rehearsal.outputs.version }}" \
             "${{ steps.rehearsal.outputs.source_sha }}" \
             "${{ steps.rehearsal.outputs.run_id }}" \
             "$RUNNER_TEMP/fairway-release-rehearsal"
@@ -59,19 +93,19 @@ jobs:
           builder="$GITHUB_REPOSITORY/.github/workflows/release-rehearsal.yml@refs/heads/main"
           go run ./cmd/fairway release rehearsal verify \
             --dir "$packet" \
-            --version "$GITHUB_REF_NAME" \
+            --version "${{ steps.rehearsal.outputs.version }}" \
             --source-sha "${{ steps.rehearsal.outputs.source_sha }}" \
             --builder-id "$builder" \
             --policy-version "$FAIRWAY_RELEASE_POLICY_VERSION"
           assurance_dir="$RUNNER_TEMP/fairway-release-assurance"
           go run ./cmd/fairway release rehearsal extract-assurance \
             --dir "$packet" \
-            --version "$GITHUB_REF_NAME" \
+            --version "${{ steps.rehearsal.outputs.version }}" \
             --out "$assurance_dir"
           go run ./cmd/fairway release assurance verify \
-            --dir "$assurance_dir/fairway-${GITHUB_REF_NAME}-release-assurance" \
+            --dir "$assurance_dir/fairway-${{ steps.rehearsal.outputs.version }}-release-assurance" \
             --trusted-public-key-env FAIRWAY_RELEASE_ASSURANCE_PUBLIC_KEY \
-            --expected-version "$GITHUB_REF_NAME" \
+            --expected-version "${{ steps.rehearsal.outputs.version }}" \
             --expected-source-sha "${{ steps.rehearsal.outputs.source_sha }}" \
             --expected-builder-id "$builder" \
             --expected-policy-version "$FAIRWAY_RELEASE_POLICY_VERSION"
@@ -104,22 +138,37 @@ jobs:
       - name: Create release draft from the approved candidate assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          VERIFIED_SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          VERIFIED_TAG_OID: ${{ needs.verify.outputs.tag_oid }}
         run: |
           set -euo pipefail
           promotion="$RUNNER_TEMP/fairway-verified-promotion"
           packet="$promotion/packet"
           test -s "$promotion/release-highlights.md"
-          gh release create "$GITHUB_REF_NAME" \
+          current_tag_ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_VERSION")
+          [[ "$(jq -r '.object.type' <<<"$current_tag_ref")" == "tag" &&
+            "$(jq -r '.object.sha' <<<"$current_tag_ref")" == "$VERIFIED_TAG_OID" ]] || {
+            printf 'annotated tag identity changed after candidate verification\n' >&2
+            exit 1
+          }
+          current_tag_object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$VERIFIED_TAG_OID")
+          [[ "$(jq -r '.object.type' <<<"$current_tag_object")" == "commit" &&
+            "$(jq -r '.object.sha' <<<"$current_tag_object")" == "$VERIFIED_SOURCE_SHA" ]] || {
+            printf 'annotated tag target changed after candidate verification\n' >&2
+            exit 1
+          }
+          gh release create "$RELEASE_VERSION" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --draft \
-            --title "$GITHUB_REF_NAME" \
+            --title "$RELEASE_VERSION" \
             --generate-notes \
             --notes-file "$promotion/release-highlights.md" \
-            "$packet/fairway_${GITHUB_REF_NAME#v}_darwin_amd64.tar.gz" \
-            "$packet/fairway_${GITHUB_REF_NAME#v}_darwin_arm64.tar.gz" \
-            "$packet/fairway_${GITHUB_REF_NAME#v}_linux_amd64.tar.gz" \
-            "$packet/fairway_${GITHUB_REF_NAME#v}_linux_arm64.tar.gz" \
-            "$packet/fairway_${GITHUB_REF_NAME#v}_checksums.txt" \
-            "$packet/fairway_${GITHUB_REF_NAME}_release_assurance.tar.gz" \
-            "$packet/fairway_${GITHUB_REF_NAME}_release_assurance.tar.gz.sha256"
+            "$packet/fairway_${RELEASE_VERSION#v}_darwin_amd64.tar.gz" \
+            "$packet/fairway_${RELEASE_VERSION#v}_darwin_arm64.tar.gz" \
+            "$packet/fairway_${RELEASE_VERSION#v}_linux_amd64.tar.gz" \
+            "$packet/fairway_${RELEASE_VERSION#v}_linux_arm64.tar.gz" \
+            "$packet/fairway_${RELEASE_VERSION#v}_checksums.txt" \
+            "$packet/fairway_${RELEASE_VERSION}_release_assurance.tar.gz" \
+            "$packet/fairway_${RELEASE_VERSION}_release_assurance.tar.gz.sha256"

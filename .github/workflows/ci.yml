@@ -34,6 +34,10 @@ jobs:
           (( candidate_line < assurance_line && assurance_line < smoke_line && smoke_line < upload_line ))
           (( download_line < verify_line && verify_line < draft_line ))
           grep -q 'fairway-rehearsal-run:' .github/workflows/release.yml
+          grep -q 'workflow_dispatch:' .github/workflows/release.yml
+          grep -q 'git/ref/tags/' .github/workflows/release.yml
+          grep -q 'git/tags/' .github/workflows/release.yml
+          grep -q 'checked-out candidate does not match annotated tag target' .github/workflows/release.yml
           grep -q 'release rehearsal verify' .github/workflows/release.yml
           grep -q 'release rehearsal extract-assurance' .github/workflows/release.yml
           grep -q 'persist-credentials: false' .github/workflows/release.yml
