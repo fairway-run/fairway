@@ -197,7 +197,10 @@ func TestEventsIdlePollDoesNotHydrateFullSources(t *testing.T) {
 		server.events(rec, req)
 		close(done)
 	}()
-	time.Sleep(35 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
+	for server.sseStats.cursorChecks.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	cancel()
 	<-done
 

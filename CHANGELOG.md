@@ -9,7 +9,15 @@ and uses semantic versioning.
 
 No unreleased changes yet.
 
-## v0.2.0 - 2026-07-23
+## v0.2.1 - 2026-07-23
+
+### Fixed
+
+- Dashboard SSE idle-poll coverage now waits for the asserted poll count instead
+  of depending on a fixed scheduler interval, eliminating a macOS release-runner
+  timing failure.
+
+## v0.2.0 - 2026-07-23 (unpublished candidate)
 
 ### Added
 

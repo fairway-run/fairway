@@ -10,7 +10,21 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
-## v0.2.0
+## v0.2.1
+
+`v0.2.1` is the publishable follow-up to the unpublished `v0.2.0` candidate.
+The `v0.2.0` workflow built signed and notarized archives but failed closed
+before draft creation because the release-assurance trust configuration was not
+configured. After that trust root was provisioned, the retry exposed a
+scheduler-sensitive dashboard SSE test on the macOS release runner.
+
+This release replaces the fixed sleep in that test with a bounded
+condition-based wait for the asserted idle polls. Product behavior and the
+`v0.2.0` feature scope are otherwise unchanged. The `v0.2.0` tag remains
+immutable and unpublished. Install `v0.2.1` and follow the cumulative upgrade
+procedure below.
+
+## v0.2.0 (unpublished candidate)
 
 ### What Changed
 
@@ -53,7 +67,7 @@ must preserve the rules in [Product boundaries](design/product-boundaries.md).
 ### Upgrade
 
 1. Back up the project Fairway database and project control files.
-2. Install `v0.2.0`.
+2. Install `v0.2.1`, the published release carrying this feature scope.
 3. Run `fairway config validate` and `fairway agent-contract status`.
 4. Review drift with `fairway agent-contract plan`.
 5. For an unversioned generated contract, run
