@@ -2,7 +2,11 @@
 
 ## Versioning
 
-Semver. Pre-1.0 means breaking changes are allowed in minor versions; document them in the changelog.
+Semver. Pre-1.0 means breaking changes are allowed in minor versions; document
+them in the changelog. Prefer correcting the product model over maintaining
+accidental behavior for the current single controlled adopter. Still preserve
+or explicitly migrate durable project-owned data and policy; pre-1.0 is not
+permission for silent loss or downgrade.
 
 - `v0.x.y` — pre-stable. CLI surface and config schema may change in `x`.
 - `v1.0.0` — schema and CLI surface frozen. Migrations forward-compatible.

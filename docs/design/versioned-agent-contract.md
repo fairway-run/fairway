@@ -11,6 +11,26 @@ The project contract therefore has its own compatibility identity. Binary
 SemVer identifies the executable; agent-contract schema and revision identify
 workflow compatibility.
 
+## Pre-1.0 Evolution Policy
+
+Fairway currently has one controlled adopter and is still pre-1.0. Optimize for
+the correct durable model rather than preserving accidental CLI, config, or
+agent behavior. A better design may replace an earlier behavior in the next
+minor release without a compatibility adapter.
+
+This does not permit silent data or policy loss. Even before 1.0:
+
+- project-owned instructions must be preserved or explicitly migrated;
+- durable task, evidence, review, memory, and knowledge state needs a tested
+  forward migration;
+- destructive or lossy migrations must fail closed and explain operator action;
+- release notes must identify intentional behavioral changes;
+- an older binary must not silently downgrade newer stored state or contracts.
+
+Compatibility code should exist only when it protects durable user-owned state
+or enables a bounded migration. It should not preserve obsolete process merely
+because an earlier Fairway version generated it.
+
 ## Managed Contract
 
 `fairway init` writes `.fairway/AGENTS.md` as a managed contract with:
