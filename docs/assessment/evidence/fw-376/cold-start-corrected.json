@@ -1,0 +1,162 @@
+{
+  "schema": "fairway.memory-cold-start.v1",
+  "packet": {
+    "track": {
+      "track_id": "HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001",
+      "blockers": [
+        "OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 is blocked, so external-host attestation, clone/replay, and environment-specific recovery cases cannot close from kind alone; SPIRE HA and production operations remain separate acceptance gates."
+      ],
+      "source_checkpoint_ids": [
+        3781,
+        4341
+      ],
+      "owner": "product-quality",
+      "review_by": "2026-10-22",
+      "disposition": "active",
+      "updated_at": "2026-07-23T04:12:45.864317Z"
+    },
+    "for_provider": "isolated-provider-r2",
+    "active_tasks": [
+      "OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 blocked Prove SPIRE Agent attestation on disposable external Ubuntu node",
+      "HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001 todo Build SPIFFE node and terminal identity security failure matrix",
+      "SEC-SPIRE-HIGH-ASSURANCE-NODE-ATTESTATION-PILOT-001 blocked Prove provider-bound or TPM-backed SPIRE node attestation"
+    ],
+    "blockers": [
+      "OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 is blocked, so external-host attestation, clone/replay, and environment-specific recovery cases cannot close from kind alone; SPIRE HA and production operations remain separate acceptance gates.",
+      "OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 blocked",
+      "SEC-SPIRE-HIGH-ASSURANCE-NODE-ATTESTATION-PILOT-001 blocked"
+    ],
+    "next_actions": [
+      "inspect OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 status=blocked",
+      "inspect HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001 status=todo",
+      "inspect SEC-SPIRE-HIGH-ASSURANCE-NODE-ATTESTATION-PILOT-001 status=blocked"
+    ],
+    "checkpoints": [
+      "BACKEND-SPIFFE-TERMINAL-INTERNAL-CHANNEL-PROMOTION-001 done terminal channel SPIFFE required promotion implemented and proven",
+      "BACKEND-SPIFFE-TERMINAL-INTERNAL-CHANNEL-PROMOTION-001 active Implementing exact SPIFFE peer authorization for the terminal-gateway to API internal channel with file-mTLS rollback and kind proof.",
+      "OPS-SPIRE-MAAS-LXD-NODE-AGENT-SHADOW-PILOT-001 done MAAS-LXD node-agent SPIFFE shadow pilot passed with rollback verified",
+      "OPS-SPIRE-MAAS-LXD-NODE-AGENT-SHADOW-PILOT-001 active started local MAAS-LXD node-agent SPIFFE shadow pilot on existing disposable worker",
+      "HARNESS-SPIFFE-NODE-TERMINAL-LOCAL-SHADOW-MATRIX-001 done Local SPIFFE shadow identity matrix committed at bb8096abe; clean-SHA live proof and isolated cleanup passed.",
+      "HARNESS-SPIFFE-NODE-TERMINAL-LOCAL-SHADOW-MATRIX-001 active provider session codex-spiffe-local-shadow-matrix-20260720-r1 started local SPIRE shadow integration proof",
+      "BACKEND-SPIFFE-NODE-TERMINAL-SHADOW-INTEGRATION-001 done SPIFFE shadow identity integration committed at 659a3a464; clean-SHA tests and independent backend/security/ops reviews passed.",
+      "BACKEND-SPIFFE-NODE-TERMINAL-SHADOW-INTEGRATION-001 active codex-spiffe-shadow-integration-20260720-r1 started disabled-by-default shadow identity integration"
+    ]
+  },
+  "knowledge": {
+    "schema": "fairway.knowledge-query.v1",
+    "topic": "SPIFFE node terminal identity lifecycle security matrix",
+    "task_id": "HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001",
+    "pages": [
+      {
+        "path": "architecture/spiffe-node-terminal-identity.md",
+        "title": "SPIFFE Node and Terminal Identity",
+        "status": "verified",
+        "owner": "platform-security",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "excerpt": "SPIFFE Node and Terminal Identity The proposed durable identity contract uses SPIFFE IDs and the SPIFFE Workload API for node-agent-to-platform and node-agent-to-terminal-gateway channels. SPIRE is the preferred reference implementation and pilot candidate, not yet the unconditional production implementation. Authority boundaries | Concern | Authority | |---|---| | Human sign-in | Keycloak/OIDC | | Tenant and project authorization | IAM, policy, and authoritative platform sta",
+        "score": 4,
+        "source_count": 1,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "current-state.md",
+        "title": "Current state",
+        "status": "verified",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "excerpt": "Current State Human identity and role authorization remain in OIDC, IAM, and policy. Terminal access requires an API-minted, allocation-bound, single-use capability. Workload identity does not replace that authorization. The current host identity path still relies on application-managed node certificates and a transitional recovery bearer. The canonical ADR records a disposable-kind SPIFFE proof. It does not claim external-host attestation, production HA, terminal session aut",
+        "score": 4,
+        "source_count": 1,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/node-agent-lifecycle.md",
+        "title": "Node Agent Lifecycle",
+        "status": "draft",
+        "owner": "platform-runtime",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "excerpt": "Node Agent Lifecycle This page summarizes a target-state architecture model. Its source declares `source_of_truth: false` and `implementation_state: not-assessed`; therefore the behaviors below are requirements and design intent, not a claim that every path is implemented. In that model, the node agent is the constrained execution boundary between control-plane intent and host-side effects. The control plane registers versioned operation definitions, enforces authorization an",
+        "score": 2,
+        "source_count": 1,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "open-questions.md",
+        "title": "Open questions",
+        "status": "draft",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "excerpt": "Open Questions 1. Which external-host attestation profile is supported first: TPM DevID, provider instance identity, or a bounded managed-SSH bootstrap profile? 2. What SPIRE HA, backup/restore, upgrade, air-gap, and operating-cost evidence is required before production adoption? 3. What SVID TTL and fleet-level renewal jitter policy meets outage tolerance without creating correlated issuance bursts? 4. Which agent rollout state must be persisted in v1, and which operator rec",
+        "score": 1,
+        "source_count": 2,
+        "verified": false,
+        "conflict": false,
+        "stale": false
+      }
+    ],
+    "sources": [
+      {
+        "key": "file:doc/architecture/Node_Operations_and_Agent_Lifecycle_v1.md",
+        "class": "architecture-model",
+        "authority": "operational",
+        "kind": "project_file",
+        "path": "doc/architecture/Node_Operations_and_Agent_Lifecycle_v1.md",
+        "verified": false,
+        "citations": [
+          {
+            "page": "architecture/node-agent-lifecycle.md",
+            "verified": false
+          },
+          {
+            "page": "open-questions.md",
+            "verified": false
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/SPIFFE_Node_Agent_Terminal_Identity_ADR_v1.md",
+        "class": "architecture-decision",
+        "authority": "canonical",
+        "kind": "project_file",
+        "path": "doc/architecture/SPIFFE_Node_Agent_Terminal_Identity_ADR_v1.md",
+        "verified": true,
+        "citations": [
+          {
+            "page": "architecture/spiffe-node-terminal-identity.md",
+            "verified": true
+          },
+          {
+            "page": "current-state.md",
+            "verified": true
+          },
+          {
+            "page": "open-questions.md",
+            "verified": false
+          }
+        ]
+      }
+    ],
+    "budget_bytes": 12288,
+    "bytes": 3985,
+    "bounded": true,
+    "read_only": true
+  },
+  "knowledge_budget_bytes": 12288,
+  "git": {
+    "branch": "master",
+    "commit": "6976aadd0",
+    "dirty": false
+  },
+  "bounded": true,
+  "read_only": true
+}

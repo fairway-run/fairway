@@ -1,0 +1,189 @@
+{
+  "schema": "fairway.memory-cold-start.v1",
+  "packet": {
+    "track": {
+      "track_id": "HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001",
+      "title": "SPIFFE node and terminal security matrix",
+      "purpose": "Preserve the exact identity, authorization, lifecycle, and environment-gate context needed to resume the SPIFFE security matrix without re-investigating settled architecture.",
+      "operating_mode": "Kind validates workload identity and authorization separation; external-host attestation and production SPIRE operations remain explicit prerequisites.",
+      "active_scope": "Build and run the kind-capable matrix cases, preserve exact fail-closed expectations, and keep external-host acceptance separate.",
+      "current_objective": "Prepare the SPIFFE node and terminal security matrix from committed architecture and shadow integration while preventing kind evidence from being presented as external-host or production proof.",
+      "decisions": [
+        "SPIFFE authenticates workloads; OIDC/IAM, signed tasks, allocation state, quarantine, and single-use terminal capabilities remain authorization authorities."
+      ],
+      "blockers": [
+        "OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 is blocked, so external-host clone, replay, attestor, HA, and recovery acceptance cannot be closed from kind alone."
+      ],
+      "next_actions": [
+        "Implement and run dependency-safe kind matrix cases; resume external-host cases only when the disposable attestation environment is available."
+      ],
+      "source_checkpoint_ids": [
+        3781,
+        4341
+      ],
+      "owner": "product-quality",
+      "review_by": "2026-10-22",
+      "disposition": "active",
+      "updated_at": "2026-07-23T04:11:16.598869Z"
+    },
+    "for_provider": "isolated-provider",
+    "active_tasks": [
+      "OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 blocked Prove SPIRE Agent attestation on disposable external Ubuntu node",
+      "HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001 todo Build SPIFFE node and terminal identity security failure matrix",
+      "SEC-SPIRE-HIGH-ASSURANCE-NODE-ATTESTATION-PILOT-001 blocked Prove provider-bound or TPM-backed SPIRE node attestation"
+    ],
+    "blockers": [
+      "OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 is blocked, so external-host clone, replay, attestor, HA, and recovery acceptance cannot be closed from kind alone.",
+      "OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 blocked",
+      "SEC-SPIRE-HIGH-ASSURANCE-NODE-ATTESTATION-PILOT-001 blocked"
+    ],
+    "next_actions": [
+      "Implement and run dependency-safe kind matrix cases; resume external-host cases only when the disposable attestation environment is available.",
+      "inspect OPS-SPIRE-EXTERNAL-NODE-ATTESTATION-PILOT-001 status=blocked",
+      "inspect HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001 status=todo",
+      "inspect SEC-SPIRE-HIGH-ASSURANCE-NODE-ATTESTATION-PILOT-001 status=blocked"
+    ],
+    "checkpoints": [
+      "BACKEND-SPIFFE-TERMINAL-INTERNAL-CHANNEL-PROMOTION-001 done terminal channel SPIFFE required promotion implemented and proven",
+      "BACKEND-SPIFFE-TERMINAL-INTERNAL-CHANNEL-PROMOTION-001 active Implementing exact SPIFFE peer authorization for the terminal-gateway to API internal channel with file-mTLS rollback and kind proof.",
+      "OPS-SPIRE-MAAS-LXD-NODE-AGENT-SHADOW-PILOT-001 done MAAS-LXD node-agent SPIFFE shadow pilot passed with rollback verified",
+      "OPS-SPIRE-MAAS-LXD-NODE-AGENT-SHADOW-PILOT-001 active started local MAAS-LXD node-agent SPIFFE shadow pilot on existing disposable worker",
+      "HARNESS-SPIFFE-NODE-TERMINAL-LOCAL-SHADOW-MATRIX-001 done Local SPIFFE shadow identity matrix committed at bb8096abe; clean-SHA live proof and isolated cleanup passed.",
+      "HARNESS-SPIFFE-NODE-TERMINAL-LOCAL-SHADOW-MATRIX-001 active provider session codex-spiffe-local-shadow-matrix-20260720-r1 started local SPIRE shadow integration proof",
+      "BACKEND-SPIFFE-NODE-TERMINAL-SHADOW-INTEGRATION-001 done SPIFFE shadow identity integration committed at 659a3a464; clean-SHA tests and independent backend/security/ops reviews passed.",
+      "BACKEND-SPIFFE-NODE-TERMINAL-SHADOW-INTEGRATION-001 active codex-spiffe-shadow-integration-20260720-r1 started disabled-by-default shadow identity integration"
+    ]
+  },
+  "knowledge": {
+    "schema": "fairway.knowledge-query.v1",
+    "topic": "SPIFFE node terminal identity lifecycle security matrix",
+    "task_id": "HARNESS-SPIFFE-NODE-TERMINAL-SECURITY-MATRIX-001",
+    "pages": [
+      {
+        "path": "architecture/spiffe-node-terminal-identity.md",
+        "title": "SPIFFE Node and Terminal Identity",
+        "status": "verified",
+        "owner": "platform-security",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "excerpt": "SPIFFE Node and Terminal Identity The durable identity contract uses SPIFFE IDs and the SPIFFE Workload API for node-agent-to-platform and node-agent-to-terminal-gateway channels. SPIRE is the preferred reference implementation and pilot candidate, not yet the unconditional production implementation. Authority boundaries | Concern | Authority | |---|---| | Human sign-in | Keycloak/OIDC | | Tenant and project authorization | IAM, policy, and authoritative platform state | | No",
+        "score": 13,
+        "source_count": 1,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "current-state.md",
+        "title": "Current state",
+        "status": "verified",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "excerpt": "Current State Human identity and role authorization remain in OIDC, IAM, and policy. Terminal access requires an API-minted, allocation-bound, single-use capability. Workload identity does not replace that authorization. The node agent pulls signed typed tasks, executes allowlisted operations, and reports correlated results. The control plane does not push arbitrary shell commands to nodes. SPIFFE identity is integrated in shadow form for the node and terminal boundary. Produ",
+        "score": 12,
+        "source_count": 2,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "architecture/node-agent-lifecycle.md",
+        "title": "Node Agent Lifecycle",
+        "status": "verified",
+        "owner": "platform-runtime",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "excerpt": "Node Agent Lifecycle The node agent is the constrained execution boundary between control-plane intent and host-side effects. The control plane registers versioned operation definitions, enforces authorization and policy, schedules signed tasks, and mints short-lived task-bound credentials. The agent pulls assigned work, verifies it, executes allowlisted steps, and reports correlated results. Invariants No raw shell command is accepted from an API payload. Operations and step",
+        "score": 11,
+        "source_count": 1,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      },
+      {
+        "path": "open-questions.md",
+        "title": "Open questions",
+        "status": "verified",
+        "owner": "platform-architecture",
+        "review_by": "2026-10-22",
+        "source_sha": "b3b346cd3",
+        "excerpt": "Open Questions 1. Which external-host attestation profile is supported first: TPM DevID, provider instance identity, or a bounded managed-SSH bootstrap profile? 2. What SPIRE HA, backup/restore, upgrade, air-gap, and operating-cost evidence is required before production adoption? 3. What SVID TTL and fleet-level renewal jitter policy meets outage tolerance without creating correlated issuance bursts? 4. Which agent rollout state must be persisted in v1, and which operator rec",
+        "score": 10,
+        "source_count": 2,
+        "verified": true,
+        "conflict": false,
+        "stale": false
+      }
+    ],
+    "sources": [
+      {
+        "key": "file:doc/architecture/Node_Operations_and_Agent_Lifecycle_v1.md",
+        "class": "project-file",
+        "authority": "canonical",
+        "kind": "project_file",
+        "path": "doc/architecture/Node_Operations_and_Agent_Lifecycle_v1.md",
+        "verified": true,
+        "citations": [
+          {
+            "page": "architecture/node-agent-lifecycle.md",
+            "verified": true
+          },
+          {
+            "page": "current-state.md",
+            "verified": true
+          },
+          {
+            "page": "open-questions.md",
+            "verified": true
+          }
+        ]
+      },
+      {
+        "key": "file:doc/architecture/SPIFFE_Node_Agent_Terminal_Identity_ADR_v1.md",
+        "class": "project-file",
+        "authority": "canonical",
+        "kind": "project_file",
+        "path": "doc/architecture/SPIFFE_Node_Agent_Terminal_Identity_ADR_v1.md",
+        "verified": true,
+        "citations": [
+          {
+            "page": "architecture/spiffe-node-terminal-identity.md",
+            "verified": true
+          },
+          {
+            "page": "current-state.md",
+            "verified": true
+          },
+          {
+            "page": "open-questions.md",
+            "verified": true
+          }
+        ]
+      }
+    ],
+    "budget_bytes": 12288,
+    "bytes": 4016,
+    "bounded": true,
+    "read_only": true
+  },
+  "knowledge_budget_bytes": 12288,
+  "git": {
+    "branch": "master",
+    "commit": "b3b346cd3",
+    "dirty": true,
+    "changed_files": [
+      ".fairway/platform-foundation-config.toml",
+      "doc/agent-wiki/README.md",
+      "doc/agent-wiki/architecture/node-agent-lifecycle.md",
+      "doc/agent-wiki/architecture/spiffe-node-terminal-identity.md",
+      "doc/agent-wiki/current-state.md",
+      "doc/agent-wiki/index.md",
+      "doc/agent-wiki/log.md",
+      "doc/agent-wiki/open-questions.md",
+      "doc/agent-wiki/sources.yaml"
+    ]
+  },
+  "bounded": true,
+  "read_only": true
+}
