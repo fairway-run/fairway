@@ -19,6 +19,22 @@ func TestRootForConfigPath_DefaultFairwayDir(t *testing.T) {
 	}
 }
 
+func TestValidateKnowledgeRoot(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	if cfg.Knowledge.Root != "doc/agent-wiki" {
+		t.Fatalf("knowledge root = %q", cfg.Knowledge.Root)
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("default knowledge config: %v", err)
+	}
+	for _, root := range []string{"../outside", "/absolute"} {
+		cfg.Knowledge.Root = root
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("unsafe knowledge root %q accepted", root)
+		}
+	}
+}
+
 func TestValidateConsumerReadiness(t *testing.T) {
 	cfg := Defaults(t.TempDir())
 	cfg.ConsumerReadiness = ConsumerReadinessConfig{

@@ -7,6 +7,18 @@ curated resume summaries and source fact references in the Fairway DB. It does
 not store provider credentials, raw prompts, transcripts, cookies, tokens, or
 private provider state.
 
+Legacy `tmp-ux/*memory*.md` files are non-authoritative migration inputs. Memory
+import is preview-first and does not store the source file or raw body. The
+configured Fairway database remains the only durable working-memory authority.
+
+Engineering knowledge is project-owned Markdown. Configure its project-relative
+root when the conventional location is unsuitable:
+
+```toml
+[knowledge]
+root = "doc/agent-wiki"
+```
+
 Supply-chain provenance exports are derived from existing task, evidence,
 review, session, checkpoint, batch, usage, and release records. There is no
 provenance-specific credential, provider, or content-capture setting in the

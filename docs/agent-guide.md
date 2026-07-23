@@ -215,11 +215,30 @@ attachments. A long-lived provider session may carry useful working memory, but
 the lane can move between Codex, Claude, Gemini, tmux, or shell without changing
 task identity, ownership, checkpoints, evidence, reviews, or merge gates.
 
-For long-running tracks, keep a local untracked working memory file under
-`tmp-ux/`. Record the current objective, ordered task list, active task, last
-completed task and commit, validation commands, required reviews, and the next
-action after CI, review, wait, or handback. Do not commit these files unless the
-coordinator explicitly converts one into a public assessment or runbook.
+For long-running tracks, use Fairway track memory as the durable resume source:
+
+```bash
+fairway memory show --track <track-id>
+fairway memory update --track <track-id> ...
+fairway memory packet --track <track-id> --for <provider>
+```
+
+Legacy local `tmp-ux/*memory*.md` files are migration inputs only. Do not create
+new project-local files as a parallel memory authority. Temporary drafts and
+experiments may still use `tmp-ux`, but a provider must be able to resume from
+the repository and Fairway without those files.
+
+Project-owned engineering knowledge is separate from execution memory:
+
+```bash
+fairway knowledge init
+fairway knowledge status
+fairway knowledge lint
+```
+
+Knowledge pages are derived context, not task state or canonical authority.
+Treat lint warnings as owner work and lint errors as unsafe knowledge state;
+neither command approves architecture, risk, merge, release, or deployment.
 
 Use the active backlog selected by `.fairway/config.toml` as the implementation
 queue. In this repository that is
@@ -1293,8 +1312,8 @@ working-memory path, Fairway config path, completed monitor summary, and this
 instruction:
 
 ```text
-The monitored CI/deploy/UAT window is complete. Read the current working memory
-file, check Fairway status and ready tasks, and continue with the next
+The monitored CI/deploy/UAT window is complete. Read the selected Fairway track
+memory packet, check Fairway status and ready tasks, and continue with the next
 non-conflicting task unless a documented stop condition applies. Record a
 checkpoint explaining the selected next action.
 ```

@@ -705,9 +705,14 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"live-window", "record", "--help"}, "fairway live-window record <task-id> --phase <phase>"},
 		{[]string{"live-window", "status", "--help"}, "fairway live-window status [--task <task-id>]"},
 		{[]string{"live-window", "control-room", "--help"}, "fairway live-window control-room [--task <task-id>] [--stale]"},
-		{[]string{"memory", "--help"}, "fairway memory show|update|append|packet|stale"},
+		{[]string{"memory", "--help"}, "fairway memory show|update|append|import|coverage|packet|cold-start|stale"},
 		{[]string{"memory", "show", "--help"}, "fairway memory show [--track <track-id>]"},
 		{[]string{"memory", "packet", "--help"}, "fairway memory packet --track <track-id>"},
+		{[]string{"memory", "import", "--help"}, "fairway memory import --file <tmp-ux-memory.md> --track <track-id>"},
+		{[]string{"memory", "coverage", "--help"}, "fairway memory coverage [--root tmp-ux]"},
+		{[]string{"memory", "cold-start", "--help"}, "fairway memory cold-start --track <track-id>"},
+		{[]string{"memory", "retire-file", "--help"}, "fairway memory retire-file --file <tmp-ux-memory.md> --track <track-id> --reason <text>"},
+		{[]string{"knowledge", "--help"}, "fairway knowledge init|status|lint"},
 		{[]string{"wait", "--help"}, "fairway wait add|ack|list|tick|resolve|wake"},
 		{[]string{"wait", "add", "--help"}, "fairway wait add --task <task-id> --track <track-id> --on <condition>"},
 		{[]string{"wait", "ack", "--help"}, "fairway wait ack <wait-id>"},
@@ -4512,6 +4517,154 @@ func TestCLI_TrackMemoryPackets(t *testing.T) {
 	}
 	assertContains(t, string(equivalence), `"track_memories": 1`)
 	assertContains(t, string(equivalence), `"track_memory_lifecycle": 2`)
+}
+
+func TestCLI_MemoryMigrationPreviewApplyCoverageColdStartAndRetirement(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	gitInit(t, repo)
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Memory migration source", "--role", "backend")
+	runOK(t, "claim", "T-001")
+	runOK(t, "checkpoint", "record", "T-001", "--state", "active", "--owner", "backend", "--summary", "migrate legacy memory")
+	writeFile(t, filepath.Join(repo, "tmp-ux", "program-memory.md"), `# Program Memory
+
+## Purpose
+Preserve provider-neutral context.
+
+## Current Objective
+Finish the migration commands.
+
+## Decisions
+- Fairway track memory is authoritative.
+
+## Next Actions
+- Run the GPUaaS pilot.
+
+Owner: backend
+Review by: 2099-01-01
+
+## Source Checkpoint IDs
+- 1
+
+## Notes
+MIGRATION_RAW_SENTINEL must not be retained.
+`)
+	gitAddCommit(t, repo, "test fixture")
+
+	preview := runCapture(t, "--json", "memory", "import", "--file", "tmp-ux/program-memory.md", "--track", "program")
+	for _, want := range []string{`"applied": false`, `"append_only": true`, `"raw_omitted": true`, `"current_objective": "Finish the migration commands."`} {
+		assertContains(t, preview, want)
+	}
+	assertNotContains(t, preview, "MIGRATION_RAW_SENTINEL")
+	if out, err := captureRun("memory", "show", "--track", "program"); err == nil {
+		t.Fatalf("preview created track memory:\n%s", out)
+	}
+
+	applied := runCapture(t, "--json", "memory", "import", "--file", "tmp-ux/program-memory.md", "--track", "program", "--apply")
+	assertContains(t, applied, `"applied": true`)
+	show := runCapture(t, "memory", "show", "--track", "program")
+	assertContains(t, show, "Finish the migration commands.")
+
+	coverage := runCapture(t, "--json", "memory", "coverage", "--root", "tmp-ux", "--track", "program")
+	for _, want := range []string{`"complete": true`, `"status": "covered"`, `"track_id": "program"`, `"read_only": true`} {
+		assertContains(t, coverage, want)
+	}
+
+	coldStart := runCapture(t, "--json", "memory", "cold-start", "--track", "program", "--for", "codex")
+	for _, want := range []string{`"schema": "fairway.memory-cold-start.v1"`, `"bounded": true`, `"read_only": true`, `"branch": "main"`, `"current_objective": "Finish the migration commands."`, `"T-001 in_progress Memory migration source"`} {
+		assertContains(t, coldStart, want)
+	}
+	assertNotContains(t, coldStart, "MIGRATION_RAW_SENTINEL")
+
+	activePlan := runCaptureAllowError(t, "memory", "retire-file", "--file", "tmp-ux/program-memory.md", "--track", "program", "--reason", "migrated")
+	assertContains(t, activePlan, "memory_retire_file: false")
+	runOK(t, "memory", "disposition", "--track", "program", "--state", "archived", "--reason", "migration verified", "--canonical-commit", "abc123")
+	retired := runCapture(t, "memory", "retire-file", "--file", "tmp-ux/program-memory.md", "--track", "program", "--reason", "migration verified")
+	for _, want := range []string{"memory_retire_file: true", "read_only: true", "deletes_source: false", "coverage: covered"} {
+		assertContains(t, retired, want)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "tmp-ux", "program-memory.md")); err != nil {
+		t.Fatalf("retire-file changed source: %v", err)
+	}
+	if out, err := captureRun("memory", "cold-start", "--track", "program"); err == nil || strings.Contains(out, "MIGRATION_RAW_SENTINEL") {
+		t.Fatalf("archived cold-start output=%q err=%v", out, err)
+	}
+}
+
+func TestCLI_MemoryMigrationRejectsSecretSymlinkAndUnvalidatedSources(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	runOK(t, "init")
+	secret := filepath.Join(repo, "tmp-ux", "secret-memory.md")
+	writeFile(t, secret, "# Secret Memory\npassword=DO_NOT_RENDER_THIS_VALUE\n")
+	if out, err := captureRun("memory", "import", "--file", secret, "--track", "secret"); err == nil || strings.Contains(out, "DO_NOT_RENDER_THIS_VALUE") {
+		t.Fatalf("secret import output=%q err=%v", out, err)
+	}
+
+	safe := filepath.Join(repo, "tmp-ux", "safe-memory.md")
+	writeFile(t, safe, "# Safe Memory\n## Current Objective\nMigrate safely.\nOwner: backend\nReview by: 2099-01-01\n")
+	linked := filepath.Join(repo, "tmp-ux", "linked-memory.md")
+	if err := os.Symlink(safe, linked); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := captureRun("memory", "import", "--file", linked, "--track", "linked"); err == nil {
+		t.Fatalf("symlink import succeeded:\n%s", out)
+	}
+	if out, err := captureRun("memory", "import", "--file", safe, "--track", "missing-source", "--apply"); err == nil || !strings.Contains(err.Error(), "source fact") {
+		t.Fatalf("missing-source apply output=%q err=%v", out, err)
+	}
+	if out, err := captureRun("memory", "retire-file", "--file", safe, "--track", "missing-source", "--reason", "test", "--apply"); err == nil {
+		t.Fatalf("retire-file accepted --apply:\n%s", out)
+	}
+}
+
+func TestCLI_KnowledgeInitStatusAndLint(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	gitInit(t, repo)
+	runOK(t, "init")
+	gitAddCommit(t, repo, "initial")
+	initialized := runCapture(t, "--json", "knowledge", "init")
+	assertContains(t, initialized, `"root": "doc/agent-wiki"`)
+	assertContains(t, initialized, `"index.md"`)
+	second := runCapture(t, "--json", "knowledge", "init")
+	assertContains(t, second, `"existing"`)
+
+	status := runCapture(t, "--json", "knowledge", "status")
+	assertContains(t, status, `"page_count": 3`)
+	assertContains(t, status, `"draft_count": 3`)
+	lint := runCapture(t, "knowledge", "lint")
+	assertContains(t, lint, "knowledge_lint: true")
+	assertContains(t, lint, "severity=warning code=review_overdue")
+
+	if out, err := captureRun("knowledge", "status", "--root", "../outside"); err == nil {
+		t.Fatalf("unsafe knowledge root succeeded:\n%s", out)
+	}
 }
 
 func TestTrackMemoryReconcileFindings(t *testing.T) {

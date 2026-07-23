@@ -24,6 +24,7 @@ type Config struct {
 	Worktrees                 WorktreesConfig           `toml:"worktrees"`
 	Sessions                  SessionsConfig            `toml:"sessions"`
 	Coordinator               CoordinatorConfig         `toml:"coordinator"`
+	Knowledge                 KnowledgeConfig           `toml:"knowledge"`
 	ConsumerReadiness         ConsumerReadinessConfig   `toml:"consumer_readiness"`
 	States                    StatesConfig              `toml:"states"`
 	Gates                     GatesConfig               `toml:"gates"`
@@ -104,6 +105,10 @@ type SessionsConfig struct {
 
 type CoordinatorConfig struct {
 	NotificationAckTimeout string `toml:"notification_ack_timeout"`
+}
+
+type KnowledgeConfig struct {
+	Root string `toml:"root"`
 }
 
 type ConsumerReadinessConfig struct {
@@ -316,6 +321,7 @@ func Defaults(root string) Config {
 		Coordinator: CoordinatorConfig{
 			NotificationAckTimeout: "24h",
 		},
+		Knowledge: KnowledgeConfig{Root: "doc/agent-wiki"},
 		States: StatesConfig{
 			Allowed:  []string{"todo", "in_progress", "blocked", "done"},
 			Terminal: []string{"done"},
@@ -399,6 +405,11 @@ func Validate(cfg Config) error {
 	}
 	if _, err := regexp.Compile(cfg.Fairway.TaskIDPattern); err != nil {
 		return fmt.Errorf("[fairway] task_id_pattern is invalid: %w", err)
+	}
+	knowledgeValue := strings.TrimSpace(cfg.Knowledge.Root)
+	knowledgeRoot := filepath.Clean(knowledgeValue)
+	if knowledgeValue != "" && (knowledgeRoot == "." || filepath.IsAbs(knowledgeRoot) || knowledgeRoot == ".." || strings.HasPrefix(knowledgeRoot, ".."+string(filepath.Separator))) {
+		return errors.New("[knowledge] root must be a project-relative directory")
 	}
 	if err := validateConsumerReadiness(cfg.ConsumerReadiness); err != nil {
 		return err

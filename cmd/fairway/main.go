@@ -221,6 +221,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdCheckpoint(ctx, opts, args[1:])
 	case "memory":
 		return cmdMemory(ctx, opts, args[1:])
+	case "knowledge":
+		return cmdKnowledge(ctx, opts, args[1:])
 	case "packet":
 		return cmdPacket(ctx, opts, args[1:])
 	case "watcher":
@@ -13035,10 +13037,10 @@ func cmdCheckpointStatus(ctx context.Context, opts globalOptions, args []string,
 
 func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 {
-		return errors.New("memory requires subcommand: show, update, append, packet, stale, reconcile, disposition, history")
+		return errors.New("memory requires subcommand: show, update, append, import, coverage, packet, cold-start, stale, reconcile, disposition, history, retire-file")
 	}
 	if args[0] == "--help" || args[0] == "-h" {
-		subcommandUsage("memory", "show|update|append|packet|stale|reconcile|disposition|history")
+		subcommandUsage("memory", "show|update|append|import|coverage|packet|cold-start|stale|reconcile|disposition|history|retire-file")
 		return nil
 	}
 	switch args[0] {
@@ -13060,12 +13062,30 @@ func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 			return nil
 		}
 		return cmdMemoryUpsert(ctx, opts, args[1:], true)
+	case "import":
+		if len(args) > 1 && isHelpOnly(args[1:]) {
+			subcommandUsage("memory import", "--file <tmp-ux-memory.md> --track <track-id> [--apply] [metadata and source-fact overrides]")
+			return nil
+		}
+		return cmdMemoryImport(ctx, opts, args[1:])
+	case "coverage":
+		if len(args) > 1 && isHelpOnly(args[1:]) {
+			subcommandUsage("memory coverage", "[--root tmp-ux] [--track <track-id>]")
+			return nil
+		}
+		return cmdMemoryCoverage(ctx, opts, args[1:])
 	case "packet":
 		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
 			subcommandUsage("memory", "packet --track <track-id> [--for <provider>]")
 			return nil
 		}
 		return cmdMemoryPacket(ctx, opts, args[1:])
+	case "cold-start":
+		if len(args) > 1 && isHelpOnly(args[1:]) {
+			subcommandUsage("memory cold-start", "--track <track-id> [--for <provider>] [--older-than <duration>]")
+			return nil
+		}
+		return cmdMemoryColdStart(ctx, opts, args[1:])
 	case "stale":
 		if len(args) > 1 && (args[1] == "--help" || args[1] == "-h") {
 			subcommandUsage("memory", "stale [--older-than <duration>]")
@@ -13090,6 +13110,12 @@ func cmdMemory(ctx context.Context, opts globalOptions, args []string) error {
 			return nil
 		}
 		return cmdMemoryHistory(ctx, opts, args[1:])
+	case "retire-file":
+		if len(args) > 1 && isHelpOnly(args[1:]) {
+			subcommandUsage("memory retire-file", "--file <tmp-ux-memory.md> --track <track-id> --reason <text>")
+			return nil
+		}
+		return cmdMemoryRetireFile(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown memory subcommand %q", args[0])
 	}
@@ -21073,7 +21099,8 @@ func printCommandHelp(command string) bool {
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
 		"route":                      "fairway route review <task-id> ... | fairway route review-preflight [--task <task-id>]\n  Route one review or validate project-wide review-domain coverage without mutation.",
 		"live-window":                "fairway live-window record <task-id> --phase <phase> [control fields] | fairway live-window status [--task <task-id>] | fairway live-window control-room [--stale] | fairway live-window retry-budget record|status ...\n  Record and inspect repeated live-operation handshake phases and retry budgets via task checkpoints.",
-		"memory":                     "fairway memory show|update|append|packet|stale|reconcile|disposition|history ...\n  Store curated track memory, reconcile lifecycle debt, and render compact provider-independent packets.",
+		"memory":                     "fairway memory show|update|append|import|coverage|packet|cold-start|stale|reconcile|disposition|history|retire-file ...\n  Store curated track memory, migrate legacy files safely, reconcile lifecycle debt, and render compact provider-independent packets.",
+		"knowledge":                  "fairway knowledge init|status|lint [--root <project-relative-path>]\n  Scaffold and deterministically validate project-owned engineering knowledge.",
 		"wait":                       "fairway wait add|ack|list|tick|resolve|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, preserve closed history, apply bounded acknowledgement/supersede facts, and emit wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
 		"work":                       "fairway work start <task-id> [--session-id <id>] [--role <role>] | fairway work status [<task-id>] [--explain] | fairway work verify <task-id> --command-text <summary> --result <result> | fairway work close <task-id> [--session-id <id>]\n  Use the compact common path over durable task, session, checkpoint, evidence, review, and reconciliation records.",
