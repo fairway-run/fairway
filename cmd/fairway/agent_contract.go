@@ -19,7 +19,7 @@ import (
 
 const (
 	agentContractSchema       = 1
-	agentContractRevision     = "2026-07-23.1"
+	agentContractRevision     = "2026-07-30.1"
 	agentContractStartPrefix  = "<!-- fairway-agent-contract "
 	agentContractStartSuffix  = " -->"
 	agentContractEndMarker    = "<!-- /fairway-agent-contract -->"

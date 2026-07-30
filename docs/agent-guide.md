@@ -64,6 +64,31 @@ SQLite rows, or generated dashboard artifacts directly. Use `fairway` commands
 so claims, evidence, handoffs, reviews, sessions, checkpoints, and audit history
 stay consistent.
 
+## Coordination Budget
+
+Fairway coordinates engineering work; it is not a reason to multiply work
+units, reviews, validation runs, or waiting states.
+
+- Keep related findings in the current task when they share an owner,
+  implementation boundary, and acceptance proof. Create another task only for
+  a distinct owner, an independently deliverable slice, or an explicit
+  deferral.
+- Use focused tests while iterating. Run broad CI, UAT, exhaustive security
+  scans, and release gates once at the coherent commit or release boundary.
+- For security assessment, prefer one full baseline scan followed by one
+  committed-diff closeout scan. Retry an identical externally failed scan no
+  more than once. Preserve partial artifacts and switch to a bounded
+  differential check instead of repeatedly restarting the same expensive scan.
+- Record a checkpoint when the objective, owner, blocker, decision, evidence,
+  or next action materially changes. Do not checkpoint routine command
+  progress.
+- A review request should cover the coherent boundary. Do not stop for a new
+  review packet after each same-owner correction; incorporate requested changes
+  and return one refreshed boundary.
+- If coordination consumes more time than implementation, or 30 minutes pass
+  without new code, evidence, or a decision, perform a causal reset and remove
+  unnecessary tasks, reviews, waits, or repeated gates.
+
 ## Execution Surface Limits
 
 Provider surfaces are replaceable execution attachments, and some surfaces have
@@ -103,14 +128,22 @@ there is no stale lock and a normal terminal can write the index. Route the
 approved command boundary to the configured git lane, record the commit SHA,
 rerun `merge-ready`, and continue.
 
-## Start Of Session
+## Start Of Work
 
 ```bash
-fairway config validate
-fairway preflight --role <role>
-fairway session upsert --role <role> --provider <codex|claude|gemini|shell>
-fairway ready
+fairway task-detail <task-id>
+fairway claim <task-id>
+fairway checkpoint record <task-id> --state active --owner <role> --summary "Started bounded work"
 ```
+
+Run config validation, role preflight, and ready-queue discovery when the
+configuration, tool version, repository, role, or selected task changed. Do not
+repeat them mechanically before every edit.
+
+Short direct work expected to complete in one burst does not require a provider
+session if the task is closed, reset, blocked, or handed off before the burst
+ends. Register a provider session for delegated, parallel, long-running,
+approval-gated, deploy/UAT, or high-risk work.
 
 For tmux-backed lanes, especially provider sessions that cannot be inspected by
 the host application directly, register enough metadata for coordination:

@@ -17443,18 +17443,22 @@ readiness live in the Fairway database and must be changed with Fairway
 commands. Do not edit SQLite rows, generated dashboard artifacts, or queue state
 out-of-band.
 
-## Start Of Session Ritual
+## Start Of Work
 
-Run these commands before editing code:
+Use the smallest coordination boundary that keeps ownership clear.
 
 `+"```bash"+`
-fairway config validate
-fairway preflight --role <role>
-fairway ready
 fairway task-detail <task-id>
-fairway session upsert --id <provider-session-id> --provider <codex|claude|gemini|shell> --role <role> --task-id <task-id> --status running
-fairway checkpoint record <task-id> --state active --owner <role> --summary "Started work in <provider-session-id>"
+fairway claim <task-id>
+fairway checkpoint record <task-id> --state active --owner <role> --summary "Started bounded work"
 `+"```"+`
+
+Run `+"`fairway config validate`"+` and role preflight when configuration,
+tooling, role, or repository context changed, not before every implementation
+burst. Register a provider session for delegated, parallel, long-running,
+approval-gated, deploy/UAT, or high-risk work. A short direct task expected to
+finish in one burst may use only a fresh checkpoint if it is closed, reset,
+blocked, or handed off before that burst ends.
 
 ## Role Resolution Order
 
@@ -17465,10 +17469,30 @@ ask the coordinator before claiming or editing.
 
 ## Session Registration Expectation
 
-Active provider work needs both task state and session state. Before editing,
-register or refresh the provider attachment with `+"`fairway session upsert`"+`
-and record an active checkpoint or provider event. Provider chat is useful
-context, but Fairway remains the coordination source of truth.
+Delegated, parallel, long-running, approval-gated, deploy/UAT, and high-risk
+provider work needs both task state and session state. Register or refresh that
+provider attachment with `+"`fairway session upsert`"+` and record an active
+checkpoint or provider event. Provider chat is useful context, but Fairway
+remains the coordination source of truth.
+
+## Execution Efficiency Guardrails
+
+Fairway coordinates engineering; it must not become the work itself.
+
+- Group related findings with the same owner and validation boundary into one
+  coherent task, commit, review, and closeout. Create a child task only for a
+  distinct owner, independently deliverable boundary, or explicit deferral.
+- Run focused tests while iterating. Run broad CI, UAT, or full security suites
+  once at the coherent commit or release boundary, not after every small edit.
+- For security scanners, use one full baseline and one committed-diff closeout.
+  Retry an identical externally failed scan at most once; then preserve partial
+  artifacts, classify the tool failure, and switch to a bounded differential
+  check or report the blocker.
+- Record checkpoints only when objective, owner, blocker, decision, evidence,
+  or next action materially changes. Do not create process-only review waits.
+- If coordination consumes more time than implementation, or 30 minutes pass
+  without new code, evidence, or a decision, stop and simplify the execution
+  plan before continuing.
 
 ## Working Memory Routine
 

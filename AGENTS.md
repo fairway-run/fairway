@@ -62,6 +62,13 @@ Every agent must read:
    before deploy, smoke, or UAT evidence so dirty trees, unpushed commits,
    stale sessions, and missing deploy-run tracking are caught by tooling rather
    than remembered from chat.
+16. **Keep coordination proportional.** Group same-owner findings into one
+   coherent implementation/review boundary, use focused checks while iterating,
+   and reserve broad CI/UAT/security scans for the final commit or release
+   boundary. Retry an identical external tool failure at most once. If
+   coordination exceeds implementation time or 30 minutes pass without new
+   code, evidence, or a decision, simplify the execution plan before
+   continuing.
 
 ## Architecture
 

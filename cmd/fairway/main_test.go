@@ -819,12 +819,14 @@ func TestCLI_InitWritesAgentBreadcrumb(t *testing.T) {
 	assertContains(t, contract, `"schema":1`)
 	assertContains(t, contract, `"revision":"`+agentContractRevision+`"`)
 	assertContains(t, contract, "AGENTS.local.md")
-	assertContains(t, contract, "Start Of Session Ritual")
-	assertContains(t, contract, "fairway config validate")
-	assertContains(t, contract, "fairway session upsert")
+	assertContains(t, contract, "Start Of Work")
+	assertContains(t, contract, "fairway claim <task-id>")
 	assertContains(t, contract, "fairway agent-guide")
 	assertContains(t, contract, "Role Resolution Order")
 	assertContains(t, contract, "Session Registration Expectation")
+	assertContains(t, contract, "Execution Efficiency Guardrails")
+	assertContains(t, contract, "one full baseline and one committed-diff closeout")
+	assertContains(t, contract, "30 minutes pass")
 	assertContains(t, contract, "Working Memory Routine")
 	assertContains(t, contract, "fairway memory cold-start --track <task-id>")
 	assertContains(t, contract, "fairway workflow closeout <task-id> --dry-run")
@@ -935,7 +937,7 @@ func TestCLI_AgentGuideOutputsEmbeddedGuide(t *testing.T) {
 	out := runCapture(t, "agent-guide")
 	assertContains(t, out, "# Agent Guide")
 	assertContains(t, out, "Fairway DB is the execution source of truth")
-	assertContains(t, out, "Start Of Session")
+	assertContains(t, out, "Start Of Work")
 }
 
 func TestCLI_AgentGuidePathAndOutputOptions(t *testing.T) {
