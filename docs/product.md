@@ -34,6 +34,12 @@ reports into certification or approval. Proposed execution profiles, including
 the large-migration profile, compose these primitives but are not implemented
 runtime capabilities until their release notes say otherwise.
 
+Fairway also treats governance as an observable engineering system. Delivery
+reports already expose velocity and coordination overhead; planned
+control-effectiveness analytics will measure coverage, control-specific signal,
+friction, and observable outcomes without claiming causality or granting a
+dashboard policy authority. See [Control effectiveness](design/control-effectiveness.md).
+
 ## The Product Promise
 
 For every bounded work item, a team should be able to determine:
@@ -127,7 +133,9 @@ Fairway links those facts; it does not overwrite their ownership.
 
 Current product work focuses on making the accountability chain easier to
 adopt, strengthening shared-team boundaries without abandoning local-first
-operation, and measuring whether process improves speed, quality, or safety.
+operation, and measuring whether specific controls discriminate useful outcomes
+at an acceptable cost. Coverage and observational limits remain visible; sparse
+data never becomes a reason to waive mandatory safety invariants.
 
 The versioned [product backlog](roadmap/fairway-product-backlog.yaml) records
 planned work. Release scope and implemented behavior are reported in

@@ -6535,3 +6535,114 @@ tasks:
       - "The pilot measures grounding, context size, lookup and resume time, stale or contradictory claims, maintenance cost, repeated investigation, and incorrect authority choices."
       - "The pilot separately checks for synthesis errors that deterministic grounding and staleness lint cannot detect, and records whether owners disposition lint findings within the review window."
       - "A reviewed keep/refine/stop decision determines whether to expand adoption or defer semantic retrieval and automation."
+
+  - id: FW-388
+    title: Measure control effectiveness
+    kind: epic
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: control-effectiveness
+    source_paths: [docs/design/delivery-velocity-and-overhead.md, docs/design/review-policy-profiles.md, internal/deliveryreport, internal/audit]
+    target_paths: [docs/design/control-effectiveness.md, docs/roadmap/fairway-product-backlog.yaml, internal, cmd/fairway]
+    review_domains: [governance]
+    risk_level: medium
+    migration_type: control-effectiveness-analytics
+    acceptance_checks:
+      - "Fairway measures individual controls against observable outcomes without claiming causality."
+      - "Coverage, cohort limits, confounds, formulas, and raw facts remain inspectable."
+      - "Control metrics remain advisory and cannot approve, merge, deploy, or waive mandatory invariants."
+
+  - id: FW-386
+    title: Define control effectiveness metric contract
+    kind: docs
+    parent_id: FW-388
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: control-effectiveness-design
+    source_paths: [docs/design/delivery-velocity-and-overhead.md, docs/design/review-policy-profiles.md, docs/design/work-batch-model.md]
+    target_paths: [docs/design/control-effectiveness.md, docs/product.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [governance]
+    risk_level: low
+    migration_type: control-effectiveness-design
+    acceptance_checks:
+      - "Define control exposure, applicability, firing, bypass, outcome, cohort, and denominator semantics."
+      - "Separate mandatory invariants from controls eligible for effectiveness-based tuning."
+      - "Define coverage-first reporting, within-window comparisons, diff-size conditioning, and uncertainty language."
+
+  - id: FW-379
+    title: Add outcome linkage and Git-derived rework facts
+    kind: task
+    parent_id: FW-388
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: control-outcome-instrumentation
+    source_paths: [docs/design/control-effectiveness.md, internal/store, internal/git, cmd/fairway]
+    target_paths: [internal/store, internal/git, internal/deliveryreport, cmd/fairway, docs/agent-guide.md]
+    review_domains: [arch]
+    risk_level: medium
+    migration_type: control-outcome-instrumentation
+    dependencies: [FW-386]
+    acceptance_checks:
+      - "Report commit-to-task coverage and Git-derived post-promotion file-touch facts for bounded 7, 14, and 30 day windows."
+      - "Support explicit incident, rollback, reopen, corrective, and superseding-task outcome links without inferring them from prose alone."
+      - "Exclude configured generated and high-churn paths and expose all exclusions and denominators."
+
+  - id: FW-380
+    title: Add advisory control effectiveness report
+    kind: task
+    parent_id: FW-388
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: control-effectiveness-report
+    source_paths: [docs/design/control-effectiveness.md, internal/deliveryreport, internal/reviewpolicy, internal/audit, cmd/fairway]
+    target_paths: [internal/controlanalytics, internal/deliveryreport, cmd/fairway, docs/agent-guide.md, docs/config-reference.md]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: control-effectiveness-report
+    dependencies: [FW-379]
+    acceptance_checks:
+      - "Compare mature applicable tasks with observed controls against explicit bypass cohorts inside the same time window, risk band, and diff-size band; not-applicable, unknown, and right-censored tasks remain visible but outside the outcome denominator."
+      - "Classify controls as discriminating, insufficient sample, insufficient coverage, high friction, mandatory invariant, or redesign candidate."
+      - "Emit observational results, denominator facts, configuration revision and digest, sample sizes, exclusions, and limitations without causal or automatic policy claims."
+
+  - id: FW-381
+    title: Add control effectiveness dashboard
+    kind: dashboard
+    parent_id: FW-388
+    role: ui
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: control-effectiveness-dashboard
+    source_paths: [docs/design/control-effectiveness.md, internal/controlanalytics, internal/dashboard]
+    target_paths: [internal/dashboard, docs/design/dashboard.md]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: control-effectiveness-dashboard
+    dependencies: [FW-380]
+    acceptance_checks:
+      - "Dashboard shows coverage, cohort size, outcome deltas, friction, uncertainty, and control classification from the CLI report model."
+      - "Operators can filter by profile, time window, risk, diff-size band, and control family."
+      - "Dashboard remains read-only and links every aggregate to inspectable task and Git facts."
+
+  - id: FW-387
+    title: Calibrate control analytics with GPUaaS pilot
+    kind: task
+    parent_id: FW-388
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: control-effectiveness-pilot
+    source_paths: [docs/design/control-effectiveness.md, docs/assessment, ../GPUasService]
+    target_paths: [docs/assessment, docs/product.md, docs/design/control-effectiveness.md]
+    review_domains: [arch, backend]
+    risk_level: medium
+    migration_type: control-effectiveness-consumer-pilot
+    dependencies: [FW-380]
+    acceptance_checks:
+      - "Measure GPUaaS commit-to-task coverage before interpreting any control outcome."
+      - "Evaluate representative review, evidence, preflight, security, and process controls within contemporaneous cohorts conditioned on task size."
+      - "Record keep, narrow, redesign, instrument, or defer decisions without removing mandatory safety invariants."
