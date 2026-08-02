@@ -238,4 +238,13 @@ propose a reviewed config or rule-pack change through the normal Git workflow.
 5. Run a GPUaaS pilot, beginning with coverage, and record keep, narrow,
    redesign, instrument, or defer decisions for representative controls.
 
+The first GPUaaS pilot is complete. Commit-to-task coverage remained below the
+configured interpretation threshold in 14-, 30-, and 90-day windows, so every
+cohort correctly remained `insufficient_coverage`. The pilot kept the
+coverage-first suppression and existing safety controls, narrowed the validated
+claim to data-quality readback, and identified commit association, structured
+outcomes, friction, preflight/security metadata, and evidence-trigger semantics
+as the next instrumentation boundaries. See
+[GPUaaS Control-Effectiveness Pilot](../assessment/gpuaas-control-effectiveness-pilot-2026-08-02.md).
+
 The pilot must run before any control is relaxed based on these metrics.

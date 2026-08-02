@@ -35,10 +35,14 @@ the large-migration profile, compose these primitives but are not implemented
 runtime capabilities until their release notes say otherwise.
 
 Fairway also treats governance as an observable engineering system. Delivery
-reports already expose velocity and coordination overhead; planned
-control-effectiveness analytics will measure coverage, control-specific signal,
-friction, and observable outcomes without claiming causality or granting a
-dashboard policy authority. See [Control effectiveness](design/control-effectiveness.md).
+reports expose velocity and coordination overhead. Implemented advisory
+control-effectiveness analytics now measure coverage, control-specific signal,
+friction, and observable outcomes through the CLI and a read-only dashboard
+without claiming causality or granting policy authority. The first GPUaaS pilot
+validated the coverage-first suppression behavior and exposed adoption and
+instrumentation gaps; it did not claim incremental control effectiveness. See
+[Control effectiveness](design/control-effectiveness.md) and the
+[GPUaaS pilot](assessment/gpuaas-control-effectiveness-pilot-2026-08-02.md).
 
 ## The Product Promise
 
@@ -71,8 +75,8 @@ These labels are mandatory in public and canonical Fairway documentation.
 
 | Label | Meaning | Current Fairway examples |
 |---|---|---|
-| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; read-oriented dashboards. |
-| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, memory/knowledge cold starts, review/release coordination, environment rehearsal, and local shared-dashboard operation documented under `docs/assessment/`. |
+| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; advisory control-effectiveness CLI/dashboard; read-oriented dashboards. |
+| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, memory/knowledge cold starts, review/release coordination, environment rehearsal, local shared-dashboard operation, and GPUaaS control-analytics data-quality calibration documented under `docs/assessment/`. |
 | **Experimental** | Implemented as an explicit pilot or advisory surface and not the default authority path. | Shared-team server/write pilots, advisory provider narratives, notifier adapters, Postgres compatibility rehearsal, and prototype operating profiles. |
 | **Planned** | Designed or tracked but not implemented as a supported runtime capability. | Migration execution profiles, a production Postgres runtime adapter, broad tracker API adapters, and a reviewed shared-team production deployment path. |
 | **Non-goal** | Deliberately outside Fairway authority. | Autonomous approval, risk acceptance, merge, push, deploy, live mutation, credential custody, transcript-as-authority, or regulatory certification. |

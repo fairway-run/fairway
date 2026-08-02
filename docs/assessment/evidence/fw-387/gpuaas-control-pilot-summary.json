@@ -1,0 +1,88 @@
+{
+  "schema": "fairway.control-effectiveness-pilot.v1",
+  "as_of": "2026-08-02",
+  "fairway_task_id": "FW-387",
+  "fairway_source": "5b5d8ddd741ba745af30ddd252100dea425bce22",
+  "consumer": "GPUasService",
+  "consumer_source": "2bdba92f3cf1b870cd34ac47dd89eaa21e71e00e",
+  "configuration_revision": "unversioned",
+  "configuration_digest_90d": "sha256:4cfee86de7bd5ffe9493e2ac60e422dac4f114d3fc2208f1953229dcdf842234",
+  "thresholds": {
+    "minimum_sample_size": 5,
+    "minimum_coverage_ratio": 0.8,
+    "material_outcome_delta": 0.1,
+    "high_friction_p90_seconds": 900
+  },
+  "raw_artifacts": [
+    {"name": "platform-foundation-14d.json", "sha256": "d6323981f078c40af7f01add34b342a1a98e19b0b8464b70c294857c8f99fba3"},
+    {"name": "platform-foundation-30d.json", "sha256": "aa0eb743a676fc33128279686d1aa21481eb83b66ca84203a80f9dccfd933a34"},
+    {"name": "platform-foundation-90d.json", "sha256": "cd609a51245fe0f12730c1b5c7323fb3ec45dc305580edc6b74d7cfd840eddd1"},
+    {"name": "representative-controls-30d.json", "sha256": "39e01e9ecd13317703c43537e98e5e98e1cb46806d4643ac1e91a0ae708b6764"},
+    {"name": "representative-controls-by-size-30d.json", "sha256": "861f3b00c1f605fb10225c80c7ca0a6e68dae9e2106eae6bf573ec696b809cdf"}
+  ],
+  "windows": [
+    {"days": 14, "eligible_commits": 225, "covered_commits": 48, "commit_coverage_ratio": 0.21333333333333335, "eligible_changed_files": 3154, "covered_changed_files": 2963, "file_coverage_ratio": 0.939441978440076, "cohorts": 195, "classification_counts": {"insufficient_coverage": 195}},
+    {"days": 30, "eligible_commits": 454, "covered_commits": 157, "commit_coverage_ratio": 0.3458149779735683, "eligible_changed_files": 7348, "covered_changed_files": 7282, "file_coverage_ratio": 0.9910179640718563, "cohorts": 363, "classification_counts": {"insufficient_coverage": 363}},
+    {"days": 90, "eligible_commits": 2425, "covered_commits": 434, "commit_coverage_ratio": 0.17896907216494845, "eligible_changed_files": 22492, "covered_changed_files": 22365, "file_coverage_ratio": 0.9943535479281522, "cohorts": 555, "classification_counts": {"insufficient_coverage": 555}}
+  ],
+  "thirty_day_population": {
+    "promoted_tasks": 257,
+    "unique_controls": 12,
+    "cohorts": 363,
+    "observed_control_facts": 1569,
+    "unknown_control_facts": 186,
+    "bypass_facts": 0,
+    "friction_facts": 0,
+    "structured_outcome_facts": 0,
+    "classification": "insufficient_coverage"
+  },
+  "fourteen_day_observed_outcome_diagnostic": {
+    "denominator": "applicable, mature, outcome-known task/control facts with observed control state",
+    "facts": 367,
+    "post_promotion_touch_facts": 335,
+    "caveat": "A task may occur once per applicable control; same-file touch is not classified as escaped rework."
+  },
+  "representative_controls_30d_14d_horizon": [
+    {"control_id": "gate:platform-foundation:boundary-guard-report", "family": "quality_gate", "applicable": 6, "observed": 5, "unknown": 1, "bypassed": 0, "triggered": 0, "passed": 5, "friction_samples": 0},
+    {"control_id": "gate:platform-foundation:ownership-map-evidence", "family": "quality_gate", "applicable": 10, "observed": 8, "unknown": 2, "bypassed": 0, "triggered": 0, "passed": 8, "friction_samples": 0},
+    {"control_id": "review:architecture", "family": "quality_gate", "applicable": 115, "observed": 108, "unknown": 7, "bypassed": 0, "triggered": 12, "passed": 96, "friction_samples": 0},
+    {"control_id": "review:backend", "family": "quality_gate", "applicable": 107, "observed": 93, "unknown": 14, "bypassed": 0, "triggered": 15, "passed": 78, "friction_samples": 0},
+    {"control_id": "review:ops", "family": "quality_gate", "applicable": 105, "observed": 91, "unknown": 14, "bypassed": 0, "triggered": 16, "passed": 75, "friction_samples": 0},
+    {"control_id": "review:product-quality", "family": "quality_gate", "applicable": 47, "observed": 42, "unknown": 5, "bypassed": 0, "triggered": 6, "passed": 36, "friction_samples": 0},
+    {"control_id": "review:security", "family": "quality_gate", "applicable": 103, "observed": 95, "unknown": 8, "bypassed": 0, "triggered": 14, "passed": 81, "friction_samples": 0}
+  ],
+  "size_conditioned_review_facts_30d_14d_horizon": [
+    {"control_id": "review:architecture", "size_band": "large", "applicable": 65, "observed": 61, "unknown": 4, "triggered": 4, "passed": 57},
+    {"control_id": "review:architecture", "size_band": "medium", "applicable": 17, "observed": 16, "unknown": 1, "triggered": 3, "passed": 13},
+    {"control_id": "review:architecture", "size_band": "small", "applicable": 33, "observed": 31, "unknown": 2, "triggered": 5, "passed": 26},
+    {"control_id": "review:backend", "size_band": "large", "applicable": 51, "observed": 45, "unknown": 6, "triggered": 6, "passed": 39},
+    {"control_id": "review:backend", "size_band": "medium", "applicable": 19, "observed": 19, "unknown": 0, "triggered": 3, "passed": 16},
+    {"control_id": "review:backend", "size_band": "small", "applicable": 35, "observed": 27, "unknown": 8, "triggered": 5, "passed": 22},
+    {"control_id": "review:security", "size_band": "large", "applicable": 57, "observed": 53, "unknown": 4, "triggered": 6, "passed": 47},
+    {"control_id": "review:security", "size_band": "medium", "applicable": 15, "observed": 15, "unknown": 0, "triggered": 2, "passed": 13},
+    {"control_id": "review:security", "size_band": "small", "applicable": 30, "observed": 26, "unknown": 4, "triggered": 5, "passed": 21}
+  ],
+  "configuration_observations": {
+    "stable_preflight_control_present": false,
+    "security_review_family": "quality_gate",
+    "security_review_mandatory_invariant": false,
+    "interpretation": "Missing metadata is an instrumentation/configuration gap, not evidence that a control is ineffective."
+  },
+  "derivation_notes": [
+    "Coverage and classification counts are direct report projections.",
+    "Representative totals select the 30-day report at the 14-day outcome horizon and aggregate across risk and size bands without calculating outcome deltas.",
+    "Size-conditioned facts retain separate small, medium, and large strata; unknown-size rows are excluded from the narrative comparison.",
+    "Structured outcomes exclude Git-derived post_promotion_touch.",
+    "Unavailable friction and bypass evidence remains distinct from observed zero cost or proven control ineffectiveness."
+  ],
+  "decisions": [
+    "keep_coverage_first_suppression",
+    "keep_existing_review_and_safety_controls",
+    "narrow_claim_to_data_quality_validation",
+    "redesign_commit_task_association",
+    "instrument_structured_outcomes",
+    "instrument_control_friction",
+    "instrument_preflight_security_and_evidence_trigger_semantics",
+    "defer_effectiveness_rankings"
+  ]
+}
