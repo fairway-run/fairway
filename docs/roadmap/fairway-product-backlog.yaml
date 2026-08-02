@@ -6646,3 +6646,20 @@ tasks:
       - "Measure GPUaaS commit-to-task coverage before interpreting any control outcome."
       - "Evaluate representative review, evidence, preflight, security, and process controls within contemporaneous cohorts conditioned on task size."
       - "Record keep, narrow, redesign, instrument, or defer decisions without removing mandatory safety invariants."
+
+  - id: FW-389
+    title: Define AI Quality Engineering principles
+    kind: docs
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: ai-quality-engineering-principles
+    source_paths: [docs/product.md, docs/design/control-effectiveness.md, docs/governed-agentic-engineering.md]
+    target_paths: [docs/design/ai-quality-engineering.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [governance, arch]
+    risk_level: medium
+    migration_type: ai-quality-engineering-definition
+    acceptance_checks:
+      - "Define AI Quality Engineering as a discipline without prescribing product implementation."
+      - "Define quality, quality records, evidence, verification, human judgment, statistical assurance, outcomes, and continuous improvement."
+      - "State authority boundaries, manufacturing-analogy limits, and non-goals clearly enough for independent review."
