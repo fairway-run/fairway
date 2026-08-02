@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -264,6 +265,151 @@ func TestMigrate_RecordsAppliedMigration(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("migration count=%d, want 1", count)
+	}
+}
+
+func TestMigrateUpgradesAppliedTaskOutcomeV014(t *testing.T) {
+	ctx := context.Background()
+	createV014 := func(path string) *sql.DB {
+		t.Helper()
+		db, err := sql.Open("sqlite", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+			t.Fatal(err)
+		}
+		entries, err := migrationFS.ReadDir("migrations")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+				continue
+			}
+			version, err := migrationVersion(entry.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if version > 14 {
+				continue
+			}
+			body, err := migrationFS.ReadFile("migrations/" + entry.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.ExecContext(ctx, string(body)); err != nil {
+				t.Fatalf("apply %s: %v", entry.Name(), err)
+			}
+			if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`, version, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return db
+	}
+
+	path := filepath.Join(t.TempDir(), "state.db")
+	db := createV014(path)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(ctx, path, "upgrade-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var transitionColumn int
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(task_outcomes)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			t.Fatal(err)
+		}
+		if name == "transition_id" {
+			transitionColumn++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if transitionColumn != 1 {
+		t.Fatalf("transition_id column count=%d, want 1", transitionColumn)
+	}
+	var applied int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version=15`).Scan(&applied); err != nil || applied != 1 {
+		t.Fatalf("migration 15 applied=%d err=%v", applied, err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	tightenedPath := filepath.Join(t.TempDir(), "tightened.db")
+	tightenedDB := createV014(tightenedPath)
+	tightenedStore := &Store{db: tightenedDB, projectID: "upgrade-test", taskIDPattern: defaultTaskIDPattern}
+	if err := tightenedStore.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Legacy reopen", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct{ status, reason string }{{"in_progress", "start"}, {"done", "complete"}, {"todo", "reopen"}} {
+		if err := tightenedStore.SetStatus(ctx, "T-001", step.status, step.reason, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	transitions, err := tightenedStore.transitions(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopenID := transitions[len(transitions)-1].ID
+	if _, err := tightenedDB.ExecContext(ctx, `ALTER TABLE task_outcomes ADD COLUMN transition_id INTEGER`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tightenedDB.ExecContext(ctx, `
+INSERT INTO task_outcomes
+  (project_id, task_id, kind, occurred_at, transition_id, notes, actor, created_at)
+VALUES ('upgrade-test', 'T-001', 'reopen', '2026-08-02T00:00:00Z', ?, 'linked legacy row', 'test', '2026-08-02T00:00:00Z')`, reopenID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tightenedDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	tightened, err := Open(ctx, tightenedPath, "upgrade-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tightenedOutcomes, err := tightened.TaskOutcomes(ctx, "T-001")
+	if err != nil || len(tightenedOutcomes) != 1 || tightenedOutcomes[0].TransitionID != reopenID {
+		t.Fatalf("tightened outcomes=%+v err=%v", tightenedOutcomes, err)
+	}
+	if err := tightened.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	blockedPath := filepath.Join(t.TempDir(), "blocked.db")
+	blockedDB := createV014(blockedPath)
+	if _, err := blockedDB.ExecContext(ctx, `
+INSERT INTO task_outcomes
+  (project_id, task_id, kind, occurred_at, notes, actor, created_at)
+VALUES ('upgrade-test', 'T-001', 'reopen', '2026-08-02T00:00:00Z', 'legacy row', 'test', '2026-08-02T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := blockedDB.ExecContext(ctx, `
+INSERT INTO task_outcomes
+  (project_id, task_id, kind, occurred_at, source_ref, related_task_id, notes, actor, created_at)
+VALUES ('upgrade-test', 'T-001', 'incident', '2026-08-02T00:00:00Z', 'INC-SELF', 'T-001', 'legacy self link', 'test', '2026-08-02T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := blockedDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(ctx, blockedPath, "upgrade-test"); err == nil || !strings.Contains(err.Error(), "migration 015 task outcome integrity blocked: 2 legacy outcome rows") {
+		t.Fatalf("legacy reopen migration error=%v", err)
 	}
 }
 
@@ -626,6 +772,15 @@ func TestPostgresCompatReport(t *testing.T) {
 	}
 	if len(report.Files) == 0 {
 		t.Fatal("expected at least one migration file")
+	}
+	ddl, err := PostgresCompatDDL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	createAt := strings.Index(ddl, "CREATE TABLE IF NOT EXISTS task_outcome_transition_v015")
+	joinAt := strings.Index(ddl, "LEFT JOIN task_outcome_transition_v015")
+	if createAt < 0 || joinAt < 0 || createAt > joinAt {
+		t.Fatalf("postgres DDL staging order create=%d join=%d", createAt, joinAt)
 	}
 }
 
@@ -1136,6 +1291,7 @@ func TestTaskOutcomesAreStructuredAndProjectScoped(t *testing.T) {
 		{TaskID: "T-001", Kind: "incident"},
 		{TaskID: "T-001", Kind: "corrective"},
 		{TaskID: "T-001", Kind: "corrective", RelatedTaskID: "T-001"},
+		{TaskID: "T-001", Kind: "incident", SourceRef: "INC-SELF", RelatedTaskID: "T-001"},
 		{TaskID: "T-001", Kind: "reopen", OccurredAt: "yesterday"},
 		{TaskID: "T-001", Kind: "reopen", TransitionID: 999999},
 		{TaskID: "T-001", Kind: "reopen", SourceRef: "line one\nline two"},

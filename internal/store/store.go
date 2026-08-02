@@ -602,6 +602,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		if version == 15 {
+			if err := preflightTaskOutcomeIntegrityMigration(ctx, tx); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(ctx, string(sqlText)); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("migration %s: %w", entry.Name(), err)
@@ -613,6 +619,70 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func preflightTaskOutcomeIntegrityMigration(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(task_outcomes)`)
+	if err != nil {
+		return fmt.Errorf("migration 015 task outcome integrity preflight: %w", err)
+	}
+	hasTransitionID := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return fmt.Errorf("migration 015 task outcome integrity preflight: %w", err)
+		}
+		if name == "transition_id" {
+			hasTransitionID = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("migration 015 task outcome integrity preflight: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `CREATE TABLE task_outcome_transition_v015 (outcome_id INTEGER PRIMARY KEY, transition_id INTEGER)`); err != nil {
+		return fmt.Errorf("migration 015 task outcome integrity preflight: %w", err)
+	}
+	transitionPredicate := `o.kind = 'reopen'`
+	if hasTransitionID {
+		transitionPredicate = `(o.kind = 'reopen' AND (
+        o.transition_id IS NULL
+        OR NOT EXISTS (
+          SELECT 1 FROM task_state_history h
+          WHERE h.project_id = o.project_id AND h.task_id = o.task_id AND h.id = o.transition_id
+            AND h.from_status IN ('done', 'blocked') AND h.to_status IN ('todo', 'in_progress')
+        )
+      )) OR (o.kind <> 'reopen' AND o.transition_id IS NOT NULL)`
+		if _, err := tx.ExecContext(ctx, `INSERT INTO task_outcome_transition_v015(outcome_id, transition_id) SELECT id, transition_id FROM task_outcomes`); err != nil {
+			return fmt.Errorf("migration 015 task outcome integrity preflight: %w", err)
+		}
+	}
+	var invalid int
+	err = tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM task_outcomes o
+WHERE o.kind NOT IN ('incident', 'rollback', 'reopen', 'corrective', 'superseding_task')
+   OR `+transitionPredicate+`
+   OR (o.kind IN ('incident', 'rollback') AND COALESCE(TRIM(o.source_ref), '') = '')
+   OR (o.related_task_id IS NOT NULL AND o.related_task_id = o.task_id)
+   OR (o.kind NOT IN ('corrective', 'superseding_task') AND o.related_task_id IS NOT NULL)
+   OR (o.kind IN ('corrective', 'superseding_task') AND (
+        COALESCE(TRIM(o.related_task_id), '') = ''
+        OR o.related_task_id = o.task_id
+        OR NOT EXISTS (
+          SELECT 1 FROM task_definitions d
+          WHERE d.project_id = o.project_id AND d.id = o.related_task_id
+        )
+	      ))`).Scan(&invalid)
+	if err != nil {
+		return fmt.Errorf("migration 015 task outcome integrity preflight: %w", err)
+	}
+	if invalid > 0 {
+		return fmt.Errorf("migration 015 task outcome integrity blocked: %d legacy outcome rows lack required structured links; export and correct or explicitly remove those rows before retrying", invalid)
 	}
 	return nil
 }
@@ -2689,6 +2759,9 @@ func (s *Store) RecordTaskOutcome(ctx context.Context, outcome TaskOutcome) (Tas
 	}
 	if (outcome.Kind == "corrective" || outcome.Kind == "superseding_task") && outcome.RelatedTaskID == outcome.TaskID {
 		return TaskOutcome{}, fmt.Errorf("%s outcome cannot reference its own task", outcome.Kind)
+	}
+	if outcome.Kind != "corrective" && outcome.Kind != "superseding_task" && outcome.RelatedTaskID != "" {
+		return TaskOutcome{}, fmt.Errorf("%s outcome cannot reference a related task", outcome.Kind)
 	}
 	if outcome.Kind == "reopen" && outcome.TransitionID == 0 {
 		return TaskOutcome{}, errors.New("reopen outcome requires transition id")

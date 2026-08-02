@@ -2089,7 +2089,7 @@ required_features = ["managed_binary_cache"]
 `, pinned))
 
 	report := runCapture(t, "--json", "readiness", "capabilities")
-	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 14`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
+	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 15`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
 		assertContains(t, report, want)
 	}
 
