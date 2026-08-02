@@ -20,16 +20,68 @@ type WorkCoverageOptions struct {
 	SinceRef      string
 	SinceDuration time.Duration
 	TaskID        string
+	Now           time.Time
 }
 
 type WorkCoverageReport struct {
-	OK            bool                  `json:"ok"`
-	SinceRef      string                `json:"since_ref,omitempty"`
-	SinceDuration string                `json:"since_duration,omitempty"`
-	TaskID        string                `json:"task_id,omitempty"`
-	CommitCount   int                   `json:"commit_count"`
-	Findings      []WorkCoverageFinding `json:"findings"`
-	Summary       WorkCoverageSummary   `json:"summary"`
+	OK            bool                          `json:"ok"`
+	AsOf          string                        `json:"as_of"`
+	AnalyzedTip   string                        `json:"analyzed_tip"`
+	SinceRef      string                        `json:"since_ref,omitempty"`
+	SinceDuration string                        `json:"since_duration,omitempty"`
+	TaskID        string                        `json:"task_id,omitempty"`
+	CommitCount   int                           `json:"commit_count"`
+	Denominators  WorkCoverageDenominators      `json:"denominators"`
+	Exclusions    []config.ControlPathExclusion `json:"exclusions,omitempty"`
+	CommitFacts   []CommitCoverageFact          `json:"commit_facts,omitempty"`
+	TouchFacts    []PostPromotionTouchFact      `json:"post_promotion_touch_facts,omitempty"`
+	Outcomes      []store.TaskOutcome           `json:"outcomes,omitempty"`
+	Findings      []WorkCoverageFinding         `json:"findings"`
+	Summary       WorkCoverageSummary           `json:"summary"`
+}
+
+type WorkCoverageDenominators struct {
+	ObservedCommits       int `json:"observed_commits"`
+	EligibleCommits       int `json:"eligible_commits"`
+	CoveredCommits        int `json:"covered_commits"`
+	ExcludedMergeCommits  int `json:"excluded_merge_commits"`
+	ExcludedOnlyCommits   int `json:"excluded_only_commits"`
+	EligibleChangedFiles  int `json:"eligible_changed_files"`
+	CoveredChangedFiles   int `json:"covered_changed_files"`
+	ExcludedChangedFiles  int `json:"excluded_changed_files"`
+	TasksWithCommit       int `json:"tasks_with_commit"`
+	TasksWithTouchFacts   int `json:"tasks_with_touch_facts"`
+	UnavailableTouchFacts int `json:"unavailable_touch_facts"`
+	MatureTouchWindows    int `json:"mature_touch_windows"`
+}
+
+type CommitCoverageFact struct {
+	Commit        string   `json:"commit"`
+	Subject       string   `json:"subject"`
+	Eligible      bool     `json:"eligible"`
+	Exclusion     string   `json:"exclusion,omitempty"`
+	TaskIDs       []string `json:"task_ids,omitempty"`
+	PathTaskIDs   []string `json:"path_task_ids,omitempty"`
+	EligibleFiles []string `json:"eligible_files,omitempty"`
+	ExcludedFiles []string `json:"excluded_files,omitempty"`
+}
+
+type PostPromotionTouchFact struct {
+	TaskID            string            `json:"task_id"`
+	PromotionCommit   string            `json:"promotion_commit"`
+	PromotionAt       string            `json:"promotion_at,omitempty"`
+	EligibleFiles     []string          `json:"eligible_files,omitempty"`
+	ExcludedFiles     []string          `json:"excluded_files,omitempty"`
+	Available         bool              `json:"available"`
+	UnavailableReason string            `json:"unavailable_reason,omitempty"`
+	Windows           []TouchWindowFact `json:"windows,omitempty"`
+}
+
+type TouchWindowFact struct {
+	Days         int      `json:"days"`
+	Mature       bool     `json:"mature"`
+	Touched      bool     `json:"touched"`
+	TouchCommits []string `json:"touch_commits,omitempty"`
 }
 
 type WorkCoverageSummary struct {
@@ -56,6 +108,14 @@ type WorkCoverageFinding struct {
 }
 
 func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string, s *store.Store, opts WorkCoverageOptions) (WorkCoverageReport, error) {
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	tip, err := fairwaygit.ResolveCommit(root, "HEAD")
+	if err != nil {
+		return WorkCoverageReport{}, err
+	}
 	tasks, err := s.AllTasks(ctx)
 	if err != nil {
 		return WorkCoverageReport{}, err
@@ -73,24 +133,25 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 		}
 		tasks = filtered
 	}
-	report := WorkCoverageReport{OK: true, TaskID: opts.TaskID}
+	report := WorkCoverageReport{OK: true, AsOf: now.Format(time.RFC3339), AnalyzedTip: tip.SHA, TaskID: opts.TaskID, Exclusions: append([]config.ControlPathExclusion(nil), cfg.ControlEffectiveness.PathExclusions...)}
 	var commits []fairwaygit.Commit
 	switch {
 	case opts.SinceDuration > 0:
-		commits, err = fairwaygit.CommitsSince(root, time.Now().UTC().Add(-opts.SinceDuration))
+		commits, err = fairwaygit.CommitsSinceAt(root, now.Add(-opts.SinceDuration), tip.SHA)
 		report.SinceDuration = opts.SinceDuration.String()
 	default:
 		sinceRef := opts.SinceRef
 		if sinceRef == "" {
 			sinceRef = cfg.Fairway.MainBranch
 		}
-		commits, err = fairwaygit.CommitsSinceRef(root, sinceRef)
+		commits, err = fairwaygit.CommitsBetween(root, sinceRef, tip.SHA)
 		report.SinceRef = sinceRef
 	}
 	if err != nil {
 		return WorkCoverageReport{}, err
 	}
 	report.CommitCount = len(commits)
+	report.Denominators.ObservedCommits = len(commits)
 	taskIDs := make([]string, 0, len(tasks))
 	for _, task := range tasks {
 		taskIDs = append(taskIDs, task.Definition.ID)
@@ -106,21 +167,46 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 		return WorkCoverageReport{}, err
 	}
 	for _, commit := range commits {
+		fact := CommitCoverageFact{Commit: commit.ShortSHA, Subject: commit.Subject}
+		if commit.ParentCount > 1 {
+			fact.Exclusion = "merge_commit"
+			report.Denominators.ExcludedMergeCommits++
+			report.CommitFacts = append(report.CommitFacts, fact)
+			continue
+		}
+		fact.EligibleFiles, fact.ExcludedFiles = partitionExcludedPaths(commit.ChangedFiles, cfg.ControlEffectiveness.PathExclusions)
+		report.Denominators.ExcludedChangedFiles += len(fact.ExcludedFiles)
+		if len(fact.EligibleFiles) == 0 {
+			fact.Exclusion = "all_paths_excluded"
+			report.Denominators.ExcludedOnlyCommits++
+			report.CommitFacts = append(report.CommitFacts, fact)
+			continue
+		}
+		fact.Eligible = true
+		report.Denominators.EligibleCommits++
+		report.Denominators.EligibleChangedFiles += len(fact.EligibleFiles)
 		mentioned := mentionedTaskIDs(commit.Subject+"\n"+commit.Body, taskPattern, tasks)
-		coveredTasks := tasksCoveringFiles(commit.ChangedFiles, pathCoverage)
-		if len(mentioned) == 0 && len(coveredTasks) == 0 {
+		coveredTasks := tasksCoveringFiles(fact.EligibleFiles, pathCoverage)
+		canonicalTasks := tasksWithCommit(commit.SHA, tasks)
+		fact.TaskIDs = unionStrings(mentioned, canonicalTasks)
+		fact.PathTaskIDs = coveredTasks
+		if len(fact.TaskIDs) > 0 {
+			report.Denominators.CoveredCommits++
+		}
+		report.CommitFacts = append(report.CommitFacts, fact)
+		if len(fact.TaskIDs) == 0 {
 			report.Findings = append(report.Findings, WorkCoverageFinding{
 				Kind:        "commit_without_task_coverage",
 				Severity:    "warning",
-				Reason:      "commit does not mention a Fairway task id and changed files do not map to task source_paths/target_paths",
+				Reason:      "commit has no Fairway task id in its message and is not the canonical commit recorded for a task",
 				Commit:      commit.ShortSHA,
 				Subject:     commit.Subject,
-				Files:       commit.ChangedFiles,
-				Recommended: "link the work to an existing task, add task path metadata, or create a follow-up task",
+				Files:       fact.EligibleFiles,
+				Recommended: "record the commit on the owning task, mention the task id in the commit, or create a follow-up task",
 			})
 			report.Summary.CommitsWithoutTaskID++
 		}
-		for _, file := range commit.ChangedFiles {
+		for _, file := range fact.EligibleFiles {
 			if len(tasksCoveringFile(file, pathCoverage)) == 0 {
 				report.Findings = append(report.Findings, WorkCoverageFinding{
 					Kind:        "changed_file_uncovered",
@@ -132,8 +218,33 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 					Recommended: "add source_paths/target_paths metadata to the responsible task",
 				})
 				report.Summary.ChangedFilesUncovered++
+			} else {
+				report.Denominators.CoveredChangedFiles++
 			}
 		}
+	}
+	outcomes, err := s.TaskOutcomes(ctx, opts.TaskID)
+	if err != nil {
+		return WorkCoverageReport{}, err
+	}
+	report.Outcomes = outcomes
+	for _, task := range tasks {
+		if strings.TrimSpace(task.CommitSHA) == "" {
+			continue
+		}
+		report.Denominators.TasksWithCommit++
+		fact := buildPostPromotionTouchFact(root, task, cfg.ControlEffectiveness.PathExclusions, now, tip.SHA)
+		if fact.Available {
+			report.Denominators.TasksWithTouchFacts++
+			for _, window := range fact.Windows {
+				if window.Mature {
+					report.Denominators.MatureTouchWindows++
+				}
+			}
+		} else {
+			report.Denominators.UnavailableTouchFacts++
+		}
+		report.TouchFacts = append(report.TouchFacts, fact)
 	}
 	for _, task := range tasks {
 		evidence := evidenceByTask[task.Definition.ID]
@@ -193,6 +304,100 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 	})
 	report.OK = len(report.Findings) == 0
 	return report, nil
+}
+
+func tasksWithCommit(commitSHA string, tasks []store.Task) []string {
+	var out []string
+	commitSHA = strings.TrimSpace(commitSHA)
+	for _, task := range tasks {
+		taskSHA := strings.TrimSpace(task.CommitSHA)
+		if taskSHA == "" {
+			continue
+		}
+		if commitSHA == taskSHA || (len(taskSHA) >= 7 && strings.HasPrefix(commitSHA, taskSHA)) || (len(commitSHA) >= 7 && strings.HasPrefix(taskSHA, commitSHA)) {
+			out = append(out, task.Definition.ID)
+		}
+	}
+	return out
+}
+
+func buildPostPromotionTouchFact(root string, task store.Task, exclusions []config.ControlPathExclusion, now time.Time, analyzedTip string) PostPromotionTouchFact {
+	fact := PostPromotionTouchFact{TaskID: task.Definition.ID, PromotionCommit: task.CommitSHA}
+	detail, err := fairwaygit.ResolveCommit(root, task.CommitSHA)
+	if err != nil {
+		fact.UnavailableReason = err.Error()
+		return fact
+	}
+	promotionAt, err := time.Parse(time.RFC3339Nano, task.CompletedAt)
+	if err != nil {
+		promotionAt, err = time.Parse(time.RFC3339, detail.CommitDate)
+		if err != nil {
+			fact.UnavailableReason = "task completion and promotion commit dates are unavailable"
+			return fact
+		}
+	}
+	fact.PromotionCommit = detail.SHA
+	fact.PromotionAt = promotionAt.UTC().Format(time.RFC3339)
+	fact.EligibleFiles, fact.ExcludedFiles = partitionExcludedPaths(detail.ChangedFiles, exclusions)
+	if len(fact.EligibleFiles) == 0 {
+		fact.UnavailableReason = "promotion commit has no eligible changed files"
+		return fact
+	}
+	commits, err := fairwaygit.CommitsBetween(root, detail.SHA, analyzedTip)
+	if err != nil {
+		fact.UnavailableReason = err.Error()
+		return fact
+	}
+	fact.Available = true
+	owned := make(map[string]bool, len(fact.EligibleFiles))
+	for _, file := range fact.EligibleFiles {
+		owned[file] = true
+	}
+	for _, days := range []int{7, 14, 30} {
+		deadline := promotionAt.Add(time.Duration(days) * 24 * time.Hour)
+		window := TouchWindowFact{Days: days, Mature: !now.Before(deadline)}
+		for _, commit := range commits {
+			commitAt, err := time.Parse(time.RFC3339, commit.CommitDate)
+			if err != nil || commitAt.Before(promotionAt.Truncate(time.Second)) || commitAt.After(deadline) || commit.ParentCount > 1 {
+				continue
+			}
+			eligible, _ := partitionExcludedPaths(commit.ChangedFiles, exclusions)
+			if pathsIntersect(owned, eligible) {
+				window.Touched = true
+				window.TouchCommits = append(window.TouchCommits, commit.ShortSHA)
+			}
+		}
+		fact.Windows = append(fact.Windows, window)
+	}
+	return fact
+}
+
+func partitionExcludedPaths(files []string, exclusions []config.ControlPathExclusion) ([]string, []string) {
+	var eligible, excluded []string
+	for _, file := range files {
+		matched := false
+		for _, exclusion := range exclusions {
+			if pathPatternMatches(exclusion.Pattern, file) {
+				matched = true
+				break
+			}
+		}
+		if matched {
+			excluded = append(excluded, file)
+		} else {
+			eligible = append(eligible, file)
+		}
+	}
+	return eligible, excluded
+}
+
+func pathsIntersect(owned map[string]bool, files []string) bool {
+	for _, file := range files {
+		if owned[file] {
+			return true
+		}
+	}
+	return false
 }
 
 type CILearningOptions struct {

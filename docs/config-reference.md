@@ -120,6 +120,11 @@ required_capabilities = ["managed-binary-cache", "track-memory-lifecycle"]
 required_commands = ["binary status", "memory disposition"]
 required_features = ["managed_binary_cache", "track_memory_lifecycle"]
 
+[[control_effectiveness.path_exclusions]]
+pattern = "dist/**"
+category = "generated"                # generated | high_churn
+rationale = "Release build output is generated from reviewed source."
+
 [[roles]]
 name = "backend"
 branch = "agent/backend"
@@ -905,6 +910,15 @@ coordination without making Fairway specific to any one consumer repository.
 It also drives `fairway audit work-coverage`: changed files are matched against
 task `source_paths` and `target_paths`, and done tasks with `review_domains`
 are checked for matching approved review rows.
+
+### `[[control_effectiveness.path_exclusions]]`
+
+Control-effectiveness path exclusions are reviewed, versioned project
+configuration. Each entry requires a project-relative `pattern`, a `category`
+of `generated` or `high_churn`, and a single-line `rationale`. The work-coverage
+report exposes every active exclusion and reports observed, eligible, covered,
+and excluded denominators. Exclusions are not accepted as command-line report
+arguments, so a caller cannot silently remove unfavorable files from a cohort.
 
 ## Validation
 

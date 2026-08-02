@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -63,10 +64,49 @@ func TestCheckPreservesUnstagedTrackedPath(t *testing.T) {
 	}
 }
 
+func TestCommitsAfterIncludesParentCount(t *testing.T) {
+	repo := t.TempDir()
+	git(t, repo, "init", "-b", "main")
+	git(t, repo, "config", "user.email", "test@example.com")
+	git(t, repo, "config", "user.name", "Test User")
+	writeFile(t, filepath.Join(repo, "a.txt"), "one\n")
+	git(t, repo, "add", "a.txt")
+	git(t, repo, "commit", "-m", "first")
+	first := LastCommit(repo)
+	writeFile(t, filepath.Join(repo, "a.txt"), "two\n")
+	git(t, repo, "add", "a.txt")
+	gitWithEnv(t, repo, []string{"GIT_AUTHOR_DATE=2001-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2030-01-01T00:00:00Z"}, "commit", "-m", "second")
+	second := LastCommit(repo)
+	writeFile(t, filepath.Join(repo, "a.txt"), "three\n")
+	git(t, repo, "add", "a.txt")
+	git(t, repo, "commit", "-m", "third")
+	commits, err := CommitsAfter(repo, first)
+	if err != nil || len(commits) != 2 || commits[0].ParentCount != 1 || commits[0].ChangedFiles[0] != "a.txt" {
+		t.Fatalf("commits=%+v err=%v", commits, err)
+	}
+	pinned, err := CommitsBetween(repo, first, second)
+	if err != nil || len(pinned) != 1 || !strings.HasPrefix(pinned[0].SHA, second) {
+		t.Fatalf("pinned commits=%+v err=%v", pinned, err)
+	}
+	if !strings.HasPrefix(pinned[0].AuthorDate, "2001-01-01") || !strings.HasPrefix(pinned[0].CommitDate, "2030-01-01") {
+		t.Fatalf("author/commit dates=%s/%s", pinned[0].AuthorDate, pinned[0].CommitDate)
+	}
+}
+
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func gitWithEnv(t *testing.T, dir string, env []string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}

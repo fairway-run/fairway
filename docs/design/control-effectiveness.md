@@ -91,10 +91,20 @@ touch is linked to one or more structured outcomes:
 Near-term reports expose the Git proxy and structured links separately. They do
 not silently label every subsequent edit as a defect.
 
+Outcome links are integrity checked. Incident and rollback rows require an
+explicit external reference; corrective and superseding rows require a
+different existing Fairway task; and reopen rows require the ID of an existing
+terminal-to-active task transition. Bounded notes and references pass the same
+content-free secret detector used by other retained Fairway records.
+
 For an outcome horizon `H`, a task is mature only when promotion occurred at
 least `H` days before the report's `as_of` time. Right-censored tasks remain in
 the raw export but are excluded from that horizon's denominator. For one
 control, profile, time window, risk band, and size band:
+
+Git-derived windows use the task completion timestamp as the promotion clock
+and Git committer time (`%cI`) as the integration clock for descendant commits.
+Author time is retained as metadata but does not place a touch into a window.
 
 ```text
 eligible cohort = applicable + mature + known control state

@@ -4509,7 +4509,26 @@ func cmdAuditWorkCoverage(ctx context.Context, opts globalOptions, args []string
 		if report.TaskID != "" {
 			fmt.Printf("task_id: %s\n", report.TaskID)
 		}
+		fmt.Printf("as_of: %s\n", report.AsOf)
+		fmt.Printf("analyzed_tip: %s\n", report.AnalyzedTip)
 		fmt.Printf("commits: %d\n", report.CommitCount)
+		fmt.Printf("denominators: observed_commits=%d eligible_commits=%d covered_commits=%d excluded_merge_commits=%d excluded_only_commits=%d eligible_changed_files=%d covered_changed_files=%d excluded_changed_files=%d tasks_with_commit=%d tasks_with_touch_facts=%d unavailable_touch_facts=%d mature_touch_windows=%d\n",
+			report.Denominators.ObservedCommits, report.Denominators.EligibleCommits, report.Denominators.CoveredCommits,
+			report.Denominators.ExcludedMergeCommits, report.Denominators.ExcludedOnlyCommits,
+			report.Denominators.EligibleChangedFiles, report.Denominators.CoveredChangedFiles, report.Denominators.ExcludedChangedFiles,
+			report.Denominators.TasksWithCommit, report.Denominators.TasksWithTouchFacts, report.Denominators.UnavailableTouchFacts, report.Denominators.MatureTouchWindows)
+		for _, exclusion := range report.Exclusions {
+			fmt.Printf("exclusion: category=%s pattern=%s rationale=%s\n", exclusion.Category, exclusion.Pattern, exclusion.Rationale)
+		}
+		for _, fact := range report.TouchFacts {
+			fmt.Printf("post_promotion_touch: task=%s commit=%s available=%t reason=%s\n", fact.TaskID, fact.PromotionCommit, fact.Available, fact.UnavailableReason)
+			for _, window := range fact.Windows {
+				fmt.Printf("  window_days=%d mature=%t touched=%t commits=%s\n", window.Days, window.Mature, window.Touched, strings.Join(window.TouchCommits, ","))
+			}
+		}
+		for _, outcome := range report.Outcomes {
+			fmt.Printf("outcome: task=%s kind=%s occurred_at=%s source_ref=%s related_task=%s transition_id=%d\n", outcome.TaskID, outcome.Kind, outcome.OccurredAt, outcome.SourceRef, outcome.RelatedTaskID, outcome.TransitionID)
+		}
 		fmt.Printf("summary: commits_without_task_id=%d changed_files_uncovered=%d orphan_evidence=%d evidence_status_decisions=%d done_without_required_evidence=%d missing_required_reviews=%d work_batch_candidates=%d\n",
 			report.Summary.CommitsWithoutTaskID,
 			report.Summary.ChangedFilesUncovered,
@@ -15341,7 +15360,7 @@ func cmdPacketContext(ctx context.Context, opts globalOptions, args []string) er
 		}
 		fmt.Println("\n## Recent History")
 		for _, tr := range transitions {
-			fmt.Printf("- %s -> %s by %s: %s\n", tr.FromStatus, tr.ToStatus, tr.Actor, tr.Reason)
+			fmt.Printf("- id=%d %s -> %s by %s: %s\n", tr.ID, tr.FromStatus, tr.ToStatus, tr.Actor, tr.Reason)
 		}
 		fmt.Println("\n## Evidence")
 		for _, ev := range evidence {
@@ -17723,18 +17742,20 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, root string, s 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		if isHelpOnly(args) {
-			subcommandUsage("record", "evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
+			subcommandUsage("record", "evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
 			return nil
 		}
 		return errors.New("record requires type and task id")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("record", "evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
+		subcommandUsage("record", "evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
 		return nil
 	}
 	switch args[0] {
 	case "evidence":
 		return recordEvidence(ctx, opts, args[1:])
+	case "outcome":
+		return recordOutcome(ctx, opts, args[1:])
 	case "guard-report":
 		return recordGuardReport(ctx, opts, args[1:])
 	case "handoff":
@@ -17753,6 +17774,37 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 		return recordPushIntent(ctx, opts, args[1:])
 	}
 	return fmt.Errorf("unknown record type %q", args[0])
+}
+
+func recordOutcome(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("record outcome requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("outcome", flag.ContinueOnError)
+	kind := fs.String("kind", "", "incident, rollback, reopen, corrective, or superseding_task")
+	occurredAt := fs.String("occurred-at", "", "RFC3339 outcome time; defaults to now")
+	sourceRef := fs.String("source-ref", "", "external incident, rollback, or evidence reference")
+	relatedTaskID := fs.String("related-task", "", "corrective or superseding Fairway task id")
+	transitionID := fs.Int64("transition-id", 0, "matching reopen transition id")
+	notes := fs.String("notes", "", "bounded outcome context")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected record outcome arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		outcome, err := s.RecordTaskOutcome(ctx, store.TaskOutcome{TaskID: taskID, Kind: *kind, OccurredAt: *occurredAt, SourceRef: *sourceRef, RelatedTaskID: *relatedTaskID, TransitionID: *transitionID, Notes: *notes})
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(outcome)
+		}
+		fmt.Printf("outcome recorded %s kind=%s id=%d\n", outcome.TaskID, outcome.Kind, outcome.ID)
+		return nil
+	})
 }
 
 func recordEvidence(ctx context.Context, opts globalOptions, args []string) error {
@@ -19675,6 +19727,7 @@ type dbRehearsalCounts struct {
 	Evidence             int            `json:"evidence"`
 	Handoffs             int            `json:"handoffs"`
 	Reviews              int            `json:"reviews"`
+	Outcomes             int            `json:"outcomes"`
 	Sessions             int            `json:"sessions"`
 	TrackMemories        int            `json:"track_memories"`
 	TrackMemoryLifecycle int            `json:"track_memory_lifecycle"`
@@ -19687,6 +19740,7 @@ type dbRehearsalTaskSummary struct {
 	Evidence    int    `json:"evidence"`
 	Handoffs    int    `json:"handoffs"`
 	Reviews     int    `json:"reviews"`
+	Outcomes    int    `json:"outcomes"`
 }
 
 type dbRehearsalEquivalence struct {
@@ -19983,6 +20037,7 @@ func runPostgresRehearsalProof(ctx context.Context, dsnEnv, schema, ddl string, 
 	compareInt("evidence", sourceCounts.Evidence, counts.Evidence)
 	compareInt("handoffs", sourceCounts.Handoffs, counts.Handoffs)
 	compareInt("reviews", sourceCounts.Reviews, counts.Reviews)
+	compareInt("outcomes", sourceCounts.Outcomes, counts.Outcomes)
 	compareInt("sessions", sourceCounts.Sessions, counts.Sessions)
 	compareInt("track_memories", sourceCounts.TrackMemories, counts.TrackMemories)
 	compareInt("track_memory_lifecycle", sourceCounts.TrackMemoryLifecycle, counts.TrackMemoryLifecycle)
@@ -20139,6 +20194,7 @@ UNION ALL SELECT 'transitions', count(*) FROM task_state_history
 UNION ALL SELECT 'evidence', count(*) FROM task_evidence
 UNION ALL SELECT 'handoffs', count(*) FROM task_handoffs
 UNION ALL SELECT 'reviews', count(*) FROM task_reviews
+UNION ALL SELECT 'outcomes', count(*) FROM task_outcomes
 UNION ALL SELECT 'sessions', count(*) FROM agent_sessions
 UNION ALL SELECT 'track_memories', count(*) FROM track_memory
 UNION ALL SELECT 'track_memory_lifecycle', count(*) FROM track_memory_lifecycle
@@ -20182,6 +20238,8 @@ ORDER BY 1;`, schema)
 			counts.Handoffs = value
 		case key == "reviews":
 			counts.Reviews = value
+		case key == "outcomes":
+			counts.Outcomes = value
 		case key == "sessions":
 			counts.Sessions = value
 		case key == "track_memories":
@@ -20248,15 +20306,13 @@ func renderPostgresImportSQL(snapshot store.Snapshot, sessions []store.Session) 
 			sqlQuote(firstNonEmpty(task.UpdatedAt, snapshot.ExportedAt)),
 		)
 		for _, transition := range row.Transitions {
-			fmt.Fprintf(&b, "INSERT INTO task_state_history (project_id, task_id, from_status, to_status, actor, reason, at) VALUES (%s, %s, %s, %s, %s, %s, %s);\n",
-				sqlQuote(snapshot.ProjectID),
-				sqlQuote(def.ID),
-				sqlNullString(transition.FromStatus),
-				sqlQuote(transition.ToStatus),
-				sqlQuote(transition.Actor),
-				sqlNullString(transition.Reason),
-				sqlQuote(transition.At),
-			)
+			if transition.ID > 0 {
+				fmt.Fprintf(&b, "INSERT INTO task_state_history (id, project_id, task_id, from_status, to_status, actor, reason, at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s);\n",
+					transition.ID, sqlQuote(snapshot.ProjectID), sqlQuote(def.ID), sqlNullString(transition.FromStatus), sqlQuote(transition.ToStatus), sqlQuote(transition.Actor), sqlNullString(transition.Reason), sqlQuote(transition.At))
+			} else {
+				fmt.Fprintf(&b, "INSERT INTO task_state_history (project_id, task_id, from_status, to_status, actor, reason, at) VALUES (%s, %s, %s, %s, %s, %s, %s);\n",
+					sqlQuote(snapshot.ProjectID), sqlQuote(def.ID), sqlNullString(transition.FromStatus), sqlQuote(transition.ToStatus), sqlQuote(transition.Actor), sqlNullString(transition.Reason), sqlQuote(transition.At))
+			}
 		}
 		for _, handoff := range row.Handoffs {
 			fmt.Fprintf(&b, "INSERT INTO task_handoffs (project_id, task_id, from_role, to_role, payload, acknowledged_at, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s);\n",
@@ -20293,6 +20349,12 @@ func renderPostgresImportSQL(snapshot store.Snapshot, sessions []store.Session) 
 				sqlNullString(review.Reason),
 				sqlQuote(review.CreatedAt),
 			)
+		}
+	}
+	for _, row := range snapshot.Tasks {
+		for _, outcome := range row.Outcomes {
+			fmt.Fprintf(&b, "INSERT INTO task_outcomes (id, project_id, task_id, kind, occurred_at, source_ref, related_task_id, transition_id, notes, actor, created_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);\n",
+				outcome.ID, sqlQuote(snapshot.ProjectID), sqlQuote(outcome.TaskID), sqlQuote(outcome.Kind), sqlQuote(outcome.OccurredAt), sqlNullString(outcome.SourceRef), sqlNullString(outcome.RelatedTaskID), sqlInt64(outcome.TransitionID), sqlNullString(outcome.Notes), sqlQuote(outcome.Actor), sqlQuote(outcome.CreatedAt))
 		}
 	}
 	for _, session := range sessions {
@@ -20335,6 +20397,8 @@ func renderPostgresImportSQL(snapshot store.Snapshot, sessions []store.Session) 
 		fmt.Fprintf(&b, "INSERT INTO track_memory_lifecycle (id, project_id, track_id, from_disposition, to_disposition, reason, promotion_target, canonical_commit, superseded_by_track_id, actor, created_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);\n",
 			row.ID, sqlQuote(snapshot.ProjectID), sqlQuote(row.TrackID), sqlQuote(row.FromDisposition), sqlQuote(row.ToDisposition), sqlQuote(row.Reason), sqlNullString(row.PromotionTarget), sqlNullString(row.CanonicalCommit), sqlNullString(row.SupersededByTrackID), sqlQuote(row.Actor), sqlQuote(row.CreatedAt))
 	}
+	b.WriteString("SELECT setval(pg_get_serial_sequence('task_state_history', 'id'), COALESCE((SELECT MAX(id) FROM task_state_history), 1), EXISTS (SELECT 1 FROM task_state_history));\n")
+	b.WriteString("SELECT setval(pg_get_serial_sequence('task_outcomes', 'id'), COALESCE((SELECT MAX(id) FROM task_outcomes), 1), EXISTS (SELECT 1 FROM task_outcomes));\n")
 	return b.String()
 }
 
@@ -20361,6 +20425,13 @@ func sqlIntPtr(value *int) string {
 		return "NULL"
 	}
 	return strconv.Itoa(*value)
+}
+
+func sqlInt64(value int64) string {
+	if value == 0 {
+		return "NULL"
+	}
+	return strconv.FormatInt(value, 10)
 }
 
 func sqlNullString(value string) string {
@@ -20396,6 +20467,7 @@ func compareRehearsalSnapshots(source, rehearsal store.Snapshot, sourceSessions,
 	compareInt("summary", "evidence", sourceCounts.Evidence, rehearsalCounts.Evidence)
 	compareInt("summary", "handoffs", sourceCounts.Handoffs, rehearsalCounts.Handoffs)
 	compareInt("summary", "reviews", sourceCounts.Reviews, rehearsalCounts.Reviews)
+	compareInt("summary", "outcomes", sourceCounts.Outcomes, rehearsalCounts.Outcomes)
 	compareInt("summary", "sessions", sourceCounts.Sessions, rehearsalCounts.Sessions)
 	compareInt("summary", "track_memories", sourceCounts.TrackMemories, rehearsalCounts.TrackMemories)
 	compareInt("summary", "track_memory_lifecycle", sourceCounts.TrackMemoryLifecycle, rehearsalCounts.TrackMemoryLifecycle)
@@ -20435,6 +20507,7 @@ func rehearsalCounts(snapshot store.Snapshot) dbRehearsalCounts {
 		counts.Evidence += len(task.Evidence)
 		counts.Handoffs += len(task.Handoffs)
 		counts.Reviews += len(task.Reviews)
+		counts.Outcomes += len(task.Outcomes)
 		counts.ByStatus[task.Task.Status]++
 	}
 	return counts
@@ -20449,6 +20522,7 @@ func rehearsalTaskSummaries(snapshot store.Snapshot) map[string]dbRehearsalTaskS
 			Evidence:    len(task.Evidence),
 			Handoffs:    len(task.Handoffs),
 			Reviews:     len(task.Reviews),
+			Outcomes:    len(task.Outcomes),
 		}
 	}
 	return out
@@ -20910,6 +20984,10 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if err != nil {
 		return err
 	}
+	outcomes, err := s.TaskOutcomes(ctx, taskID)
+	if err != nil {
+		return err
+	}
 	uxMediaEvidence := evidencemodel.UXMediaRows(evidence)
 	uxMediaSummary := evidencemodel.UXMediaSummaryFor(uxMediaEvidence)
 	if asJSON {
@@ -20928,6 +21006,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			CompletionHandbacks  []completionhandback.Handback          `json:"completion_handbacks,omitempty"`
 			Reviews              []store.Review                         `json:"reviews"`
 			Decisions            []store.TaskDecision                   `json:"decisions,omitempty"`
+			Outcomes             []store.TaskOutcome                    `json:"outcomes,omitempty"`
 			ReviewPolicy         reviewpolicy.Evaluation                `json:"review_policy,omitempty"`
 			MissingReviewDomains []string                               `json:"missing_review_domains,omitempty"`
 			ReviewHandback       *coord.ReviewCompletionHandback        `json:"review_handback,omitempty"`
@@ -20937,7 +21016,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			UsageRollups         []store.UsageRollup                    `json:"usage_rollups"`
 			Batches              []store.WorkBatch                      `json:"batches"`
 			Notifications        []store.Notification                   `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, decisions, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
+		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, decisions, outcomes, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := reviewPolicy.MissingReviewDomains
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
@@ -20963,7 +21042,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 		if from == "" {
 			from = "new"
 		}
-		fmt.Printf("- %s -> %s by %s %s\n", from, tr.ToStatus, tr.Actor, tr.Reason)
+		fmt.Printf("- id=%d %s -> %s by %s %s\n", tr.ID, from, tr.ToStatus, tr.Actor, tr.Reason)
 	}
 	fmt.Println("\nevidence:")
 	for _, ev := range evidence {
@@ -20975,6 +21054,13 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	}
 	fmt.Println("\ntask decisions:")
 	printTaskDecisions(decisions)
+	fmt.Println("\noutcomes:")
+	if len(outcomes) == 0 {
+		fmt.Println("- none")
+	}
+	for _, outcome := range outcomes {
+		fmt.Printf("- kind=%s occurred_at=%s source_ref=%s related_task=%s transition_id=%d notes=%s\n", outcome.Kind, outcome.OccurredAt, firstNonEmpty(outcome.SourceRef, "none"), firstNonEmpty(outcome.RelatedTaskID, "none"), outcome.TransitionID, firstNonEmpty(outcome.Notes, "none"))
+	}
 	fmt.Println("\nux media evidence:")
 	if len(uxMediaEvidence) == 0 {
 		fmt.Println("- none")
@@ -21224,7 +21310,7 @@ func usage() {
 	fmt.Println("Queue and task state:")
 	fmt.Println("  init, agent-guide, agent-contract, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail, decision")
 	fmt.Println("Evidence and review:")
-	fmt.Println("  record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
+	fmt.Println("  record evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  work, session, lane, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
@@ -21261,7 +21347,7 @@ func printCommandHelp(command string) bool {
 		"git-check":                  "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"doctor":                     "fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json]\n  Run read-only local capability diagnostics for agent, git, dashboard, provider, and rehearsal surfaces.",
-		"record":                     "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"record":                     "fairway record evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
 		"route":                      "fairway route review <task-id> ... | fairway route review-preflight [--task <task-id>]\n  Route one review or validate project-wide review-domain coverage without mutation.",

@@ -11,6 +11,7 @@ type CommitDetail struct {
 	SHA          string   `json:"sha"`
 	ShortSHA     string   `json:"short_sha"`
 	AuthorDate   string   `json:"author_date,omitempty"`
+	CommitDate   string   `json:"commit_date,omitempty"`
 	ChangedFiles []string `json:"changed_files,omitempty"`
 }
 
@@ -23,17 +24,21 @@ func ResolveCommit(root, ref string) (CommitDetail, error) {
 	if err != nil {
 		return CommitDetail{}, fmt.Errorf("commit %q not found", ref)
 	}
-	metadata, err := output(root, "show", "-s", "--format=%h%x1f%aI", sha)
+	metadata, err := output(root, "show", "-s", "--format=%h%x1f%aI%x1f%cI", sha)
 	if err != nil {
 		return CommitDetail{}, err
 	}
-	parts := strings.SplitN(metadata, "\x1f", 2)
+	parts := strings.SplitN(metadata, "\x1f", 3)
 	detail := CommitDetail{SHA: sha}
 	if len(parts) > 0 {
 		detail.ShortSHA = parts[0]
 	}
 	if len(parts) == 2 {
 		detail.AuthorDate = parts[1]
+	}
+	if len(parts) >= 3 {
+		detail.AuthorDate = parts[1]
+		detail.CommitDate = parts[2]
 	}
 	detail.ChangedFiles, err = changedFilesForCommit(root, sha)
 	if err != nil {

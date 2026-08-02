@@ -70,6 +70,28 @@ func TestValidateConsumerReadiness(t *testing.T) {
 	}
 }
 
+func TestValidateControlEffectivenessPathExclusions(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.ControlEffectiveness.PathExclusions = []ControlPathExclusion{
+		{Pattern: "dist/**", Category: "generated", Rationale: "build output"},
+		{Pattern: "website/package-lock.json", Category: "high_churn", Rationale: "dependency lock"},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []ControlPathExclusion{
+		{Pattern: "../outside", Category: "generated", Rationale: "outside"},
+		{Pattern: "dist/**", Category: "unknown", Rationale: "bad category"},
+		{Pattern: "dist/**", Category: "generated"},
+	} {
+		candidate := Defaults(t.TempDir())
+		candidate.ControlEffectiveness.PathExclusions = []ControlPathExclusion{invalid}
+		if err := Validate(candidate); err == nil {
+			t.Fatalf("invalid exclusion accepted: %+v", invalid)
+		}
+	}
+}
+
 func TestValidateRuleSources(t *testing.T) {
 	base := Defaults(t.TempDir())
 	base.RuleSources = []RuleSource{

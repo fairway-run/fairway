@@ -270,6 +270,7 @@ func TestCLI_DBRehearsal(t *testing.T) {
 	runOK(t, "import", "tasks.yaml")
 	runOK(t, "record", "evidence", "T-001", "--command-text", "go test ./...", "--result", "pass")
 	runOK(t, "record", "review", "T-001", "--reviewer", "arch", "--domain", "arch", "--verdict", "approve", "--reason", "ok")
+	runOK(t, "record", "outcome", "T-001", "--kind", "incident", "--source-ref", "INC-1")
 
 	outDir := filepath.Join(repo, "rehearsal")
 	out := runCapture(t, "db", "rehearsal", "--backend", "postgres", "--out", outDir)
@@ -302,11 +303,13 @@ func TestCLI_DBRehearsal(t *testing.T) {
 			Tasks    int `json:"tasks"`
 			Evidence int `json:"evidence"`
 			Reviews  int `json:"reviews"`
+			Outcomes int `json:"outcomes"`
 		} `json:"source_counts"`
 		RehearsalCounts struct {
 			Tasks    int `json:"tasks"`
 			Evidence int `json:"evidence"`
 			Reviews  int `json:"reviews"`
+			Outcomes int `json:"outcomes"`
 		} `json:"rehearsal_counts"`
 		Boundaries []string `json:"boundaries"`
 	}
@@ -316,7 +319,7 @@ func TestCLI_DBRehearsal(t *testing.T) {
 	if !manifest.OK || manifest.Backend != "postgres" || !manifest.CompatOK || !manifest.EquivalenceOK {
 		t.Fatalf("manifest=%s", string(manifestData))
 	}
-	if manifest.SourceCounts.Tasks != 1 || manifest.SourceCounts.Evidence != 1 || manifest.SourceCounts.Reviews != 1 {
+	if manifest.SourceCounts.Tasks != 1 || manifest.SourceCounts.Evidence != 1 || manifest.SourceCounts.Reviews != 1 || manifest.SourceCounts.Outcomes != 1 {
 		t.Fatalf("source counts=%+v, want task/evidence/review counts", manifest.SourceCounts)
 	}
 	if manifest.SourceCounts != manifest.RehearsalCounts {
@@ -419,6 +422,15 @@ func TestDBRehearsalPostgresProofHelpers(t *testing.T) {
 				Commit:    "abc123",
 				CreatedAt: "2026-07-06T00:04:00Z",
 			}},
+			Outcomes: []store.TaskOutcome{{
+				ID:         7,
+				TaskID:     "T-001",
+				Kind:       "incident",
+				OccurredAt: "2026-07-06T00:04:30Z",
+				SourceRef:  "INC-1",
+				Actor:      "ops",
+				CreatedAt:  "2026-07-06T00:04:31Z",
+			}},
 		}},
 	}
 	sql := renderPostgresImportSQL(snapshot, []store.Session{{
@@ -445,7 +457,10 @@ func TestDBRehearsalPostgresProofHelpers(t *testing.T) {
 		"INSERT INTO task_evidence",
 		"INSERT INTO task_handoffs",
 		"INSERT INTO task_reviews",
+		"INSERT INTO task_outcomes",
 		"INSERT INTO agent_sessions",
+		"setval(pg_get_serial_sequence('task_state_history', 'id')",
+		"setval(pg_get_serial_sequence('task_outcomes', 'id')",
 		"'[\"prove import\"]'",
 	} {
 		assertContains(t, sql, want)
@@ -694,7 +709,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"decision", "list", "T-001", "--help"}, "fairway decision list <task-id>"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
-		{[]string{"record", "--help"}, "fairway record evidence|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},
+		{[]string{"record", "--help"}, "fairway record evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},
 		{[]string{"record", "completion-handback", "--help"}, "fairway record completion-handback <task-id> --to <role> --next-action <text>"},
 		{[]string{"record", "completion-handback-supersede", "--help"}, "fairway record completion-handback-supersede <task-id> --handoff-id <id> --reason <text>"},
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
@@ -2074,7 +2089,7 @@ required_features = ["managed_binary_cache"]
 `, pinned))
 
 	report := runCapture(t, "--json", "readiness", "capabilities")
-	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 13`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
+	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 14`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
 		assertContains(t, report, want)
 	}
 

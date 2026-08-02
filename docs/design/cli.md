@@ -92,6 +92,7 @@ fairway tree <task-id> [--depth <n>]                    # print descendant tree
 fairway list [--status <state[,state]>]... [--role <role>] [--ready] # list tasks by status with dependency readiness summary
 fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]
 fairway record evidence <task-id> --command-text <text> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <text>]
+fairway record outcome <task-id> --kind <incident|rollback|reopen|corrective|superseding_task> [--occurred-at <rfc3339>] [--source-ref <ref>] [--related-task <task-id>] [--transition-id <id>] [--notes <bounded-context>]
 fairway record guard-report <task-id> --guard <name> [--mode <report_only|warning|blocking>] [--finding <text>]... [--false-positive <text>]... [--allowed-debt <text>]... [--graduation-criteria <text>] [--artifact <path>] [--result <result>]
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
 fairway record completion-handback <task-id> --to <role> --next-action <text> [--completion-state <state>] [--evidence <path>]... [--approval-boundary <text>] [--provider <name>] [--target <thread-or-adapter>] [--state <handoff_recorded|notification_delivered|thread_steered|notification_failed>] [--reason <text>]
@@ -146,7 +147,7 @@ fairway preflight [--role <role>] [--base <ref>]       # validate current worktr
 fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json] # read-only local capability and runtime-network diagnostics
 fairway workflow check [--mode <task|close|deploy>] [--task-id <id>] [--require-clean] [--require-pushed] # guard task/review/deploy workflow boundaries
 fairway workflow closeout <task-id> [--dry-run] [--apply] [--preserve-branch-reason <reason>] # report lane branch/worktree/session closeout debt
-fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory coverage audit for commits, task metadata, evidence, and reviews
+fairway audit work-coverage [--since-ref <ref> | --since-duration <duration>] [--task-id <id>] [--dry-run] # advisory commit/task coverage, configured exclusions, structured outcomes, and 7/14/30-day post-promotion file-touch facts
 fairway audit ci-learning [--task-id <id>] [--template] # classify failed CI/deploy/smoke/UAT evidence and follow-up coverage
 fairway audit notifications [--task <task-id>] [--all] # read-only provider notification lifecycle audit across waits and handbacks
 fairway audit docs-backlog [--doc <path>]... # advisory coordination docs-to-backlog coverage audit
@@ -509,10 +510,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   Plane credentials come from `PLANE_BASE_URL`, `PLANE_WORKSPACE`,
   `PLANE_PROJECT`, and eventually `PLANE_API_TOKEN`.
 - `audit work-coverage` is advisory by default. It compares commits since a
-  base ref or duration window against Fairway task IDs, task `source_paths` /
-  `target_paths`, evidence rows, and required review domains. Use it before
-  review, deploy, and release boundaries to catch real work that happened
-  outside task/evidence/review coverage.
+  base ref or duration window against Fairway task IDs, canonical task commit
+  links, task `source_paths` / `target_paths`, evidence rows, and required
+  review domains. It pins and returns the analyzed tip. Explicit commit linkage
+  and path ownership are separate facts, so broad path metadata cannot inflate
+  commit coverage. Use it before review, deploy, and release boundaries to
+  catch real work that happened outside task/evidence/review coverage.
 - `audit ci-learning` and `audit failure-routing` are advisory by default. They
   share the same deterministic read model; `failure-routing` uses
   failure-routing help text and a `failure_routing_ok` human status label for
@@ -993,3 +996,9 @@ authority. See [Sovereign Customer Key Rehearsal](../operations/sovereign-custom
 - Human format by default: tables, color when stdout is a TTY.
 - `--json` for everything that lists or returns structured data.
 - Exit codes: `0` success, `1` validation / config error, `2` runtime error (DB, git), `3` not found, `4` invariant violation.
+- `record outcome` appends an explicit task-linked outcome. `incident` and
+  `rollback` require `--source-ref`; `corrective` and `superseding_task`
+  require a different task through `--related-task`; and `reopen` requires the
+  ID of a matching terminal-to-active history row through `--transition-id`.
+  Fairway never infers these links from notes or commit prose, and rejects
+  secret-like retained content.

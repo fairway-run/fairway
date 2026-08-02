@@ -40,6 +40,8 @@ type Commit struct {
 	Subject      string   `json:"subject"`
 	Body         string   `json:"body"`
 	AuthorDate   string   `json:"author_date"`
+	CommitDate   string   `json:"commit_date"`
+	ParentCount  int      `json:"parent_count"`
 	ChangedFiles []string `json:"changed_files"`
 }
 
@@ -303,12 +305,49 @@ func CommitsSince(root string, since time.Time) ([]Commit, error) {
 	if since.IsZero() {
 		return nil, fmt.Errorf("since time is required")
 	}
-	return commits(root, "--since="+since.Format(time.RFC3339))
+	return commits(root, "--since="+since.Format(time.RFC3339), "HEAD")
 }
 
-func commits(root string, rangeArg string) ([]Commit, error) {
-	format := "%H%x1f%h%x1f%aI%x1f%s%x1f%b%x1e"
-	out, err := output(root, "log", "--reverse", "--format="+format, rangeArg)
+func CommitsAfter(root, ref string) ([]Commit, error) {
+	return CommitsBetween(root, ref, "HEAD")
+}
+
+func CommitsBetween(root, ref, tip string) ([]Commit, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return nil, fmt.Errorf("commit ref is required")
+	}
+	tip = strings.TrimSpace(tip)
+	if tip == "" {
+		return nil, fmt.Errorf("commit tip is required")
+	}
+	if err := run(root, "rev-parse", "--verify", ref+"^{commit}"); err != nil {
+		return nil, fmt.Errorf("commit %q not found: %w", ref, err)
+	}
+	if err := run(root, "rev-parse", "--verify", tip+"^{commit}"); err != nil {
+		return nil, fmt.Errorf("commit tip %q not found: %w", tip, err)
+	}
+	if run(root, "merge-base", "--is-ancestor", ref, tip) != nil {
+		return nil, fmt.Errorf("commit %q is not an ancestor of %q", ref, tip)
+	}
+	return commits(root, ref+".."+tip)
+}
+
+func CommitsSinceAt(root string, since time.Time, tip string) ([]Commit, error) {
+	if since.IsZero() {
+		return nil, fmt.Errorf("since time is required")
+	}
+	if err := run(root, "rev-parse", "--verify", strings.TrimSpace(tip)+"^{commit}"); err != nil {
+		return nil, fmt.Errorf("commit tip %q not found: %w", tip, err)
+	}
+	return commits(root, "--since="+since.Format(time.RFC3339), tip)
+}
+
+func commits(root string, args ...string) ([]Commit, error) {
+	format := "%H%x1f%h%x1f%aI%x1f%cI%x1f%P%x1f%s%x1f%b%x1e"
+	gitArgs := []string{"log", "--reverse", "--format=" + format}
+	gitArgs = append(gitArgs, args...)
+	out, err := output(root, gitArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -320,16 +359,18 @@ func commits(root string, rangeArg string) ([]Commit, error) {
 	for _, raw := range strings.Split(out, "\x1e") {
 		raw = strings.TrimPrefix(raw, "\n")
 		raw = strings.TrimSuffix(raw, "\n")
-		parts := strings.SplitN(raw, "\x1f", 5)
-		if len(parts) != 5 {
+		parts := strings.SplitN(raw, "\x1f", 7)
+		if len(parts) != 7 {
 			continue
 		}
 		commit := Commit{
-			SHA:        parts[0],
-			ShortSHA:   parts[1],
-			AuthorDate: parts[2],
-			Subject:    parts[3],
-			Body:       strings.TrimSpace(parts[4]),
+			SHA:         parts[0],
+			ShortSHA:    parts[1],
+			AuthorDate:  parts[2],
+			CommitDate:  parts[3],
+			ParentCount: len(strings.Fields(parts[4])),
+			Subject:     parts[5],
+			Body:        strings.TrimSpace(parts[6]),
 		}
 		files, err := changedFilesForCommit(root, commit.SHA)
 		if err != nil {

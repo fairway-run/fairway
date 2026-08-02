@@ -1088,6 +1088,70 @@ func TestSourceFactTaskIDIsProjectScoped(t *testing.T) {
 	}
 }
 
+func TestTaskOutcomesAreStructuredAndProjectScoped(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{
+		{ID: "T-001", Title: "Promoted change", Role: "backend"},
+		{ID: "T-002", Title: "Corrective change", Role: "backend"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	incident, err := s.RecordTaskOutcome(ctx, TaskOutcome{TaskID: "T-001", Kind: "incident", OccurredAt: "2026-08-01T12:00:00Z", SourceRef: "incident:INC-42", Notes: "bounded reference"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if incident.ID == 0 || incident.Actor == "" || incident.OccurredAt != "2026-08-01T12:00:00Z" {
+		t.Fatalf("incident=%+v", incident)
+	}
+	if _, err := s.RecordTaskOutcome(ctx, TaskOutcome{TaskID: "T-001", Kind: "corrective", RelatedTaskID: "T-002"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "in_progress", "start", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "done", "complete", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, "T-001", "todo", "reopen", false); err != nil {
+		t.Fatal(err)
+	}
+	_, transitions, _, _, _, err := s.TaskDetail(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopenTransitionID := transitions[len(transitions)-1].ID
+	if _, err := s.RecordTaskOutcome(ctx, TaskOutcome{TaskID: "T-001", Kind: "reopen", TransitionID: reopenTransitionID}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.TaskOutcomes(ctx, "T-001")
+	if err != nil || len(rows) != 3 || rows[1].RelatedTaskID != "T-002" || rows[2].TransitionID != reopenTransitionID {
+		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+	if count, err := s.AuditCount(ctx, "task.outcome.record"); err != nil || count != 3 {
+		t.Fatalf("outcome audit count=%d err=%v", count, err)
+	}
+	for _, invalid := range []TaskOutcome{
+		{TaskID: "T-001", Kind: "unknown"},
+		{TaskID: "T-001", Kind: "incident"},
+		{TaskID: "T-001", Kind: "corrective"},
+		{TaskID: "T-001", Kind: "corrective", RelatedTaskID: "T-001"},
+		{TaskID: "T-001", Kind: "reopen", OccurredAt: "yesterday"},
+		{TaskID: "T-001", Kind: "reopen", TransitionID: 999999},
+		{TaskID: "T-001", Kind: "reopen", SourceRef: "line one\nline two"},
+		{TaskID: "T-001", Kind: "reopen", Notes: strings.Repeat("x", 4097)},
+		{TaskID: "T-001", Kind: "reopen", Notes: "access_token=SHOULD_NOT_PERSIST"},
+	} {
+		if _, err := s.RecordTaskOutcome(ctx, invalid); err == nil {
+			t.Fatalf("invalid outcome accepted: %+v", invalid)
+		}
+	}
+	secret := "access_token=SHOULD_NOT_PERSIST"
+	if _, err := s.RecordTaskOutcome(ctx, TaskOutcome{TaskID: "T-001", Kind: "incident", SourceRef: secret}); err == nil || strings.Contains(err.Error(), "SHOULD_NOT_PERSIST") {
+		t.Fatalf("secret outcome error=%v", err)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), "test")

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subashram/fairway/internal/secretscan"
 	_ "modernc.org/sqlite"
 )
 
@@ -103,6 +104,27 @@ type Evidence struct {
 	DurationSeconds *int
 	Notes           string
 	CreatedAt       string
+}
+
+type TaskOutcome struct {
+	ID            int64  `json:"id"`
+	TaskID        string `json:"task_id"`
+	Kind          string `json:"kind"`
+	OccurredAt    string `json:"occurred_at"`
+	SourceRef     string `json:"source_ref,omitempty"`
+	RelatedTaskID string `json:"related_task_id,omitempty"`
+	TransitionID  int64  `json:"transition_id,omitempty"`
+	Notes         string `json:"notes,omitempty"`
+	Actor         string `json:"actor"`
+	CreatedAt     string `json:"created_at"`
+}
+
+var taskOutcomeKinds = map[string]bool{
+	"incident":         true,
+	"rollback":         true,
+	"reopen":           true,
+	"corrective":       true,
+	"superseding_task": true,
 }
 
 type TaskDecision struct {
@@ -454,6 +476,7 @@ type EventSource struct {
 }
 
 type Transition struct {
+	ID         int64
 	FromStatus string
 	ToStatus   string
 	Actor      string
@@ -479,11 +502,12 @@ type Snapshot struct {
 }
 
 type SnapshotTask struct {
-	Task        Task         `json:"task"`
-	Transitions []Transition `json:"transitions"`
-	Evidence    []Evidence   `json:"evidence"`
-	Handoffs    []Handoff    `json:"handoffs"`
-	Reviews     []Review     `json:"reviews"`
+	Task        Task          `json:"task"`
+	Transitions []Transition  `json:"transitions"`
+	Evidence    []Evidence    `json:"evidence"`
+	Handoffs    []Handoff     `json:"handoffs"`
+	Reviews     []Review      `json:"reviews"`
+	Outcomes    []TaskOutcome `json:"outcomes,omitempty"`
 }
 
 type PruneResult struct {
@@ -492,6 +516,7 @@ type PruneResult struct {
 	EvidenceRows   int64 `json:"evidence_rows"`
 	HandoffRows    int64 `json:"handoff_rows"`
 	ReviewRows     int64 `json:"review_rows"`
+	OutcomeRows    int64 `json:"outcome_rows"`
 	CheckpointRows int64 `json:"checkpoint_rows"`
 	WatcherRows    int64 `json:"watcher_rows"`
 }
@@ -755,6 +780,9 @@ func (s *Store) PruneStale(ctx context.Context) (PruneResult, error) {
 	if result.ReviewRows, err = deleted(`DELETE FROM task_reviews AS o WHERE ` + orphan); err != nil {
 		return PruneResult{}, err
 	}
+	if result.OutcomeRows, err = deleted(`DELETE FROM task_outcomes AS o WHERE ` + orphan); err != nil {
+		return PruneResult{}, err
+	}
 	if result.HistoryRows, err = deleted(`DELETE FROM task_state_history AS o WHERE ` + orphan); err != nil {
 		return PruneResult{}, err
 	}
@@ -779,12 +807,17 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 		if err != nil {
 			return Snapshot{}, err
 		}
+		outcomes, err := s.TaskOutcomes(ctx, task.Definition.ID)
+		if err != nil {
+			return Snapshot{}, err
+		}
 		snapshot.Tasks = append(snapshot.Tasks, SnapshotTask{
 			Task:        task,
 			Transitions: transitions,
 			Evidence:    evidence,
 			Handoffs:    handoffs,
 			Reviews:     reviews,
+			Outcomes:    outcomes,
 		})
 	}
 	snapshot.TrackMemories, err = s.TrackMemories(ctx)
@@ -2630,6 +2663,125 @@ func (s *Store) RecordEvidence(ctx context.Context, taskID string, ev Evidence) 
 	return err
 }
 
+func (s *Store) RecordTaskOutcome(ctx context.Context, outcome TaskOutcome) (TaskOutcome, error) {
+	outcome.TaskID = strings.TrimSpace(outcome.TaskID)
+	outcome.Kind = strings.TrimSpace(outcome.Kind)
+	outcome.SourceRef = strings.TrimSpace(outcome.SourceRef)
+	outcome.RelatedTaskID = strings.TrimSpace(outcome.RelatedTaskID)
+	outcome.Notes = strings.TrimSpace(outcome.Notes)
+	if outcome.TaskID == "" {
+		return TaskOutcome{}, errors.New("task id is required")
+	}
+	if !taskOutcomeKinds[outcome.Kind] {
+		return TaskOutcome{}, fmt.Errorf("invalid task outcome kind %q", outcome.Kind)
+	}
+	if strings.ContainsAny(outcome.SourceRef, "\r\n") || len(outcome.SourceRef) > 1024 {
+		return TaskOutcome{}, errors.New("task outcome source ref must be a single line no longer than 1024 bytes")
+	}
+	if len(outcome.Notes) > 4096 {
+		return TaskOutcome{}, errors.New("task outcome notes must not exceed 4096 bytes")
+	}
+	if secretscan.Contains([]byte(outcome.SourceRef)) || secretscan.Contains([]byte(outcome.Notes)) {
+		return TaskOutcome{}, errors.New("task outcome contains prohibited secret-like content")
+	}
+	if (outcome.Kind == "corrective" || outcome.Kind == "superseding_task") && outcome.RelatedTaskID == "" {
+		return TaskOutcome{}, fmt.Errorf("%s outcome requires related task id", outcome.Kind)
+	}
+	if (outcome.Kind == "corrective" || outcome.Kind == "superseding_task") && outcome.RelatedTaskID == outcome.TaskID {
+		return TaskOutcome{}, fmt.Errorf("%s outcome cannot reference its own task", outcome.Kind)
+	}
+	if outcome.Kind == "reopen" && outcome.TransitionID == 0 {
+		return TaskOutcome{}, errors.New("reopen outcome requires transition id")
+	}
+	if outcome.Kind != "reopen" && outcome.TransitionID != 0 {
+		return TaskOutcome{}, fmt.Errorf("%s outcome cannot reference a reopen transition", outcome.Kind)
+	}
+	if outcome.Kind == "incident" || outcome.Kind == "rollback" {
+		if outcome.SourceRef == "" {
+			return TaskOutcome{}, fmt.Errorf("%s outcome requires source ref", outcome.Kind)
+		}
+	}
+	occurredAt := strings.TrimSpace(outcome.OccurredAt)
+	if occurredAt == "" {
+		occurredAt = time.Now().UTC().Format(time.RFC3339Nano)
+	} else if parsed, err := time.Parse(time.RFC3339Nano, occurredAt); err != nil {
+		return TaskOutcome{}, fmt.Errorf("occurred at must use RFC3339: %w", err)
+	} else {
+		occurredAt = parsed.UTC().Format(time.RFC3339Nano)
+	}
+	createdAt := time.Now().UTC().Format(time.RFC3339Nano)
+	actor := Actor()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return TaskOutcome{}, err
+	}
+	defer tx.Rollback()
+	if outcome.Kind == "reopen" {
+		var count int
+		if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM task_state_history
+WHERE project_id=? AND task_id=? AND id=?
+  AND from_status IN ('done', 'blocked') AND to_status IN ('todo', 'in_progress')`, s.projectID, outcome.TaskID, outcome.TransitionID).Scan(&count); err != nil {
+			return TaskOutcome{}, err
+		}
+		if count != 1 {
+			return TaskOutcome{}, errors.New("reopen outcome transition must be a matching terminal-to-active task transition")
+		}
+	}
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO task_outcomes
+  (project_id, task_id, kind, occurred_at, source_ref, related_task_id, transition_id, notes, actor, created_at)
+VALUES (?, ?, ?, ?, nullif(?, ''), nullif(?, ''), nullif(?, 0), nullif(?, ''), ?, ?)`,
+		s.projectID, outcome.TaskID, outcome.Kind, occurredAt, outcome.SourceRef, outcome.RelatedTaskID, outcome.TransitionID, outcome.Notes, actor, createdAt)
+	if err := checkWriteResult(res, err); err != nil {
+		return TaskOutcome{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return TaskOutcome{}, err
+	}
+	if err := insertAudit(ctx, tx, s.projectID, AuditEvent{
+		Actor:  actor,
+		Action: "task.outcome.record",
+		TaskID: outcome.TaskID,
+		Detail: fmt.Sprintf("outcome_id=%d kind=%s related_task=%s", id, outcome.Kind, outcome.RelatedTaskID),
+	}); err != nil {
+		return TaskOutcome{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TaskOutcome{}, err
+	}
+	outcome.ID = id
+	outcome.OccurredAt = occurredAt
+	outcome.Actor = actor
+	outcome.CreatedAt = createdAt
+	return outcome, nil
+}
+
+func (s *Store) TaskOutcomes(ctx context.Context, taskID string) ([]TaskOutcome, error) {
+	query := `SELECT id, task_id, kind, occurred_at, COALESCE(source_ref, ''), COALESCE(related_task_id, ''), COALESCE(transition_id, 0), COALESCE(notes, ''), actor, created_at FROM task_outcomes WHERE project_id=?`
+	args := []any{s.projectID}
+	if strings.TrimSpace(taskID) != "" {
+		query += ` AND task_id=?`
+		args = append(args, strings.TrimSpace(taskID))
+	}
+	query += ` ORDER BY occurred_at, id`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var outcomes []TaskOutcome
+	for rows.Next() {
+		var outcome TaskOutcome
+		if err := rows.Scan(&outcome.ID, &outcome.TaskID, &outcome.Kind, &outcome.OccurredAt, &outcome.SourceRef, &outcome.RelatedTaskID, &outcome.TransitionID, &outcome.Notes, &outcome.Actor, &outcome.CreatedAt); err != nil {
+			return nil, err
+		}
+		outcomes = append(outcomes, outcome)
+	}
+	return outcomes, rows.Err()
+}
+
 func (s *Store) RecordEvidenceWithID(ctx context.Context, taskID string, ev Evidence) (int64, error) {
 	if ev.CommandText == "" {
 		return 0, errors.New("command text is required")
@@ -4358,7 +4510,7 @@ func (s *Store) evidence(ctx context.Context, taskID string) ([]Evidence, error)
 }
 
 func (s *Store) transitions(ctx context.Context, taskID string) ([]Transition, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(from_status, ''), to_status, actor, COALESCE(reason, ''), at FROM task_state_history WHERE project_id=? AND task_id=? ORDER BY at`, s.projectID, taskID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(from_status, ''), to_status, actor, COALESCE(reason, ''), at FROM task_state_history WHERE project_id=? AND task_id=? ORDER BY at`, s.projectID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -4366,7 +4518,7 @@ func (s *Store) transitions(ctx context.Context, taskID string) ([]Transition, e
 	var out []Transition
 	for rows.Next() {
 		var tr Transition
-		if err := rows.Scan(&tr.FromStatus, &tr.ToStatus, &tr.Actor, &tr.Reason, &tr.At); err != nil {
+		if err := rows.Scan(&tr.ID, &tr.FromStatus, &tr.ToStatus, &tr.Actor, &tr.Reason, &tr.At); err != nil {
 			return nil, err
 		}
 		out = append(out, tr)

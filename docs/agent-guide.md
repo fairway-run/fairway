@@ -973,6 +973,12 @@ fairway workflow check --mode deploy --require-clean --require-pushed
 # back to Fairway task metadata.
 fairway audit work-coverage --since-ref main --dry-run
 
+# Outcome boundary: attach explicit operational or corrective outcomes. Do not
+# infer incidents, rollbacks, or corrective links from prose.
+fairway record outcome T-001 --kind incident --source-ref INC-1042
+fairway record outcome T-001 --kind corrective --related-task T-017
+fairway record outcome T-001 --kind reopen --transition-id 418
+
 # Learning boundary: classify failed CI/deploy/smoke/UAT evidence and confirm
 # actionable failures have follow-up tasks.
 fairway audit ci-learning --template
@@ -1002,11 +1008,19 @@ The command reports:
   dirty worktrees, unmerged branches, remote branch leftovers, and explicit
   branch preservation reasons.
 
-`audit work-coverage` is advisory. It catches commits that do not mention or
-map to a task, changed files outside task `source_paths` / `target_paths`,
+`audit work-coverage` is advisory. It exposes observed, eligible, covered, and
+excluded denominators. Commit coverage uses only task IDs in commit metadata
+and canonical task `commit_sha` links; path ownership is reported separately
+and cannot inflate that numerator. The report also lists the resolved analyzed
+tip and configured generated or high-churn path exclusions. For completed tasks
+with a canonical commit it additionally
+reports mature 7/14/30-day same-file touch facts and separately lists explicit
+structured outcomes. A later touch is not silently called a defect. The audit
+also catches changed files outside task `source_paths` / `target_paths`,
 evidence that still needs a status decision, done tasks without required
 evidence, and missing review-domain approvals. Run it before review handoff,
-deploy/UAT attempts, and release readiness checks.
+deploy/UAT attempts, release readiness checks, and control-effectiveness
+analysis.
 
 `audit docs-backlog` is advisory. It scans coordination design docs for task
 ids, task path coverage, documented Fairway command examples, and known

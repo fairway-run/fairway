@@ -17,31 +17,32 @@ import (
 const DefaultConfigPath = ".fairway/config.toml"
 
 type Config struct {
-	Fairway                   FairwayConfig             `toml:"fairway"`
-	Runtime                   RuntimeConfig             `toml:"runtime"`
-	Dashboard                 DashboardConfig           `toml:"dashboard"`
-	Server                    ServerConfig              `toml:"server"`
-	Worktrees                 WorktreesConfig           `toml:"worktrees"`
-	Sessions                  SessionsConfig            `toml:"sessions"`
-	Coordinator               CoordinatorConfig         `toml:"coordinator"`
-	Knowledge                 KnowledgeConfig           `toml:"knowledge"`
-	ConsumerReadiness         ConsumerReadinessConfig   `toml:"consumer_readiness"`
-	States                    StatesConfig              `toml:"states"`
-	Gates                     GatesConfig               `toml:"gates"`
-	TaskKinds                 TaskKindsConfig           `toml:"task_kinds"`
-	TaskPriorities            TaskPrioritiesConfig      `toml:"task_priorities"`
-	Roles                     []Role                    `toml:"roles"`
-	ReviewDomainAliases       map[string]string         `toml:"review_domain_aliases"`
-	ReviewRoutes              []ReviewRoute             `toml:"review_routes"`
-	WorkstreamProfiles        []WorkstreamProfile       `toml:"workstream_profiles"`
-	ReviewProfiles            []ReviewProfile           `toml:"review_profiles"`
-	PacketTemplates           []PacketTemplate          `toml:"packet_templates"`
-	RuleSources               []RuleSource              `toml:"rule_sources"`
-	ProviderTargets           []ProviderTarget          `toml:"provider_targets"`
-	ProviderModelPrices       []ProviderModelPrice      `toml:"provider_model_prices"`
-	AdvisoryAdapters          []AdvisoryAdapter         `toml:"advisory_provider_adapters"`
-	ExternalNotifiers         []ExternalNotifier        `toml:"external_notifiers"`
-	SovereignCryptoBoundaries []SovereignCryptoBoundary `toml:"sovereign_crypto_boundaries"`
+	Fairway                   FairwayConfig              `toml:"fairway"`
+	Runtime                   RuntimeConfig              `toml:"runtime"`
+	Dashboard                 DashboardConfig            `toml:"dashboard"`
+	Server                    ServerConfig               `toml:"server"`
+	Worktrees                 WorktreesConfig            `toml:"worktrees"`
+	Sessions                  SessionsConfig             `toml:"sessions"`
+	Coordinator               CoordinatorConfig          `toml:"coordinator"`
+	Knowledge                 KnowledgeConfig            `toml:"knowledge"`
+	ConsumerReadiness         ConsumerReadinessConfig    `toml:"consumer_readiness"`
+	ControlEffectiveness      ControlEffectivenessConfig `toml:"control_effectiveness"`
+	States                    StatesConfig               `toml:"states"`
+	Gates                     GatesConfig                `toml:"gates"`
+	TaskKinds                 TaskKindsConfig            `toml:"task_kinds"`
+	TaskPriorities            TaskPrioritiesConfig       `toml:"task_priorities"`
+	Roles                     []Role                     `toml:"roles"`
+	ReviewDomainAliases       map[string]string          `toml:"review_domain_aliases"`
+	ReviewRoutes              []ReviewRoute              `toml:"review_routes"`
+	WorkstreamProfiles        []WorkstreamProfile        `toml:"workstream_profiles"`
+	ReviewProfiles            []ReviewProfile            `toml:"review_profiles"`
+	PacketTemplates           []PacketTemplate           `toml:"packet_templates"`
+	RuleSources               []RuleSource               `toml:"rule_sources"`
+	ProviderTargets           []ProviderTarget           `toml:"provider_targets"`
+	ProviderModelPrices       []ProviderModelPrice       `toml:"provider_model_prices"`
+	AdvisoryAdapters          []AdvisoryAdapter          `toml:"advisory_provider_adapters"`
+	ExternalNotifiers         []ExternalNotifier         `toml:"external_notifiers"`
+	SovereignCryptoBoundaries []SovereignCryptoBoundary  `toml:"sovereign_crypto_boundaries"`
 }
 
 type RuntimeConfig struct {
@@ -118,6 +119,16 @@ type ConsumerReadinessConfig struct {
 	RequiredCapabilities []string `toml:"required_capabilities"`
 	RequiredCommands     []string `toml:"required_commands"`
 	RequiredFeatures     []string `toml:"required_features"`
+}
+
+type ControlEffectivenessConfig struct {
+	PathExclusions []ControlPathExclusion `toml:"path_exclusions"`
+}
+
+type ControlPathExclusion struct {
+	Pattern   string `toml:"pattern" json:"pattern"`
+	Category  string `toml:"category" json:"category"`
+	Rationale string `toml:"rationale" json:"rationale"`
 }
 
 type StatesConfig struct {
@@ -414,6 +425,9 @@ func Validate(cfg Config) error {
 	if err := validateConsumerReadiness(cfg.ConsumerReadiness); err != nil {
 		return err
 	}
+	if err := validateControlEffectiveness(cfg.ControlEffectiveness); err != nil {
+		return err
+	}
 	if err := validateRuntimeProfile(cfg); err != nil {
 		return err
 	}
@@ -649,6 +663,29 @@ func Validate(cfg Config) error {
 	}
 	if err := validateExternalNotifiers(cfg.ExternalNotifiers); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateControlEffectiveness(control ControlEffectivenessConfig) error {
+	seen := map[string]bool{}
+	for _, exclusion := range control.PathExclusions {
+		pattern := strings.TrimSpace(exclusion.Pattern)
+		if pattern == "" || filepath.IsAbs(pattern) || pattern == ".." || strings.HasPrefix(pattern, "../") || strings.ContainsAny(pattern, "\r\n") {
+			return errors.New("[[control_effectiveness.path_exclusions]] pattern must be a project-relative single-line pattern")
+		}
+		category := strings.TrimSpace(exclusion.Category)
+		if category != "generated" && category != "high_churn" {
+			return fmt.Errorf("[[control_effectiveness.path_exclusions]] category %q must be generated or high_churn", exclusion.Category)
+		}
+		if strings.TrimSpace(exclusion.Rationale) == "" || strings.ContainsAny(exclusion.Rationale, "\r\n") {
+			return errors.New("[[control_effectiveness.path_exclusions]] rationale must be a non-empty single line")
+		}
+		key := pattern + "\x00" + category
+		if seen[key] {
+			return fmt.Errorf("duplicate control-effectiveness path exclusion %q in category %q", pattern, category)
+		}
+		seen[key] = true
 	}
 	return nil
 }
