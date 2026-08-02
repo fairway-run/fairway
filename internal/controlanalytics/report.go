@@ -307,7 +307,7 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 		Limitations: []string{
 			"Observational associations do not establish causal impact.",
 			"Post-promotion same-file touches are a rework proxy and may include planned follow-up or adjacent work.",
-			"Only explicit review waivers, deferrals, or skipped evidence form the bypass cohort; missing records remain unknown.",
+			"Only explicit review waivers or deferrals with retained configuration authority form the bypass cohort; skipped evidence without durable actor and stable row identity remains unknown.",
 			"Review and configured workstream evidence gates are covered in v1; rule-pack trigger telemetry requires later instrumentation.",
 			"Model, provider, team, and product drift may remain inside a bounded time window.",
 		},
@@ -364,16 +364,11 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 		gateEvaluation := evidencemodel.EvaluateGate(gate, evidence, now)
 		var durations []int
 		observed := false
-		skipped := false
 		for _, item := range evidence {
 			if gate.EvidenceType != "" && item.ArtifactType != gate.EvidenceType {
 				continue
 			}
 			if item.Result == "skipped" {
-				skipped = true
-				fact.BypassReason = "matching evidence was explicitly recorded as skipped"
-				fact.BypassAuthority = "evidence_record_actor_unavailable"
-				fact.BypassSource = "evidence:" + fallback(item.ArtifactType, "unspecified") + "@" + item.CreatedAt
 				continue
 			}
 			observed = true
@@ -390,8 +385,6 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 			if !gateEvaluation.Satisfied {
 				fact.Triggered = true
 			}
-		} else if skipped {
-			fact.ControlState = "bypassed"
 		}
 		if len(durations) > 0 {
 			fact.FrictionAvailable = true

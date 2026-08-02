@@ -47,7 +47,7 @@ Every reported control row uses the following explicit states.
 | `observed` | The expected control action or evidence exists for the task. |
 | `triggered` | The control found a defect, blocked unsafe progress, requested a change, or otherwise produced its defined positive signal. |
 | `passed` | The control executed and found no issue. Passing is not equivalent to not applicable. |
-| `bypassed` | The control was applicable but explicitly waived, deferred, or omitted. The reason and authority must remain visible. |
+| `bypassed` | The control was applicable but explicitly waived or deferred. The reason, authority, and stable source identity must remain visible; legacy skipped evidence without those facts remains unknown. |
 | `unknown` | Available records cannot distinguish observed, bypassed, and not applicable. Unknown rows do not enter effectiveness comparisons. |
 
 "Fired" is not used as a persisted state because it can mean either "ran" or

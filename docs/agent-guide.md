@@ -1032,10 +1032,11 @@ fairway control report --since 720h \
 
 The report first shows commit/task and changed-file coverage, then compares
 mature tasks with an observed control only against tasks with an explicit
-waiver, deferral, or skipped evidence record. Missing control records remain
-`unknown`; immature tasks remain `right_censored`; unavailable Git outcome
-facts remain outside the outcome denominator. Results are stratified by
-profile, risk, eligible-file size band, and 7/14/30-day horizon.
+policy-backed waiver or deferral. Missing control records and skipped evidence
+without a durable actor and stable row identity remain `unknown`; immature
+tasks remain `right_censored`; unavailable Git outcome facts remain outside
+the outcome denominator. Results are stratified by profile, risk,
+eligible-file size band, and 7/14/30-day horizon.
 
 Classifications are `discriminating`, `insufficient_sample`,
 `insufficient_coverage`, `high_friction`, `mandatory_invariant`, or

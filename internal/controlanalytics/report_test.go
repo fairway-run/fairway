@@ -29,6 +29,16 @@ func TestTaskControlFactRetainsExplicitBypassProvenance(t *testing.T) {
 	}
 }
 
+func TestTaskControlFactKeepsUnattributedSkippedEvidenceUnknown(t *testing.T) {
+	now := time.Now().UTC()
+	task := store.Task{Definition: store.TaskDefinition{ID: "T-1", Profile: "p", Kind: "task", RiskLevel: "medium"}}
+	definition := controlDefinition{ID: "gate:p:test", Kind: "evidence", Profile: "p", Gate: config.WorkstreamProfileGate{Name: "test", EvidenceType: "test", RequiredEvidenceCount: 1}}
+	fact := taskControlFact(task, definition, reviewpolicy.Evaluation{}, nil, []store.Evidence{{ArtifactType: "test", Result: "skipped", CreatedAt: now.Format(time.RFC3339Nano)}}, now)
+	if fact.ControlState != "unknown" || fact.BypassReason != "" || fact.BypassAuthority != "" || fact.BypassSource != "" {
+		t.Fatalf("fact=%+v", fact)
+	}
+}
+
 func TestConfigurationDigestIncludesCohortDefiningProfiles(t *testing.T) {
 	one := config.Defaults(t.TempDir())
 	two := one
