@@ -299,6 +299,7 @@ type FilterOptions struct {
 
 type DashboardViewData struct {
 	View                  string
+	MultiProject          bool
 	Summary               DashboardSummary
 	Gates                 []GateStatus
 	GateGroups            []GateGroup
@@ -423,6 +424,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("/board/panels/diagnostics", s.boardDiagnosticsPanel)
 	mux.HandleFunc("/board/export", s.boardExport)
 	mux.HandleFunc("/reports", s.reports)
+	mux.HandleFunc("/controls", s.controls)
 	mux.HandleFunc("/wall", s.wallRedirect)
 	mux.HandleFunc("/tasks/", s.task)
 	mux.HandleFunc("/evidence/artifact", s.artifact)
@@ -980,6 +982,7 @@ func (s *MultiServer) dashboardViewData(r *http.Request) (DashboardViewData, err
 	}
 	return DashboardViewData{
 		View:                 "board",
+		MultiProject:         true,
 		Summary:              dashboardSummary(tasks, displayTasks, workstreams, readySet),
 		Groups:               groups,
 		ProjectGroups:        projectGroups,
@@ -3415,6 +3418,12 @@ var reportsTemplate = mustEmbeddedTemplateSet("reports", []string{
 	"assets/templates/partials/provider-chip.html",
 }, dashboardTemplateFuncs())
 
+var controlsTemplate = mustEmbeddedTemplateSet("controls", []string{
+	"assets/templates/layout.html",
+	"assets/templates/controls.html",
+	"assets/templates/partials/provider-chip.html",
+}, dashboardTemplateFuncs())
+
 func URL(addr string) string {
 	return fmt.Sprintf("http://%s", addr)
 }
@@ -3460,6 +3469,33 @@ func dashboardTemplateFuncs() template.FuncMap {
 				return "unknown"
 			}
 			return strconv.Itoa(*value)
+		},
+		"ratioPercent": func(value float64) string {
+			return fmt.Sprintf("%.1f%%", value*100)
+		},
+		"signedRatioPercent": func(value float64) string {
+			return fmt.Sprintf("%+.1f%%", value*100)
+		},
+		"durationSeconds": func(value int) string {
+			return (time.Duration(value) * time.Second).String()
+		},
+		"shortSHA": func(value string) string {
+			value = strings.TrimSpace(value)
+			if len(value) > 10 {
+				return value[:10]
+			}
+			return value
+		},
+		"multiProject": func(value any) bool {
+			candidate := reflect.ValueOf(value)
+			if candidate.Kind() == reflect.Pointer {
+				candidate = candidate.Elem()
+			}
+			if !candidate.IsValid() || candidate.Kind() != reflect.Struct {
+				return false
+			}
+			field := candidate.FieldByName("MultiProject")
+			return field.IsValid() && field.Kind() == reflect.Bool && field.Bool()
 		},
 		"moreTasks": func(tasks []store.Task, limit int) int {
 			if limit <= 0 || len(tasks) <= limit {

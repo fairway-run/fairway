@@ -1,6 +1,7 @@
 package controlanalytics
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +37,22 @@ func TestTaskControlFactKeepsUnattributedSkippedEvidenceUnknown(t *testing.T) {
 	fact := taskControlFact(task, definition, reviewpolicy.Evaluation{}, nil, []store.Evidence{{ArtifactType: "test", Result: "skipped", CreatedAt: now.Format(time.RFC3339Nano)}}, now)
 	if fact.ControlState != "unknown" || fact.BypassReason != "" || fact.BypassAuthority != "" || fact.BypassSource != "" {
 		t.Fatalf("fact=%+v", fact)
+	}
+}
+
+func TestStructuredOutcomeFactsPreserveBoundedSourceIdentity(t *testing.T) {
+	promotion := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	outcomes := []store.TaskOutcome{
+		{Kind: "incident", OccurredAt: promotion.Add(2 * 24 * time.Hour).Format(time.RFC3339Nano), SourceRef: "incident:INC-7"},
+		{Kind: "corrective", OccurredAt: promotion.Add(3 * 24 * time.Hour).Format(time.RFC3339Nano), RelatedTaskID: "T-2"},
+		{Kind: "reopen", OccurredAt: promotion.Add(20 * 24 * time.Hour).Format(time.RFC3339Nano), TransitionID: 42},
+	}
+	facts := structuredOutcomeFacts(outcomes, promotion, 14)
+	if len(facts) != 2 || facts[0].SourceRef != "incident:INC-7" || facts[1].RelatedTaskID != "T-2" {
+		t.Fatalf("facts=%+v", facts)
+	}
+	if got := strings.Join(outcomeFactKinds(facts), ","); got != "incident,corrective" {
+		t.Fatalf("kinds=%q", got)
 	}
 }
 

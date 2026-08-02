@@ -12,6 +12,7 @@ detail.
 | `/board` | Operator board. Filterable/sortable task table, workstreams, gates, and activity. |
 | `/board?tab=diagnostics` | Diagnostics tab for sessions, worktrees, watchers, and checkpoints. |
 | `/reports` | Daily and date-range work reports for outcomes, CI/deploy activity, reviews, and follow-ups. |
+| `/controls` | Single-project, read-only control-effectiveness cohorts and source-fact drill-down. Hidden in multi-project mode because projects can use different control configurations. |
 | `/tasks/<task-id>` | Task detail page with metadata, history, evidence, sessions, reviews, and status controls. |
 | `/wall` | Compatibility redirect to `/`. |
 
@@ -64,9 +65,26 @@ The dashboard is organized as a user flow, not independent pages:
 3. Sort, search, or filter the board table.
 4. Open a task from the table.
 5. Use `Back` on task detail to return to the filtered board view.
-6. Open Reports when the question is "what changed today, what finished, what
+
+The `Controls` view is a separate read-only quality-evidence surface. It uses
+the same `controlanalytics.Report` model as `fairway control report`; the
+dashboard does not recompute applicability, cohort membership, outcome rates,
+friction, or classification. Operators can filter the projection by analysis
+window, outcome horizon, profile, risk band, diff-size band, control family,
+and control ID. Coverage appears before outcome comparisons, and every cohort
+expands to the task IDs, control states, structured outcomes, and promotion
+commits behind the aggregate. Structured outcomes, Git touch commits, cohort
+maturity, bypass provenance, changed-file scope, configuration identity, and
+exclusions are inspectable inline. Task links provide the broader evidence,
+review, and audit drill-down. The surface is advisory and cannot mutate policy,
+waive a control, or authorize delivery. Multi-project dashboards omit this
+route because combining projects with different control configurations would
+erase cohort authority.
+6. Open Controls when the question is "which controls discriminate, at what
+   measured cost, and with what uncertainty?"
+7. Open Reports when the question is "what changed today, what finished, what
    failed, and what needs follow-up?"
-7. Switch to diagnostics from the board when session/worktree/watcher state is
+8. Switch to diagnostics from the board when session/worktree/watcher state is
    the question.
 
 ## Wall

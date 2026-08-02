@@ -1,0 +1,113 @@
+{{define "content"}}
+<main class="controls-layout">
+<header class="report-head">
+<div>
+<p class="eyebrow">Quality evidence</p>
+<h1>Control Effectiveness</h1>
+<p>Advisory comparison of observed and explicitly bypassed controls. Association is not causation.</p>
+</div>
+<div class="control-authority">
+<span>read only</span>
+<code>{{.Report.ConfigurationRevision}}</code>
+</div>
+</header>
+
+<form class="report-controls control-filters" method="get" aria-label="Control effectiveness filters">
+<label>Window<select name="window">{{range .FilterOptions.Windows}}<option value="{{.}}" {{if eq $.Filters.WindowDays .}}selected{{end}}>{{.}} days</option>{{end}}</select></label>
+<label>Outcome horizon<select name="horizon">{{range .FilterOptions.Horizons}}<option value="{{.}}" {{if eq $.Filters.Horizon .}}selected{{end}}>{{.}} days</option>{{end}}</select></label>
+<label>Profile<select name="profile"><option value="">all</option>{{range .FilterOptions.Profiles}}<option value="{{.}}" {{if eq $.Filters.Profile .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Risk<select name="risk"><option value="">all</option>{{range .FilterOptions.Risks}}<option value="{{.}}" {{if eq $.Filters.RiskBand .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Diff size<select name="size"><option value="">all</option>{{range .FilterOptions.Sizes}}<option value="{{.}}" {{if eq $.Filters.SizeBand .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Family<select name="family"><option value="">all</option>{{range .FilterOptions.Families}}<option value="{{.}}" {{if eq $.Filters.Family .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label class="control-select">Control<select name="control"><option value="">all</option>{{range .FilterOptions.Controls}}<option value="{{.}}" {{if eq $.Filters.Control .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<button class="btn" type="submit">Apply</button>
+<a class="btn" href="/controls">Reset</a>
+</form>
+
+<section class="coverage-band" aria-label="Coverage and data quality">
+<div class="coverage-primary">
+<span>Commit coverage</span>
+<b>{{ratioPercent .Report.Coverage.CommitCoverageRatio}}</b>
+<small>{{.Report.Coverage.CoveredCommits}} of {{.Report.Coverage.EligibleCommits}} eligible commits</small>
+</div>
+<div class="coverage-primary">
+<span>File coverage</span>
+<b>{{ratioPercent .Report.Coverage.FileCoverageRatio}}</b>
+<small>{{.Report.Coverage.CoveredChangedFiles}} of {{.Report.Coverage.EligibleChangedFiles}} eligible changed files</small>
+</div>
+<dl class="coverage-facts">
+<div><dt>Controls</dt><dd>{{.Summary.Controls}}</dd></div>
+<div><dt>Cohorts</dt><dd>{{.Summary.Cohorts}}</dd></div>
+<div><dt>Eligible tasks</dt><dd>{{.Summary.Eligible}}</dd></div>
+<div><dt>Unknown state</dt><dd>{{.Summary.UnknownControlState}}</dd></div>
+<div><dt>Right-censored</dt><dd>{{.Summary.RightCensored}}</dd></div>
+<div><dt>Outcome unavailable</dt><dd>{{.Summary.OutcomeUnavailable}}</dd></div>
+</dl>
+</section>
+
+{{if .Report.Limitations}}
+<section class="control-notice" aria-label="Analysis limitations">
+<b>Interpretation limits</b>
+<ul>{{range .Report.Limitations}}<li>{{.}}</li>{{end}}</ul>
+</section>
+{{end}}
+
+<section class="control-table-section">
+<header class="section-head">
+<div><h2>Control Cohorts</h2><span>Outcome delta = observed rate minus bypassed rate</span></div>
+<code>as of {{.Report.AsOf}}</code>
+</header>
+<div class="control-table-wrap">
+<table class="board-table control-table">
+<thead><tr><th>Control</th><th>Cohort</th><th>Classification</th><th>Sample</th><th>Outcome rates</th><th>Delta</th><th>Trigger yield</th><th>Friction p90</th><th>Facts</th></tr></thead>
+<tbody>
+{{range .Rows}}
+<tr>
+<td><b>{{.Result.ControlID}}</b><small>{{.Result.Family}}{{if .Result.MandatoryInvariant}} · mandatory{{end}}</small></td>
+<td><span>{{if .Result.Profile}}{{.Result.Profile}}{{else}}unprofiled{{end}}</span><small>{{.Result.RiskBand}} risk · {{.Result.SizeBand}} diff · {{.Result.HorizonDays}}d</small></td>
+<td><span class="status-pill {{safeClass .Result.Classification}}">{{.Result.Classification}}</span>{{range .Result.Limitations}}<small>{{.}}</small>{{end}}</td>
+<td><b>{{.Result.Eligible}}</b><small>{{.Result.Observed}} observed · {{.Result.Bypassed}} bypassed · {{.Result.UnknownControlState}} unknown</small></td>
+<td><span>{{ratioPercent .Result.ObservedOutcomeRate}} observed</span><small>{{ratioPercent .Result.BypassedOutcomeRate}} bypassed</small></td>
+<td><b>{{signedRatioPercent .Result.OutcomeDelta}}</b></td>
+<td><b>{{ratioPercent .Result.TriggerYield}}</b><small>{{.Result.Triggered}} of {{.Result.Observed}} observed</small></td>
+<td>{{if .Result.FrictionAvailable}}<b>{{durationSeconds .Result.FrictionP90Seconds}}</b><small>{{.Result.FrictionSamples}} samples</small>{{else}}<span class="muted">unavailable</span>{{end}}</td>
+<td>
+<details class="control-drilldown">
+<summary>{{len .Facts}} task facts</summary>
+<ul>
+{{range .Facts}}<li>
+<div class="control-fact-head"><a href="/tasks/{{.TaskID}}">{{.TaskID}}</a><span>{{.ControlState}}{{if .Triggered}} · triggered{{else if .Passed}} · passed{{end}}</span></div>
+<small>mature={{if .Mature}}yes{{else}}no{{end}} · outcome known={{if .OutcomeKnown}}yes{{else}}no{{end}}</small>
+{{if eq .ControlState "bypassed"}}<small>bypass: {{.BypassReason}} · authority={{.BypassAuthority}} · source={{.BypassSource}}</small>{{end}}
+{{if .OutcomeFacts}}<small>structured outcomes: {{range .OutcomeFacts}}{{.Kind}}{{if .SourceRef}} [{{.SourceRef}}]{{end}}{{if .RelatedTaskID}} [task {{.RelatedTaskID}}]{{end}}{{if .TransitionID}} [transition {{.TransitionID}}]{{end}} {{end}}</small>{{end}}
+{{if .PromotionCommit}}<code>promotion {{.PromotionCommit}}</code>{{end}}
+{{if .TouchCommits}}<code>touch commits {{range .TouchCommits}}{{.}} {{end}}</code>{{end}}
+{{if .EligibleFiles}}<small>eligible files: {{range .EligibleFiles}}<code>{{.}}</code> {{end}}</small>{{end}}
+{{if .ExcludedFiles}}<small>excluded files: {{range .ExcludedFiles}}<code>{{.}}</code> {{end}}</small>{{end}}
+</li>{{else}}<li>No task facts in this cohort.</li>{{end}}
+</ul>
+</details>
+</td>
+</tr>
+{{else}}
+<tr><td colspan="9">No control cohorts match this filter.</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="control-provenance" aria-label="Analysis provenance">
+<header class="section-head"><h2>Analysis Provenance</h2><span>complete source identity for reproduction</span></header>
+<dl>
+<div><dt>Analyzed Git tip</dt><dd><code>{{.Report.AnalyzedTip}}</code></dd></div>
+<div><dt>Configuration revision</dt><dd><code>{{.Report.ConfigurationRevision}}</code></dd></div>
+<div><dt>Configuration digest</dt><dd><code>{{.Report.ConfigurationDigest}}</code></dd></div>
+</dl>
+{{if .Report.Exclusions}}
+<table class="provenance-table"><thead><tr><th>Excluded path</th><th>Category</th><th>Rationale</th></tr></thead><tbody>{{range .Report.Exclusions}}<tr><td><code>{{.Pattern}}</code></td><td>{{.Category}}</td><td>{{.Rationale}}</td></tr>{{end}}</tbody></table>
+{{else}}<p class="muted">No configured path exclusions.</p>{{end}}
+<p>{{.Report.AuthorityBoundary}}</p>
+</section>
+</main>
+{{end}}

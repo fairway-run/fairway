@@ -279,6 +279,25 @@ summary:focus-visible {
   border-right: 0;
 }
 
+@media (max-width: 47.5rem) {
+  .view-toggle {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    overflow: visible;
+  }
+
+  .view-toggle a {
+    min-width: 0;
+    padding-inline: var(--space-2);
+    border-bottom: var(--border-width) solid var(--line);
+  }
+
+  .view-toggle a:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
+
 .dropdown {
   position: relative;
 }

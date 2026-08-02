@@ -65,27 +65,39 @@ type Coverage struct {
 }
 
 type TaskFact struct {
-	TaskID            string   `json:"task_id"`
-	ControlID         string   `json:"control_id"`
-	Family            string   `json:"family"`
-	Profile           string   `json:"profile,omitempty"`
-	RiskBand          string   `json:"risk_band"`
-	SizeBand          string   `json:"size_band"`
-	HorizonDays       int      `json:"horizon_days"`
-	Applicable        bool     `json:"applicable"`
-	ControlState      string   `json:"control_state"`
-	BypassReason      string   `json:"bypass_reason,omitempty"`
-	BypassAuthority   string   `json:"bypass_authority,omitempty"`
-	BypassSource      string   `json:"bypass_source,omitempty"`
-	Mature            bool     `json:"mature"`
-	OutcomeKnown      bool     `json:"outcome_known"`
-	AnyOutcome        bool     `json:"any_outcome"`
-	OutcomeKinds      []string `json:"outcome_kinds,omitempty"`
-	Triggered         bool     `json:"triggered"`
-	Passed            bool     `json:"passed"`
-	FrictionAvailable bool     `json:"friction_available"`
-	FrictionSeconds   int      `json:"friction_seconds,omitempty"`
-	PromotionCommit   string   `json:"promotion_commit,omitempty"`
+	TaskID            string        `json:"task_id"`
+	ControlID         string        `json:"control_id"`
+	Family            string        `json:"family"`
+	Profile           string        `json:"profile,omitempty"`
+	RiskBand          string        `json:"risk_band"`
+	SizeBand          string        `json:"size_band"`
+	HorizonDays       int           `json:"horizon_days"`
+	Applicable        bool          `json:"applicable"`
+	ControlState      string        `json:"control_state"`
+	BypassReason      string        `json:"bypass_reason,omitempty"`
+	BypassAuthority   string        `json:"bypass_authority,omitempty"`
+	BypassSource      string        `json:"bypass_source,omitempty"`
+	Mature            bool          `json:"mature"`
+	OutcomeKnown      bool          `json:"outcome_known"`
+	AnyOutcome        bool          `json:"any_outcome"`
+	OutcomeKinds      []string      `json:"outcome_kinds,omitempty"`
+	OutcomeFacts      []OutcomeFact `json:"outcome_facts,omitempty"`
+	Triggered         bool          `json:"triggered"`
+	Passed            bool          `json:"passed"`
+	FrictionAvailable bool          `json:"friction_available"`
+	FrictionSeconds   int           `json:"friction_seconds,omitempty"`
+	PromotionCommit   string        `json:"promotion_commit,omitempty"`
+	EligibleFiles     []string      `json:"eligible_files,omitempty"`
+	ExcludedFiles     []string      `json:"excluded_files,omitempty"`
+	TouchCommits      []string      `json:"touch_commits,omitempty"`
+}
+
+type OutcomeFact struct {
+	Kind          string `json:"kind"`
+	OccurredAt    string `json:"occurred_at,omitempty"`
+	SourceRef     string `json:"source_ref,omitempty"`
+	RelatedTaskID string `json:"related_task_id,omitempty"`
+	TransitionID  int64  `json:"transition_id,omitempty"`
 }
 
 type ControlResult struct {
@@ -263,22 +275,27 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 			touch := touchByTask[task.Definition.ID]
 			base.SizeBand = sizeBand(len(touch.EligibleFiles))
 			base.PromotionCommit = touch.PromotionCommit
+			base.EligibleFiles = append([]string(nil), touch.EligibleFiles...)
+			base.ExcludedFiles = append([]string(nil), touch.ExcludedFiles...)
 			promotionAt, _ := time.Parse(time.RFC3339, touch.PromotionAt)
 			for _, days := range []int{7, 14, 30} {
 				fact := base
 				fact.HorizonDays = days
 				fact.Mature = !promotionAt.IsZero() && !now.Before(promotionAt.Add(time.Duration(days)*24*time.Hour))
 				window, windowFound := touchWindow(touch.Windows, days)
-				kinds := structuredOutcomeKinds(outcomesByTask[task.Definition.ID], promotionAt, days)
+				outcomeFacts := structuredOutcomeFacts(outcomesByTask[task.Definition.ID], promotionAt, days)
+				kinds := outcomeFactKinds(outcomeFacts)
 				if windowFound && touch.Available {
 					fact.OutcomeKnown = true
 					if window.Touched {
 						kinds = append(kinds, "post_promotion_touch")
+						fact.TouchCommits = append([]string(nil), window.TouchCommits...)
 					}
 				} else if len(kinds) > 0 {
 					fact.OutcomeKnown = true
 				}
 				fact.OutcomeKinds = uniqueSorted(kinds)
+				fact.OutcomeFacts = outcomeFacts
 				fact.AnyOutcome = len(fact.OutcomeKinds) > 0
 				facts = append(facts, fact)
 			}
@@ -556,17 +573,28 @@ func configDigest(cfg config.Config) (string, error) {
 	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
-func structuredOutcomeKinds(outcomes []store.TaskOutcome, promotionAt time.Time, days int) []string {
+func structuredOutcomeFacts(outcomes []store.TaskOutcome, promotionAt time.Time, days int) []OutcomeFact {
 	if promotionAt.IsZero() {
 		return nil
 	}
 	deadline := promotionAt.Add(time.Duration(days) * 24 * time.Hour)
-	var kinds []string
+	var facts []OutcomeFact
 	for _, outcome := range outcomes {
 		at, err := time.Parse(time.RFC3339Nano, outcome.OccurredAt)
 		if err == nil && !at.Before(promotionAt) && !at.After(deadline) {
-			kinds = append(kinds, outcome.Kind)
+			facts = append(facts, OutcomeFact{
+				Kind: outcome.Kind, OccurredAt: outcome.OccurredAt, SourceRef: outcome.SourceRef,
+				RelatedTaskID: outcome.RelatedTaskID, TransitionID: outcome.TransitionID,
+			})
 		}
+	}
+	return facts
+}
+
+func outcomeFactKinds(facts []OutcomeFact) []string {
+	kinds := make([]string, 0, len(facts))
+	for _, fact := range facts {
+		kinds = append(kinds, fact.Kind)
 	}
 	return kinds
 }

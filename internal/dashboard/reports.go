@@ -29,6 +29,7 @@ const (
 
 type ReportViewData struct {
 	View          string                       `json:"-"`
+	MultiProject  bool                         `json:"-"`
 	Window        ReportWindow                 `json:"window"`
 	Filters       ReportFilters                `json:"filters"`
 	FilterOptions FilterOptions                `json:"filter_options"`
@@ -421,6 +422,7 @@ func (s *MultiServer) reportViewData(r *http.Request) (ReportViewData, error) {
 		activity = activity[:maxActivityFetchLimit]
 	}
 	return buildReportViewData(r, reportBuildInput{
+		MultiProject:  true,
 		Window:        window,
 		Start:         start,
 		End:           end,
@@ -439,6 +441,7 @@ func (s *MultiServer) reportViewData(r *http.Request) (ReportViewData, error) {
 }
 
 type reportBuildInput struct {
+	MultiProject  bool
 	Window        ReportWindow
 	Start         time.Time
 	End           time.Time
@@ -496,6 +499,7 @@ func buildReportViewData(r *http.Request, input reportBuildInput) (ReportViewDat
 	tableRows, pagination := paginateReportRows(rows, filters)
 	return ReportViewData{
 		View:          "reports",
+		MultiProject:  input.MultiProject,
 		Window:        window,
 		Filters:       filters,
 		FilterOptions: filterOptions(input.Tasks, input.Activity, ""),
