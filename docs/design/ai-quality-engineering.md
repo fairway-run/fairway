@@ -1,9 +1,15 @@
-# What Is AI Quality Engineering?
+# Quality Engineering For AI-Assisted Software Delivery
 
-AI Quality Engineering is the practice of designing engineering systems that
-consistently produce trustworthy AI-assisted software through controlled
-intent, qualified verification, proportional human judgment, and
-outcome-driven improvement.
+Quality Engineering for AI-Assisted Software Delivery is the practice of
+designing engineering systems that consistently produce trustworthy
+AI-assisted software through controlled intent, qualified verification,
+proportional human judgment, and outcome-driven improvement.
+
+This document avoids using **AI Quality Engineering** as the discipline's short
+name because that phrase is also widely understood as quality and evaluation
+engineering for AI models and AI systems. Fairway may occupy the product
+category **AI Engineering Quality System** while this document names the
+engineering discipline more precisely.
 
 Its central question is not whether an AI agent produced code, nor whether a
 person reviewed every generated line. It asks:
@@ -63,8 +69,10 @@ should make the following answerable:
 - Which material decisions and assumptions shaped the work?
 - What produced the artifact, using which relevant source and policy versions?
 - Which checks ran, what did they establish, and what could they not establish?
-- Which verifier or reviewer supplied each judgment, and was it qualified for
-  that judgment?
+- Which machine verifier supplied each result, and was its version qualified
+  for that claim through known applicability, fixtures, and error behavior?
+- Which human reviewer supplied each judgment, and did that person have the
+  relevant competence, independence, role, and decision authority?
 - What promotion was requested, approved, or denied, and by whose authority?
 - What happened after promotion?
 - Which lessons changed the production or assurance process?
@@ -93,15 +101,23 @@ More evidence is not automatically better. Evidence must be relevant,
 independent enough for the claim, current, attributable, reproducible where
 possible, and bounded against leakage or gaming.
 
-A verifier is itself part of the quality system. Tests, scanners, evaluators,
-rubrics, model judges, and reviewers need known applicability and limitations.
-Where practical, they should be qualified against known-good and deliberately
-bad fixtures. A passing unqualified verifier is weak evidence.
+A machine verifier is itself part of the quality system. Tests, scanners,
+evaluators, rubrics, and model judges need versioned applicability and known
+limitations. Where practical, they should be qualified through known-good and
+deliberately bad fixtures, calibration, and measured false-positive and
+false-negative behavior. A passing unqualified machine verifier is weak
+evidence.
+
+A human reviewer requires a different qualification record: relevant
+competence, independence from the authored work where required, an appropriate
+review role, and explicit decision authority. Calibration exercises may inform
+competence, but neither calibration nor technical expertise grants authority
+that the reviewer does not otherwise hold.
 
 ## Automatic Checks And Human Judgment
 
-AI Quality Engineering does not remove human review. It changes where scarce
-human judgment is most valuable.
+Quality Engineering for AI-Assisted Software Delivery does not remove human
+review. It changes where scarce human judgment is most valuable.
 
 Automatic checks should establish properties that can be defined and repeated
 reliably. Human review should focus on unclear intent, architecture, novel risk,
@@ -128,10 +144,24 @@ from capable processes, not inspection alone. Software differs from repetitive
 manufacturing, however. Engineering tasks vary widely, requirements evolve,
 interactions are complex, and defects may remain latent.
 
-AI Quality Engineering therefore uses process evidence without assuming every
-artifact is interchangeable. It asks whether a specific control discriminates
-useful outcomes within comparable work, not whether process volume proves
-quality.
+Quality Engineering for AI-Assisted Software Delivery therefore uses process
+evidence without assuming every artifact is interchangeable. It asks whether a
+specific control discriminates useful outcomes within comparable work, not
+whether process volume proves quality.
+
+A **comparison class** is a repeated set of work with materially similar
+purpose, risk, production path, and assurance expectations during the measured
+window. Examples may include release promotion, deployment, environment setup,
+version upgrades, migrations using the same execution profile, repeated user
+journeys, and recurring operational drills. Every capability result must name
+its comparison-class definition, inclusion criteria, time window, and material
+process or model revisions.
+
+Novel feature, architecture, or incident work is not forced into a synthetic
+comparison class merely because tasks share a label or diff size. For such
+one-off work, trust rests on artifact-specific evidence, verifier adequacy, and
+risk-based judgment. Fairway may report descriptive facts about that work but
+must not claim statistical process capability.
 
 Useful measures include:
 
@@ -139,13 +169,28 @@ Useful measures include:
 - capability: how reliably a repeated process meets defined expectations;
 - control signal: whether a control detects or prevents its intended defect;
 - friction: time, cost, delay, and rework attributable to the control;
-- escapes: defects or unsafe behavior discovered after promotion;
+- escapes: defects, unsafe behavior, or user impact discovered after
+  promotion;
 - learning: whether outcome evidence improves future production and assurance.
 
 These measures are observational unless a stronger study design exists. They
 must expose denominators, exclusions, uncertainty, selection effects, and
 changes in models or process. Sparse incidents never justify weakening a
 mandatory safety invariant.
+
+Escaped defects and incidents are high-value lagging outcome signals, but they
+are usually too sparse and delayed to establish statistical effectiveness at
+small-team scale. Rollbacks, corrective work, reopens, failed deployment or
+UAT, reliability and recovery behavior, security near misses, and user impact
+provide additional outcome evidence. Process measures remain proxies until
+they are calibrated against such outcomes; a low observed escape rate may mean
+an effective system, insufficient observation, or good fortune.
+
+Coverage and friction must be interpreted together. Coverage obtained by
+adding disproportionate ceremony to low-risk work is negative value when it
+increases bypass, informal work, or delayed feedback. A quality-system report
+must therefore show coverage alongside attributable friction, bypass rate, and
+outcome signal rather than optimizing coverage as an isolated target.
 
 ## Continuous Improvement
 
@@ -195,8 +240,8 @@ boundaries. Learning is reviewed evolution, not autonomous self-authorization.
 
 This definition suggests a possible north star:
 
-> Fairway is an AI Engineering Quality System that makes AI-assisted software
-> delivery measurable, evidence-based, and accountable.
+> Fairway is an engineering quality and accountability system for AI-assisted
+> software delivery.
 
 That statement is a direction to evaluate, not an implemented-capability claim.
 Fairway's current task, evidence, review, provenance, memory, knowledge,
@@ -205,9 +250,15 @@ system. Whether they form a complete Quality Record, and what additional
 product changes are justified, requires separate architecture and product
 decisions after this principles document is reviewed.
 
+Fairway already makes recorded work more evidence-based, inspectable, and
+accountable. Describing quality as **measurable** or the system as
+**continuously improving** remains an aspirational claim until control coverage,
+comparison classes, qualified outcome measures, and real consumer evidence
+demonstrate that capability.
+
 ## Non-Goals
 
-AI Quality Engineering is not:
+Quality Engineering for AI-Assisted Software Delivery is not:
 
 - a promise that AI-generated software is defect-free;
 - a generic model leaderboard or prompt benchmark;

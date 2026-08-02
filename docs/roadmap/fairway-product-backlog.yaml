@@ -6648,7 +6648,7 @@ tasks:
       - "Record keep, narrow, redesign, instrument, or defer decisions without removing mandatory safety invariants."
 
   - id: FW-389
-    title: Define AI Quality Engineering principles
+    title: Define quality engineering principles for AI-assisted delivery
     kind: docs
     role: arch
     profile: fairway-adoption
@@ -6660,6 +6660,6 @@ tasks:
     risk_level: medium
     migration_type: ai-quality-engineering-definition
     acceptance_checks:
-      - "Define AI Quality Engineering as a discipline without prescribing product implementation."
+      - "Define Quality Engineering for AI-Assisted Software Delivery as a discipline without prescribing product implementation."
       - "Define quality, quality records, evidence, verification, human judgment, statistical assurance, outcomes, and continuous improvement."
       - "State authority boundaries, manufacturing-analogy limits, and non-goals clearly enough for independent review."
