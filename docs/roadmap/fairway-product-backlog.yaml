@@ -6663,3 +6663,20 @@ tasks:
       - "Define Quality Engineering for AI-Assisted Software Delivery as a discipline without prescribing product implementation."
       - "Define quality, quality records, evidence, verification, human judgment, statistical assurance, outcomes, and continuous improvement."
       - "State authority boundaries, manufacturing-analogy limits, and non-goals clearly enough for independent review."
+
+  - id: FW-390
+    title: Assess Fairway against AI-assisted software quality principles
+    kind: docs
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: ai-quality-system-assessment
+    source_paths: [docs/design/ai-quality-engineering.md, docs/product.md, docs/release-notes.md, docs/agent-guide.md, cmd/fairway, internal]
+    target_paths: [docs/assessment/fairway-ai-engineering-quality-system-assessment-2026-08-02.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [governance, backend]
+    risk_level: medium
+    migration_type: ai-quality-system-capability-assessment
+    acceptance_checks:
+      - "Map each Quality Record stage to cited current Fairway capabilities and validation evidence."
+      - "Distinguish implemented, validated practice, partial, missing, and deliberately external capabilities without converting gaps into implementation tasks."
+      - "State the defensible current product claim and the empirical questions that must be answered before broader repositioning."
