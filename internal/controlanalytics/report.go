@@ -12,6 +12,7 @@ import (
 
 	"github.com/subashram/fairway/internal/audit"
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/evidencemodel"
 	"github.com/subashram/fairway/internal/reviewpolicy"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -73,6 +74,9 @@ type TaskFact struct {
 	HorizonDays       int      `json:"horizon_days"`
 	Applicable        bool     `json:"applicable"`
 	ControlState      string   `json:"control_state"`
+	BypassReason      string   `json:"bypass_reason,omitempty"`
+	BypassAuthority   string   `json:"bypass_authority,omitempty"`
+	BypassSource      string   `json:"bypass_source,omitempty"`
 	Mature            bool     `json:"mature"`
 	OutcomeKnown      bool     `json:"outcome_known"`
 	AnyOutcome        bool     `json:"any_outcome"`
@@ -129,6 +133,11 @@ type controlDefinition struct {
 	Mandatory bool
 }
 
+type ClassificationContext struct {
+	CommitCoverageRatio float64
+	FileCoverageRatio   float64
+}
+
 func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, opts Options) (Report, error) {
 	if opts.Since <= 0 {
 		return Report{}, fmt.Errorf("control report since duration must be positive")
@@ -141,26 +150,41 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 	if err != nil {
 		return Report{}, err
 	}
+	allTaskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		allTaskIDs = append(allTaskIDs, task.Definition.ID)
+	}
+	transitionsByTask, err := s.TransitionsByTaskIDs(ctx, allTaskIDs)
+	if err != nil {
+		return Report{}, err
+	}
 	cutoff := now.Add(-opts.Since)
 	var population []store.Task
+	promotionAtByTask := map[string]string{}
 	for _, task := range tasks {
-		if task.Status != "done" || strings.TrimSpace(task.CompletedAt) == "" {
+		promotionAt := strings.TrimSpace(task.CompletedAt)
+		if promotionAt == "" {
+			promotionAt = latestDoneTransitionAt(transitionsByTask[task.Definition.ID])
+		}
+		if promotionAt == "" || strings.TrimSpace(task.CommitSHA) == "" {
 			continue
 		}
-		completed, err := time.Parse(time.RFC3339Nano, task.CompletedAt)
+		completed, err := time.Parse(time.RFC3339Nano, promotionAt)
 		if err != nil || completed.Before(cutoff) || completed.After(now) {
 			continue
 		}
 		if opts.Profile != "" && task.Definition.Profile != opts.Profile {
 			continue
 		}
+		task.CompletedAt = promotionAt
 		population = append(population, task)
+		promotionAtByTask[task.Definition.ID] = promotionAt
 	}
 	taskIDs := make([]string, 0, len(population))
 	for _, task := range population {
 		taskIDs = append(taskIDs, task.Definition.ID)
 	}
-	coverageReport, err := audit.BuildWorkCoverageReport(ctx, cfg, root, s, audit.WorkCoverageOptions{SinceDuration: opts.Since, TaskIDs: taskIDs, RestrictTaskIDs: true, Now: now})
+	coverageReport, err := audit.BuildWorkCoverageReport(ctx, cfg, root, s, audit.WorkCoverageOptions{SinceDuration: opts.Since, TaskIDs: taskIDs, RestrictTaskIDs: true, PromotionAtByTask: promotionAtByTask, Now: now})
 	if err != nil {
 		return Report{}, err
 	}
@@ -235,7 +259,7 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 	var facts []TaskFact
 	for _, task := range population {
 		for _, definition := range definitionList {
-			base := taskControlFact(task, definition, evaluations[task.Definition.ID], reviewsByTask[task.Definition.ID], evidenceByTask[task.Definition.ID])
+			base := taskControlFact(task, definition, evaluations[task.Definition.ID], reviewsByTask[task.Definition.ID], evidenceByTask[task.Definition.ID], now)
 			touch := touchByTask[task.Definition.ID]
 			base.SizeBand = sizeBand(len(touch.EligibleFiles))
 			base.PromotionCommit = touch.PromotionCommit
@@ -261,8 +285,10 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 		}
 	}
 	thresholds := normalizedThresholds(cfg.ControlEffectiveness)
-	results := Aggregate(facts, definitions, thresholds)
-	digest, err := configDigest(cfg.ControlEffectiveness)
+	denom := coverageReport.Denominators
+	coverage := Coverage{EligibleCommits: denom.EligibleCommits, CoveredCommits: denom.CoveredCommits, CommitCoverageRatio: ratio(denom.CoveredCommits, denom.EligibleCommits), EligibleChangedFiles: denom.EligibleChangedFiles, CoveredChangedFiles: denom.CoveredChangedFiles, FileCoverageRatio: ratio(denom.CoveredChangedFiles, denom.EligibleChangedFiles), ExcludedMergeCommits: denom.ExcludedMergeCommits, ExcludedOnlyCommits: denom.ExcludedOnlyCommits, ExcludedChangedFiles: denom.ExcludedChangedFiles}
+	results := Aggregate(facts, definitions, thresholds, ClassificationContext{CommitCoverageRatio: coverage.CommitCoverageRatio, FileCoverageRatio: coverage.FileCoverageRatio})
+	digest, err := configDigest(cfg)
 	if err != nil {
 		return Report{}, err
 	}
@@ -270,14 +296,13 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 	if revision == "" {
 		revision = "unversioned"
 	}
-	denom := coverageReport.Denominators
 	report := Report{
 		Schema: Schema, Advisory: true,
 		AuthorityBoundary: "observational report only; cannot approve, waive, merge, deploy, release, or mutate policy",
 		AsOf:              now.Format(time.RFC3339), Since: opts.Since.String(), AnalyzedTip: coverageReport.AnalyzedTip,
 		Profile: opts.Profile, Control: opts.Control, ConfigurationRevision: revision, ConfigurationDigest: digest,
 		Thresholds: thresholds,
-		Coverage:   Coverage{EligibleCommits: denom.EligibleCommits, CoveredCommits: denom.CoveredCommits, CommitCoverageRatio: ratio(denom.CoveredCommits, denom.EligibleCommits), EligibleChangedFiles: denom.EligibleChangedFiles, CoveredChangedFiles: denom.CoveredChangedFiles, FileCoverageRatio: ratio(denom.CoveredChangedFiles, denom.EligibleChangedFiles), ExcludedMergeCommits: denom.ExcludedMergeCommits, ExcludedOnlyCommits: denom.ExcludedOnlyCommits, ExcludedChangedFiles: denom.ExcludedChangedFiles},
+		Coverage:   coverage,
 		Exclusions: append([]config.ControlPathExclusion(nil), cfg.ControlEffectiveness.PathExclusions...), Controls: results, TaskFacts: facts,
 		Limitations: []string{
 			"Observational associations do not establish causal impact.",
@@ -290,7 +315,7 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 	return report, nil
 }
 
-func taskControlFact(task store.Task, definition controlDefinition, eval reviewpolicy.Evaluation, reviews []store.Review, evidence []store.Evidence) TaskFact {
+func taskControlFact(task store.Task, definition controlDefinition, eval reviewpolicy.Evaluation, reviews []store.Review, evidence []store.Evidence, now time.Time) TaskFact {
 	fact := TaskFact{TaskID: task.Definition.ID, ControlID: definition.ID, Family: definition.Family, Profile: task.Definition.Profile, RiskBand: fallback(task.Definition.RiskLevel, "unknown"), SizeBand: "unknown", ControlState: "not_applicable"}
 	switch definition.Kind {
 	case "review":
@@ -308,6 +333,9 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 		switch requirement.Status {
 		case "waived", "deferred":
 			fact.ControlState = "bypassed"
+			fact.BypassReason = requirement.Reason
+			fact.BypassAuthority = "reviewed project review-profile configuration"
+			fact.BypassSource = "review-profile:" + fallback(eval.Profile, "task-review-domains")
 		case "inherited":
 			fact.ControlState, fact.Passed = "observed", true
 		default:
@@ -333,6 +361,7 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 			return fact
 		}
 		fact.Applicable, fact.ControlState = true, "unknown"
+		gateEvaluation := evidencemodel.EvaluateGate(gate, evidence, now)
 		var durations []int
 		observed := false
 		skipped := false
@@ -342,14 +371,14 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 			}
 			if item.Result == "skipped" {
 				skipped = true
+				fact.BypassReason = "matching evidence was explicitly recorded as skipped"
+				fact.BypassAuthority = "evidence_record_actor_unavailable"
+				fact.BypassSource = "evidence:" + fallback(item.ArtifactType, "unspecified") + "@" + item.CreatedAt
 				continue
 			}
 			observed = true
 			if item.Result == "fail" || item.Result == "blocked" || item.Result == "partial" {
 				fact.Triggered = true
-			}
-			if len(gate.AcceptedResults) == 0 && item.Result == "pass" || contains(gate.AcceptedResults, item.Result) {
-				fact.Passed = true
 			}
 			if item.DurationSeconds != nil {
 				durations = append(durations, *item.DurationSeconds)
@@ -357,6 +386,10 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 		}
 		if observed {
 			fact.ControlState = "observed"
+			fact.Passed = gateEvaluation.Satisfied
+			if !gateEvaluation.Satisfied {
+				fact.Triggered = true
+			}
 		} else if skipped {
 			fact.ControlState = "bypassed"
 		}
@@ -373,7 +406,7 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 	return fact
 }
 
-func Aggregate(facts []TaskFact, definitions map[string]controlDefinition, thresholds Thresholds) []ControlResult {
+func Aggregate(facts []TaskFact, definitions map[string]controlDefinition, thresholds Thresholds, context ClassificationContext) []ControlResult {
 	groups := map[string]*ControlResult{}
 	friction := map[string][]int{}
 	for _, fact := range facts {
@@ -441,7 +474,7 @@ func Aggregate(facts []TaskFact, definitions map[string]controlDefinition, thres
 			row.FrictionMedianSeconds = percentile(values, 0.5)
 			row.FrictionP90Seconds = percentile(values, 0.9)
 		}
-		row.Classification, row.Limitations = classify(*row, thresholds)
+		row.Classification, row.Limitations = classify(*row, thresholds, context)
 		row.TaskIDs = uniqueSorted(row.TaskIDs)
 		results = append(results, *row)
 	}
@@ -464,9 +497,12 @@ func Aggregate(facts []TaskFact, definitions map[string]controlDefinition, thres
 	return results
 }
 
-func classify(row ControlResult, thresholds Thresholds) (string, []string) {
+func classify(row ControlResult, thresholds Thresholds, context ClassificationContext) (string, []string) {
 	if row.MandatoryInvariant {
 		return "mandatory_invariant", []string{"Classification is authoritative configuration and cannot be relaxed by observational results."}
+	}
+	if context.CommitCoverageRatio < thresholds.MinimumCoverageRatio || context.FileCoverageRatio < thresholds.MinimumCoverageRatio {
+		return "insufficient_coverage", []string{"Commit/task or changed-file coverage is below the configured threshold; outcome ranking is suppressed."}
 	}
 	if row.ControlStateCoverage < thresholds.MinimumCoverageRatio {
 		return "insufficient_coverage", []string{"Known observed/bypassed control-state coverage is below the configured threshold."}
@@ -500,17 +536,24 @@ func normalizedThresholds(control config.ControlEffectivenessConfig) Thresholds 
 	return result
 }
 
-func configDigest(control config.ControlEffectivenessConfig) (string, error) {
+func configDigest(cfg config.Config) (string, error) {
+	control := cfg.ControlEffectiveness
 	effective := struct {
 		Revision            string                        `json:"revision"`
 		Thresholds          Thresholds                    `json:"thresholds"`
 		MandatoryControlIDs []string                      `json:"mandatory_control_ids,omitempty"`
 		PathExclusions      []config.ControlPathExclusion `json:"path_exclusions,omitempty"`
+		ReviewProfiles      []config.ReviewProfile        `json:"review_profiles"`
+		WorkstreamProfiles  []config.WorkstreamProfile    `json:"workstream_profiles"`
+		ReviewDomainAliases map[string]string             `json:"review_domain_aliases,omitempty"`
 	}{
 		Revision:            fallback(strings.TrimSpace(control.Revision), "unversioned"),
 		Thresholds:          normalizedThresholds(control),
 		MandatoryControlIDs: uniqueSorted(control.MandatoryControlIDs),
 		PathExclusions:      append([]config.ControlPathExclusion(nil), control.PathExclusions...),
+		ReviewProfiles:      reviewpolicy.EffectiveProfiles(cfg.ReviewProfiles),
+		WorkstreamProfiles:  append([]config.WorkstreamProfile(nil), cfg.WorkstreamProfiles...),
+		ReviewDomainAliases: cfg.ReviewDomainAliases,
 	}
 	data, err := json.Marshal(effective)
 	if err != nil {
@@ -533,6 +576,15 @@ func structuredOutcomeKinds(outcomes []store.TaskOutcome, promotionAt time.Time,
 		}
 	}
 	return kinds
+}
+
+func latestDoneTransitionAt(transitions []store.Transition) string {
+	for i := len(transitions) - 1; i >= 0; i-- {
+		if transitions[i].ToStatus == "done" {
+			return transitions[i].At
+		}
+	}
+	return ""
 }
 
 func touchWindow(windows []audit.TouchWindowFact, days int) (audit.TouchWindowFact, bool) {

@@ -17,12 +17,13 @@ import (
 )
 
 type WorkCoverageOptions struct {
-	SinceRef        string
-	SinceDuration   time.Duration
-	TaskID          string
-	TaskIDs         []string
-	RestrictTaskIDs bool
-	Now             time.Time
+	SinceRef          string
+	SinceDuration     time.Duration
+	TaskID            string
+	TaskIDs           []string
+	RestrictTaskIDs   bool
+	PromotionAtByTask map[string]string
+	Now               time.Time
 }
 
 type WorkCoverageReport struct {
@@ -245,6 +246,9 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 	for _, task := range tasks {
 		if strings.TrimSpace(task.CommitSHA) == "" {
 			continue
+		}
+		if promotionAt := strings.TrimSpace(opts.PromotionAtByTask[task.Definition.ID]); promotionAt != "" {
+			task.CompletedAt = promotionAt
 		}
 		report.Denominators.TasksWithCommit++
 		candidateCommits := []fairwaygit.Commit(nil)

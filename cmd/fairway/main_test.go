@@ -5803,9 +5803,10 @@ func TestCLI_ControlEffectivenessReportIsAdvisoryAndBounded(t *testing.T) {
 	gitAddCommit(t, repo, "T-001 reviewed change")
 	runOK(t, "record", "review", "T-001", "--reviewer", "independent", "--domain", "backend", "--verdict", "approve", "--commit", gitRevParse(t, repo, "HEAD"))
 	runOK(t, "set-status", "T-001", "done")
+	runOK(t, "set-status", "T-001", "in_progress", "--reopen", "--reason", "exercise durable promoted-task cohort")
 
 	report := runCapture(t, "control", "report", "--since", "24h")
-	for _, want := range []string{"control_effectiveness_report: advisory", "review:backend", "classification=insufficient_sample", "censored=", "friction_p90=unavailable", "Observational associations do not establish causal impact"} {
+	for _, want := range []string{"control_effectiveness_report: advisory", "review:backend", "classification=insufficient_coverage", "censored=", "friction_p90=unavailable", "Observational associations do not establish causal impact"} {
 		assertContains(t, report, want)
 	}
 	jsonReport := runCapture(t, "control", "report", "--since", "24h", "--control", "review:backend", "--format", "json")
@@ -5813,7 +5814,7 @@ func TestCLI_ControlEffectivenessReportIsAdvisoryAndBounded(t *testing.T) {
 		assertContains(t, jsonReport, want)
 	}
 	detail := runCapture(t, "task-detail", "T-001")
-	assertContains(t, detail, "status: done")
+	assertContains(t, detail, "status: in_progress")
 }
 
 func TestCLI_AuditExportAndVerify(t *testing.T) {

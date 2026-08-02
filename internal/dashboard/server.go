@@ -2514,67 +2514,8 @@ func gateAppliesToTask(gate config.WorkstreamProfileGate, task store.Task) bool 
 }
 
 func evaluateGateForTask(gate config.WorkstreamProfileGate, evidence []store.Evidence, now time.Time) (bool, int, []string) {
-	requiredCount := gate.RequiredEvidenceCount
-	if requiredCount == 0 && (gate.EvidenceType != "" || len(gate.AcceptedResults) > 0 || gate.ArtifactRequired || gate.ExpiresAfter != "" || gate.OwnerSignoffRequired) {
-		requiredCount = 1
-	}
-	accepted := map[string]bool{}
-	for _, result := range gate.AcceptedResults {
-		accepted[result] = true
-	}
-	var matching int
-	for _, ev := range evidence {
-		if gate.EvidenceType != "" && ev.ArtifactType != gate.EvidenceType {
-			continue
-		}
-		if len(accepted) > 0 && !accepted[ev.Result] {
-			continue
-		}
-		if gate.ArtifactRequired && ev.ArtifactPath == "" {
-			continue
-		}
-		if gate.ExpiresAfter != "" && !evidenceIsFresh(ev, gate.ExpiresAfter, now) {
-			continue
-		}
-		if gate.OwnerSignoffRequired && !evidenceHasOwnerSignoff(ev) {
-			continue
-		}
-		matching++
-	}
-	var reasons []string
-	if matching < requiredCount {
-		reasons = append(reasons, fmt.Sprintf("needs %d matching evidence row(s), found %d", requiredCount, matching))
-		if gate.ArtifactRequired {
-			reasons = append(reasons, "matching rows must include evidence artifacts")
-		}
-		if gate.ExpiresAfter != "" {
-			reasons = append(reasons, "matching rows must be fresh")
-		}
-		if gate.OwnerSignoffRequired {
-			reasons = append(reasons, "matching rows must include owner signoff evidence notes")
-		}
-	}
-	return len(reasons) == 0, matching, reasons
-}
-
-func evidenceHasOwnerSignoff(ev store.Evidence) bool {
-	notes := strings.ToLower(ev.Notes)
-	return strings.Contains(notes, "signoff") || strings.Contains(notes, "sign-off")
-}
-
-func evidenceIsFresh(ev store.Evidence, expiresAfter string, now time.Time) bool {
-	if expiresAfter == "" {
-		return true
-	}
-	ttl, err := time.ParseDuration(expiresAfter)
-	if err != nil {
-		return false
-	}
-	createdAt, err := time.Parse(time.RFC3339Nano, ev.CreatedAt)
-	if err != nil {
-		return false
-	}
-	return now.Sub(createdAt) <= ttl
+	eval := evidencemodel.EvaluateGate(gate, evidence, now)
+	return eval.Satisfied, eval.Matching, eval.Reasons
 }
 
 func (s *Server) task(w http.ResponseWriter, r *http.Request) {
