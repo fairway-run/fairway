@@ -107,7 +107,7 @@ and Git committer time (`%cI`) as the integration clock for descendant commits.
 Author time is retained as metadata but does not place a touch into a window.
 
 ```text
-eligible cohort = applicable + mature + known control state
+eligible cohort = applicable + mature + known control state + outcome-known
 observed cohort = eligible cohort where observed=true
 bypassed cohort = eligible cohort where bypassed=true
 outcome rate = unique tasks with the named outcome / tasks in that cohort
@@ -115,10 +115,12 @@ outcome delta = observed outcome rate - bypassed outcome rate
 trigger yield = observed tasks where triggered=true / observed tasks
 ```
 
-`passed` and `triggered` partition the observed cohort for descriptive yield;
-they are not substituted for the observed/bypassed comparison. Not-applicable
-and unknown tasks are excluded and counted separately. Each outcome category
-has its own rate. An `any_outcome` rate counts a task once even when it has
+`outcome_unavailable` tasks are retained as an explicit count and excluded from
+the outcome denominator. `passed` and `triggered` partition the observed cohort
+for descriptive yield; they are not substituted for the observed/bypassed
+comparison. Not-applicable and unknown tasks are excluded and counted
+separately. Each outcome category has its own rate. An `any_outcome` rate counts
+a task once even when it has
 multiple linked outcomes.
 
 Control friction is reported only from attributable facts. Its initial measures

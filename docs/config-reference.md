@@ -936,7 +936,7 @@ mandatory_control_ids = ["review:security"]
 | Key | Type | Default | Meaning |
 |---|---|---:|---|
 | `revision` | string | `unversioned` in report output | Human-reviewed configuration revision retained with every report. |
-| `minimum_sample_size` | int | `5` | Minimum mature, outcome-known observed-plus-bypassed tasks in one profile/risk/size/horizon stratum. |
+| `minimum_sample_size` | int | `5` | Minimum mature, outcome-known tasks required independently in both the observed and bypassed cohorts of one profile/risk/size/horizon stratum. |
 | `minimum_coverage_ratio` | float | `0.8` | Minimum known observed-or-explicitly-bypassed control states among applicable tasks. |
 | `material_outcome_delta` | float | `0.1` | Minimum lower observed outcome rate required for `discriminating`. |
 | `high_friction_p90_seconds` | int | `900` | Attributable evidence-duration p90 used for `high_friction`; unavailable duration is never treated as zero. |

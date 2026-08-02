@@ -517,8 +517,8 @@ func classify(row ControlResult, thresholds Thresholds, context ClassificationCo
 	if row.ControlStateCoverage < thresholds.MinimumCoverageRatio {
 		return "insufficient_coverage", []string{"Known observed/bypassed control-state coverage is below the configured threshold."}
 	}
-	if row.Eligible < thresholds.MinimumSampleSize || row.Observed == 0 || row.Bypassed == 0 {
-		return "insufficient_sample", []string{"A contemporaneous observed-versus-explicit-bypass comparison requires both cohorts and the configured minimum sample."}
+	if row.Observed < thresholds.MinimumSampleSize || row.Bypassed < thresholds.MinimumSampleSize {
+		return "insufficient_sample", []string{"A contemporaneous observed-versus-explicit-bypass comparison requires each cohort to meet the configured minimum sample."}
 	}
 	if row.OutcomeDelta <= -thresholds.MaterialOutcomeDelta {
 		return "discriminating", []string{"Observed work has a lower outcome rate than the explicit bypass cohort in this bounded stratum; this is association, not causation."}

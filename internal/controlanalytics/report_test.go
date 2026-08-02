@@ -1,6 +1,7 @@
 package controlanalytics
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +80,7 @@ func TestAggregateClassifiesBoundedCohorts(t *testing.T) {
 		"review:backend":  {ID: "review:backend", Mandatory: false},
 		"review:security": {ID: "review:security", Mandatory: true},
 	}
-	thresholds := Thresholds{MinimumSampleSize: 4, MinimumCoverageRatio: 0.75, MaterialOutcomeDelta: 0.2, HighFrictionP90Seconds: 100}
+	thresholds := Thresholds{MinimumSampleSize: 2, MinimumCoverageRatio: 0.75, MaterialOutcomeDelta: 0.2, HighFrictionP90Seconds: 100}
 	facts := []TaskFact{
 		{TaskID: "T-1", ControlID: "review:backend", Family: "quality_gate", Profile: "p", RiskBand: "medium", SizeBand: "small", HorizonDays: 14, Applicable: true, ControlState: "observed", Mature: true, OutcomeKnown: true},
 		{TaskID: "T-2", ControlID: "review:backend", Family: "quality_gate", Profile: "p", RiskBand: "medium", SizeBand: "small", HorizonDays: 14, Applicable: true, ControlState: "observed", Mature: true, OutcomeKnown: true},
@@ -108,6 +109,22 @@ func TestAggregateClassifiesBoundedCohorts(t *testing.T) {
 	}
 	if security.Classification != "mandatory_invariant" || security.RightCensored != 1 {
 		t.Fatalf("security=%+v", security)
+	}
+}
+
+func TestAggregateRequiresMinimumSampleInEachComparisonCohort(t *testing.T) {
+	definitions := map[string]controlDefinition{"review:backend": {ID: "review:backend"}}
+	thresholds := Thresholds{MinimumSampleSize: 5, MinimumCoverageRatio: 0.8, MaterialOutcomeDelta: 0.1, HighFrictionP90Seconds: 10}
+	facts := make([]TaskFact, 0, 10)
+	for i := 0; i < 5; i++ {
+		facts = append(facts, TaskFact{TaskID: fmt.Sprintf("observed-%d", i), ControlID: "review:backend", Profile: "p", RiskBand: "low", SizeBand: "small", HorizonDays: 7, Applicable: true, ControlState: "observed", Mature: true, OutcomeKnown: true})
+	}
+	for i := 0; i < 4; i++ {
+		facts = append(facts, TaskFact{TaskID: fmt.Sprintf("bypassed-%d", i), ControlID: "review:backend", Profile: "p", RiskBand: "low", SizeBand: "small", HorizonDays: 7, Applicable: true, ControlState: "bypassed", Mature: true, OutcomeKnown: true, AnyOutcome: true})
+	}
+	row := Aggregate(facts, definitions, thresholds, ClassificationContext{CommitCoverageRatio: 1, FileCoverageRatio: 1})[0]
+	if row.Eligible != 9 || row.Observed != 5 || row.Bypassed != 4 || row.Classification != "insufficient_sample" {
+		t.Fatalf("row=%+v", row)
 	}
 }
 
