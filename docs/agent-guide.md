@@ -1022,6 +1022,29 @@ evidence, and missing review-domain approvals. Run it before review handoff,
 deploy/UAT attempts, release readiness checks, and control-effectiveness
 analysis.
 
+`control report` is the canonical read-only control-effectiveness surface:
+
+```bash
+fairway control report --since 720h \
+  [--profile fairway-adoption] [--control review:security] \
+  [--format text|json]
+```
+
+The report first shows commit/task and changed-file coverage, then compares
+mature tasks with an observed control only against tasks with an explicit
+waiver, deferral, or skipped evidence record. Missing control records remain
+`unknown`; immature tasks remain `right_censored`; unavailable Git outcome
+facts remain outside the outcome denominator. Results are stratified by
+profile, risk, eligible-file size band, and 7/14/30-day horizon.
+
+Classifications are `discriminating`, `insufficient_sample`,
+`insufficient_coverage`, `high_friction`, `mandatory_invariant`, or
+`redesign_candidate`. They are observational recommendations. The command
+cannot approve or waive a review, change a rule, mutate task state, merge,
+deploy, or release. In particular, `redesign_candidate` means only: no
+measurable incremental signal under the current sample, coverage, risk
+controls, and outcome definition.
+
 `audit docs-backlog` is advisory. It scans coordination design docs for task
 ids, task path coverage, documented Fairway command examples, and known
 coordination topics. Run it after incident retrospectives, design reviews, and

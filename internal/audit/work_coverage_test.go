@@ -106,6 +106,15 @@ func TestWorkCoverageReportsDenominatorsOutcomesAndPostPromotionTouches(t *testi
 	if len(report.Outcomes) != 2 || report.Outcomes[0].Kind != "incident" || report.Outcomes[1].RelatedTaskID != "T-002" {
 		t.Fatalf("outcomes=%+v", report.Outcomes)
 	}
+	restricted, err := BuildWorkCoverageReport(ctx, cfg, root, db, WorkCoverageOptions{SinceDuration: 60 * 24 * time.Hour, TaskIDs: []string{"T-001"}, RestrictTaskIDs: true, Now: promotedAt.Add(31 * 24 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, window := range restricted.TouchFacts[0].Windows {
+		if len(window.TouchCommits) != 1 {
+			t.Fatalf("restricted window counted promotion commit as rework: %+v", window)
+		}
+	}
 }
 
 func TestTasksWithCommitUsesCanonicalFullOrBoundedShortSHA(t *testing.T) {

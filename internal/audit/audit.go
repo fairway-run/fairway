@@ -17,10 +17,12 @@ import (
 )
 
 type WorkCoverageOptions struct {
-	SinceRef      string
-	SinceDuration time.Duration
-	TaskID        string
-	Now           time.Time
+	SinceRef        string
+	SinceDuration   time.Duration
+	TaskID          string
+	TaskIDs         []string
+	RestrictTaskIDs bool
+	Now             time.Time
 }
 
 type WorkCoverageReport struct {
@@ -132,6 +134,18 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 			return WorkCoverageReport{}, store.ErrNotFound
 		}
 		tasks = filtered
+	} else if opts.RestrictTaskIDs {
+		wanted := map[string]bool{}
+		for _, id := range opts.TaskIDs {
+			wanted[strings.TrimSpace(id)] = true
+		}
+		var filtered []store.Task
+		for _, task := range tasks {
+			if wanted[task.Definition.ID] {
+				filtered = append(filtered, task)
+			}
+		}
+		tasks = filtered
 	}
 	report := WorkCoverageReport{OK: true, AsOf: now.Format(time.RFC3339), AnalyzedTip: tip.SHA, TaskID: opts.TaskID, Exclusions: append([]config.ControlPathExclusion(nil), cfg.ControlEffectiveness.PathExclusions...)}
 	var commits []fairwaygit.Commit
@@ -233,7 +247,12 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 			continue
 		}
 		report.Denominators.TasksWithCommit++
-		fact := buildPostPromotionTouchFact(root, task, cfg.ControlEffectiveness.PathExclusions, now, tip.SHA)
+		candidateCommits := []fairwaygit.Commit(nil)
+		useCandidateCommits := opts.RestrictTaskIDs && opts.SinceDuration > 0
+		if useCandidateCommits {
+			candidateCommits = commits
+		}
+		fact := buildPostPromotionTouchFact(root, task, cfg.ControlEffectiveness.PathExclusions, now, tip.SHA, candidateCommits, useCandidateCommits)
 		if fact.Available {
 			report.Denominators.TasksWithTouchFacts++
 			for _, window := range fact.Windows {
@@ -321,7 +340,7 @@ func tasksWithCommit(commitSHA string, tasks []store.Task) []string {
 	return out
 }
 
-func buildPostPromotionTouchFact(root string, task store.Task, exclusions []config.ControlPathExclusion, now time.Time, analyzedTip string) PostPromotionTouchFact {
+func buildPostPromotionTouchFact(root string, task store.Task, exclusions []config.ControlPathExclusion, now time.Time, analyzedTip string, candidateCommits []fairwaygit.Commit, useCandidateCommits bool) PostPromotionTouchFact {
 	fact := PostPromotionTouchFact{TaskID: task.Definition.ID, PromotionCommit: task.CommitSHA}
 	detail, err := fairwaygit.ResolveCommit(root, task.CommitSHA)
 	if err != nil {
@@ -343,10 +362,13 @@ func buildPostPromotionTouchFact(root string, task store.Task, exclusions []conf
 		fact.UnavailableReason = "promotion commit has no eligible changed files"
 		return fact
 	}
-	commits, err := fairwaygit.CommitsBetween(root, detail.SHA, analyzedTip)
-	if err != nil {
-		fact.UnavailableReason = err.Error()
-		return fact
+	commits := candidateCommits
+	if !useCandidateCommits {
+		commits, err = fairwaygit.CommitsBetween(root, detail.SHA, analyzedTip)
+		if err != nil {
+			fact.UnavailableReason = err.Error()
+			return fact
+		}
 	}
 	fact.Available = true
 	owned := make(map[string]bool, len(fact.EligibleFiles))
@@ -357,6 +379,9 @@ func buildPostPromotionTouchFact(root string, task store.Task, exclusions []conf
 		deadline := promotionAt.Add(time.Duration(days) * 24 * time.Hour)
 		window := TouchWindowFact{Days: days, Mature: !now.Before(deadline)}
 		for _, commit := range commits {
+			if commit.SHA == detail.SHA {
+				continue
+			}
 			commitAt, err := time.Parse(time.RFC3339, commit.CommitDate)
 			if err != nil || commitAt.Before(promotionAt.Truncate(time.Second)) || commitAt.After(deadline) || commit.ParentCount > 1 {
 				continue

@@ -30,6 +30,7 @@ import (
 	"github.com/subashram/fairway/internal/automationreport"
 	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/controlanalytics"
 	coord "github.com/subashram/fairway/internal/coordinator"
 	"github.com/subashram/fairway/internal/dashboard"
 	"github.com/subashram/fairway/internal/deliveryreport"
@@ -138,6 +139,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdCompletionHandbackReport(ctx, opts, args[1:])
 	case "delivery":
 		return cmdDelivery(ctx, opts, args[1:])
+	case "control":
+		return cmdControl(ctx, opts, args[1:])
 	case "rough-edge":
 		return cmdRoughEdge(ctx, opts, args[1:])
 	case "provenance":
@@ -4674,6 +4677,77 @@ func cmdDelivery(ctx context.Context, opts globalOptions, args []string) error {
 	default:
 		return fmt.Errorf("unknown delivery subcommand %q", args[0])
 	}
+}
+
+func cmdControl(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		fmt.Println("fairway control report --since <duration> [--profile <name>] [--control <id>] [--format text|json]")
+		fmt.Println("  Report observational control coverage, cohorts, outcomes, friction, and classifications without mutating workflow or policy.")
+		return nil
+	}
+	if args[0] != "report" {
+		return fmt.Errorf("unknown control subcommand %q", args[0])
+	}
+	if isHelpOnly(args[1:]) {
+		fmt.Println("fairway control report --since <duration> [--profile <name>] [--control <id>] [--format text|json]")
+		fmt.Println("  Compare mature observed work only with explicit bypass cohorts in the same profile, risk, size, and outcome window.")
+		return nil
+	}
+	fs := flag.NewFlagSet("control report", flag.ContinueOnError)
+	since := fs.Duration("since", 30*24*time.Hour, "bounded task and Git observation window")
+	profile := fs.String("profile", "", "limit to task profile")
+	controlID := fs.String("control", "", "limit to one stable control id")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected control report arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *since <= 0 {
+		return errors.New("--since must be positive")
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, root string, s *store.Store) error {
+		report, err := controlanalytics.Build(ctx, cfg, root, s, controlanalytics.Options{Since: *since, Profile: strings.TrimSpace(*profile), Control: strings.TrimSpace(*controlID)})
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(report)
+		}
+		fmt.Printf("control_effectiveness_report: advisory\n")
+		fmt.Printf("as_of: %s\nsince: %s\nanalyzed_tip: %s\n", report.AsOf, report.Since, report.AnalyzedTip)
+		fmt.Printf("configuration: revision=%s digest=%s\n", report.ConfigurationRevision, report.ConfigurationDigest)
+		fmt.Printf("coverage: commits=%d/%d (%.3f) files=%d/%d (%.3f) excluded_merges=%d excluded_only=%d excluded_files=%d\n",
+			report.Coverage.CoveredCommits, report.Coverage.EligibleCommits, report.Coverage.CommitCoverageRatio,
+			report.Coverage.CoveredChangedFiles, report.Coverage.EligibleChangedFiles, report.Coverage.FileCoverageRatio,
+			report.Coverage.ExcludedMergeCommits, report.Coverage.ExcludedOnlyCommits, report.Coverage.ExcludedChangedFiles)
+		fmt.Println("controls:")
+		if len(report.Controls) == 0 {
+			fmt.Println("- none in the selected population")
+		}
+		for _, row := range report.Controls {
+			fmt.Printf("- %s family=%s profile=%s risk=%s size=%s horizon=%dd classification=%s applicable=%d known=%d unknown=%d censored=%d outcome_unavailable=%d observed=%d bypassed=%d observed_rate=%.3f bypassed_rate=%.3f delta=%.3f friction_p90=%s\n",
+				row.ControlID, row.Family, firstNonEmpty(row.Profile, "none"), row.RiskBand, row.SizeBand, row.HorizonDays, row.Classification,
+				row.Applicable, row.KnownControlState, row.UnknownControlState, row.RightCensored, row.OutcomeUnavailable,
+				row.Observed, row.Bypassed, row.ObservedOutcomeRate, row.BypassedOutcomeRate, row.OutcomeDelta, controlFrictionText(row))
+		}
+		fmt.Println("limitations:")
+		for _, limitation := range report.Limitations {
+			fmt.Println("-", limitation)
+		}
+		return nil
+	})
+}
+
+func controlFrictionText(row controlanalytics.ControlResult) string {
+	if !row.FrictionAvailable {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%ds(n=%d)", row.FrictionP90Seconds, row.FrictionSamples)
 }
 
 func cmdDeliveryResources(ctx context.Context, opts globalOptions, args []string) error {
@@ -21316,7 +21390,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export|verify, security advisory export|verify|acknowledge, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export|verify, security advisory export|verify|acknowledge, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, control report, audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, binary, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -21373,6 +21447,7 @@ func printCommandHelp(command string) bool {
 		"notify":                     "fairway notify notifiers|dry-run|send ...\n  Inspect optional external notifier config, render dry-run notification intent, or deliver through an explicitly configured notifier.",
 		"automation":                 "fairway automation candidates --since <duration> [--threshold <n>] [--format text|json]\n  Read-only repeated-work automation candidate report.",
 		"delivery":                   "fairway delivery report --since <duration> [--profile <name>] [--format text|json] | fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]\n  Read-only delivery velocity, process overhead, and typed delivery resource reports.",
+		"control":                    "fairway control report --since <duration> [--profile <name>] [--control <id>] [--format text|json]\n  Read-only observational control-effectiveness report; never mutates workflow or policy.",
 		"rough-edge":                 "fairway rough-edge add --task <task-id> --owner <role> --severity <level> --decision <fix-now|defer> --summary <text> | fairway rough-edge list [--task <task-id>] [--owner <role>] [--expired]\n  Record and inspect owner rough edges found while using the product; list is read-only.",
 		"dashboard":                  "fairway dashboard [--listen <addr>] [--multi] [--no-open] [--read-only]\n  Run the local dashboard; use start|stop|restart|status for lifecycle mode.",
 		"server":                     "fairway server --read-only [--listen <addr>] | fairway server start|status|logs|stop|restart --read-only | fairway server --mode api-write-pilot --write\n  Run or manage the loopback shared-team API. Managed lifecycle is read-only only.",

@@ -920,6 +920,33 @@ report exposes every active exclusion and reports observed, eligible, covered,
 and excluded denominators. Exclusions are not accepted as command-line report
 arguments, so a caller cannot silently remove unfavorable files from a cohort.
 
+The optional `[control_effectiveness]` table also configures the advisory
+classification boundary:
+
+```toml
+[control_effectiveness]
+revision = "2026-08-02"
+minimum_sample_size = 5
+minimum_coverage_ratio = 0.8
+material_outcome_delta = 0.1
+high_friction_p90_seconds = 900
+mandatory_control_ids = ["review:security"]
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---:|---|
+| `revision` | string | `unversioned` in report output | Human-reviewed configuration revision retained with every report. |
+| `minimum_sample_size` | int | `5` | Minimum mature, outcome-known observed-plus-bypassed tasks in one profile/risk/size/horizon stratum. |
+| `minimum_coverage_ratio` | float | `0.8` | Minimum known observed-or-explicitly-bypassed control states among applicable tasks. |
+| `material_outcome_delta` | float | `0.1` | Minimum lower observed outcome rate required for `discriminating`. |
+| `high_friction_p90_seconds` | int | `900` | Attributable evidence-duration p90 used for `high_friction`; unavailable duration is never treated as zero. |
+| `mandatory_control_ids` | []string | `[]` | Reviewed controls that analytics must classify as `mandatory_invariant` regardless of sparse outcomes. |
+
+Fairway includes the normalized table digest in `fairway control report`, so
+results from different revisions are not silently combined. Zero-valued
+thresholds use the defaults above. Stable discovered control IDs currently use
+`review:<domain>` and `gate:<profile>:<gate-name>`.
+
 ## Validation
 
 `fairway init` writes a default config. `fairway config validate` checks an existing one. Errors are reported with file path and line number.

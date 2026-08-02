@@ -122,7 +122,13 @@ type ConsumerReadinessConfig struct {
 }
 
 type ControlEffectivenessConfig struct {
-	PathExclusions []ControlPathExclusion `toml:"path_exclusions"`
+	Revision               string                 `toml:"revision" json:"revision,omitempty"`
+	MinimumSampleSize      int                    `toml:"minimum_sample_size" json:"minimum_sample_size,omitempty"`
+	MinimumCoverageRatio   float64                `toml:"minimum_coverage_ratio" json:"minimum_coverage_ratio,omitempty"`
+	MaterialOutcomeDelta   float64                `toml:"material_outcome_delta" json:"material_outcome_delta,omitempty"`
+	HighFrictionP90Seconds int                    `toml:"high_friction_p90_seconds" json:"high_friction_p90_seconds,omitempty"`
+	MandatoryControlIDs    []string               `toml:"mandatory_control_ids" json:"mandatory_control_ids,omitempty"`
+	PathExclusions         []ControlPathExclusion `toml:"path_exclusions" json:"path_exclusions,omitempty"`
 }
 
 type ControlPathExclusion struct {
@@ -668,6 +674,32 @@ func Validate(cfg Config) error {
 }
 
 func validateControlEffectiveness(control ControlEffectivenessConfig) error {
+	if strings.ContainsAny(control.Revision, "\r\n") {
+		return errors.New("[control_effectiveness] revision must be a single line")
+	}
+	if control.MinimumSampleSize < 0 {
+		return errors.New("[control_effectiveness] minimum_sample_size must be non-negative")
+	}
+	if control.MinimumCoverageRatio < 0 || control.MinimumCoverageRatio > 1 {
+		return errors.New("[control_effectiveness] minimum_coverage_ratio must be between 0 and 1")
+	}
+	if control.MaterialOutcomeDelta < 0 || control.MaterialOutcomeDelta > 1 {
+		return errors.New("[control_effectiveness] material_outcome_delta must be between 0 and 1")
+	}
+	if control.HighFrictionP90Seconds < 0 {
+		return errors.New("[control_effectiveness] high_friction_p90_seconds must be non-negative")
+	}
+	seenControlIDs := map[string]bool{}
+	for _, id := range control.MandatoryControlIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || strings.ContainsAny(id, "\r\n") {
+			return errors.New("[control_effectiveness] mandatory_control_ids must contain non-empty single-line ids")
+		}
+		if seenControlIDs[id] {
+			return fmt.Errorf("duplicate mandatory control id %q", id)
+		}
+		seenControlIDs[id] = true
+	}
 	seen := map[string]bool{}
 	for _, exclusion := range control.PathExclusions {
 		pattern := strings.TrimSpace(exclusion.Pattern)

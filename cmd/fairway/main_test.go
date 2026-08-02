@@ -756,6 +756,8 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"delivery", "--help"}, "fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]"},
 		{[]string{"delivery", "report", "--help"}, "fairway delivery report --since <duration> [--profile <name>] [--format text|json]"},
 		{[]string{"delivery", "resources", "--help"}, "fairway delivery resources [--type <type>] [--project <project>] [--stale] [--format text|json]"},
+		{[]string{"control", "--help"}, "fairway control report --since <duration> [--profile <name>] [--control <id>] [--format text|json]"},
+		{[]string{"control", "report", "--help"}, "Compare mature observed work only with explicit bypass cohorts"},
 		{[]string{"rough-edge", "--help"}, "fairway rough-edge add --task <task-id>"},
 		{[]string{"provenance", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
 		{[]string{"provenance", "report", "--help"}, "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json]"},
@@ -5779,6 +5781,39 @@ func TestCLI_AuditWorkCoverage(t *testing.T) {
 
 	durationReport := runCapture(t, "--json", "audit", "work-coverage", "--since-duration", "24h")
 	assertContains(t, durationReport, `"since_duration": "24h0m0s"`)
+}
+
+func TestCLI_ControlEffectivenessReportIsAdvisoryAndBounded(t *testing.T) {
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	gitInit(t, repo)
+	writeFile(t, "README.md", "base\n")
+	gitAddCommit(t, repo, "base")
+	runOK(t, "init")
+	runOK(t, "add", "T-001", "--title", "Reviewed change", "--role", "backend", "--profile", "standard", "--risk-level", "medium", "--review-domains", "backend", "--target-paths", "README.md")
+	runOK(t, "claim", "T-001")
+	writeFile(t, "README.md", "reviewed\n")
+	gitAddCommit(t, repo, "T-001 reviewed change")
+	runOK(t, "record", "review", "T-001", "--reviewer", "independent", "--domain", "backend", "--verdict", "approve", "--commit", gitRevParse(t, repo, "HEAD"))
+	runOK(t, "set-status", "T-001", "done")
+
+	report := runCapture(t, "control", "report", "--since", "24h")
+	for _, want := range []string{"control_effectiveness_report: advisory", "review:backend", "classification=insufficient_sample", "censored=", "friction_p90=unavailable", "Observational associations do not establish causal impact"} {
+		assertContains(t, report, want)
+	}
+	jsonReport := runCapture(t, "control", "report", "--since", "24h", "--control", "review:backend", "--format", "json")
+	for _, want := range []string{`"schema": "fairway.control-effectiveness.v1"`, `"advisory": true`, `"configuration_digest": "sha256:`, `"control_state": "observed"`, `"right_censored": 1`} {
+		assertContains(t, jsonReport, want)
+	}
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "status: done")
 }
 
 func TestCLI_AuditExportAndVerify(t *testing.T) {

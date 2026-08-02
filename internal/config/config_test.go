@@ -92,6 +92,36 @@ func TestValidateControlEffectivenessPathExclusions(t *testing.T) {
 	}
 }
 
+func TestValidateControlEffectivenessThresholds(t *testing.T) {
+	cfg := Defaults(t.TempDir())
+	cfg.ControlEffectiveness = ControlEffectivenessConfig{
+		Revision:               "2026-08-02",
+		MinimumSampleSize:      5,
+		MinimumCoverageRatio:   0.8,
+		MaterialOutcomeDelta:   0.1,
+		HighFrictionP90Seconds: 900,
+		MandatoryControlIDs:    []string{"review:security"},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*Config){
+		func(c *Config) { c.ControlEffectiveness.MinimumSampleSize = -1 },
+		func(c *Config) { c.ControlEffectiveness.MinimumCoverageRatio = 1.1 },
+		func(c *Config) { c.ControlEffectiveness.MaterialOutcomeDelta = -0.1 },
+		func(c *Config) { c.ControlEffectiveness.HighFrictionP90Seconds = -1 },
+		func(c *Config) {
+			c.ControlEffectiveness.MandatoryControlIDs = []string{"review:security", "review:security"}
+		},
+	} {
+		candidate := cfg
+		mutate(&candidate)
+		if err := Validate(candidate); err == nil {
+			t.Fatal("expected invalid control-effectiveness configuration")
+		}
+	}
+}
+
 func TestValidateRuleSources(t *testing.T) {
 	base := Defaults(t.TempDir())
 	base.RuleSources = []RuleSource{
