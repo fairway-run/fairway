@@ -7,6 +7,43 @@ and uses semantic versioning.
 
 ## Unreleased
 
+## v0.2.6 - 2026-08-05
+
+### Added
+
+- A cited, read-only Quality Record projects intent, decisions, production
+  context, evidence, verification, judgment, promotion, outcomes, and lessons
+  through the CLI and task dashboard.
+- Append-only task-to-commit associations capture baseline, work, manual, and
+  completion provenance without replacing Git authority.
+- Structured task outcomes and attributable control-friction lifecycles support
+  forward measurement without treating unavailable history as zero.
+- Advisory control-effectiveness CLI and dashboard reports lead with
+  commit/task coverage, preserve risk and diff-size cohorts, and suppress
+  interpretation when coverage or samples are insufficient.
+
+### Changed
+
+- Public positioning now describes Fairway through quality records,
+  engineering continuity, and control while retaining engineering control and
+  accountability as the canonical product category.
+- Quality Record and control analytics distinguish `present`, `missing`,
+  `unavailable`, `conflicting`, and `externally_owned` states instead of
+  generating a completeness or quality score.
+- The GPUaaS consumer pilot establishes a forward-instrumentation baseline and
+  explicitly declines causal control-effectiveness or complete AI Quality
+  System claims.
+
+### Fixed
+
+- Control cohorts require natural observed and bypassed samples before an
+  outcome delta can be classified as discriminating.
+- Bypass evidence requires attributable authority and stable identity;
+  historical skipped evidence remains unknown instead of becoming a synthetic
+  comparison cohort.
+- Populated verification and judgment stages cite exact records and no longer
+  retain generic missing-source markers.
+
 ## v0.2.5 - 2026-07-23
 
 ### Added

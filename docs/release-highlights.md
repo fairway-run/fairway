@@ -1,18 +1,8 @@
-- Pre-tag production rehearsals now prove the exact pushed source through
-  tests, signing, notarization, binary smoke, and release assurance before a
-  final version tag exists.
-- Annotated tags promote one immutable, run-bound candidate packet instead of
-  rebuilding release assets after tagging.
-- Promotion verifies exact source, workflow, policy, inventory, checksums, and
-  signed assurance without receiving build-signing or Homebrew credentials.
-- Release validation now uses bounded behavioral synchronization instead of
-  scheduler-sensitive SSE timing assumptions on the macOS signing runner.
-- Release assurance records the version of the exact pinned GoReleaser
-  executable that built the signed candidate archives.
-- Release-assurance checksums are portable and reference only the published
-  asset basename, never a runner-local build path.
-- Public product entry points now explain Fairway as engineering continuity and
-  control: execution records, track memory, engineering knowledge, reusable
-  rule packs, and bounded assurance are presented as distinct capabilities.
-- Implemented capabilities are labeled separately from planned execution
-  profiles such as the large-migration profile.
+- Inspect one cited Quality Record across intent, evidence, verification,
+  judgment, promotion, outcomes, and lessons without generating a quality score
+  or granting Fairway approval authority.
+- Connect tasks to delivered commits and retain structured outcomes and
+  attributable control friction for forward, evidence-based measurement.
+- Measure control coverage and signal through advisory CLI/dashboard reports
+  that suppress rankings when coverage, samples, or outcome integrity are
+  insufficient.

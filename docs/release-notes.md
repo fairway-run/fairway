@@ -10,6 +10,61 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.2.6
+
+`v0.2.6` makes Fairway's quality record inspectable and its governance
+measurable without turning either into autonomous authority.
+
+The new `fairway quality-record <task-id>` command and task dashboard project
+nine cited lifecycle stages: intent, decisions, production context, evidence,
+verification, judgment, promotion, outcomes, and lessons. Each stage reports
+`present`, `missing`, `unavailable`, `conflicting`, or `externally_owned`.
+Fairway does not fill gaps with generated prose, produce a quality score, or
+acquire review, merge, deploy, release, or risk-acceptance authority.
+
+Normal work lifecycle commands now retain append-only task-to-commit
+associations. Structured outcome links distinguish incidents, rollbacks,
+reopens, corrective work, and superseding tasks from same-file touch proxies.
+Attributable friction records distinguish measured, open, unavailable, and
+missing control cost.
+
+Advisory control-effectiveness reports combine those records with Git facts,
+risk and diff-size cohorts, coverage gates, and read-only drill-down. The first
+GPUaaS control pilot correctly suppressed every ranking under low commit
+coverage. A second 288-task pilot validated deterministic Quality Record
+reconstruction and exposed one real blocked-then-passed verification conflict,
+while retaining the consumer's absent historical outcome/friction facts as
+unavailable. These pilots validate data-quality diagnosis, not causal control
+effectiveness or a complete AI Quality System.
+
+Public docs and the website now present the implemented capability as
+engineering quality records, continuity, and control. The canonical category
+claim remains engineering control and accountability for agent-driven
+delivery.
+
+### Upgrade
+
+1. Back up the project Fairway database and managed contract files.
+2. Install `v0.2.6`.
+3. Run `fairway config validate`, `fairway agent-contract status`, and
+   `fairway reconcile active --dry-run`.
+4. Inspect a completed task with `fairway quality-record <task-id>`.
+5. Use normal `fairway work start` and `fairway work close` for new work so
+   commit association is captured prospectively. Do not backfill historical
+   outcomes or friction unless a durable authoritative source exists.
+
+### Known Limits
+
+- Historical GPUaaS commit associations, structured outcomes, and attributable
+  friction are intentionally not inferred or backfilled.
+- Verifier qualification, reviewer authentication/competence, comparison-class
+  process capability, and a validated closed improvement loop remain incomplete
+  or externally owned.
+- Observational control reports do not establish causality and cannot relax a
+  mandatory safety invariant.
+- Fairway does not claim regulatory certification or a complete AI Quality
+  System.
+
 ## v0.2.5
 
 `v0.2.5` changes Fairway releases from tag-first builds to qualified candidate
