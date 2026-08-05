@@ -6680,3 +6680,134 @@ tasks:
       - "Map each Quality Record stage to cited current Fairway capabilities and validation evidence."
       - "Distinguish implemented, validated practice, partial, missing, and deliberately external capabilities without converting gaps into implementation tasks."
       - "State the defensible current product claim and the empirical questions that must be answered before broader repositioning."
+
+  - id: FW-391
+    title: Operationalize the AI engineering quality record
+    kind: epic
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: ai-quality-record
+    source_paths: [docs/design/ai-quality-engineering.md, docs/assessment/fairway-ai-engineering-quality-system-assessment-2026-08-02.md, docs/assessment/gpuaas-control-effectiveness-pilot-2026-08-02.md]
+    target_paths: [docs/design, docs/assessment, docs/product.md, docs/roadmap/fairway-product-backlog.yaml, internal, cmd/fairway]
+    review_domains: [governance]
+    risk_level: medium
+    migration_type: ai-quality-record-operationalization
+    acceptance_checks:
+      - "Fairway links bounded intent, material decisions, production context, evidence, verification, judgment, promotion, outcomes, and lessons without treating generated prose as authority."
+      - "GPUaaS commit coverage and structured outcome quality meet the interpretation gates before control-effectiveness claims are expanded."
+      - "The resulting product claim and demonstration remain grounded in measured behavior and ship through the qualified release process."
+
+  - id: FW-392
+    title: Add durable task-to-commit association
+    kind: task
+    parent_id: FW-391
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: quality-record-provenance
+    source_paths: [internal/store, internal/git, internal/audit, cmd/fairway, docs/design/control-effectiveness.md, docs/design/supply-chain-provenance.md]
+    target_paths: [internal/store, internal/git, internal/audit, cmd/fairway, docs/agent-guide.md, docs/design/cli.md, docs/design/schema.md, docs/design/supply-chain-provenance.md]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: task-commit-association
+    acceptance_checks:
+      - "A task can retain multiple attributable commits while preserving one canonical completion commit."
+      - "The normal work path records commit associations without requiring commit-message conventions or broad path inference."
+      - "Work-coverage and control reports use explicit task/commit associations and expose their denominator and provenance."
+      - "Existing stores migrate without rewriting historical commit claims or inflating coverage."
+
+  - id: FW-393
+    title: Complete structured outcome and control-friction capture
+    kind: task
+    parent_id: FW-391
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: quality-record-outcomes
+    source_paths: [internal/store, internal/controlanalytics, internal/deliveryreport, cmd/fairway, docs/design/control-effectiveness.md]
+    target_paths: [internal/store, internal/controlanalytics, internal/deliveryreport, cmd/fairway, docs/agent-guide.md, docs/design/control-effectiveness.md]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: outcome-friction-instrumentation
+    dependencies: [FW-392]
+    acceptance_checks:
+      - "Incidents, rollbacks, reopens, corrective work, and superseding tasks are attributable structured outcomes rather than prose inference."
+      - "Control and review friction has explicit start, resolution, actor, and unavailable semantics; missing samples never become zero cost."
+      - "Outcome and friction records remain advisory facts and grant no approval or policy-waiver authority."
+
+  - id: FW-394
+    title: Add unified Quality Record projection
+    kind: task
+    parent_id: FW-391
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: quality-record-projection
+    source_paths: [docs/design/ai-quality-engineering.md, docs/assessment/fairway-ai-engineering-quality-system-assessment-2026-08-02.md, internal/store, internal/dashboard, cmd/fairway]
+    target_paths: [internal/qualityrecord, internal/dashboard, cmd/fairway, docs/agent-guide.md, docs/design/cli.md, docs/design/dashboard.md]
+    review_domains: [arch, governance, ui]
+    risk_level: medium
+    migration_type: quality-record-projection
+    dependencies: [FW-393]
+    acceptance_checks:
+      - "One read-only CLI and dashboard projection connects intent, decisions, production context, evidence, verification, judgment, promotion, outcomes, and lessons for a task."
+      - "Every projection section cites durable source records and distinguishes missing, unavailable, conflicting, and externally owned facts."
+      - "The projection cannot approve, merge, deploy, waive controls, or convert advisory synthesis into provenance."
+
+  - id: FW-395
+    title: Run second GPUaaS quality-system measurement pilot
+    kind: task
+    parent_id: FW-391
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: quality-record-consumer-pilot
+    source_paths: [docs/design/control-effectiveness.md, docs/design/ai-quality-engineering.md, docs/assessment, ../GPUasService]
+    target_paths: [docs/assessment, docs/product.md, docs/design/control-effectiveness.md]
+    review_domains: [arch, backend]
+    risk_level: medium
+    migration_type: quality-system-consumer-pilot
+    dependencies: [FW-394]
+    acceptance_checks:
+      - "GPUaaS commit-to-task coverage is measured over two consecutive 30-day windows and no effectiveness interpretation is made below the configured threshold."
+      - "Representative controls are evaluated within contemporaneous risk and diff-size cohorts using structured outcomes and attributable friction."
+      - "The pilot records keep, narrow, redesign, instrument, or defer decisions and preserves mandatory safety invariants."
+
+  - id: FW-396
+    title: Refresh Fairway operating-model positioning and demonstration
+    kind: docs
+    parent_id: FW-391
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product-positioning
+    source_paths: [docs/product.md, docs/design/ai-quality-engineering.md, docs/assessment]
+    target_paths: [README.md, docs/product.md, docs, website]
+    review_domains: [arch]
+    risk_level: low
+    migration_type: measured-product-positioning
+    dependencies: [FW-395]
+    acceptance_checks:
+      - "Positioning explains repository authority, replaceable agent execution, Fairway quality records, independent verification, and human judgment without relying on skills or prompt choreography as the product thesis."
+      - "A bounded non-coding demonstration follows one real engineering request from intent through evidence, decision, outcome, and learning."
+      - "All claims distinguish implemented capability, validated practice, experimental behavior, planned work, and non-goals."
+
+  - id: FW-397
+    title: Qualify and release the AI quality-record capability
+    kind: task
+    parent_id: FW-391
+    role: ops
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: release
+    source_paths: [docs/release-notes.md, docs/design/release-cuts.md, .github, scripts]
+    target_paths: [docs/release-notes.md, docs/assessment, .github, scripts]
+    review_domains: [governance, arch]
+    risk_level: high
+    migration_type: qualified-release
+    dependencies: [FW-396]
+    acceptance_checks:
+      - "Release scope is limited to the coherent quality-record capability and its measured positioning."
+      - "The qualified candidate process proves tests, provenance, signing, notarization, packaging, upgrade, rollback, and clean-install behavior on the exact release commit."
+      - "Release notes state capability and claim boundaries without presenting observational control analytics as causal proof."
