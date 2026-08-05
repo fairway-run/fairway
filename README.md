@@ -4,20 +4,22 @@
 
 # Fairway
 
-**Engineering continuity and control for agent-driven delivery.**
+**Engineering quality records, continuity, and control for agent-driven delivery.**
 
 Fairway keeps agent-driven engineering governed, resumable, and reviewable
-across providers, tools, and time. It connects an accountable execution record
-with working memory, source-grounded project knowledge, reusable rule packs,
-and evidence-backed assurance.
+across providers, tools, and time. It projects a cited Quality Record from
+accountable execution facts and connects that record with working memory,
+source-grounded project knowledge, reusable rule packs, and evidence-backed
+assurance.
 
-It gives a software team a durable answer to five questions:
+It gives a software team a durable answer to six questions:
 
 1. What work was authorized, and who owns it now?
 2. Which material decisions shaped the work?
 3. What evidence supports the current claim?
-4. Which independent judgment is still required?
-5. Is the work ready to be promoted, or should it remain local and reversible?
+4. Which evidence agrees, conflicts, or remains unavailable?
+5. Which independent judgment or promotion authority is still required?
+6. What outcome or controlled lesson was retained after promotion?
 
 Coding agents, source control, CI/CD, issue trackers, and orchestrators still do
 their own jobs. Fairway connects their engineering facts in a local execution
@@ -62,8 +64,10 @@ Fairway keeps ordinary agent work connected to explicit engineering controls:
 | Intent | task, owner, scope, acceptance | Agents start from bounded work rather than reconstructed chat. |
 | Decisions | task decision and context packet | Material choices survive provider replacement and context compaction. |
 | Evidence | command result and artifact reference | A claim can be checked without treating generated prose as proof. |
+| Verification | cited evidence state and verifier boundary | Passing, missing, unavailable, and conflicting checks stay distinct. |
 | Independent judgment | routed review and review wait | Required human or independent review stays visible and attributable. |
 | Promotion | workflow, merge-ready, release, and deploy guards | Reversible implementation remains distinct from consequential release or live action. |
+| Outcomes and lessons | structured outcome, friction, and controlled-improvement links | Promotion is not treated as the end of the quality record. |
 
 Coordination is part of this chain. Sessions, checkpoints, handoffs, waits,
 notifications, lanes, and dashboards make ownership and next actions visible,
@@ -94,6 +98,10 @@ The current binary provides:
 - a local-first Go CLI and SQLite execution store;
 - task, session, checkpoint, decision, evidence, handoff, review, wait, and
   notification records;
+- a cited, read-only Quality Record spanning intent, decisions, production
+  context, evidence, verification, judgment, promotion, outcomes, and lessons;
+- durable task-to-commit association plus structured outcome and attributable
+  control-friction records for forward measurement;
 - workflow, review, merge-readiness, release, and reconciliation checks;
 - database-backed track memory and deterministic engineering-knowledge packets;
 - local rule-pack loading, matching, lint, and evidence expectations;
@@ -139,6 +147,8 @@ actions.
 ## Documentation
 
 - [Quickstart](docs/quickstart.md): first bounded work item
+- [Quality Record demo](docs/quality-record-demo.md): inspect one cited record
+  and its measurement boundary
 - [Product](docs/product.md): product promise, principles, and capability status
 - [Concepts](docs/design/concepts.md): canonical concept map
 - [Agent guide](docs/agent-guide.md): complete operating workflow

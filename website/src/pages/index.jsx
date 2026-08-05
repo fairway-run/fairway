@@ -9,7 +9,8 @@ const accountability = [
   { step: '02', title: 'Record decisions', body: 'Keep material choices and deviations durable without treating provider transcripts as provenance.' },
   { step: '03', title: 'Attach evidence', body: 'Link tests, CI, environment proof, and artifacts to the work they support.' },
   { step: '04', title: 'Apply judgment', body: 'Route independent review according to risk and retain findings, not just approval status.' },
-  { step: '05', title: 'Promote explicitly', body: 'Make merge, release, deploy, and live-operation boundaries visible without granting them to Fairway.' }
+  { step: '05', title: 'Promote explicitly', body: 'Make merge, release, deploy, and live-operation boundaries visible without granting them to Fairway.' },
+  { step: '06', title: 'Observe outcomes', body: 'Link operational outcomes and controlled lessons instead of treating promotion as the end of quality.' }
 ];
 
 const productLayers = [
@@ -18,7 +19,7 @@ const productLayers = [
     name: 'Execution control',
     status: 'Implemented',
     summary: 'Bound work to durable intent, ownership, decisions, evidence, review, and promotion state.',
-    detail: 'Tasks · sessions · checkpoints · evidence · reviews'
+    detail: 'Quality Record · tasks · commits · evidence · outcomes'
   },
   {
     index: '02',
@@ -70,8 +71,8 @@ function ProductLayer({ index, name, status, summary, detail }) {
 export default function Home() {
   return (
     <Layout
-      title="Engineering continuity and control for agent-driven delivery"
-      description="Fairway keeps agent-driven engineering governed, resumable, and reviewable through durable execution records, memory, knowledge, rules, and assurance."
+      title="Engineering quality records, continuity, and control"
+      description="Fairway projects cited quality records for agent-driven engineering and connects them with continuity, knowledge, rules, and assurance."
     >
       <main>
         <section className={styles.hero}>
@@ -79,13 +80,13 @@ export default function Home() {
           <div className={styles.heroInner}>
             <img src="/img/logo-lockup.svg" alt="Fairway" className={styles.logo} />
             <Heading as="h1">Fairway</Heading>
-            <p className={styles.kicker}>Engineering continuity and control</p>
+            <p className={styles.kicker}>Quality records, continuity, and control</p>
             <p className={styles.lede}>
               Keep agent-driven engineering governed, resumable, and
-              reviewable across providers, tools, and time. Fairway connects
-              execution records, working memory, project knowledge, reusable
-              rules, and promotion evidence without taking authority from the
-              systems that perform the work.
+              reviewable across providers, tools, and time. Fairway projects a
+              cited Quality Record and connects it with working memory, project
+              knowledge, reusable rules, and promotion evidence without taking
+              authority from the systems that perform the work.
             </p>
             <div className={styles.actions}>
               <Link className={clsx('button button--primary button--lg', styles.primary)} to="/docs/quickstart">
@@ -106,7 +107,7 @@ export default function Home() {
           <div className={styles.modelHeading}>
             <div>
               <span>One durable engineering record</span>
-              <Heading as="h2">Control today&apos;s work. Preserve what the next agent needs.</Heading>
+              <Heading as="h2">Connect today&apos;s work to evidence, outcomes, and what comes next.</Heading>
             </div>
             <p>
               Fairway begins with accountable execution and extends into
@@ -121,13 +122,14 @@ export default function Home() {
             <Link to="/docs/design/project-working-memory">How track memory works</Link>
             <Link to="/docs/design/engineering-knowledge">How engineering knowledge stays grounded</Link>
             <Link to="/docs/design/rule-packs">How reusable rules compose</Link>
+            <Link to="/docs/quality-record-demo">Run the Quality Record demo</Link>
           </div>
         </section>
 
         <section className={styles.accountability}>
           <div className={styles.sectionHeading}>
             <span>The control path</span>
-            <Heading as="h2">From declared intent to explicit promotion</Heading>
+            <Heading as="h2">From declared intent to observable outcomes</Heading>
             <p>
               The same accountability chain applies whether one agent handles
               a small fix or several providers execute a long-running program.
@@ -141,15 +143,16 @@ export default function Home() {
         <section className={styles.productProof}>
           <div className={styles.proofCopy}>
             <span>Operational readback</span>
-            <Heading as="h2">See work, waits, evidence, and review state without turning the dashboard into a control console.</Heading>
+            <Heading as="h2">Inspect the cited Quality Record without turning the dashboard into an approval console.</Heading>
             <p>
-              The read-only dashboard projects the same Fairway record used by
-              the CLI, memory packets, and knowledge queries. Mutating work
-              stays in trusted command and provider surfaces with explicit
-              policy checks.
+              The read-only dashboard projects the same intent, evidence,
+              verification, judgment, promotion, outcome, and lesson states as
+              the CLI. Missing, unavailable, conflicting, and externally owned
+              facts stay visible instead of becoming a generated score.
             </p>
             <div className={styles.textLinks}>
               <Link to="/docs/design/dashboard">Explore the dashboard model</Link>
+              <Link to="/docs/quality-record-demo">Run the ten-minute demonstration</Link>
               <Link to="/docs/case-studies/ai-cloud">Read the internal AI Cloud case study</Link>
             </div>
           </div>

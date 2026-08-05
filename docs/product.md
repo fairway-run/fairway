@@ -5,6 +5,13 @@
 Fairway is the engineering control and accountability layer for agent-driven
 software delivery.
 
+Its supported Quality Record is a cited, read-only projection across intent,
+material decisions, production context, evidence, automatic verification,
+human judgment, promotion, operational outcomes, and controlled lessons. Each
+stage reports `present`, `missing`, `unavailable`, `conflicting`, or
+`externally_owned`; it does not create a quality score or acquire approval
+authority.
+
 It keeps accountable intent, material decisions, evidence, independent
 judgment, and promotion state durable while coding agents and engineering tools
 perform the work. The result is a replaceable-provider workflow: a provider can
@@ -38,11 +45,13 @@ Fairway also treats governance as an observable engineering system. Delivery
 reports expose velocity and coordination overhead. Implemented advisory
 control-effectiveness analytics now measure coverage, control-specific signal,
 friction, and observable outcomes through the CLI and a read-only dashboard
-without claiming causality or granting policy authority. The first GPUaaS pilot
-validated the coverage-first suppression behavior and exposed adoption and
-instrumentation gaps; it did not claim incremental control effectiveness. See
-[Control effectiveness](design/control-effectiveness.md) and the
-[GPUaaS pilot](assessment/gpuaas-control-effectiveness-pilot-2026-08-02.md).
+without claiming causality or granting policy authority. Two GPUaaS pilots
+validated coverage-first suppression and population-scale Quality Record
+reconstruction while exposing adoption and instrumentation gaps. They did not
+claim incremental control effectiveness or a complete AI Quality System. See
+[Control effectiveness](design/control-effectiveness.md), the
+[first GPUaaS pilot](assessment/gpuaas-control-effectiveness-pilot-2026-08-02.md),
+and the [Quality Record pilot](assessment/gpuaas-quality-record-pilot-2026-08-05.md).
 
 ## The Product Promise
 
@@ -55,6 +64,12 @@ For every bounded work item, a team should be able to determine:
 - **Judgment:** required review, recorded verdicts, and unresolved waits.
 - **Promotion:** whether the work remains local and reversible or has satisfied
   the explicit controls for merge, release, deploy, or live execution.
+- **Outcome and lesson:** what happened after promotion and which reviewed
+  process or engineering change follows from it.
+
+`fairway quality-record <task-id>` projects these facts together and cites the
+underlying records or external authority. It does not fill absent facts with a
+generated narrative.
 
 Generated rationale, provider transcripts, and advisory recommendations may
 help a person reason. They are not provenance, approval, or risk acceptance.
@@ -75,8 +90,8 @@ These labels are mandatory in public and canonical Fairway documentation.
 
 | Label | Meaning | Current Fairway examples |
 |---|---|---|
-| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; advisory control-effectiveness CLI/dashboard; read-oriented dashboards. |
-| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, memory/knowledge cold starts, review/release coordination, environment rehearsal, local shared-dashboard operation, and GPUaaS control-analytics data-quality calibration documented under `docs/assessment/`. |
+| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; cited Quality Record projection; task-to-commit, structured-outcome, and attributable-friction records; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; advisory control-effectiveness CLI/dashboard; read-oriented dashboards. |
+| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, memory/knowledge cold starts, review/release coordination, environment rehearsal, local shared-dashboard operation, and GPUaaS Quality Record/control-analytics data-quality calibration documented under `docs/assessment/`. |
 | **Experimental** | Implemented as an explicit pilot or advisory surface and not the default authority path. | Shared-team server/write pilots, advisory provider narratives, notifier adapters, Postgres compatibility rehearsal, and prototype operating profiles. |
 | **Planned** | Designed or tracked but not implemented as a supported runtime capability. | Migration execution profiles, a production Postgres runtime adapter, broad tracker API adapters, and a reviewed shared-team production deployment path. |
 | **Non-goal** | Deliberately outside Fairway authority. | Autonomous approval, risk acceptance, merge, push, deploy, live mutation, credential custody, transcript-as-authority, or regulatory certification. |
@@ -135,11 +150,13 @@ Fairway links those facts; it does not overwrite their ownership.
 
 ## Direction
 
-Current product work focuses on making the accountability chain easier to
-adopt, strengthening shared-team boundaries without abandoning local-first
-operation, and measuring whether specific controls discriminate useful outcomes
-at an acceptable cost. Coverage and observational limits remain visible; sparse
-data never becomes a reason to waive mandatory safety invariants.
+Current product work focuses on making the Quality Record and accountability
+chain easier to adopt, strengthening shared-team boundaries without abandoning
+local-first operation, and measuring whether specific controls discriminate
+useful outcomes at an acceptable cost. Coverage and observational limits remain
+visible; sparse data never becomes a reason to waive mandatory safety
+invariants. "AI Engineering Quality System" remains a direction to evaluate,
+not a current completeness or certification claim.
 
 The versioned [product backlog](roadmap/fairway-product-backlog.yaml) records
 planned work. Release scope and implemented behavior are reported in

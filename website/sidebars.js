@@ -19,6 +19,7 @@ const sidebars = {
       label: 'Get Started',
       items: [
         'quickstart',
+        'quality-record-demo',
         'design/concepts'
       ]
     },
