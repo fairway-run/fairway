@@ -69,6 +69,11 @@ func TestCLI_Smoke(t *testing.T) {
 	assertContains(t, detail, "control=evidence:uat status=unavailable")
 	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
 	assertContains(t, jsonDetail, `"control_friction":`)
+	qualityRecord := runCapture(t, "quality-record", "T-001")
+	assertContains(t, qualityRecord, "quality_record: T-001")
+	assertContains(t, qualityRecord, "[promotion] Promotion Decision: externally_owned")
+	qualityRecordJSON := runCapture(t, "--json", "quality-record", "T-001")
+	assertContains(t, qualityRecordJSON, `"schema": "fairway.quality-record.v1"`)
 	runOK(t, "status-report")
 	runOK(t, "--json", "status-report")
 	runOK(t, "health-report")
@@ -729,6 +734,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
 		{[]string{"record", "--help"}, "fairway record commit|evidence|outcome|friction|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},
+		{[]string{"quality-record", "--help"}, "fairway quality-record <task-id> [--format text|json]"},
 		{[]string{"record", "completion-handback", "--help"}, "fairway record completion-handback <task-id> --to <role> --next-action <text>"},
 		{[]string{"record", "completion-handback-supersede", "--help"}, "fairway record completion-handback-supersede <task-id> --handoff-id <id> --reason <text>"},
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},

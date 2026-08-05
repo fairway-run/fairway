@@ -13,7 +13,7 @@ detail.
 | `/board?tab=diagnostics` | Diagnostics tab for sessions, worktrees, watchers, and checkpoints. |
 | `/reports` | Daily and date-range work reports for outcomes, CI/deploy activity, reviews, and follow-ups. |
 | `/controls` | Single-project, read-only control-effectiveness cohorts and source-fact drill-down. Hidden in multi-project mode because projects can use different control configurations. |
-| `/tasks/<task-id>` | Task detail page with metadata, history, evidence, sessions, reviews, and status controls. |
+| `/tasks/<task-id>` | Task detail page with the cited Quality Record, metadata, history, evidence, sessions, reviews, and status controls. |
 | `/wall` | Compatibility redirect to `/`. |
 
 There is no dashboard version switch. `[dashboard] surface` is not part of the
@@ -80,6 +80,14 @@ review, and audit drill-down. The surface is advisory and cannot mutate policy,
 waive a control, or authorize delivery. Multi-project dashboards omit this
 route because combining projects with different control configurations would
 erase cohort authority.
+
+Each task detail begins with the same `qualityrecord.Record` projection exposed
+by `fairway quality-record`. Its nine lifecycle rows cite durable Fairway
+records or name expected/external sources and distinguish `present`, `missing`,
+`unavailable`, `conflicting`, and `externally_owned` facts. The dashboard does
+not generate a confidence score or narrative, and the projection cannot grant
+review, merge, deploy, release, credential, or live-operation authority.
+
 6. Open Controls when the question is "which controls discriminate, at what
    measured cost, and with what uncertainty?"
 7. Open Reports when the question is "what changed today, what finished, what

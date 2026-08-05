@@ -973,6 +973,11 @@ fairway workflow check --mode deploy --require-clean --require-pushed
 # back to Fairway task metadata.
 fairway audit work-coverage --since-ref main --dry-run
 
+# Quality-record boundary: inspect cited lifecycle facts and explicit gaps
+# without reconstructing a narrative from provider chat history.
+fairway quality-record T-001
+fairway quality-record T-001 --format json
+
 # Outcome boundary: attach explicit operational or corrective outcomes. Do not
 # infer incidents, rollbacks, or corrective links from prose.
 fairway record outcome T-001 --kind incident --source-ref INC-1042

@@ -42,6 +42,7 @@ import (
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/offlinebundle"
 	"github.com/subashram/fairway/internal/provenance"
+	"github.com/subashram/fairway/internal/qualityrecord"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/registry"
 	"github.com/subashram/fairway/internal/reviewpolicy"
@@ -129,6 +130,8 @@ func run(ctx context.Context, args []string) error {
 		return withStore(ctx, opts, func(ctx context.Context, cfg config.Config, _ string, s *store.Store) error {
 			return printDetail(ctx, cfg, s, args[1], opts.JSON)
 		})
+	case "quality-record":
+		return cmdQualityRecord(ctx, opts, args[1:])
 	case "status-report":
 		return cmdStatusReport(ctx, opts, args[1:])
 	case "health-report":
@@ -4677,6 +4680,50 @@ func cmdDelivery(ctx context.Context, opts globalOptions, args []string) error {
 	default:
 		return fmt.Errorf("unknown delivery subcommand %q", args[0])
 	}
+}
+
+func cmdQualityRecord(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) == 0 || isHelpOnly(args) {
+		subcommandUsage("quality-record", "<task-id> [--format text|json]")
+		return nil
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("quality-record", flag.ContinueOnError)
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected quality-record arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *format != "text" && *format != "json" {
+		return errors.New("--format must be text or json")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		record, err := qualityrecord.Build(ctx, s, taskID, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(record)
+		}
+		fmt.Printf("quality_record: %s\nschema: %s\nadvisory: %t\ngenerated_at: %s\n", record.TaskID, record.Schema, record.Advisory, record.GeneratedAt)
+		fmt.Printf("summary: present=%d missing=%d unavailable=%d conflicting=%d externally_owned=%d\n", record.Summary.Present, record.Summary.Missing, record.Summary.Unavailable, record.Summary.Conflicting, record.Summary.ExternallyOwned)
+		fmt.Println("authority_boundary:", record.AuthorityBoundary)
+		for _, section := range record.Sections {
+			fmt.Printf("\n[%s] %s: %s\n", section.ID, section.Title, section.State)
+			if section.Boundary != "" {
+				fmt.Println("boundary:", section.Boundary)
+			}
+			for _, fact := range section.Facts {
+				fmt.Printf("- %s=%s source=%s\n", fact.Name, fact.Value, fact.SourceRef)
+			}
+			for _, source := range section.Sources {
+				fmt.Printf("  source: %s %s availability=%s\n", source.RecordType, source.Ref, source.Availability)
+			}
+		}
+		return nil
+	})
 }
 
 func cmdControl(ctx context.Context, opts globalOptions, args []string) error {
@@ -21521,7 +21568,7 @@ func usage() {
 	fmt.Println("  fairway <command> --help")
 	fmt.Println()
 	fmt.Println("Queue and task state:")
-	fmt.Println("  init, agent-guide, agent-contract, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail, decision")
+	fmt.Println("  init, agent-guide, agent-contract, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail, quality-record, decision")
 	fmt.Println("Evidence and review:")
 	fmt.Println("  record commit|evidence|outcome|friction|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
@@ -21561,6 +21608,7 @@ func printCommandHelp(command string) bool {
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"doctor":                     "fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json]\n  Run read-only local capability diagnostics for agent, git, dashboard, provider, and rehearsal surfaces.",
 		"record":                     "fairway record commit|evidence|outcome|friction|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"quality-record":             "fairway quality-record <task-id> [--format text|json]\n  Project the cited Quality Record for one task without changing authority or workflow state.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
 		"route":                      "fairway route review <task-id> ... | fairway route review-preflight [--task <task-id>]\n  Route one review or validate project-wide review-domain coverage without mutation.",

@@ -26,6 +26,7 @@ import (
 	"github.com/subashram/fairway/internal/evidencemodel"
 	fairwaygit "github.com/subashram/fairway/internal/git"
 	"github.com/subashram/fairway/internal/livewindow"
+	"github.com/subashram/fairway/internal/qualityrecord"
 	"github.com/subashram/fairway/internal/reconcile"
 	"github.com/subashram/fairway/internal/reviewpolicy"
 	"github.com/subashram/fairway/internal/reviewstate"
@@ -381,6 +382,7 @@ type TaskDetailViewData struct {
 	ActiveFindings       []reconcile.ActiveFinding
 	ReadOnly             bool
 	Recommendation       CommonPathRecommendation
+	QualityRecord        qualityrecord.Record
 }
 
 type TaskGateStatus struct {
@@ -2643,6 +2645,13 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 	start = time.Now()
 	auditDiagnostics := s.auditDiagnostics(r.Context(), id)
 	timing.add("task_detail.audit", time.Since(start), "task_scoped=true")
+	start = time.Now()
+	qualityRecord, err := qualityrecord.Build(r.Context(), s.store, id, time.Now().UTC())
+	timing.add("task_detail.quality_record", time.Since(start), fmt.Sprintf("sections=%d", len(qualityRecord.Sections)))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -2678,6 +2687,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		ActiveFindings:       activeFindingsForTask(activeReport.Findings, id),
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 		Recommendation:       recommendation,
+		QualityRecord:        qualityRecord,
 	}
 	start = time.Now()
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)

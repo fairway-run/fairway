@@ -89,6 +89,7 @@ fairway add <task-id> --title <t> [--kind <k>] [--parent <id>] [--priority <n>] 
 fairway spawn --id <task-id> --title <t> [--kind <k>] [--child | --sibling | --parent <id> | --root] [--from-task <id>] [--priority <n>] [--force] [--acceptance <text>]... [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>]... [--target-paths <csv>]... [--review-domains <csv>]... [--risk-level <r>] [--migration-type <t>]
 fairway update <task-id> [--title <t>] [--notes <text>] [--kind <k>] [--parent <id>] [--priority <n>] [--sequence <n>] [--dependencies <a,b,c>] [--acceptance <text>]... [--profile <p>] [--owning-domain <d>] [--owning-layer <l>] [--source-paths <csv>]... [--target-paths <csv>]... [--review-domains <csv>]... [--risk-level <r>] [--migration-type <t>]
 fairway tree <task-id> [--depth <n>]                    # print descendant tree
+fairway quality-record <task-id> [--format text|json]   # cited read-only lifecycle projection
 fairway list [--status <state[,state]>]... [--role <role>] [--ready] # list tasks by status with dependency readiness summary
 fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]
 fairway record evidence <task-id> --command-text <text> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <text>]
@@ -515,6 +516,11 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   requires a reason and creates an explicit non-measurement fact. Open,
   unavailable, and missing samples are reported separately and never converted
   to zero seconds. These records are advisory and grant no approval or waiver.
+- `quality-record` projects nine deterministic sections: intent, decisions,
+  production context, evidence, verification, judgment, promotion, outcomes,
+  and lessons. Every section cites its durable source or expected/external
+  authority and reports `present`, `missing`, `unavailable`, `conflicting`, or
+  `externally_owned`. It creates no new record and grants no authority.
 - `tracker` commands are provider-neutral adapter contract surfaces. `configure`,
   `import`, `export-status`, `resolve`, and `reconcile` are dry-run/advisory
   until a provider adapter explicitly adds an apply path. Tracker planning

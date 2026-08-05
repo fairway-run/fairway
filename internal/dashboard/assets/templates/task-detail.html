@@ -40,6 +40,15 @@
 <p><code>{{.Recommendation.AuditCommand}}</code></p>
 </details>
 </article>
+<article class="detail-panel wide" id="quality-record">
+<p class="eyebrow">Quality Record / read-only</p>
+<h2>Trust evidence by lifecycle stage</h2>
+<p>{{.QualityRecord.AuthorityBoundary}}</p>
+<p>Present {{.QualityRecord.Summary.Present}} · Missing {{.QualityRecord.Summary.Missing}} · Unavailable {{.QualityRecord.Summary.Unavailable}} · Conflicting {{.QualityRecord.Summary.Conflicting}} · Externally owned {{.QualityRecord.Summary.ExternallyOwned}}</p>
+<table class="detail-table"><thead><tr><th>Stage</th><th>State</th><th>Facts</th><th>Sources</th><th>Boundary</th></tr></thead><tbody>
+{{range .QualityRecord.Sections}}<tr><td><b>{{.Title}}</b><br><code>{{.ID}}</code></td><td><span class="status-pill {{statusClass .State}}">{{.State}}</span></td><td>{{range .Facts}}<div><b>{{.Name}}</b> {{.Value}}<br><small><code>{{.SourceRef}}</code></small></div>{{else}}<span class="muted">none recorded</span>{{end}}</td><td>{{range .Sources}}<div><code>{{.Ref}}</code><br><small>{{.RecordType}} / {{.Availability}}</small></div>{{end}}</td><td>{{if .Boundary}}{{.Boundary}}{{else}}none{{end}}</td></tr>{{end}}
+</tbody></table>
+</article>
 {{if not .ReadOnly}}
 <article class="detail-panel">
 <h2>Status</h2>
