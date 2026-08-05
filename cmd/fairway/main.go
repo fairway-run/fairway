@@ -4721,8 +4721,8 @@ func cmdControl(ctx context.Context, opts globalOptions, args []string) error {
 		fmt.Printf("control_effectiveness_report: advisory\n")
 		fmt.Printf("as_of: %s\nsince: %s\nanalyzed_tip: %s\n", report.AsOf, report.Since, report.AnalyzedTip)
 		fmt.Printf("configuration: revision=%s digest=%s\n", report.ConfigurationRevision, report.ConfigurationDigest)
-		fmt.Printf("coverage: commits=%d/%d (%.3f) files=%d/%d (%.3f) excluded_merges=%d excluded_only=%d excluded_files=%d\n",
-			report.Coverage.CoveredCommits, report.Coverage.EligibleCommits, report.Coverage.CommitCoverageRatio,
+		fmt.Printf("coverage: commits=%d/%d (%.3f) explicitly_linked=%d files=%d/%d (%.3f) excluded_merges=%d excluded_only=%d excluded_files=%d\n",
+			report.Coverage.CoveredCommits, report.Coverage.EligibleCommits, report.Coverage.CommitCoverageRatio, report.Coverage.ExplicitlyLinkedCommits,
 			report.Coverage.CoveredChangedFiles, report.Coverage.EligibleChangedFiles, report.Coverage.FileCoverageRatio,
 			report.Coverage.ExcludedMergeCommits, report.Coverage.ExcludedOnlyCommits, report.Coverage.ExcludedChangedFiles)
 		fmt.Println("controls:")
@@ -4730,10 +4730,10 @@ func cmdControl(ctx context.Context, opts globalOptions, args []string) error {
 			fmt.Println("- none in the selected population")
 		}
 		for _, row := range report.Controls {
-			fmt.Printf("- %s family=%s profile=%s risk=%s size=%s horizon=%dd classification=%s applicable=%d known=%d unknown=%d censored=%d outcome_unavailable=%d observed=%d bypassed=%d observed_rate=%.3f bypassed_rate=%.3f delta=%.3f friction_p90=%s\n",
+			fmt.Printf("- %s family=%s profile=%s risk=%s size=%s horizon=%dd classification=%s applicable=%d known=%d unknown=%d censored=%d outcome_unavailable=%d observed=%d bypassed=%d observed_rate=%.3f bypassed_rate=%.3f delta=%.3f friction_p90=%s friction_open=%d friction_unavailable=%d friction_missing=%d friction_legacy=%d\n",
 				row.ControlID, row.Family, firstNonEmpty(row.Profile, "none"), row.RiskBand, row.SizeBand, row.HorizonDays, row.Classification,
 				row.Applicable, row.KnownControlState, row.UnknownControlState, row.RightCensored, row.OutcomeUnavailable,
-				row.Observed, row.Bypassed, row.ObservedOutcomeRate, row.BypassedOutcomeRate, row.OutcomeDelta, controlFrictionText(row))
+				row.Observed, row.Bypassed, row.ObservedOutcomeRate, row.BypassedOutcomeRate, row.OutcomeDelta, controlFrictionText(row), row.FrictionOpen, row.FrictionUnavailable, row.FrictionMissing, row.FrictionLegacy)
 		}
 		fmt.Println("limitations:")
 		for _, limitation := range report.Limitations {
@@ -17847,13 +17847,13 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, root string, s 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		if isHelpOnly(args) {
-			subcommandUsage("record", "commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
+			subcommandUsage("record", "commit|evidence|outcome|friction|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
 			return nil
 		}
 		return errors.New("record requires type and task id")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("record", "commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
+		subcommandUsage("record", "commit|evidence|outcome|friction|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
 		return nil
 	}
 	switch args[0] {
@@ -17863,6 +17863,8 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 		return recordEvidence(ctx, opts, args[1:])
 	case "outcome":
 		return recordOutcome(ctx, opts, args[1:])
+	case "friction":
+		return recordFriction(ctx, opts, args[1:])
 	case "guard-report":
 		return recordGuardReport(ctx, opts, args[1:])
 	case "handoff":
@@ -17915,6 +17917,50 @@ func recordCommit(ctx context.Context, opts globalOptions, args []string) error 
 			return printJSON(association)
 		}
 		fmt.Printf("commit recorded task=%s commit=%s kind=%s\n", taskID, association.CommitSHA, association.AssociationKind)
+		return nil
+	})
+}
+
+func recordFriction(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 2 {
+		return errors.New("record friction requires task id and start, resolve, or unavailable")
+	}
+	taskID, action := args[0], args[1]
+	fs := flag.NewFlagSet("friction "+action, flag.ContinueOnError)
+	controlID := fs.String("control", "", "stable control id")
+	sampleID := fs.Int64("sample", 0, "open friction sample id")
+	at := fs.String("at", "", "event time in RFC3339; defaults to now")
+	sourceRef := fs.String("source-ref", "", "bounded stable source reference")
+	reason := fs.String("reason", "", "bounded resolution or unavailable reason")
+	if err := fs.Parse(args[2:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected record friction arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		var sample store.ControlFrictionSample
+		var err error
+		switch action {
+		case "start":
+			sample, err = s.StartControlFriction(ctx, store.ControlFrictionSample{TaskID: taskID, ControlID: *controlID, StartedAt: *at, SourceRef: *sourceRef})
+		case "resolve":
+			if *sampleID <= 0 {
+				return errors.New("record friction resolve requires --sample")
+			}
+			sample, err = s.ResolveControlFriction(ctx, taskID, *sampleID, *at, *reason)
+		case "unavailable":
+			sample, err = s.MarkControlFrictionUnavailable(ctx, store.ControlFrictionSample{TaskID: taskID, ControlID: *controlID, SourceRef: *sourceRef, Reason: *reason})
+		default:
+			return fmt.Errorf("unknown friction action %q", action)
+		}
+		if err != nil {
+			return err
+		}
+		if opts.JSON {
+			return printJSON(sample)
+		}
+		fmt.Printf("friction recorded task=%s sample=%d control=%s status=%s\n", sample.TaskID, sample.ID, sample.ControlID, sample.Status)
 		return nil
 	})
 }
@@ -21135,6 +21181,10 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if err != nil {
 		return err
 	}
+	frictionSamples, err := s.ControlFrictionSamples(ctx, taskID)
+	if err != nil {
+		return err
+	}
 	uxMediaEvidence := evidencemodel.UXMediaRows(evidence)
 	uxMediaSummary := evidencemodel.UXMediaSummaryFor(uxMediaEvidence)
 	if asJSON {
@@ -21155,6 +21205,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			Decisions            []store.TaskDecision                   `json:"decisions,omitempty"`
 			Outcomes             []store.TaskOutcome                    `json:"outcomes,omitempty"`
 			TaskCommits          []store.TaskCommit                     `json:"task_commits,omitempty"`
+			ControlFriction      []store.ControlFrictionSample          `json:"control_friction,omitempty"`
 			ReviewPolicy         reviewpolicy.Evaluation                `json:"review_policy,omitempty"`
 			MissingReviewDomains []string                               `json:"missing_review_domains,omitempty"`
 			ReviewHandback       *coord.ReviewCompletionHandback        `json:"review_handback,omitempty"`
@@ -21164,7 +21215,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			UsageRollups         []store.UsageRollup                    `json:"usage_rollups"`
 			Batches              []store.WorkBatch                      `json:"batches"`
 			Notifications        []store.Notification                   `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, decisions, outcomes, taskCommits, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
+		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, decisions, outcomes, taskCommits, frictionSamples, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := reviewPolicy.MissingReviewDomains
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
@@ -21215,6 +21266,13 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	}
 	for _, association := range taskCommits {
 		fmt.Printf("- commit=%s kind=%s source=%s actor=%s at=%s\n", association.CommitSHA, association.AssociationKind, association.Source, association.Actor, association.CreatedAt)
+	}
+	fmt.Println("\ncontrol friction:")
+	if len(frictionSamples) == 0 {
+		fmt.Println("- none")
+	}
+	for _, sample := range frictionSamples {
+		fmt.Printf("- id=%d control=%s status=%s started_at=%s resolved_at=%s started_by=%s resolved_by=%s reason=%s source_ref=%s\n", sample.ID, sample.ControlID, sample.Status, firstNonEmpty(sample.StartedAt, "none"), firstNonEmpty(sample.ResolvedAt, "none"), firstNonEmpty(sample.StartedBy, "none"), firstNonEmpty(sample.ResolvedBy, "none"), firstNonEmpty(sample.Reason, "none"), firstNonEmpty(sample.SourceRef, "none"))
 	}
 	fmt.Println("\nux media evidence:")
 	if len(uxMediaEvidence) == 0 {
@@ -21465,7 +21523,7 @@ func usage() {
 	fmt.Println("Queue and task state:")
 	fmt.Println("  init, agent-guide, agent-contract, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail, decision")
 	fmt.Println("Evidence and review:")
-	fmt.Println("  record commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
+	fmt.Println("  record commit|evidence|outcome|friction|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  work, session, lane, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
@@ -21502,7 +21560,7 @@ func printCommandHelp(command string) bool {
 		"git-check":                  "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"doctor":                     "fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json]\n  Run read-only local capability diagnostics for agent, git, dashboard, provider, and rehearsal surfaces.",
-		"record":                     "fairway record commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"record":                     "fairway record commit|evidence|outcome|friction|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
 		"route":                      "fairway route review <task-id> ... | fairway route review-preflight [--task <task-id>]\n  Route one review or validate project-wide review-domain coverage without mutation.",

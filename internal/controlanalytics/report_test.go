@@ -57,6 +57,44 @@ func TestStructuredOutcomeFactsPreserveBoundedSourceIdentity(t *testing.T) {
 	}
 }
 
+func TestApplyControlFrictionDistinguishesMeasuredOpenUnavailableAndLegacy(t *testing.T) {
+	measured := TaskFact{FrictionAvailable: true, FrictionState: "measured_legacy", FrictionSeconds: 999}
+	applyControlFriction(&measured, []store.ControlFrictionSample{
+		{ID: 3, Status: "resolved", StartedAt: "2026-08-05T10:00:00Z", ResolvedAt: "2026-08-05T10:02:00Z"},
+		{ID: 4, Status: "resolved", StartedAt: "2026-08-05T10:03:00Z", ResolvedAt: "2026-08-05T10:03:30Z"},
+	})
+	if measured.FrictionState != "measured" || measured.FrictionSeconds != 150 || measured.FrictionSource != "control_friction_samples" || len(measured.FrictionSampleIDs) != 2 {
+		t.Fatalf("measured=%+v", measured)
+	}
+
+	open := TaskFact{}
+	applyControlFriction(&open, []store.ControlFrictionSample{{ID: 5, Status: "open"}})
+	if open.FrictionAvailable || open.FrictionState != "open" || open.FrictionSeconds != 0 {
+		t.Fatalf("open=%+v", open)
+	}
+
+	unavailable := TaskFact{}
+	applyControlFriction(&unavailable, []store.ControlFrictionSample{{ID: 6, Status: "unavailable", Reason: "provider omitted timing"}})
+	if unavailable.FrictionAvailable || unavailable.FrictionState != "unavailable" || strings.Join(unavailable.FrictionReasons, ",") != "provider omitted timing" {
+		t.Fatalf("unavailable=%+v", unavailable)
+	}
+}
+
+func TestAggregateCountsFrictionDataQualityBeforeOutcomeEligibility(t *testing.T) {
+	definitions := map[string]controlDefinition{"review:backend": {ID: "review:backend"}}
+	facts := []TaskFact{
+		{TaskID: "T-1", ControlID: "review:backend", Profile: "p", RiskBand: "low", SizeBand: "small", HorizonDays: 7, Applicable: true, ControlState: "unknown", FrictionState: "open"},
+		{TaskID: "T-2", ControlID: "review:backend", Profile: "p", RiskBand: "low", SizeBand: "small", HorizonDays: 7, Applicable: true, ControlState: "observed", Mature: false, FrictionState: "unavailable"},
+		{TaskID: "T-3", ControlID: "review:backend", Profile: "p", RiskBand: "low", SizeBand: "small", HorizonDays: 7, Applicable: true, ControlState: "observed", Mature: true, OutcomeKnown: false, FrictionState: "missing"},
+		{TaskID: "T-4", ControlID: "review:backend", Profile: "p", RiskBand: "low", SizeBand: "small", HorizonDays: 7, Applicable: true, ControlState: "observed", Mature: true, OutcomeKnown: true, FrictionAvailable: true, FrictionState: "measured", FrictionSeconds: 90},
+		{TaskID: "T-5", ControlID: "review:backend", Profile: "p", RiskBand: "low", SizeBand: "small", HorizonDays: 7, Applicable: true, ControlState: "observed", Mature: true, OutcomeKnown: true, FrictionAvailable: true, FrictionState: "measured_legacy", FrictionSeconds: 30},
+	}
+	row := Aggregate(facts, definitions, Thresholds{MinimumSampleSize: 1, MinimumCoverageRatio: 0.1, MaterialOutcomeDelta: 0.1, HighFrictionP90Seconds: 1000}, ClassificationContext{CommitCoverageRatio: 1, FileCoverageRatio: 1})[0]
+	if row.FrictionSamples != 2 || row.FrictionOpen != 1 || row.FrictionUnavailable != 1 || row.FrictionMissing != 1 || row.FrictionLegacy != 1 {
+		t.Fatalf("row=%+v", row)
+	}
+}
+
 func TestConfigurationDigestIncludesCohortDefiningProfiles(t *testing.T) {
 	one := config.Defaults(t.TempDir())
 	two := one

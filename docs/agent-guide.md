@@ -979,6 +979,14 @@ fairway record outcome T-001 --kind incident --source-ref INC-1042
 fairway record outcome T-001 --kind corrective --related-task T-017
 fairway record outcome T-001 --kind reopen --transition-id 418
 
+# Attributable control friction: retain the returned sample id for resolution.
+fairway record friction T-001 start --control review:security --source-ref review:882
+fairway record friction T-001 resolve --sample 73 --reason "review completed"
+
+# If timing cannot be obtained, record that fact instead of entering zero.
+fairway record friction T-001 unavailable --control gate:external-scan \
+  --reason "provider did not expose bounded execution timing"
+
 # Learning boundary: classify failed CI/deploy/smoke/UAT evidence and confirm
 # actionable failures have follow-up tasks.
 fairway audit ci-learning --template
@@ -986,6 +994,10 @@ fairway audit ci-learning --template
 # Coordination-design boundary: check whether docs, command examples, and
 # incident lessons map to Fairway backlog tasks.
 fairway audit docs-backlog
+
+# Friction records are measurement facts only. They do not satisfy, approve,
+# waive, defer, or resolve the named control. Analytics keeps measured, open,
+# unavailable, missing, and older measured_legacy sources distinct.
 
 # Process-intelligence boundary: measure whether review/gate overhead is
 # improving speed, quality, or safety.

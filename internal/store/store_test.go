@@ -1337,6 +1337,61 @@ func TestTaskOutcomesAreStructuredAndProjectScoped(t *testing.T) {
 	}
 }
 
+func TestControlFrictionLifecycleAndUnavailableSemantics(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Friction", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	started, err := s.StartControlFriction(ctx, ControlFrictionSample{TaskID: "T-001", ControlID: "review:security", StartedAt: "2026-08-05T10:00:00Z", SourceRef: "review:42"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Status != "open" || started.StartedBy == "" || started.ResolvedBy != "" {
+		t.Fatalf("started sample=%+v", started)
+	}
+	resolved, err := s.ResolveControlFriction(ctx, "T-001", started.ID, "2026-08-05T10:03:30Z", "review completed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Status != "resolved" || resolved.ResolvedBy == "" || resolved.ResolvedAt != "2026-08-05T10:03:30Z" {
+		t.Fatalf("resolved sample=%+v", resolved)
+	}
+	if _, err := s.ResolveControlFriction(ctx, "T-001", started.ID, "2026-08-05T10:04:00Z", "again"); err == nil {
+		t.Fatal("expected repeated resolution rejection")
+	}
+	if _, err := s.StartControlFriction(ctx, ControlFrictionSample{TaskID: "T-001", ControlID: "review:security", StartedAt: "2026-08-05T10:05:00Z"}); err != nil {
+		t.Fatal(err)
+	}
+	unavailable, err := s.MarkControlFrictionUnavailable(ctx, ControlFrictionSample{TaskID: "T-001", ControlID: "evidence:uat", Reason: "external provider did not expose timing", SourceRef: "provider:external"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unavailable.Status != "unavailable" || unavailable.ResolvedBy == "" || unavailable.StartedAt != "" {
+		t.Fatalf("unavailable sample=%+v", unavailable)
+	}
+	rows, err := s.ControlFrictionSamples(ctx, "T-001")
+	if err != nil || len(rows) != 3 {
+		t.Fatalf("samples=%+v err=%v", rows, err)
+	}
+	for _, invalid := range []ControlFrictionSample{
+		{TaskID: "T-001", ControlID: "", StartedAt: "2026-08-05T10:00:00Z"},
+		{TaskID: "T-001", ControlID: "review:security\ninvalid", StartedAt: "2026-08-05T10:00:00Z"},
+		{TaskID: "T-001", ControlID: "review:security", SourceRef: "access_token=SHOULD_NOT_PERSIST", StartedAt: "2026-08-05T10:00:00Z"},
+	} {
+		if _, err := s.StartControlFriction(ctx, invalid); err == nil {
+			t.Fatalf("invalid friction sample accepted: %+v", invalid)
+		}
+	}
+	if _, err := s.ResolveControlFriction(ctx, "T-001", rows[1].ID, "2026-08-05T09:59:00Z", "bad time"); err == nil {
+		t.Fatal("expected resolution before start rejection")
+	}
+	if _, err := s.MarkControlFrictionUnavailable(ctx, ControlFrictionSample{TaskID: "T-001", ControlID: "review:security"}); err == nil {
+		t.Fatal("expected unavailable reason requirement")
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), "test")

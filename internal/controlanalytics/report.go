@@ -86,7 +86,11 @@ type TaskFact struct {
 	Triggered         bool          `json:"triggered"`
 	Passed            bool          `json:"passed"`
 	FrictionAvailable bool          `json:"friction_available"`
+	FrictionState     string        `json:"friction_state"`
+	FrictionSource    string        `json:"friction_source,omitempty"`
 	FrictionSeconds   int           `json:"friction_seconds,omitempty"`
+	FrictionSampleIDs []int64       `json:"friction_sample_ids,omitempty"`
+	FrictionReasons   []string      `json:"friction_reasons,omitempty"`
 	PromotionCommit   string        `json:"promotion_commit,omitempty"`
 	EligibleFiles     []string      `json:"eligible_files,omitempty"`
 	ExcludedFiles     []string      `json:"excluded_files,omitempty"`
@@ -130,6 +134,10 @@ type ControlResult struct {
 	ControlStateCoverage  float64  `json:"control_state_coverage"`
 	FrictionAvailable     bool     `json:"friction_available"`
 	FrictionSamples       int      `json:"friction_samples"`
+	FrictionOpen          int      `json:"friction_open"`
+	FrictionUnavailable   int      `json:"friction_unavailable"`
+	FrictionMissing       int      `json:"friction_missing"`
+	FrictionLegacy        int      `json:"friction_legacy"`
 	FrictionMedianSeconds int      `json:"friction_median_seconds,omitempty"`
 	FrictionP90Seconds    int      `json:"friction_p90_seconds,omitempty"`
 	TaskIDs               []string `json:"task_ids"`
@@ -217,6 +225,15 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 	for _, outcome := range outcomes {
 		outcomesByTask[outcome.TaskID] = append(outcomesByTask[outcome.TaskID], outcome)
 	}
+	frictionSamples, err := s.ControlFrictionSamples(ctx, "")
+	if err != nil {
+		return Report{}, err
+	}
+	frictionByTaskControl := map[string][]store.ControlFrictionSample{}
+	for _, sample := range frictionSamples {
+		key := sample.TaskID + "\x00" + sample.ControlID
+		frictionByTaskControl[key] = append(frictionByTaskControl[key], sample)
+	}
 	taskByID := map[string]store.Task{}
 	for _, task := range tasks {
 		taskByID[task.Definition.ID] = task
@@ -273,6 +290,7 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 	for _, task := range population {
 		for _, definition := range definitionList {
 			base := taskControlFact(task, definition, evaluations[task.Definition.ID], reviewsByTask[task.Definition.ID], evidenceByTask[task.Definition.ID], now)
+			applyControlFriction(&base, frictionByTaskControl[task.Definition.ID+"\x00"+definition.ID])
 			touch := touchByTask[task.Definition.ID]
 			base.SizeBand = sizeBand(len(touch.EligibleFiles))
 			base.PromotionCommit = touch.PromotionCommit
@@ -327,6 +345,7 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 			"Post-promotion same-file touches are a rework proxy and may include planned follow-up or adjacent work.",
 			"Only explicit review waivers or deferrals with retained configuration authority form the bypass cohort; skipped evidence without durable actor and stable row identity remains unknown.",
 			"Review and configured workstream evidence gates are covered in v1; rule-pack trigger telemetry requires later instrumentation.",
+			"Explicit friction samples distinguish measured, open, unavailable, and missing states; evidence duration retained from older records is labeled measured_legacy.",
 			"Model, provider, team, and product drift may remain inside a bounded time window.",
 		},
 	}
@@ -334,7 +353,7 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 }
 
 func taskControlFact(task store.Task, definition controlDefinition, eval reviewpolicy.Evaluation, reviews []store.Review, evidence []store.Evidence, now time.Time) TaskFact {
-	fact := TaskFact{TaskID: task.Definition.ID, ControlID: definition.ID, Family: definition.Family, Profile: task.Definition.Profile, RiskBand: fallback(task.Definition.RiskLevel, "unknown"), SizeBand: "unknown", ControlState: "not_applicable"}
+	fact := TaskFact{TaskID: task.Definition.ID, ControlID: definition.ID, Family: definition.Family, Profile: task.Definition.Profile, RiskBand: fallback(task.Definition.RiskLevel, "unknown"), SizeBand: "unknown", ControlState: "not_applicable", FrictionState: "missing"}
 	switch definition.Kind {
 	case "review":
 		var requirement *reviewpolicy.Requirement
@@ -406,6 +425,8 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 		}
 		if len(durations) > 0 {
 			fact.FrictionAvailable = true
+			fact.FrictionState = "measured_legacy"
+			fact.FrictionSource = "evidence_duration"
 			for _, duration := range durations {
 				fact.FrictionSeconds += duration
 			}
@@ -415,6 +436,52 @@ func taskControlFact(task store.Task, definition controlDefinition, eval reviewp
 		}
 	}
 	return fact
+}
+
+func applyControlFriction(fact *TaskFact, samples []store.ControlFrictionSample) {
+	if len(samples) == 0 {
+		return
+	}
+	var measured, open, unavailable bool
+	var seconds int
+	for _, sample := range samples {
+		fact.FrictionSampleIDs = append(fact.FrictionSampleIDs, sample.ID)
+		switch sample.Status {
+		case "resolved":
+			start, startErr := time.Parse(time.RFC3339Nano, sample.StartedAt)
+			end, endErr := time.Parse(time.RFC3339Nano, sample.ResolvedAt)
+			if startErr == nil && endErr == nil && !end.Before(start) {
+				measured = true
+				seconds += int(end.Sub(start).Seconds())
+			}
+		case "open":
+			open = true
+		case "unavailable":
+			unavailable = true
+			if sample.Reason != "" {
+				fact.FrictionReasons = append(fact.FrictionReasons, sample.Reason)
+			}
+		}
+	}
+	fact.FrictionSampleIDs = uniqueInt64(fact.FrictionSampleIDs)
+	fact.FrictionReasons = uniqueSorted(fact.FrictionReasons)
+	switch {
+	case measured:
+		fact.FrictionAvailable = true
+		fact.FrictionState = "measured"
+		fact.FrictionSource = "control_friction_samples"
+		fact.FrictionSeconds = seconds
+	case open:
+		fact.FrictionAvailable = false
+		fact.FrictionState = "open"
+		fact.FrictionSource = "control_friction_samples"
+		fact.FrictionSeconds = 0
+	case unavailable:
+		fact.FrictionAvailable = false
+		fact.FrictionState = "unavailable"
+		fact.FrictionSource = "control_friction_samples"
+		fact.FrictionSeconds = 0
+	}
 }
 
 func Aggregate(facts []TaskFact, definitions map[string]controlDefinition, thresholds Thresholds, context ClassificationContext) []ControlResult {
@@ -433,6 +500,19 @@ func Aggregate(facts []TaskFact, definitions map[string]controlDefinition, thres
 			continue
 		}
 		row.Applicable++
+		if fact.FrictionAvailable {
+			friction[key] = append(friction[key], fact.FrictionSeconds)
+		}
+		switch fact.FrictionState {
+		case "open":
+			row.FrictionOpen++
+		case "unavailable":
+			row.FrictionUnavailable++
+		case "missing":
+			row.FrictionMissing++
+		case "measured_legacy":
+			row.FrictionLegacy++
+		}
 		if fact.ControlState != "observed" && fact.ControlState != "bypassed" {
 			row.UnknownControlState++
 			continue
@@ -457,9 +537,6 @@ func Aggregate(facts []TaskFact, definitions map[string]controlDefinition, thres
 			}
 			if fact.Passed {
 				row.Passed++
-			}
-			if fact.FrictionAvailable {
-				friction[key] = append(friction[key], fact.FrictionSeconds)
 			}
 		} else {
 			row.Bypassed++
@@ -506,6 +583,19 @@ func Aggregate(facts []TaskFact, definitions map[string]controlDefinition, thres
 		return a.HorizonDays < b.HorizonDays
 	})
 	return results
+}
+
+func uniqueInt64(values []int64) []int64 {
+	seen := map[int64]bool{}
+	result := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value > 0 && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
 }
 
 func classify(row ControlResult, thresholds Thresholds, context ClassificationContext) (string, []string) {

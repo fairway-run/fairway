@@ -130,6 +130,18 @@ do not exist, friction is `unavailable`, not zero. Aggregates report median and
 p90 with sample size; they do not mix notification, handoff, or total task time
 into a control-specific cost without an explicit attribution.
 
+The persisted friction lifecycle has four report states:
+
+- `measured`: one or more explicit start/resolution intervals with actors;
+- `open`: measurement started but has not resolved;
+- `unavailable`: a bounded reason records why timing cannot be measured;
+- `missing`: no attributable friction fact exists.
+
+Older evidence rows with `duration_seconds` remain a separately labeled
+`measured_legacy` source. They may preserve an earlier pilot signal but do not
+claim start/resolution attribution. Friction records are advisory observations
+and cannot satisfy, approve, waive, or defer their named controls.
+
 Generated and high-churn exclusions are versioned configuration, not report
 arguments. Every exclusion requires a path pattern, category, and rationale.
 The report records the configuration revision and digest used for the cohort.

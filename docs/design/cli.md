@@ -94,6 +94,9 @@ fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reope
 fairway record evidence <task-id> --command-text <text> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <text>]
 fairway record commit <task-id> [--commit <ref>] [--reason <bounded-text>]
 fairway record outcome <task-id> --kind <incident|rollback|reopen|corrective|superseding_task> [--occurred-at <rfc3339>] [--source-ref <ref>] [--related-task <task-id>] [--transition-id <id>] [--notes <bounded-context>]
+fairway record friction <task-id> start --control <control-id> [--at <rfc3339>] [--source-ref <ref>]
+fairway record friction <task-id> resolve --sample <id> [--at <rfc3339>] [--reason <bounded-text>]
+fairway record friction <task-id> unavailable --control <control-id> --reason <bounded-text> [--source-ref <ref>]
 fairway record guard-report <task-id> --guard <name> [--mode <report_only|warning|blocking>] [--finding <text>]... [--false-positive <text>]... [--allowed-debt <text>]... [--graduation-criteria <text>] [--artifact <path>] [--result <result>]
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
 fairway record completion-handback <task-id> --to <role> --next-action <text> [--completion-state <state>] [--evidence <path>]... [--approval-boundary <text>] [--provider <name>] [--target <thread-or-adapter>] [--state <handoff_recorded|notification_delivered|thread_steered|notification_failed>] [--reason <text>]
@@ -506,6 +509,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
   `record commit` is the explicit exception path for a historical or externally
   created commit. Repeating the same task, commit, and association kind is
   idempotent. No command infers explicit provenance from path ownership.
+- `record friction start` captures the current Fairway actor and opens one
+  attributable control-cost interval. `resolve` preserves a separate
+  resolution actor and rejects timestamps before the start. `unavailable`
+  requires a reason and creates an explicit non-measurement fact. Open,
+  unavailable, and missing samples are reported separately and never converted
+  to zero seconds. These records are advisory and grant no approval or waiver.
 - `tracker` commands are provider-neutral adapter contract surfaces. `configure`,
   `import`, `export-status`, `resolve`, and `reconcile` are dry-run/advisory
   until a provider adapter explicitly adds an apply path. Tracker planning

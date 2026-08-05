@@ -160,6 +160,30 @@ The unique key is `(project_id, task_id, commit_sha, association_kind)`.
 work. Migrations do not infer or backfill historical links from paths or commit
 messages.
 
+### `control_friction_samples`
+
+Attributable control-cost intervals and explicit unavailable facts. The record
+is advisory measurement evidence; it does not approve, waive, or resolve the
+owning control itself.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | Stable sample identity returned by `record friction start`. |
+| `project_id` | TEXT NOT NULL | Project scope. |
+| `task_id` | TEXT NOT NULL | Task where the control was applicable. |
+| `control_id` | TEXT NOT NULL | Stable control identity used by analytics. |
+| `status` | TEXT NOT NULL | `open`, `resolved`, or `unavailable`. |
+| `started_at`, `resolved_at` | TEXT | RFC3339 interval bounds for measured samples. |
+| `started_by`, `resolved_by` | TEXT | Actual Fairway actors for each lifecycle action. |
+| `source_ref` | TEXT | Optional bounded external or Fairway source identity. |
+| `reason` | TEXT | Resolution context or required unavailable reason. |
+| `created_at`, `updated_at` | TEXT NOT NULL | UTC record timestamps. |
+
+An `open` row has only start fields, a `resolved` row has both interval bounds
+and actors, and an `unavailable` row has no fabricated interval and retains the
+recording actor plus reason. Missing rows remain a fourth analytics state and
+must not be interpreted as zero cost.
+
 ### `task_handoffs`
 
 Directed handoff between roles.

@@ -56,9 +56,19 @@ func TestCLI_Smoke(t *testing.T) {
 	runOK(t, "record", "notification", "T-001", "--domain", "ui", "--provider", "codex", "--target", "thread-1", "--state", "sent")
 	runOK(t, "route", "review", "T-001", "--reviewer", "ui", "--reason", "smoke")
 	runOK(t, "record", "review", "T-001", "--reviewer", "ui", "--verdict", "approve", "--reason", "ok")
+	frictionJSON := runCapture(t, "--json", "record", "friction", "T-001", "start", "--control", "review:ui", "--at", "2026-08-05T10:00:00Z", "--source-ref", "review:smoke")
+	var friction store.ControlFrictionSample
+	if err := json.Unmarshal([]byte(frictionJSON), &friction); err != nil || friction.ID <= 0 || friction.Status != "open" {
+		t.Fatalf("friction=%+v err=%v", friction, err)
+	}
+	runOK(t, "record", "friction", "T-001", "resolve", "--sample", fmt.Sprint(friction.ID), "--at", "2026-08-05T10:01:00Z", "--reason", "review complete")
+	runOK(t, "record", "friction", "T-001", "unavailable", "--control", "evidence:uat", "--reason", "external provider omitted timing")
 	runOK(t, "set-status", "T-001", "done")
-	runOK(t, "task-detail", "T-001")
-	runOK(t, "--json", "task-detail", "T-001")
+	detail := runCapture(t, "task-detail", "T-001")
+	assertContains(t, detail, "control=review:ui status=resolved")
+	assertContains(t, detail, "control=evidence:uat status=unavailable")
+	jsonDetail := runCapture(t, "--json", "task-detail", "T-001")
+	assertContains(t, jsonDetail, `"control_friction":`)
 	runOK(t, "status-report")
 	runOK(t, "--json", "status-report")
 	runOK(t, "health-report")
@@ -718,7 +728,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"decision", "list", "T-001", "--help"}, "fairway decision list <task-id>"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
-		{[]string{"record", "--help"}, "fairway record commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},
+		{[]string{"record", "--help"}, "fairway record commit|evidence|outcome|friction|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},
 		{[]string{"record", "completion-handback", "--help"}, "fairway record completion-handback <task-id> --to <role> --next-action <text>"},
 		{[]string{"record", "completion-handback-supersede", "--help"}, "fairway record completion-handback-supersede <task-id> --handoff-id <id> --reason <text>"},
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
@@ -2100,7 +2110,7 @@ required_features = ["managed_binary_cache"]
 `, pinned))
 
 	report := runCapture(t, "--json", "readiness", "capabilities")
-	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 16`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
+	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 17`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
 		assertContains(t, report, want)
 	}
 

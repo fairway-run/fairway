@@ -129,6 +129,21 @@ type TaskCommit struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+type ControlFrictionSample struct {
+	ID         int64  `json:"id"`
+	TaskID     string `json:"task_id"`
+	ControlID  string `json:"control_id"`
+	Status     string `json:"status"`
+	StartedAt  string `json:"started_at,omitempty"`
+	ResolvedAt string `json:"resolved_at,omitempty"`
+	StartedBy  string `json:"started_by,omitempty"`
+	ResolvedBy string `json:"resolved_by,omitempty"`
+	SourceRef  string `json:"source_ref,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
 var taskCommitKinds = map[string]bool{
 	"work_base":  true,
 	"work":       true,
@@ -2954,6 +2969,170 @@ func (s *Store) TaskOutcomes(ctx context.Context, taskID string) ([]TaskOutcome,
 		outcomes = append(outcomes, outcome)
 	}
 	return outcomes, rows.Err()
+}
+
+func (s *Store) StartControlFriction(ctx context.Context, sample ControlFrictionSample) (ControlFrictionSample, error) {
+	sample.TaskID = strings.TrimSpace(sample.TaskID)
+	sample.ControlID = strings.TrimSpace(sample.ControlID)
+	sample.SourceRef = strings.TrimSpace(sample.SourceRef)
+	if err := validateControlFrictionIdentity(sample.TaskID, sample.ControlID, sample.SourceRef); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	startedAt, err := normalizedRecordTime(sample.StartedAt, "started at")
+	if err != nil {
+		return ControlFrictionSample{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	actor := Actor()
+	res, err := s.db.ExecContext(ctx, `
+INSERT INTO control_friction_samples
+  (project_id, task_id, control_id, status, started_at, started_by, source_ref, created_at, updated_at)
+VALUES (?, ?, ?, 'open', ?, ?, nullif(?, ''), ?, ?)`,
+		s.projectID, sample.TaskID, sample.ControlID, startedAt, actor, sample.SourceRef, now, now)
+	if err := checkWriteResult(res, err); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return ControlFrictionSample{}, err
+	}
+	return s.controlFrictionSample(ctx, sample.TaskID, id)
+}
+
+func (s *Store) ResolveControlFriction(ctx context.Context, taskID string, sampleID int64, resolvedAt, reason string) (ControlFrictionSample, error) {
+	taskID = strings.TrimSpace(taskID)
+	reason = strings.TrimSpace(reason)
+	if taskID == "" || sampleID <= 0 {
+		return ControlFrictionSample{}, errors.New("task id and positive friction sample id are required")
+	}
+	if err := validateControlFrictionText(reason, "reason", 4096); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	resolvedAt, err := normalizedRecordTime(resolvedAt, "resolved at")
+	if err != nil {
+		return ControlFrictionSample{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ControlFrictionSample{}, err
+	}
+	defer tx.Rollback()
+	var status, startedAt string
+	if err := tx.QueryRowContext(ctx, `SELECT status, COALESCE(started_at, '') FROM control_friction_samples WHERE project_id=? AND task_id=? AND id=?`, s.projectID, taskID, sampleID).Scan(&status, &startedAt); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	if status != "open" {
+		return ControlFrictionSample{}, fmt.Errorf("friction sample %d is %s, want open", sampleID, status)
+	}
+	start, err := time.Parse(time.RFC3339Nano, startedAt)
+	if err != nil {
+		return ControlFrictionSample{}, fmt.Errorf("friction sample %d has invalid start time: %w", sampleID, err)
+	}
+	end, _ := time.Parse(time.RFC3339Nano, resolvedAt)
+	if end.Before(start) {
+		return ControlFrictionSample{}, errors.New("resolved at must not precede started at")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := tx.ExecContext(ctx, `UPDATE control_friction_samples SET status='resolved', resolved_at=?, resolved_by=?, reason=nullif(?, ''), updated_at=? WHERE project_id=? AND task_id=? AND id=? AND status='open'`, resolvedAt, Actor(), reason, now, s.projectID, taskID, sampleID)
+	if err := checkWriteResult(res, err); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	return s.controlFrictionSample(ctx, taskID, sampleID)
+}
+
+func (s *Store) MarkControlFrictionUnavailable(ctx context.Context, sample ControlFrictionSample) (ControlFrictionSample, error) {
+	sample.TaskID = strings.TrimSpace(sample.TaskID)
+	sample.ControlID = strings.TrimSpace(sample.ControlID)
+	sample.SourceRef = strings.TrimSpace(sample.SourceRef)
+	sample.Reason = strings.TrimSpace(sample.Reason)
+	if err := validateControlFrictionIdentity(sample.TaskID, sample.ControlID, sample.SourceRef); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	if sample.Reason == "" {
+		return ControlFrictionSample{}, errors.New("unavailable friction sample requires reason")
+	}
+	if err := validateControlFrictionText(sample.Reason, "reason", 4096); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := s.db.ExecContext(ctx, `
+INSERT INTO control_friction_samples
+  (project_id, task_id, control_id, status, resolved_by, source_ref, reason, created_at, updated_at)
+VALUES (?, ?, ?, 'unavailable', ?, nullif(?, ''), ?, ?, ?)`,
+		s.projectID, sample.TaskID, sample.ControlID, Actor(), sample.SourceRef, sample.Reason, now, now)
+	if err := checkWriteResult(res, err); err != nil {
+		return ControlFrictionSample{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return ControlFrictionSample{}, err
+	}
+	return s.controlFrictionSample(ctx, sample.TaskID, id)
+}
+
+func (s *Store) ControlFrictionSamples(ctx context.Context, taskID string) ([]ControlFrictionSample, error) {
+	query := `SELECT id, task_id, control_id, status, COALESCE(started_at, ''), COALESCE(resolved_at, ''), COALESCE(started_by, ''), COALESCE(resolved_by, ''), COALESCE(source_ref, ''), COALESCE(reason, ''), created_at, updated_at FROM control_friction_samples WHERE project_id=?`
+	args := []any{s.projectID}
+	if strings.TrimSpace(taskID) != "" {
+		query += ` AND task_id=?`
+		args = append(args, strings.TrimSpace(taskID))
+	}
+	query += ` ORDER BY created_at, id`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var samples []ControlFrictionSample
+	for rows.Next() {
+		var sample ControlFrictionSample
+		if err := rows.Scan(&sample.ID, &sample.TaskID, &sample.ControlID, &sample.Status, &sample.StartedAt, &sample.ResolvedAt, &sample.StartedBy, &sample.ResolvedBy, &sample.SourceRef, &sample.Reason, &sample.CreatedAt, &sample.UpdatedAt); err != nil {
+			return nil, err
+		}
+		samples = append(samples, sample)
+	}
+	return samples, rows.Err()
+}
+
+func (s *Store) controlFrictionSample(ctx context.Context, taskID string, sampleID int64) (ControlFrictionSample, error) {
+	var sample ControlFrictionSample
+	err := s.db.QueryRowContext(ctx, `SELECT id, task_id, control_id, status, COALESCE(started_at, ''), COALESCE(resolved_at, ''), COALESCE(started_by, ''), COALESCE(resolved_by, ''), COALESCE(source_ref, ''), COALESCE(reason, ''), created_at, updated_at FROM control_friction_samples WHERE project_id=? AND task_id=? AND id=?`, s.projectID, taskID, sampleID).Scan(&sample.ID, &sample.TaskID, &sample.ControlID, &sample.Status, &sample.StartedAt, &sample.ResolvedAt, &sample.StartedBy, &sample.ResolvedBy, &sample.SourceRef, &sample.Reason, &sample.CreatedAt, &sample.UpdatedAt)
+	return sample, err
+}
+
+func validateControlFrictionIdentity(taskID, controlID, sourceRef string) error {
+	if taskID == "" || controlID == "" {
+		return errors.New("task id and control id are required")
+	}
+	if err := validateControlFrictionText(controlID, "control id", 256); err != nil {
+		return err
+	}
+	return validateControlFrictionText(sourceRef, "source ref", 1024)
+}
+
+func validateControlFrictionText(value, name string, limit int) error {
+	if strings.ContainsAny(value, "\r\n") || len(value) > limit {
+		return fmt.Errorf("control friction %s must be a single line no longer than %d bytes", name, limit)
+	}
+	if secretscan.Contains([]byte(value)) {
+		return fmt.Errorf("control friction %s contains prohibited secret-like content", name)
+	}
+	return nil
+}
+
+func normalizedRecordTime(value, name string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Now().UTC().Format(time.RFC3339Nano), nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return "", fmt.Errorf("%s must use RFC3339: %w", name, err)
+	}
+	return parsed.UTC().Format(time.RFC3339Nano), nil
 }
 
 func (s *Store) RecordEvidenceWithID(ctx context.Context, taskID string, ev Evidence) (int64, error) {
