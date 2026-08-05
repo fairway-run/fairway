@@ -135,6 +135,9 @@ func TestCLI_WorkVerifyAndCloseCommonPath(t *testing.T) {
 	if err := os.Remove("outside-scope.txt"); err != nil {
 		t.Fatal(err)
 	}
+	writeFile(t, "implementation.txt", "bounded implementation\n")
+	gitAddCommit(t, repo, "implementation")
+	implementationCommit := strings.TrimSpace(gitOutput(t, repo, "rev-parse", "HEAD"))
 	detailAfterVerify := runCapture(t, "task-detail", "T-001")
 	assertContains(t, detailAfterVerify, "intent_diff_mode=advisory")
 	assertContains(t, detailAfterVerify, "unexplained_path_list=outside-scope.txt")
@@ -153,6 +156,12 @@ func TestCLI_WorkVerifyAndCloseCommonPath(t *testing.T) {
 	assertContains(t, closed, "work closed task=T-001 status=done session=work-t-001")
 	detail := runCapture(t, "task-detail", "T-001")
 	assertContains(t, detail, "status: done")
+	assertContains(t, detail, "task commits:")
+	assertContains(t, detail, "commit="+implementationCommit+" kind=work source=work_close")
+	assertContains(t, detail, "commit="+implementationCommit+" kind=completion source=work_close")
+	manual := runCapture(t, "--json", "record", "commit", "T-001", "--commit", "HEAD", "--reason", "explicit regression")
+	assertContains(t, manual, `"association_kind": "manual"`)
+	assertContains(t, manual, `"commit_sha": "`+implementationCommit+`"`)
 	sessions := runCapture(t, "session", "status", "--all")
 	assertContains(t, sessions, "work-t-001\tbackend\tended")
 	if _, err := captureRun("work", "verify", "T-001", "--command-text", "go test ./...", "--result", "pass"); err == nil || !strings.Contains(err.Error(), "requires in_progress") {
@@ -709,7 +718,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"decision", "list", "T-001", "--help"}, "fairway decision list <task-id>"},
 		{[]string{"reconcile", "--help"}, "fairway reconcile active"},
 		{[]string{"worktree", "-h"}, "fairway worktree setup|status|prune"},
-		{[]string{"record", "--help"}, "fairway record evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},
+		{[]string{"record", "--help"}, "fairway record commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent"},
 		{[]string{"record", "completion-handback", "--help"}, "fairway record completion-handback <task-id> --to <role> --next-action <text>"},
 		{[]string{"record", "completion-handback-supersede", "--help"}, "fairway record completion-handback-supersede <task-id> --handoff-id <id> --reason <text>"},
 		{[]string{"review-waits", "--help"}, "fairway review-waits list|wake [--task <task-id>]"},
@@ -2091,7 +2100,7 @@ required_features = ["managed_binary_cache"]
 `, pinned))
 
 	report := runCapture(t, "--json", "readiness", "capabilities")
-	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 15`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
+	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 16`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
 		assertContains(t, report, want)
 	}
 

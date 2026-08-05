@@ -119,6 +119,23 @@ type TaskOutcome struct {
 	CreatedAt     string `json:"created_at"`
 }
 
+type TaskCommit struct {
+	ID              int64  `json:"id"`
+	TaskID          string `json:"task_id"`
+	CommitSHA       string `json:"commit_sha"`
+	AssociationKind string `json:"association_kind"`
+	Source          string `json:"source"`
+	Actor           string `json:"actor"`
+	CreatedAt       string `json:"created_at"`
+}
+
+var taskCommitKinds = map[string]bool{
+	"work_base":  true,
+	"work":       true,
+	"completion": true,
+	"manual":     true,
+}
+
 var taskOutcomeKinds = map[string]bool{
 	"incident":         true,
 	"rollback":         true,
@@ -1370,7 +1387,7 @@ WHERE project_id=? AND task_id=? AND status IN ('todo','blocked') AND claimant I
 
 // StartWork atomically makes a task active, attaches a provider session, and
 // records the active checkpoint using the existing Fairway records.
-func (s *Store) StartWork(ctx context.Context, taskID, owner, branch string, session Session, summary string, terminal []string) (WorkStartResult, error) {
+func (s *Store) StartWork(ctx context.Context, taskID, owner, branch string, session Session, summary, baseCommitSHA string, terminal []string) (WorkStartResult, error) {
 	if strings.TrimSpace(taskID) == "" || strings.TrimSpace(owner) == "" || strings.TrimSpace(session.ID) == "" {
 		return WorkStartResult{}, errors.New("task id, owner, and session id are required")
 	}
@@ -1442,6 +1459,11 @@ func (s *Store) StartWork(ctx context.Context, taskID, owner, branch string, ses
 		if err := insertHistoryExec(ctx, conn, s.projectID, taskID, status, "in_progress", priorOwner, owner, branch, actor, "work start"); err != nil {
 			return WorkStartResult{}, err
 		}
+		if strings.TrimSpace(baseCommitSHA) != "" {
+			if _, err := conn.ExecContext(ctx, `INSERT INTO task_commits (project_id, task_id, commit_sha, association_kind, source, actor, created_at) VALUES (?, ?, ?, 'work_base', 'work_start', ?, ?) ON CONFLICT(project_id, task_id, commit_sha, association_kind) DO NOTHING`, s.projectID, taskID, strings.TrimSpace(baseCommitSHA), actor, now); err != nil {
+				return WorkStartResult{}, err
+			}
+		}
 	}
 	if session.Status == "" {
 		session.Status = "running"
@@ -1495,7 +1517,7 @@ func (s *Store) CurrentStatus(ctx context.Context, taskID string) (string, error
 // CloseWork commits the task and provider-session closeout as one lifecycle change.
 // All policy, review, evidence, git, and reconciliation gates are evaluated by
 // the caller before this method is invoked.
-func (s *Store) CloseWork(ctx context.Context, taskID, sessionID, commitSHA, reason string) (WorkCloseResult, error) {
+func (s *Store) CloseWork(ctx context.Context, taskID, sessionID, commitSHA string, workCommits []string, reason string) (WorkCloseResult, error) {
 	if strings.TrimSpace(sessionID) == "" {
 		return WorkCloseResult{}, errors.New("work close session id is required")
 	}
@@ -1553,10 +1575,89 @@ WHERE project_id=? AND task_id=? AND status='in_progress'
 	if _, err := tx.ExecContext(ctx, `UPDATE agent_sessions SET status='ended', ended_at=?, exit_code=0, end_reason=? WHERE project_id=? AND id=?`, now, reason, s.projectID, sessionID); err != nil {
 		return WorkCloseResult{}, err
 	}
+	actor := Actor()
+	for _, workCommit := range workCommits {
+		workCommit = strings.TrimSpace(workCommit)
+		if workCommit == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO task_commits (project_id, task_id, commit_sha, association_kind, source, actor, created_at) VALUES (?, ?, ?, 'work', 'work_close', ?, ?) ON CONFLICT(project_id, task_id, commit_sha, association_kind) DO NOTHING`, s.projectID, taskID, workCommit, actor, now); err != nil {
+			return WorkCloseResult{}, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO task_commits (project_id, task_id, commit_sha, association_kind, source, actor, created_at) VALUES (?, ?, ?, 'completion', 'work_close', ?, ?) ON CONFLICT(project_id, task_id, commit_sha, association_kind) DO NOTHING`, s.projectID, taskID, commitSHA, actor, now); err != nil {
+		return WorkCloseResult{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return WorkCloseResult{}, err
 	}
 	return WorkCloseResult{TaskID: taskID, Status: "done", SessionID: sessionID, CommitSHA: commitSHA}, nil
+}
+
+func (s *Store) RecordTaskCommit(ctx context.Context, taskID, commitSHA, associationKind, source string) (TaskCommit, error) {
+	taskID = strings.TrimSpace(taskID)
+	commitSHA = strings.TrimSpace(commitSHA)
+	associationKind = strings.TrimSpace(associationKind)
+	source = strings.TrimSpace(source)
+	if taskID == "" || commitSHA == "" {
+		return TaskCommit{}, errors.New("task id and commit SHA are required")
+	}
+	if !taskCommitKinds[associationKind] {
+		return TaskCommit{}, fmt.Errorf("unsupported task commit association kind %q", associationKind)
+	}
+	if source == "" {
+		source = "record_commit"
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	actor := Actor()
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO task_commits (project_id, task_id, commit_sha, association_kind, source, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(project_id, task_id, commit_sha, association_kind) DO NOTHING`, s.projectID, taskID, commitSHA, associationKind, source, actor, now); err != nil {
+		return TaskCommit{}, err
+	}
+	var row TaskCommit
+	err := s.db.QueryRowContext(ctx, `SELECT id, task_id, commit_sha, association_kind, source, actor, created_at FROM task_commits WHERE project_id=? AND task_id=? AND commit_sha=? AND association_kind=?`, s.projectID, taskID, commitSHA, associationKind).Scan(&row.ID, &row.TaskID, &row.CommitSHA, &row.AssociationKind, &row.Source, &row.Actor, &row.CreatedAt)
+	return row, err
+}
+
+func (s *Store) TaskCommits(ctx context.Context, taskID string) ([]TaskCommit, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, task_id, commit_sha, association_kind, source, actor, created_at FROM task_commits WHERE project_id=? AND task_id=? ORDER BY created_at, id`, s.projectID, strings.TrimSpace(taskID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []TaskCommit
+	for rows.Next() {
+		var row TaskCommit
+		if err := rows.Scan(&row.ID, &row.TaskID, &row.CommitSHA, &row.AssociationKind, &row.Source, &row.Actor, &row.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) TaskCommitsByTaskIDs(ctx context.Context, taskIDs []string) (map[string][]TaskCommit, error) {
+	result := map[string][]TaskCommit{}
+	if len(taskIDs) == 0 {
+		return result, nil
+	}
+	args := make([]any, 0, len(taskIDs)+1)
+	args = append(args, s.projectID)
+	for _, taskID := range taskIDs {
+		args = append(args, taskID)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, task_id, commit_sha, association_kind, source, actor, created_at FROM task_commits WHERE project_id=? AND task_id IN (`+sqlPlaceholders(len(taskIDs))+`) ORDER BY task_id, created_at, id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var row TaskCommit
+		if err := rows.Scan(&row.ID, &row.TaskID, &row.CommitSHA, &row.AssociationKind, &row.Source, &row.Actor, &row.CreatedAt); err != nil {
+			return nil, err
+		}
+		result[row.TaskID] = append(result[row.TaskID], row)
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) HasEvidence(ctx context.Context, taskID string) (bool, error) {

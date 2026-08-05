@@ -4515,8 +4515,8 @@ func cmdAuditWorkCoverage(ctx context.Context, opts globalOptions, args []string
 		fmt.Printf("as_of: %s\n", report.AsOf)
 		fmt.Printf("analyzed_tip: %s\n", report.AnalyzedTip)
 		fmt.Printf("commits: %d\n", report.CommitCount)
-		fmt.Printf("denominators: observed_commits=%d eligible_commits=%d covered_commits=%d excluded_merge_commits=%d excluded_only_commits=%d eligible_changed_files=%d covered_changed_files=%d excluded_changed_files=%d tasks_with_commit=%d tasks_with_touch_facts=%d unavailable_touch_facts=%d mature_touch_windows=%d\n",
-			report.Denominators.ObservedCommits, report.Denominators.EligibleCommits, report.Denominators.CoveredCommits,
+		fmt.Printf("denominators: observed_commits=%d eligible_commits=%d covered_commits=%d explicitly_linked_commits=%d excluded_merge_commits=%d excluded_only_commits=%d eligible_changed_files=%d covered_changed_files=%d excluded_changed_files=%d tasks_with_commit=%d tasks_with_touch_facts=%d unavailable_touch_facts=%d mature_touch_windows=%d\n",
+			report.Denominators.ObservedCommits, report.Denominators.EligibleCommits, report.Denominators.CoveredCommits, report.Denominators.ExplicitlyLinkedCommits,
 			report.Denominators.ExcludedMergeCommits, report.Denominators.ExcludedOnlyCommits,
 			report.Denominators.EligibleChangedFiles, report.Denominators.CoveredChangedFiles, report.Denominators.ExcludedChangedFiles,
 			report.Denominators.TasksWithCommit, report.Denominators.TasksWithTouchFacts, report.Denominators.UnavailableTouchFacts, report.Denominators.MatureTouchWindows)
@@ -8881,7 +8881,11 @@ func cmdWorkStart(ctx context.Context, opts globalOptions, args []string) error 
 			text = fmt.Sprintf("%s (session %s)", text, id)
 		}
 		session := store.Session{ID: id, Role: owner, WorktreePath: root, Branch: fairwaygit.CurrentBranch(root), SessionBackend: *backend, Provider: *provider, TaskID: taskID, ExternalRunID: *externalRunID, Status: "running"}
-		result, err := s.StartWork(ctx, taskID, owner, session.Branch, session, text, cfg.States.Terminal)
+		baseCommitSHA := ""
+		if head, err := fairwaygit.ResolveCommit(root, "HEAD"); err == nil {
+			baseCommitSHA = head.SHA
+		}
+		result, err := s.StartWork(ctx, taskID, owner, session.Branch, session, text, baseCommitSHA, cfg.States.Terminal)
 		if err != nil {
 			return err
 		}
@@ -9234,12 +9238,39 @@ func cmdWorkClose(ctx context.Context, opts globalOptions, args []string) error 
 		if err := state.ValidateTransition(stateCfg, current, "done", false); err != nil {
 			report.Blockers = append(report.Blockers, "status: "+err.Error())
 		}
-		report.CommitSHA = fairwaygit.LastCommit(root)
-		if strings.TrimSpace(report.CommitSHA) == "" {
+		head, err := fairwaygit.ResolveCommit(root, "HEAD")
+		if err != nil {
 			report.Blockers = append(report.Blockers, "git: no commit available for terminal association")
+		} else {
+			report.CommitSHA = head.SHA
+		}
+		var workCommits []string
+		if len(report.Blockers) == 0 {
+			associations, err := s.TaskCommits(ctx, taskID)
+			if err != nil {
+				return err
+			}
+			baseCommit := ""
+			for _, association := range associations {
+				if association.AssociationKind == "work_base" {
+					baseCommit = association.CommitSHA
+				}
+			}
+			if baseCommit != "" && baseCommit != report.CommitSHA {
+				commits, err := fairwaygit.CommitsBetween(root, baseCommit, report.CommitSHA)
+				if err != nil {
+					report.Blockers = append(report.Blockers, "git commit range: "+err.Error())
+				} else {
+					for _, commit := range commits {
+						if commit.ParentCount <= 1 {
+							workCommits = append(workCommits, commit.SHA)
+						}
+					}
+				}
+			}
 		}
 		if len(report.Blockers) == 0 {
-			closed, err := s.CloseWork(ctx, taskID, report.SessionID, report.CommitSHA, strings.TrimSpace(*reason))
+			closed, err := s.CloseWork(ctx, taskID, report.SessionID, report.CommitSHA, workCommits, strings.TrimSpace(*reason))
 			if err != nil {
 				return err
 			}
@@ -17816,16 +17847,18 @@ func setStatusWithConfig(ctx context.Context, cfg config.Config, root string, s 
 func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) < 2 {
 		if isHelpOnly(args) {
-			subcommandUsage("record", "evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
+			subcommandUsage("record", "commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
 			return nil
 		}
 		return errors.New("record requires type and task id")
 	}
 	if isHelpOnly(args) {
-		subcommandUsage("record", "evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
+		subcommandUsage("record", "commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent")
 		return nil
 	}
 	switch args[0] {
+	case "commit":
+		return recordCommit(ctx, opts, args[1:])
 	case "evidence":
 		return recordEvidence(ctx, opts, args[1:])
 	case "outcome":
@@ -17848,6 +17881,42 @@ func cmdRecord(ctx context.Context, opts globalOptions, args []string) error {
 		return recordPushIntent(ctx, opts, args[1:])
 	}
 	return fmt.Errorf("unknown record type %q", args[0])
+}
+
+func recordCommit(ctx context.Context, opts globalOptions, args []string) error {
+	if len(args) < 1 {
+		return errors.New("record commit requires task id")
+	}
+	taskID := args[0]
+	fs := flag.NewFlagSet("commit", flag.ContinueOnError)
+	commitRef := fs.String("commit", "HEAD", "commit or ref to associate")
+	reason := fs.String("reason", "", "bounded reason for an exceptional or historical association")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected record commit arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, root string, s *store.Store) error {
+		commit, err := fairwaygit.ResolveCommit(root, strings.TrimSpace(*commitRef))
+		if err != nil {
+			return err
+		}
+		association, err := s.RecordTaskCommit(ctx, taskID, commit.SHA, "manual", "record_commit")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(*reason) != "" {
+			if err := s.RecordAudit(ctx, store.AuditEvent{Action: "record_task_commit", TaskID: taskID, Detail: strings.TrimSpace(*reason)}); err != nil {
+				return err
+			}
+		}
+		if opts.JSON {
+			return printJSON(association)
+		}
+		fmt.Printf("commit recorded task=%s commit=%s kind=%s\n", taskID, association.CommitSHA, association.AssociationKind)
+		return nil
+	})
 }
 
 func recordOutcome(ctx context.Context, opts globalOptions, args []string) error {
@@ -21062,6 +21131,10 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	if err != nil {
 		return err
 	}
+	taskCommits, err := s.TaskCommits(ctx, taskID)
+	if err != nil {
+		return err
+	}
 	uxMediaEvidence := evidencemodel.UXMediaRows(evidence)
 	uxMediaSummary := evidencemodel.UXMediaSummaryFor(uxMediaEvidence)
 	if asJSON {
@@ -21081,6 +21154,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			Reviews              []store.Review                         `json:"reviews"`
 			Decisions            []store.TaskDecision                   `json:"decisions,omitempty"`
 			Outcomes             []store.TaskOutcome                    `json:"outcomes,omitempty"`
+			TaskCommits          []store.TaskCommit                     `json:"task_commits,omitempty"`
 			ReviewPolicy         reviewpolicy.Evaluation                `json:"review_policy,omitempty"`
 			MissingReviewDomains []string                               `json:"missing_review_domains,omitempty"`
 			ReviewHandback       *coord.ReviewCompletionHandback        `json:"review_handback,omitempty"`
@@ -21090,7 +21164,7 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 			UsageRollups         []store.UsageRollup                    `json:"usage_rollups"`
 			Batches              []store.WorkBatch                      `json:"batches"`
 			Notifications        []store.Notification                   `json:"notifications"`
-		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, decisions, outcomes, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
+		}{task, reviewStatus, transitions, evidence, uxMediaEvidence, uxMediaSummary, handoffs, completionHandbacks, reviews, decisions, outcomes, taskCommits, reviewPolicy, missingReviewDomains, optionalReviewHandback(reviewHandback, hasReviewHandback), reviewNotifications, sessions, usageEvents, usageRollups, batches, notifications})
 	}
 	missingReviewDomains := reviewPolicy.MissingReviewDomains
 	reviewStatus := effectiveReviewStatus(task.ReviewStatus, missingReviewDomains)
@@ -21134,6 +21208,13 @@ func printDetail(ctx context.Context, cfg config.Config, s *store.Store, taskID 
 	}
 	for _, outcome := range outcomes {
 		fmt.Printf("- kind=%s occurred_at=%s source_ref=%s related_task=%s transition_id=%d notes=%s\n", outcome.Kind, outcome.OccurredAt, firstNonEmpty(outcome.SourceRef, "none"), firstNonEmpty(outcome.RelatedTaskID, "none"), outcome.TransitionID, firstNonEmpty(outcome.Notes, "none"))
+	}
+	fmt.Println("\ntask commits:")
+	if len(taskCommits) == 0 {
+		fmt.Println("- none")
+	}
+	for _, association := range taskCommits {
+		fmt.Printf("- commit=%s kind=%s source=%s actor=%s at=%s\n", association.CommitSHA, association.AssociationKind, association.Source, association.Actor, association.CreatedAt)
 	}
 	fmt.Println("\nux media evidence:")
 	if len(uxMediaEvidence) == 0 {
@@ -21384,7 +21465,7 @@ func usage() {
 	fmt.Println("Queue and task state:")
 	fmt.Println("  init, agent-guide, agent-contract, import, add, spawn, update, tree, list, ready, claim, set-status, task-detail, decision")
 	fmt.Println("Evidence and review:")
-	fmt.Println("  record evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
+	fmt.Println("  record commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent, route review, merge-ready, review checkout, review-waits, review-policy, live-window")
 	fmt.Println("Sessions, worktrees, and workflow:")
 	fmt.Println("  work, session, lane, worktree, reconcile active, workflow check|closeout, checkpoint, memory, wait, batch")
 	fmt.Println("Coordinator and readiness:")
@@ -21421,7 +21502,7 @@ func printCommandHelp(command string) bool {
 		"git-check":                  "fairway git-check [--base <ref>]\n  Check git/worktree readiness against a base ref.",
 		"preflight":                  "fairway preflight [--role <role>] [--base <ref>]\n  Run local readiness checks before claim or closeout.",
 		"doctor":                     "fairway doctor [--dashboard-read-only <addr>] [--dashboard-full <addr>] [--format text|json]\n  Run read-only local capability diagnostics for agent, git, dashboard, provider, and rehearsal surfaces.",
-		"record":                     "fairway record evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
+		"record":                     "fairway record commit|evidence|outcome|guard-report|handoff|completion-handback|completion-handback-supersede|notification|review|usage|push-intent ...\n  Record execution facts without editing the DB directly.",
 		"review-waits":               "fairway review-waits list|wake [--task <task-id>]\n  List derived review-wait rows or emit bounded fixed-template wake prompts for parked provider threads.",
 		"review-policy":              "fairway review-policy report [--profile <name>]\n  Report review profile overhead against recorded outcome signals.",
 		"route":                      "fairway route review <task-id> ... | fairway route review-preflight [--task <task-id>]\n  Route one review or validate project-wide review-domain coverage without mutation.",
@@ -21430,7 +21511,7 @@ func printCommandHelp(command string) bool {
 		"knowledge":                  "fairway knowledge init|status|lint|ingest|query|promote ...\n  Maintain project-owned source-grounded engineering knowledge through bounded preview, query, lint, and promotion packets.",
 		"wait":                       "fairway wait add|ack|list|tick|resolve|wake [--task <task-id>] [--stale] [--kind <kind>]\n  Record durable parked-work waits, preserve closed history, apply bounded acknowledgement/supersede facts, and emit wake prompts.",
 		"session":                    "fairway session upsert|status|end|reconcile|launch ...\n  Register provider attachments and reconcile session state.",
-		"work":                       "fairway work start <task-id> [--session-id <id>] [--role <role>] | fairway work status [<task-id>] [--explain] | fairway work verify <task-id> --command-text <summary> --result <result> | fairway work close <task-id> [--session-id <id>]\n  Use the compact common path over durable task, session, checkpoint, evidence, review, and reconciliation records.",
+		"work":                       "fairway work start <task-id> [--session-id <id>] [--role <role>] | fairway work status [<task-id>] [--explain] | fairway work verify <task-id> --command-text <summary> --result <result> | fairway work close <task-id> [--session-id <id>]\n  Use the compact common path over durable task, session, checkpoint, evidence, review, commit-provenance, and reconciliation records.",
 		"lane":                       "fairway lane start|status|logs|stop ...\n  Record and inspect local/tmux lane runtime lifecycle without launching providers or storing transcript content.",
 		"worktree":                   "fairway worktree setup|status|prune\n  Manage configured role worktrees.",
 		"workflow":                   "fairway workflow check|closeout ...\n  Check task, closeout, and deploy workflow boundaries.",

@@ -48,6 +48,10 @@ func TestWorkCoverageReportsDenominatorsOutcomesAndPostPromotionTouches(t *testi
 	writeAuditFile(t, root, "src/service.go", "package service\n// follow-up\n")
 	runGit(t, root, "add", "src/service.go")
 	runGitEnv(t, root, []string{"GIT_AUTHOR_DATE=2001-01-01T00:00:00Z", "GIT_COMMITTER_DATE=" + time.Now().UTC().Add(time.Second).Format(time.RFC3339)}, "commit", "-m", "follow-up touch")
+	followUpSHA := gitOutput(t, root, "rev-parse", "HEAD")
+	if _, err := db.RecordTaskCommit(ctx, "T-002", followUpSHA, "manual", "test"); err != nil {
+		t.Fatal(err)
+	}
 	writeAuditFile(t, root, "generated-output/generated.txt", "generated\n")
 	runGit(t, root, "add", "generated-output/generated.txt")
 	runGit(t, root, "commit", "-m", "generated output")
@@ -79,7 +83,7 @@ func TestWorkCoverageReportsDenominatorsOutcomesAndPostPromotionTouches(t *testi
 	if report.AnalyzedTip == "" {
 		t.Fatal("report analyzed_tip is empty")
 	}
-	if report.Denominators.ObservedCommits != 3 || report.Denominators.EligibleCommits != 2 || report.Denominators.CoveredCommits != 1 || report.Denominators.ExcludedOnlyCommits != 1 {
+	if report.Denominators.ObservedCommits != 3 || report.Denominators.EligibleCommits != 2 || report.Denominators.CoveredCommits != 2 || report.Denominators.ExplicitlyLinkedCommits != 1 || report.Denominators.ExcludedOnlyCommits != 1 {
 		t.Fatalf("denominators=%+v", report.Denominators)
 	}
 	if report.Denominators.EligibleChangedFiles != 2 || report.Denominators.CoveredChangedFiles != 2 || report.Denominators.ExcludedChangedFiles != 1 {
@@ -92,7 +96,7 @@ func TestWorkCoverageReportsDenominatorsOutcomesAndPostPromotionTouches(t *testi
 			break
 		}
 	}
-	if len(followUp.TaskIDs) != 0 || len(followUp.PathTaskIDs) != 2 {
+	if len(followUp.TaskIDs) != 1 || followUp.TaskIDs[0] != "T-002" || len(followUp.ExplicitTaskIDs) != 1 || followUp.ExplicitTaskIDs[0] != "T-002" || len(followUp.PathTaskIDs) != 2 {
 		t.Fatalf("follow-up explicit/path task links=%v/%v", followUp.TaskIDs, followUp.PathTaskIDs)
 	}
 	if len(report.TouchFacts) != 1 || !report.TouchFacts[0].Available || len(report.TouchFacts[0].Windows) != 3 {

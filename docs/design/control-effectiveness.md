@@ -249,4 +249,12 @@ outcomes, friction, preflight/security metadata, and evidence-trigger semantics
 as the next instrumentation boundaries. See
 [GPUaaS Control-Effectiveness Pilot](../assessment/gpuaas-control-effectiveness-pilot-2026-08-02.md).
 
+Durable task-to-commit association is now implemented as append-only
+`task_commits` provenance. Normal work lifecycle commands capture delivered
+commits without relying on path inference or commit-message conventions, while
+the canonical completion SHA remains available for promotion and touch-window
+analysis. Historical data is not inferred or backfilled; subsequent pilots
+must report explicit-link coverage separately so an instrumentation change is
+not mistaken for an outcome improvement.
+
 The pilot must run before any control is relaxed based on these metrics.

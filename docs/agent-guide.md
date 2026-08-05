@@ -1008,12 +1008,15 @@ The command reports:
   dirty worktrees, unmerged branches, remote branch leftovers, and explicit
   branch preservation reasons.
 
-`audit work-coverage` is advisory. It exposes observed, eligible, covered, and
-excluded denominators. Commit coverage uses only task IDs in commit metadata
-and canonical task `commit_sha` links; path ownership is reported separately
-and cannot inflate that numerator. The report also lists the resolved analyzed
-tip and configured generated or high-churn path exclusions. For completed tasks
-with a canonical commit it additionally
+`audit work-coverage` is advisory. It exposes observed, eligible, covered,
+explicitly linked, and excluded denominators. Commit coverage recognizes
+append-only `task_commits` associations, task IDs in commit metadata, and the
+canonical task `commit_sha`; path ownership is reported separately and cannot
+inflate that numerator. Normal `work start` / `work close` captures explicit
+associations automatically. Use `record commit` only for historical or
+exceptional associations. The report also lists the resolved analyzed tip and
+configured generated or high-churn path exclusions. For completed tasks with a
+canonical commit it additionally
 reports mature 7/14/30-day same-file touch facts and separately lists explicit
 structured outcomes. A later touch is not silently called a defect. The audit
 also catches changed files outside task `source_paths` / `target_paths`,
@@ -1702,6 +1705,18 @@ fairway record evidence T-001 --command-text "go test ./..." --result pass
 fairway set-status T-001 done
 fairway merge-ready T-001
 ```
+
+For work started through `fairway work start`, prefer `fairway work close` over
+manual terminal status changes. It preserves the canonical completion SHA and
+records every non-merge commit created after the captured work baseline. When
+a commit was created outside that bounded work path, associate it explicitly:
+
+```bash
+fairway record commit T-001 --commit <sha> --reason "externally created reviewed slice"
+```
+
+Commit-message task IDs and path ownership remain diagnostic signals; they are
+not substitutes for explicit task/commit provenance.
 
 If gates fail, fix the missing evidence/review/handoff or record why the task is
 not ready. Do not force a green story into the DB.

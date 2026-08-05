@@ -71,7 +71,7 @@ func TestStartWorkAtomicallyRecordsTaskSessionAndCheckpoint(t *testing.T) {
 	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Common path", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread", Status: "running"}, "Started common path in work-t-001", []string{"done"})
+	result, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread", Status: "running"}, "Started common path in work-t-001", "base123", []string{"done"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestStartWorkAtomicallyRecordsTaskSessionAndCheckpoint(t *testing.T) {
 	if err != nil || len(checkpoints) != 1 || checkpoints[0].State != "active" {
 		t.Fatalf("checkpoints=%+v err=%v", checkpoints, err)
 	}
-	second, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread"}, "Resumed common path", []string{"done"})
+	second, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread"}, "Resumed common path", "ignored456", []string{"done"})
 	if err != nil || !second.AlreadyActive {
 		t.Fatalf("second=%+v err=%v", second, err)
 	}
@@ -100,7 +100,7 @@ func TestStartWorkAtomicallyRecordsTaskSessionAndCheckpoint(t *testing.T) {
 	if err := s.SetStatus(ctx, "T-001", "blocked", "blocked for test", true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "blocked"}, "must fail", []string{"done"}); !errors.Is(err, ErrInvalidTransition) {
+	if _, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "blocked"}, "must fail", "", []string{"done"}); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("blocked start err=%v, want invalid transition", err)
 	}
 }
@@ -114,7 +114,7 @@ func TestStartWorkFailsClosedOnUnfinishedDependency(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.StartWork(ctx, "T-002", "backend", "main", Session{ID: "work-t-002"}, "start work-t-002", []string{"done"}); !errors.Is(err, ErrInvalidTransition) || !strings.Contains(err.Error(), "dependency T-001 is todo") {
+	if _, err := s.StartWork(ctx, "T-002", "backend", "main", Session{ID: "work-t-002"}, "start work-t-002", "", []string{"done"}); !errors.Is(err, ErrInvalidTransition) || !strings.Contains(err.Error(), "dependency T-001 is todo") {
 		t.Fatalf("dependency error=%v", err)
 	}
 	task, _, _, _, _, err := s.TaskDetail(ctx, "T-002")
@@ -133,10 +133,10 @@ func TestCloseWorkAtomicallyEndsTaskAndSession(t *testing.T) {
 	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Close", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread"}, "Started close test", []string{"done"}); err != nil {
+	if _, err := s.StartWork(ctx, "T-001", "backend", "main", Session{ID: "work-t-001", Provider: "codex", SessionBackend: "codex-thread"}, "Started close test", "base123", []string{"done"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CloseWork(ctx, "T-001", "other-session", "abc123", "done"); err == nil {
+	if _, err := s.CloseWork(ctx, "T-001", "other-session", "abc123", nil, "done"); err == nil {
 		t.Fatal("close with missing session succeeded")
 	}
 	task, _, _, _, _, err := s.TaskDetail(ctx, "T-001")
@@ -146,13 +146,13 @@ func TestCloseWorkAtomicallyEndsTaskAndSession(t *testing.T) {
 	if err := s.UpsertSession(ctx, Session{ID: "work-t-001-second", Role: "backend", TaskID: "T-001", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CloseWork(ctx, "T-001", "work-t-001", "abc123", "done"); err == nil || !strings.Contains(err.Error(), "exactly one active session") {
+	if _, err := s.CloseWork(ctx, "T-001", "work-t-001", "abc123", nil, "done"); err == nil || !strings.Contains(err.Error(), "exactly one active session") {
 		t.Fatalf("multiple-session close error=%v", err)
 	}
 	if err := s.EndSession(ctx, "work-t-001-second", "ended", "test cleanup", nil); err != nil {
 		t.Fatal(err)
 	}
-	result, err := s.CloseWork(ctx, "T-001", "work-t-001", "abc123", "gates passed")
+	result, err := s.CloseWork(ctx, "T-001", "work-t-001", "abc123", []string{"def456", "abc123"}, "gates passed")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,6 +175,35 @@ func TestCloseWorkAtomicallyEndsTaskAndSession(t *testing.T) {
 	}
 	if closed.Status != "ended" || closed.EndReason != "gates passed" {
 		t.Fatalf("closed session=%+v", closed)
+	}
+	commits, err := s.TaskCommits(ctx, "T-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(commits) != 4 || commits[0].AssociationKind != "work_base" || commits[1].AssociationKind != "work" || commits[2].AssociationKind != "work" || commits[3].AssociationKind != "completion" {
+		t.Fatalf("task commits=%+v", commits)
+	}
+}
+
+func TestRecordTaskCommitIsIdempotentAndProjectScoped(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "T-001", Title: "Commit links", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.RecordTaskCommit(ctx, "T-001", "abc123", "manual", "record_commit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.RecordTaskCommit(ctx, "T-001", "abc123", "manual", "record_commit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("idempotent ids first=%d second=%d", first.ID, second.ID)
+	}
+	if _, err := s.RecordTaskCommit(ctx, "T-001", "abc123", "unknown", "test"); err == nil {
+		t.Fatal("unsupported association kind succeeded")
 	}
 }
 

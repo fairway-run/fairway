@@ -114,10 +114,18 @@ A complete provenance chain should answer:
 The preferred linkage is:
 
 ```text
-task -> evidence/checkpoints/sessions/reviews -> commit_sha
+task -> evidence/checkpoints/sessions/reviews -> task_commits[]
+task -> canonical completion commit_sha
 commit_sha -> batch/release packet -> release tag/assets/verification
 release tag -> provenance bundle or attestation reference
 ```
+
+The normal `fairway work start` / `fairway work close` path records the bounded
+non-merge commit range as explicit task links while retaining the completion
+commit as the canonical promotion point. `fairway record commit` provides a
+reviewable exception path for historical or externally created commits. Path
+ownership and commit-message mentions remain useful diagnostics but are not
+explicit task/commit provenance.
 
 When a commit contains multiple task slices, the release provenance bundle
 should list each task ID and the reviewed commit or range that carried it. When

@@ -138,6 +138,28 @@ One row per state transition. Append-only.
 FK: `(project_id, task_id) → task_state(project_id, task_id)`.
 Index: `(project_id, task_id, at)` for the task detail page.
 
+### `task_commits`
+
+Append-only task-to-commit provenance. A task may carry several implementation
+commits while `task_state.commit_sha` remains the single canonical completion
+commit.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | Stable row identity. |
+| `project_id` | TEXT NOT NULL | Project scope. |
+| `task_id` | TEXT NOT NULL | Owning Fairway task. |
+| `commit_sha` | TEXT NOT NULL | Resolved Git commit SHA. |
+| `association_kind` | TEXT NOT NULL | `work_base`, `work`, `completion`, or `manual`. |
+| `source` | TEXT NOT NULL | Deterministic recording path such as `work_start`, `work_close`, or `record_commit`. |
+| `actor` | TEXT NOT NULL | Fairway actor that recorded the association. |
+| `created_at` | TEXT NOT NULL | UTC record time. |
+
+The unique key is `(project_id, task_id, commit_sha, association_kind)`.
+`work_base` establishes the branch range and is never counted as delivered
+work. Migrations do not infer or backfill historical links from paths or commit
+messages.
+
 ### `task_handoffs`
 
 Directed handoff between roles.

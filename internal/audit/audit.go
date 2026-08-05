@@ -44,29 +44,31 @@ type WorkCoverageReport struct {
 }
 
 type WorkCoverageDenominators struct {
-	ObservedCommits       int `json:"observed_commits"`
-	EligibleCommits       int `json:"eligible_commits"`
-	CoveredCommits        int `json:"covered_commits"`
-	ExcludedMergeCommits  int `json:"excluded_merge_commits"`
-	ExcludedOnlyCommits   int `json:"excluded_only_commits"`
-	EligibleChangedFiles  int `json:"eligible_changed_files"`
-	CoveredChangedFiles   int `json:"covered_changed_files"`
-	ExcludedChangedFiles  int `json:"excluded_changed_files"`
-	TasksWithCommit       int `json:"tasks_with_commit"`
-	TasksWithTouchFacts   int `json:"tasks_with_touch_facts"`
-	UnavailableTouchFacts int `json:"unavailable_touch_facts"`
-	MatureTouchWindows    int `json:"mature_touch_windows"`
+	ObservedCommits         int `json:"observed_commits"`
+	EligibleCommits         int `json:"eligible_commits"`
+	CoveredCommits          int `json:"covered_commits"`
+	ExplicitlyLinkedCommits int `json:"explicitly_linked_commits"`
+	ExcludedMergeCommits    int `json:"excluded_merge_commits"`
+	ExcludedOnlyCommits     int `json:"excluded_only_commits"`
+	EligibleChangedFiles    int `json:"eligible_changed_files"`
+	CoveredChangedFiles     int `json:"covered_changed_files"`
+	ExcludedChangedFiles    int `json:"excluded_changed_files"`
+	TasksWithCommit         int `json:"tasks_with_commit"`
+	TasksWithTouchFacts     int `json:"tasks_with_touch_facts"`
+	UnavailableTouchFacts   int `json:"unavailable_touch_facts"`
+	MatureTouchWindows      int `json:"mature_touch_windows"`
 }
 
 type CommitCoverageFact struct {
-	Commit        string   `json:"commit"`
-	Subject       string   `json:"subject"`
-	Eligible      bool     `json:"eligible"`
-	Exclusion     string   `json:"exclusion,omitempty"`
-	TaskIDs       []string `json:"task_ids,omitempty"`
-	PathTaskIDs   []string `json:"path_task_ids,omitempty"`
-	EligibleFiles []string `json:"eligible_files,omitempty"`
-	ExcludedFiles []string `json:"excluded_files,omitempty"`
+	Commit          string   `json:"commit"`
+	Subject         string   `json:"subject"`
+	Eligible        bool     `json:"eligible"`
+	Exclusion       string   `json:"exclusion,omitempty"`
+	TaskIDs         []string `json:"task_ids,omitempty"`
+	ExplicitTaskIDs []string `json:"explicit_task_ids,omitempty"`
+	PathTaskIDs     []string `json:"path_task_ids,omitempty"`
+	EligibleFiles   []string `json:"eligible_files,omitempty"`
+	ExcludedFiles   []string `json:"excluded_files,omitempty"`
 }
 
 type PostPromotionTouchFact struct {
@@ -181,6 +183,10 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 	if err != nil {
 		return WorkCoverageReport{}, err
 	}
+	taskCommitsByTask, err := s.TaskCommitsByTaskIDs(ctx, taskIDs)
+	if err != nil {
+		return WorkCoverageReport{}, err
+	}
 	for _, commit := range commits {
 		fact := CommitCoverageFact{Commit: commit.ShortSHA, Subject: commit.Subject}
 		if commit.ParentCount > 1 {
@@ -203,21 +209,25 @@ func BuildWorkCoverageReport(ctx context.Context, cfg config.Config, root string
 		mentioned := mentionedTaskIDs(commit.Subject+"\n"+commit.Body, taskPattern, tasks)
 		coveredTasks := tasksCoveringFiles(fact.EligibleFiles, pathCoverage)
 		canonicalTasks := tasksWithCommit(commit.SHA, tasks)
-		fact.TaskIDs = unionStrings(mentioned, canonicalTasks)
+		fact.ExplicitTaskIDs = tasksWithExplicitCommit(commit.SHA, taskCommitsByTask)
+		fact.TaskIDs = unionStrings(unionStrings(mentioned, canonicalTasks), fact.ExplicitTaskIDs)
 		fact.PathTaskIDs = coveredTasks
 		if len(fact.TaskIDs) > 0 {
 			report.Denominators.CoveredCommits++
+		}
+		if len(fact.ExplicitTaskIDs) > 0 {
+			report.Denominators.ExplicitlyLinkedCommits++
 		}
 		report.CommitFacts = append(report.CommitFacts, fact)
 		if len(fact.TaskIDs) == 0 {
 			report.Findings = append(report.Findings, WorkCoverageFinding{
 				Kind:        "commit_without_task_coverage",
 				Severity:    "warning",
-				Reason:      "commit has no Fairway task id in its message and is not the canonical commit recorded for a task",
+				Reason:      "commit has no explicit Fairway task association, task id in its message, or canonical completion link",
 				Commit:      commit.ShortSHA,
 				Subject:     commit.Subject,
 				Files:       fact.EligibleFiles,
-				Recommended: "record the commit on the owning task, mention the task id in the commit, or create a follow-up task",
+				Recommended: "run fairway record commit for the owning task or close work through the normal Fairway path",
 			})
 			report.Summary.CommitsWithoutTaskID++
 		}
@@ -342,6 +352,33 @@ func tasksWithCommit(commitSHA string, tasks []store.Task) []string {
 		}
 	}
 	return out
+}
+
+func tasksWithExplicitCommit(commitSHA string, byTask map[string][]store.TaskCommit) []string {
+	var out []string
+	commitSHA = strings.TrimSpace(commitSHA)
+	for taskID, associations := range byTask {
+		for _, association := range associations {
+			if association.AssociationKind == "work_base" {
+				continue
+			}
+			if commitMatches(commitSHA, association.CommitSHA) {
+				out = append(out, taskID)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func commitMatches(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" || right == "" {
+		return false
+	}
+	return left == right || (len(left) >= 7 && strings.HasPrefix(right, left)) || (len(right) >= 7 && strings.HasPrefix(left, right))
 }
 
 func buildPostPromotionTouchFact(root string, task store.Task, exclusions []config.ControlPathExclusion, now time.Time, analyzedTip string, candidateCommits []fairwaygit.Commit, useCandidateCommits bool) PostPromotionTouchFact {

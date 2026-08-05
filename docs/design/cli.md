@@ -92,6 +92,7 @@ fairway tree <task-id> [--depth <n>]                    # print descendant tree
 fairway list [--status <state[,state]>]... [--role <role>] [--ready] # list tasks by status with dependency readiness summary
 fairway set-status <task-id> <state> [--reason <text>] [--commit <sha>] [--reopen]
 fairway record evidence <task-id> --command-text <text> --result <pass|fail|partial|skipped|blocked> [--artifact <path>] [--artifact-type <type>] [--duration-seconds <n>] [--notes <text>]
+fairway record commit <task-id> [--commit <ref>] [--reason <bounded-text>]
 fairway record outcome <task-id> --kind <incident|rollback|reopen|corrective|superseding_task> [--occurred-at <rfc3339>] [--source-ref <ref>] [--related-task <task-id>] [--transition-id <id>] [--notes <bounded-context>]
 fairway record guard-report <task-id> --guard <name> [--mode <report_only|warning|blocking>] [--finding <text>]... [--false-positive <text>]... [--allowed-debt <text>]... [--graduation-criteria <text>] [--artifact <path>] [--result <result>]
 fairway record handoff <task-id> --to <role> --payload <text-or-@file>
@@ -499,6 +500,12 @@ The warning is informational, not blocking. See [hierarchy.md](hierarchy.md) for
 - `set-status` records `commit_sha` for terminal CLI transitions. Pass
   `--commit <sha>` to pin an explicit task commit; otherwise Fairway records
   the current `HEAD` when marking a task terminal.
+- `work start` records the current `HEAD` as a non-delivery `work_base`.
+  `work close` resolves all non-merge commits between that base and the
+  canonical completion commit and records them atomically with closeout.
+  `record commit` is the explicit exception path for a historical or externally
+  created commit. Repeating the same task, commit, and association kind is
+  idempotent. No command infers explicit provenance from path ownership.
 - `tracker` commands are provider-neutral adapter contract surfaces. `configure`,
   `import`, `export-status`, `resolve`, and `reconcile` are dry-run/advisory
   until a provider adapter explicitly adds an apply path. Tracker planning

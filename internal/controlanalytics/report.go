@@ -53,15 +53,16 @@ type Report struct {
 }
 
 type Coverage struct {
-	EligibleCommits      int     `json:"eligible_commits"`
-	CoveredCommits       int     `json:"covered_commits"`
-	CommitCoverageRatio  float64 `json:"commit_coverage_ratio"`
-	EligibleChangedFiles int     `json:"eligible_changed_files"`
-	CoveredChangedFiles  int     `json:"covered_changed_files"`
-	FileCoverageRatio    float64 `json:"file_coverage_ratio"`
-	ExcludedMergeCommits int     `json:"excluded_merge_commits"`
-	ExcludedOnlyCommits  int     `json:"excluded_only_commits"`
-	ExcludedChangedFiles int     `json:"excluded_changed_files"`
+	EligibleCommits         int     `json:"eligible_commits"`
+	CoveredCommits          int     `json:"covered_commits"`
+	ExplicitlyLinkedCommits int     `json:"explicitly_linked_commits"`
+	CommitCoverageRatio     float64 `json:"commit_coverage_ratio"`
+	EligibleChangedFiles    int     `json:"eligible_changed_files"`
+	CoveredChangedFiles     int     `json:"covered_changed_files"`
+	FileCoverageRatio       float64 `json:"file_coverage_ratio"`
+	ExcludedMergeCommits    int     `json:"excluded_merge_commits"`
+	ExcludedOnlyCommits     int     `json:"excluded_only_commits"`
+	ExcludedChangedFiles    int     `json:"excluded_changed_files"`
 }
 
 type TaskFact struct {
@@ -303,7 +304,7 @@ func Build(ctx context.Context, cfg config.Config, root string, s *store.Store, 
 	}
 	thresholds := normalizedThresholds(cfg.ControlEffectiveness)
 	denom := coverageReport.Denominators
-	coverage := Coverage{EligibleCommits: denom.EligibleCommits, CoveredCommits: denom.CoveredCommits, CommitCoverageRatio: ratio(denom.CoveredCommits, denom.EligibleCommits), EligibleChangedFiles: denom.EligibleChangedFiles, CoveredChangedFiles: denom.CoveredChangedFiles, FileCoverageRatio: ratio(denom.CoveredChangedFiles, denom.EligibleChangedFiles), ExcludedMergeCommits: denom.ExcludedMergeCommits, ExcludedOnlyCommits: denom.ExcludedOnlyCommits, ExcludedChangedFiles: denom.ExcludedChangedFiles}
+	coverage := Coverage{EligibleCommits: denom.EligibleCommits, CoveredCommits: denom.CoveredCommits, ExplicitlyLinkedCommits: denom.ExplicitlyLinkedCommits, CommitCoverageRatio: ratio(denom.CoveredCommits, denom.EligibleCommits), EligibleChangedFiles: denom.EligibleChangedFiles, CoveredChangedFiles: denom.CoveredChangedFiles, FileCoverageRatio: ratio(denom.CoveredChangedFiles, denom.EligibleChangedFiles), ExcludedMergeCommits: denom.ExcludedMergeCommits, ExcludedOnlyCommits: denom.ExcludedOnlyCommits, ExcludedChangedFiles: denom.ExcludedChangedFiles}
 	results := Aggregate(facts, definitions, thresholds, ClassificationContext{CommitCoverageRatio: coverage.CommitCoverageRatio, FileCoverageRatio: coverage.FileCoverageRatio})
 	digest, err := configDigest(cfg)
 	if err != nil {
