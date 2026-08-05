@@ -269,4 +269,11 @@ analysis. Historical data is not inferred or backfilled; subsequent pilots
 must report explicit-link coverage separately so an instrumentation change is
 not mistaken for an outcome improvement.
 
+The second GPUaaS measurement establishes that forward-instrumentation baseline
+after task-to-commit, structured-outcome, attributable-friction, and Quality
+Record support landed. The consumer's 30-day commit coverage remained 34.3%,
+with no historical explicit commit links, outcomes, or friction samples. That
+result validates data-quality readback, not control effectiveness. See
+[GPUaaS Quality Record Pilot](../assessment/gpuaas-quality-record-pilot-2026-08-05.md).
+
 The pilot must run before any control is relaxed based on these metrics.

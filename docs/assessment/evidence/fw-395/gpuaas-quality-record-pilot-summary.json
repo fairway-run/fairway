@@ -1,0 +1,55 @@
+{
+  "schema": "fairway.quality-record-pilot.v1",
+  "as_of": "2026-08-05",
+  "fairway_task_id": "FW-395",
+  "fairway_source": "1582601bf02bc38142468736dff1b44aafc9e555",
+  "consumer": "GPUasService",
+  "consumer_source": "8000199e21b968c7ba3370d876acc1ae67472302",
+  "population": {
+    "definition": "tasks currently done with a done transition in the preceding 30 days",
+    "tasks": 288,
+    "stage_records": 2592,
+    "state_totals": {"present": 1239, "missing": 776, "unavailable": 288, "conflicting": 1, "externally_owned": 288}
+  },
+  "section_states": {
+    "intent": {"present": 218, "missing": 70},
+    "decisions": {"present": 5, "missing": 283},
+    "production_context": {"present": 246, "missing": 42},
+    "evidence": {"present": 288},
+    "verification": {"present": 287, "conflicting": 1},
+    "judgment": {"present": 195, "missing": 93},
+    "promotion": {"externally_owned": 288},
+    "outcomes": {"unavailable": 288},
+    "lessons": {"missing": 288}
+  },
+  "control_baseline_30d": {
+    "eligible_commits": 449,
+    "covered_commits": 154,
+    "explicitly_linked_commits": 0,
+    "commit_coverage_ratio": 0.3429844097995546,
+    "eligible_changed_files": 7034,
+    "covered_changed_files": 6961,
+    "file_coverage_ratio": 0.9896218367927211,
+    "structured_outcome_tasks": 0,
+    "friction_sample_tasks": 0
+  },
+  "conflict_example": {
+    "task_id": "UAT-HANDOFF-END-USER-LIFECYCLE-001",
+    "stage": "verification",
+    "reason": "the same Playwright command retained blocked and passing evidence without explicit supersession"
+  },
+  "performance": {"tasks": 288, "wall_seconds": 7.49, "separate_cli_processes": true, "deterministic_after_generated_at_removed": true},
+  "raw_artifact_digests": [
+    {"name": "control-30d.json", "sha256": "c336ec4baf70689522d6e0512e29b61a6d6783eb45d058d4dd0770d7a427c3ce"},
+    {"name": "population-summary.json", "sha256": "192fc339941827d991000bf55a8823b49b11bd1635c6c2e107523ae622fc8669"},
+    {"name": "sample-summary.json", "sha256": "f0e069bd47b5f7199aded97d21e1d934b95b109a6b8ba0bee90ab60c15a67948"},
+    {"name": "population-timing.txt", "sha256": "fdc9bd1c234a1adcae44f504b25331a20759dd07fb68b730d42d17e27456e31d"}
+  ],
+  "decisions": [
+    "keep_quality_record_read_only_projection",
+    "do_not_claim_complete_ai_quality_system",
+    "use_forward_instrumentation_without_historical_backfill",
+    "retain_coverage_first_suppression",
+    "add_explicit_verification_supersession_before_conflict_interpretation"
+  ]
+}
