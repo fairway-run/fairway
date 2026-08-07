@@ -29,6 +29,37 @@ Coordination primitives
 such as sessions, checkpoints, handoffs, waits, notifications, lanes, and
 worktrees support the accountability model; they do not define the category.
 
+## Operating Model: Durable Record, Temporary Execution
+
+Fairway does not require a permanent provider chat for every role. A team may
+keep a small number of durable control surfaces for recurring cross-task
+judgment, prioritization, coordination, or governance. Bounded implementation,
+investigation, and review should use the smallest execution surface that can
+finish the work safely.
+
+| Execution surface | Use it when | Normal closeout |
+|---|---|---|
+| Subagent | Work is short, bounded to the current task, and does not need a separate human conversation. | Return evidence or findings to the parent, reconcile material facts into Fairway, then end the attachment. |
+| Task-specific thread | Work needs independent interaction, review, approvals, long waits, or continuity across turns. | Record the handback and evidence, end the Fairway session, then archive the provider thread when no interaction remains. |
+| Durable control surface | The same accountable function repeatedly makes cross-task decisions or steers work over time. | Keep the surface small and current; Fairway, not its transcript, remains the execution authority. |
+
+The count and names of durable control surfaces are project choices, not
+Fairway product grammar. A solo maintainer may need one. A larger program may
+separate product or architecture judgment, delivery coordination, and
+governance. Permanent implementation and reviewer chats are discouraged when
+task-specific attachments can support independent work with less stale context.
+
+Every material execution attachment still maps to a Fairway task and the
+applicable session, checkpoint, evidence, review, or handback records required
+by project policy. Material work delegated to a subagent must use a registered
+provider session; the short direct-coordinator exception does not apply to
+delegated work. A separate subagent or thread does not by itself establish
+reviewer independence: the routed reviewer identity must differ from the task
+owner and claimant and must satisfy the configured review domain.
+Host-side subagent or thread history is useful context, but it does not replace
+the Fairway record. Archiving a completed provider thread removes UI clutter;
+it does not delete or weaken the task's durable engineering record.
+
 Fairway also defines two complementary continuity capabilities. Its existing
 database-backed track memory keeps active execution resumable across provider
 replacement and context loss; legacy project-local memory files are migration
@@ -144,6 +175,9 @@ Fairway composes with these systems. It does not claim to replace them.
 10. **No hidden authority.** A dashboard, adapter, watcher, recommendation, or
     notification does not silently gain approval, merge, deploy, or live-action
     authority.
+11. **Small control plane, elastic execution.** Keep recurring control surfaces
+    few and stable; create and retire execution attachments at the boundary of
+    the work they serve.
 
 ## Source Of Truth
 

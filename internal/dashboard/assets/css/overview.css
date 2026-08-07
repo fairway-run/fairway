@@ -31,6 +31,7 @@
 
 .overview-hero,
 .overview-change,
+.overview-operating,
 .overview-proof,
 .overview-trace,
 .overview-authority,
@@ -178,6 +179,7 @@
 }
 
 .overview-change,
+.overview-operating,
 .overview-proof,
 .overview-trace,
 .overview-authority,
@@ -187,6 +189,7 @@
 }
 
 .overview-change > header,
+.overview-operating > header,
 .overview-authority > header,
 .overview-explore > header {
   max-width: 860px;
@@ -194,6 +197,7 @@
 }
 
 .overview-change h2,
+.overview-operating h2,
 .overview-section-head h2,
 .overview-authority h2,
 .overview-explore h2,
@@ -233,10 +237,90 @@
 }
 
 .overview-change-grid p,
+.overview-operating-grid p,
 .overview-authority p,
 .overview-explore small,
 .overview-adopt span {
   color: var(--muted);
+}
+
+.overview-operating {
+  background: var(--panel-2);
+  border-block: var(--border-width) solid var(--line);
+}
+
+.overview-operating > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.62fr);
+  gap: var(--space-7);
+  align-items: end;
+  margin-bottom: var(--space-6);
+}
+
+.overview-operating > header .eyebrow,
+.overview-operating > header h2,
+.overview-operating > header p {
+  margin-bottom: 0;
+}
+
+.overview-operating > header .eyebrow,
+.overview-operating > header h2 {
+  grid-column: 1;
+}
+
+.overview-operating > header > p:last-child {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--muted);
+}
+
+.overview-operating-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: var(--border-width) solid var(--line);
+  background: var(--panel);
+}
+
+.overview-operating-grid article {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+}
+
+.overview-operating-grid article + article {
+  border-left: var(--border-width) solid var(--line);
+}
+
+.overview-operating-grid span {
+  color: var(--accent);
+  font: 700 var(--text-xs) var(--font-mono);
+  text-transform: uppercase;
+}
+
+.overview-operating-grid h3,
+.overview-operating-grid p,
+.overview-operating-grid small {
+  margin: 0;
+}
+
+.overview-operating-grid h3 {
+  font-size: var(--text-xl);
+}
+
+.overview-operating-grid small {
+  color: var(--muted);
+}
+
+.overview-operating-rule {
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.overview-operating-rule b {
+  color: var(--text);
 }
 
 .overview-proof {
@@ -481,6 +565,7 @@
 @media (max-width: 720px) {
   .overview-hero,
   .overview-change,
+  .overview-operating,
   .overview-proof,
   .overview-trace,
   .overview-authority,
@@ -493,11 +578,15 @@
   .overview-promise h1 { font-size: 38px; }
   .overview-lifecycle ol,
   .overview-change-grid,
+  .overview-operating-grid,
   .overview-proof-grid,
   .overview-explore nav,
   .overview-adopt ol { grid-template-columns: 1fr; }
   .overview-change-grid article + article,
   .overview-proof-grid article + article { padding-left: 0; border-left: 0; }
+  .overview-operating > header { grid-template-columns: 1fr; gap: var(--space-3); }
+  .overview-operating > header > p:last-child { grid-column: 1; grid-row: auto; }
+  .overview-operating-grid article + article { border-left: 0; border-top: var(--border-width) solid var(--line); }
   .overview-proof-grid article + article { border-top: 1px solid #344054; }
   .overview-section-head { align-items: flex-start; flex-direction: column; }
   .overview-proof-context a { width: 100%; margin-left: 0; }

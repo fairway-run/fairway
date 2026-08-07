@@ -7,13 +7,15 @@ operator control room or a marketing landing page.
 
 ## User Journey
 
-The page follows four questions in order:
+The page follows five questions in order:
 
 1. **Understand:** What problem does Fairway solve and what does it preserve?
-2. **Inspect:** Can I follow one real work item from intent through outcome?
-3. **Trust:** Which claims are supported by current project records, and which
+2. **Operate:** Which execution surface fits the work without becoming a second
+   source of truth?
+3. **Inspect:** Can I follow one real work item from intent through outcome?
+4. **Trust:** Which claims are supported by current project records, and which
    authority remains elsewhere?
-4. **Adopt:** Where do I go next for active work, lifecycle evidence, delivery
+5. **Adopt:** Where do I go next for active work, lifecycle evidence, delivery
    outcomes, control analysis, or diagnostics?
 
 The operational views retain narrower responsibilities:
@@ -45,6 +47,23 @@ Product promise                       Current project proof
 The first viewport establishes the product promise and shows the Quality Record
 as a connected lifecycle. It must leave the current-project proof visible
 without requiring the user to understand task statuses or provider sessions.
+
+The operating-model section distinguishes three provider-neutral execution
+surfaces:
+
+- a subagent for short work bounded to the current task;
+- a task-specific thread for independent interaction, approval, long waits, or
+  continuity; and
+- a small number of durable control surfaces for recurring cross-task judgment
+  and steering.
+
+It must state that Fairway remains the durable record for all three and that
+task-specific provider surfaces normally end and are archived after their
+evidence or handback is recorded. The labels are selection guidance, not new
+Fairway task states, roles, or automatic session policy. The section must also
+make clear that material delegated work requires a registered session and that
+a separate execution surface does not establish reviewer independence; routed
+reviewer identity and the configured review domain remain authoritative.
 
 The proof section uses only current Fairway records:
 
@@ -89,6 +108,8 @@ rendered page alone:
 
 - Fairway's product promise;
 - the lifecycle being preserved;
+- when to choose a subagent, task-specific thread, or durable control surface;
+- why provider-surface archival does not remove the Fairway record;
 - current evidence coverage and its limitations;
 - one cited real work item;
 - the external authority boundary; and

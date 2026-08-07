@@ -58,6 +58,9 @@ func TestOverviewRendersProductJourneyAndCitedRecord(t *testing.T) {
 		"Trust the engineering record", "From intent to operational learning", "Current Project Evidence",
 		"Evidence-rich delivery", `href="/tasks/T-001#quality-record"`, "Where authority stays", "Explore Fairway",
 		`class="active" href="/"`, `href="/wall"`, "Promote", "explicit external authority", "No quality score", "No autonomous approval",
+		"Keep the control plane small", "Subagent", "Task-specific thread", "Durable control surface",
+		"archive the thread after closeout", "task, decisions, evidence, reviews, checkpoints, and handbacks",
+		"Review independence is routed, not inferred", "Material delegated work still requires a registered session",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview missing %q:\n%s", want, body)

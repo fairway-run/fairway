@@ -48,6 +48,29 @@ Raw provider transcripts are optional forensic context, not the engineering
 record. The full hierarchy and privacy boundary are documented in
 [Task decision memory](../design/task-decision-memory.md).
 
+In August 2026, AI Cloud simplified its host-side coordination model to three
+durable control surfaces: architecture and product control, delivery
+coordination, and governance. Those names reflect AI Cloud's operating needs;
+they are not required Fairway roles or a template every adopter must copy.
+
+Implementation, investigation, independent review, CI, deploy, and UAT work now
+uses short-lived subagents or task-specific provider threads. A subagent is
+preferred for a bounded part of the current task that does not need separate
+human interaction. A task-specific thread is used when work needs independent
+conversation, approval, a long wait, or continuity across turns. After its
+evidence or handback is recorded and the Fairway session is ended, the
+task-specific thread is archived.
+
+AI Cloud does not treat a separate subagent or thread as proof of reviewer
+independence. Reviews still use a routed reviewer identity distinct from the
+task owner and claimant and satisfy the configured review domain. Material
+delegated subagent work is registered as a provider session before execution.
+
+This reduces stale provider context and permanent-role chat overhead without
+making chat cleanup an execution control. Fairway still owns the durable task,
+decision, checkpoint, evidence, review, and handback state. The host UI owns
+whether a completed provider conversation remains visible.
+
 ## Representative workflows
 
 ### Provider replacement and context recovery

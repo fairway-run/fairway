@@ -89,6 +89,42 @@ units, reviews, validation runs, or waiting states.
   without new code, evidence, or a decision, perform a causal reset and remove
   unnecessary tasks, reviews, waits, or repeated gates.
 
+## Choose The Smallest Execution Surface
+
+Fairway tasks are durable work records. Provider chats, subagents, shells, and
+other execution surfaces are replaceable attachments. Do not create a
+permanent provider thread merely because a role or review domain exists.
+
+| Surface | Choose it when | Fairway expectation | Closeout |
+|---|---|---|---|
+| Subagent | A short, bounded part of the current task can run without a separate human conversation. | Keep the same task. Material delegated work must use a registered provider session; the short direct-coordinator exception applies only to non-delegated work. Return findings or evidence to the parent. | Reconcile the result and end the attachment. |
+| Task-specific thread | The task needs independent interaction, approval, review, a long wait, or continuity across provider turns. | Attach the thread to the exact task and keep checkpoints, evidence, waits, and handbacks current. | Record completion or handback, end the session, and archive the thread when no interaction remains. |
+| Durable control surface | A recurring accountable function makes cross-task decisions or steers work over time. | Keep its objective narrow and use Fairway tasks, decisions, and evidence as the source of truth across work items. | Retain while the function is active; replace or archive it when superseded. |
+
+The durable control-surface count is deliberately small and project-specific.
+Examples include product or architecture control, delivery coordination, and
+governance. These are examples, not required Fairway roles. Implementation,
+review, CI, deploy, and UAT surfaces should normally be task-specific or
+utility-backed and should end after their evidence or handback is recorded.
+
+Execution separation is not reviewer independence. A review must be routed to
+a reviewer identity distinct from the task owner and claimant and must satisfy
+the configured review domain, regardless of whether it runs in a subagent or a
+task-specific thread.
+
+Use this sequence:
+
+1. select or create one bounded Fairway task;
+2. choose the smallest execution surface that satisfies interaction, wait, and
+   independence needs;
+3. attach material execution to the task under the configured session policy;
+4. record decisions, evidence, reviews, and handbacks in Fairway; and
+5. end the session and archive task-specific provider UI after closeout.
+
+Archiving a provider thread is presentation cleanup, not record deletion.
+Never archive the only unresolved approval or input path, and never treat an
+archived transcript as a substitute for missing Fairway evidence.
+
 ## Execution Surface Limits
 
 Provider surfaces are replaceable execution attachments, and some surfaces have
