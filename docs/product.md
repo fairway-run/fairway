@@ -19,7 +19,10 @@ stop, a context window can compact, or an orchestrator can change without
 turning chat history into the system of record.
 
 Fairway is local-first. Its default product shape is one Go binary, one SQLite
-execution store, a CLI, and read-oriented dashboards. Coordination primitives
+execution store, a CLI, and read-oriented dashboards. The portfolio Quality
+workspace makes lifecycle-stage coverage and attention visible across tasks,
+while task detail retains the cited facts and authority boundaries.
+Coordination primitives
 such as sessions, checkpoints, handoffs, waits, notifications, lanes, and
 worktrees support the accountability model; they do not define the category.
 
@@ -90,7 +93,7 @@ These labels are mandatory in public and canonical Fairway documentation.
 
 | Label | Meaning | Current Fairway examples |
 |---|---|---|
-| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; cited Quality Record projection; task-to-commit, structured-outcome, and attributable-friction records; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; advisory control-effectiveness CLI/dashboard; read-oriented dashboards. |
+| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; cited task and portfolio Quality Record projections; task-to-commit, structured-outcome, and attributable-friction records; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; advisory control-effectiveness CLI/dashboard; read-oriented dashboards. |
 | **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, memory/knowledge cold starts, review/release coordination, environment rehearsal, local shared-dashboard operation, and GPUaaS Quality Record/control-analytics data-quality calibration documented under `docs/assessment/`. |
 | **Experimental** | Implemented as an explicit pilot or advisory surface and not the default authority path. | Shared-team server/write pilots, advisory provider narratives, notifier adapters, Postgres compatibility rehearsal, and prototype operating profiles. |
 | **Planned** | Designed or tracked but not implemented as a supported runtime capability. | Migration execution profiles, a production Postgres runtime adapter, broad tracker API adapters, and a reviewed shared-team production deployment path. |

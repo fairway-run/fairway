@@ -426,6 +426,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("/board/panels/diagnostics", s.boardDiagnosticsPanel)
 	mux.HandleFunc("/board/export", s.boardExport)
 	mux.HandleFunc("/reports", s.reports)
+	mux.HandleFunc("/quality", s.quality)
 	mux.HandleFunc("/controls", s.controls)
 	mux.HandleFunc("/wall", s.wallRedirect)
 	mux.HandleFunc("/tasks/", s.task)
@@ -3428,6 +3429,12 @@ var reportsTemplate = mustEmbeddedTemplateSet("reports", []string{
 	"assets/templates/partials/provider-chip.html",
 }, dashboardTemplateFuncs())
 
+var qualityTemplate = mustEmbeddedTemplateSet("quality", []string{
+	"assets/templates/layout.html",
+	"assets/templates/quality.html",
+	"assets/templates/partials/provider-chip.html",
+}, dashboardTemplateFuncs())
+
 var controlsTemplate = mustEmbeddedTemplateSet("controls", []string{
 	"assets/templates/layout.html",
 	"assets/templates/controls.html",
@@ -3488,6 +3495,17 @@ func dashboardTemplateFuncs() template.FuncMap {
 		},
 		"durationSeconds": func(value int) string {
 			return (time.Duration(value) * time.Second).String()
+		},
+		"qualityPageSizes": func() []int { return []int{10, 25, 50} },
+		"qualityStateLabel": func(value string) string {
+			switch value {
+			case "externally_owned":
+				return "external"
+			case "unavailable":
+				return "unknown"
+			default:
+				return value
+			}
 		},
 		"shortSHA": func(value string) string {
 			value = strings.TrimSpace(value)

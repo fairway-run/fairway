@@ -98,6 +98,60 @@ func Build(ctx context.Context, s *store.Store, taskID string, now time.Time) (R
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	return buildRecord(task, transitions, evidence, handoffs, reviews, decisions, commits, outcomes, friction, sessions, checkpoints, now), nil
+}
+
+// BuildMany projects records in task order while loading global runtime context
+// once. It is intended for bounded read-only portfolio views.
+func BuildMany(ctx context.Context, s *store.Store, tasks []store.Task, now time.Time) ([]Record, error) {
+	allSessions, err := s.Sessions(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	allCheckpoints, err := s.Checkpoints(ctx, "", true)
+	if err != nil {
+		return nil, err
+	}
+	sessionsByTask := make(map[string][]store.Session)
+	for _, session := range allSessions {
+		sessionsByTask[session.TaskID] = append(sessionsByTask[session.TaskID], session)
+	}
+	checkpointsByTask := make(map[string][]store.Checkpoint)
+	for _, checkpoint := range allCheckpoints {
+		checkpointsByTask[checkpoint.TaskID] = append(checkpointsByTask[checkpoint.TaskID], checkpoint)
+	}
+	records := make([]Record, 0, len(tasks))
+	for _, task := range tasks {
+		_, transitions, evidence, handoffs, reviews, err := s.TaskDetail(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, fmt.Errorf("build quality record %s: %w", task.Definition.ID, err)
+		}
+		decisions, err := s.TaskDecisions(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, fmt.Errorf("build quality record %s decisions: %w", task.Definition.ID, err)
+		}
+		commits, err := s.TaskCommits(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, fmt.Errorf("build quality record %s commits: %w", task.Definition.ID, err)
+		}
+		outcomes, err := s.TaskOutcomes(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, fmt.Errorf("build quality record %s outcomes: %w", task.Definition.ID, err)
+		}
+		friction, err := s.ControlFrictionSamples(ctx, task.Definition.ID)
+		if err != nil {
+			return nil, fmt.Errorf("build quality record %s friction: %w", task.Definition.ID, err)
+		}
+		records = append(records, buildRecord(task, transitions, evidence, handoffs, reviews, decisions, commits, outcomes, friction, sessionsByTask[task.Definition.ID], checkpointsByTask[task.Definition.ID], now))
+	}
+	return records, nil
+}
+
+func buildRecord(task store.Task, transitions []store.Transition, evidence []store.Evidence, handoffs []store.Handoff, reviews []store.Review, decisions []store.TaskDecision, commits []store.TaskCommit, outcomes []store.TaskOutcome, friction []store.ControlFrictionSample, sessions []store.Session, checkpoints []store.Checkpoint, now time.Time) Record {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	taskID := task.Definition.ID
 	record := Record{
 		Schema: Schema, Advisory: true, TaskID: taskID, GeneratedAt: now.UTC().Format(time.RFC3339Nano),
 		AuthorityBoundary: "read-only projection of durable Fairway and cited external facts; cannot approve, waive, merge, deploy, release, accept risk, or mutate workflow",
@@ -127,7 +181,7 @@ func Build(ctx context.Context, s *store.Store, taskID string, now time.Time) (R
 			record.Summary.ExternallyOwned++
 		}
 	}
-	return record, nil
+	return record
 }
 
 func intentSection(task store.Task) Section {

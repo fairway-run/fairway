@@ -29,6 +29,7 @@ const sidebars = {
       items: [
         'agent-guide',
         'design/dashboard',
+        'design/quality-workspace',
         'design/common-path-automation',
         'design/task-decision-memory',
         'design/work-batch-model',

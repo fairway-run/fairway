@@ -89,3 +89,35 @@ func TestBuildKeepsMissingAndUnavailableDistinct(t *testing.T) {
 		t.Fatalf("states=%+v", states)
 	}
 }
+
+func TestBuildManyPreservesTaskOrderAndRecordStates(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "fairway.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{
+		{ID: "T-001", Title: "First", Role: "backend", Kind: "task", AcceptanceChecks: []string{"verified"}},
+		{ID: "T-002", Title: "Second", Role: "ui", Kind: "task"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvidence(ctx, "T-001", store.Evidence{CommandText: "go test ./...", Result: "pass", ArtifactType: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := s.AllTasks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := BuildMany(ctx, s, tasks, time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || records[0].TaskID != tasks[0].Definition.ID || records[1].TaskID != tasks[1].Definition.ID {
+		t.Fatalf("records=%+v tasks=%+v", records, tasks)
+	}
+	if records[0].GeneratedAt != records[1].GeneratedAt || len(records[0].Sections) != 9 || len(records[1].Sections) != 9 {
+		t.Fatalf("records=%+v", records)
+	}
+}

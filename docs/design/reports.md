@@ -1,7 +1,8 @@
 # Reports
 
 Fairway reports are retrospective dashboard pages. Wall and Board answer live
-coordination questions; Reports answer what changed, what evidence was produced,
+coordination questions; the [Quality workspace](quality-workspace.md) shows
+which lifecycle evidence exists across tasks; Reports answer what changed, what evidence was produced,
 and what follow-up work remains.
 
 ## Primary Users

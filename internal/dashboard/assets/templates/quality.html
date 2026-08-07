@@ -1,0 +1,62 @@
+{{define "content"}}
+<main class="quality-layout">
+<header class="report-head">
+<div>
+<p class="eyebrow">Engineering quality records</p>
+<h1>Quality Workspace</h1>
+<p>Inspect lifecycle evidence across tasks, then open the cited record for source facts and boundaries.</p>
+</div>
+<div class="quality-authority"><span>read only</span><small>No score. No approval authority.</small></div>
+</header>
+
+<form class="report-controls quality-filters" method="get" aria-label="Quality record filters">
+<label class="search">Search<input name="q" value="{{.Filters.Search}}" placeholder="Task id or title"></label>
+<label>Status<select name="status"><option value="">all</option>{{range .FilterOptions.Statuses}}<option value="{{.}}" {{if eq $.Filters.Status .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Role<select name="role"><option value="">all</option>{{range .FilterOptions.Roles}}<option value="{{.}}" {{if eq $.Filters.Role .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Profile<select name="profile"><option value="">all</option>{{range .FilterOptions.Profiles}}<option value="{{.}}" {{if eq $.Filters.Profile .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Risk<select name="risk"><option value="">all</option>{{range .FilterOptions.Risks}}<option value="{{.}}" {{if eq $.Filters.Risk .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Rows<select name="limit">{{range (qualityPageSizes)}}<option value="{{.}}" {{if eq $.Filters.PageSize .}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<button class="btn" type="submit">Apply</button>
+<a class="btn" href="/quality">Reset</a>
+</form>
+
+<section class="quality-summary" aria-label="Visible quality record summary">
+<article><span>Filtered tasks</span><b>{{.Summary.FilteredTasks}}</b><small>of {{.Summary.TotalTasks}} total</small></article>
+<article><span>Present stages</span><b>{{.Summary.Present}}</b><small>cited facts recorded</small></article>
+<article><span>Missing stages</span><b>{{.Summary.Missing}}</b><small>required record absent</small></article>
+<article><span>Unavailable stages</span><b>{{.Summary.Unavailable}}</b><small>absence is not a negative outcome</small></article>
+<article><span>Conflicting stages</span><b>{{.Summary.Conflicting}}</b><small>human interpretation required</small></article>
+<article><span>External authority</span><b>{{.Summary.ExternallyOwned}}</b><small>owned outside Fairway</small></article>
+</section>
+
+<section class="quality-matrix-section">
+<header class="section-head">
+<div><h2>Lifecycle Matrix</h2><span>Showing {{.Pagination.Start}}-{{.Pagination.End}} of {{.Pagination.TotalRows}} filtered tasks</span></div>
+<div class="quality-legend" aria-label="Quality record states"><span class="state-dot present">present</span><span class="state-dot missing">missing</span><span class="state-dot unavailable">unavailable</span><span class="state-dot conflicting">conflicting</span><span class="state-dot externally-owned">external</span></div>
+</header>
+<div class="quality-matrix-wrap">
+<table class="board-table quality-matrix">
+<thead><tr><th>Task</th><th>Context</th><th>Intent</th><th>Decisions</th><th>Production</th><th>Evidence</th><th>Verification</th><th>Judgment</th><th>Promotion</th><th>Outcomes</th><th>Lessons</th><th>Attention</th></tr></thead>
+<tbody>
+{{range .Rows}}{{$row := .}}<tr>
+<td class="quality-task"><a href="/tasks/{{.Task.Definition.ID}}#quality-record"><b>{{.Task.Definition.ID}}</b></a><span>{{.Task.Definition.Title}}</span></td>
+<td><span class="status-pill {{statusClass .Task.Status}}">{{.Task.Status}}</span><small>{{.Task.Definition.Role}}{{if .Task.Definition.Profile}} · {{.Task.Definition.Profile}}{{end}}{{if .Task.Definition.RiskLevel}} · {{.Task.Definition.RiskLevel}}{{end}}</small></td>
+{{range .Record.Sections}}<td class="quality-state {{safeClass .State}}"><a href="/tasks/{{$row.Task.Definition.ID}}#quality-record" aria-label="Open {{.Title}} for {{$row.Task.Definition.ID}}"><span>{{qualityStateLabel .State}}</span></a></td>{{end}}
+<td class="quality-attention">{{if .Attention}}<details><summary>{{len .AttentionReasons}} item(s)</summary>{{range .AttentionReasons}}<small>{{.}}</small>{{end}}</details>{{else}}<span class="muted">none</span>{{end}}</td>
+</tr>{{else}}<tr><td colspan="12">No tasks match these filters.</td></tr>{{end}}
+</tbody>
+</table>
+</div>
+<nav class="quality-pagination" aria-label="Quality record pages">
+{{if .Pagination.PrevHref}}<a class="btn" href="{{.Pagination.PrevHref}}">Previous</a>{{else}}<span></span>{{end}}
+<span>Page {{.Pagination.Page}} of {{.Pagination.TotalPages}}</span>
+{{if .Pagination.NextHref}}<a class="btn" href="{{.Pagination.NextHref}}">Next</a>{{else}}<span></span>{{end}}
+</nav>
+</section>
+
+<section class="quality-boundary">
+<h2>How to read this view</h2>
+<p><b>Missing</b> means an expected Fairway record is absent. <b>Unavailable</b> means Fairway does not have an authoritative fact and must not infer one. <b>Conflicting</b> preserves contradictory evidence for human interpretation. <b>External</b> identifies authority retained by Git, CI/CD, deployment systems, reviewers, or accountable operators.</p>
+</section>
+</main>
+{{end}}

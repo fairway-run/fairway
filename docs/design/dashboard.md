@@ -11,6 +11,7 @@ detail.
 | `/` | Wall view. High-level role lanes for live coordination. |
 | `/board` | Operator board. Filterable/sortable task table, workstreams, gates, and activity. |
 | `/board?tab=diagnostics` | Diagnostics tab for sessions, worktrees, watchers, and checkpoints. |
+| `/quality` | Single-project lifecycle evidence matrix with cited task-level Quality Record drill-down. |
 | `/reports` | Daily and date-range work reports for outcomes, CI/deploy activity, reviews, and follow-ups. |
 | `/controls` | Single-project, read-only control-effectiveness cohorts and source-fact drill-down. Hidden in multi-project mode because projects can use different control configurations. |
 | `/tasks/<task-id>` | Task detail page with the cited Quality Record, metadata, history, evidence, sessions, reviews, and status controls. |
@@ -81,18 +82,25 @@ waive a control, or authorize delivery. Multi-project dashboards omit this
 route because combining projects with different control configurations would
 erase cohort authority.
 
+The single-project `/quality` workspace projects those same nine lifecycle
+stages across a bounded, filterable page of tasks. It preserves `present`,
+`missing`, `unavailable`, `conflicting`, and `externally_owned` as distinct
+states and links every cell to the cited task-level record. It does not combine
+those states into a score. See [Quality workspace](quality-workspace.md).
+
 Each task detail begins with the same `qualityrecord.Record` projection exposed
 by `fairway quality-record`. Its nine lifecycle rows cite durable Fairway
-records or name expected/external sources and distinguish `present`, `missing`,
-`unavailable`, `conflicting`, and `externally_owned` facts. The dashboard does
-not generate a confidence score or narrative, and the projection cannot grant
-review, merge, deploy, release, credential, or live-operation authority.
+records or name expected/external sources. Neither projection generates a
+confidence narrative or grants review, merge, deploy, release, credential, or
+live-operation authority.
 
-6. Open Controls when the question is "which controls discriminate, at what
+6. Open Quality when the question is "which lifecycle facts are present,
+   missing, unavailable, conflicting, or externally owned?"
+7. Open Controls when the question is "which controls discriminate, at what
    measured cost, and with what uncertainty?"
-7. Open Reports when the question is "what changed today, what finished, what
+8. Open Reports when the question is "what changed today, what finished, what
    failed, and what needs follow-up?"
-8. Switch to diagnostics from the board when session/worktree/watcher state is
+9. Switch to diagnostics from the board when session/worktree/watcher state is
    the question.
 
 ## Wall
@@ -185,7 +193,8 @@ hydration once per rendered task. Slow-route timing logs should show
 per-task `TaskDetail` loops are visible.
 
 The local dashboard keeps a short in-process snapshot cache for GET read-model
-data on wall, board, and reports routes. The cache TTL is intentionally small
+data on wall, board, Quality, and reports routes. The cache TTL is intentionally
+small
 and request-keyed, and concurrent identical requests are coalesced so one slow
 projection build serves the waiting callers. Successful dashboard mutations
 clear the cache before redirecting. The cache never stores POST bodies, never
