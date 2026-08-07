@@ -8,14 +8,14 @@ detail.
 
 | Route | Purpose |
 |---|---|
-| `/` | Wall view. High-level role lanes for live coordination. |
+| `/` | Single-project product Overview using current project facts and a cited Quality Record. Multi-project mode retains the aggregated Wall. |
+| `/wall` | Single-project operational Wall with high-level role lanes for live coordination. |
 | `/board` | Operator board. Filterable/sortable task table, workstreams, gates, and activity. |
 | `/board?tab=diagnostics` | Diagnostics tab for sessions, worktrees, watchers, and checkpoints. |
 | `/quality` | Single-project lifecycle evidence matrix with cited task-level Quality Record drill-down. |
 | `/reports` | Daily and date-range work reports for outcomes, CI/deploy activity, reviews, and follow-ups. |
 | `/controls` | Single-project, read-only control-effectiveness cohorts and source-fact drill-down. Hidden in multi-project mode because projects can use different control configurations. |
 | `/tasks/<task-id>` | Task detail page with the cited Quality Record, metadata, history, evidence, sessions, reviews, and status controls. |
-| `/wall` | Compatibility redirect to `/`. |
 
 There is no dashboard version switch. `[dashboard] surface` is not part of the
 active config contract; historical configs that still contain it load only
@@ -59,13 +59,15 @@ The dated consumer-specific plan remains in the
 
 ## Flow
 
-The dashboard is organized as a user flow, not independent pages:
+The single-project dashboard is organized as a user flow, not independent pages:
 
-1. Start at the wall (`/`) to see which lanes are active, idle, or overloaded.
-2. Use `Open lane` to drill into `/board?role=<role>`.
-3. Sort, search, or filter the board table.
-4. Open a task from the table.
-5. Use `Back` on task detail to return to the filtered board view.
+1. Start at Overview (`/`) to understand the product promise, inspect current
+   project coverage, and follow one cited work item.
+2. Open the Wall (`/wall`) to see which lanes are active, idle, or overloaded.
+3. Use `Open lane` to drill into `/board?role=<role>`.
+4. Sort, search, or filter the board table.
+5. Open a task from the table.
+6. Use `Back` on task detail to return to the filtered board view.
 
 The `Controls` view is a separate read-only quality-evidence surface. It uses
 the same `controlanalytics.Report` model as `fairway control report`; the
@@ -94,14 +96,17 @@ records or name expected/external sources. Neither projection generates a
 confidence narrative or grants review, merge, deploy, release, credential, or
 live-operation authority.
 
-6. Open Quality when the question is "which lifecycle facts are present,
+7. Open Quality when the question is "which lifecycle facts are present,
    missing, unavailable, conflicting, or externally owned?"
-7. Open Controls when the question is "which controls discriminate, at what
+8. Open Controls when the question is "which controls discriminate, at what
    measured cost, and with what uncertainty?"
-8. Open Reports when the question is "what changed today, what finished, what
+9. Open Reports when the question is "what changed today, what finished, what
    failed, and what needs follow-up?"
-9. Switch to diagnostics from the board when session/worktree/watcher state is
+10. Switch to diagnostics from the board when session/worktree/watcher state is
    the question.
+
+See [Dashboard Overview](dashboard-overview.md) for the newcomer journey,
+current-project proof model, and authority boundary.
 
 ## Wall
 
@@ -210,10 +215,10 @@ Diagnostics tab and panel. Slow-route logs identify the skipped work as
 `dashboard.wall_fast_path`; deferred values must not be presented as clean zero
 diagnostics.
 
-The wall handler is registered only for the exact root route. Unknown paths
-such as `/favicon.ico` and missing assets return a bounded `404` and must not
-fall through to wall projection construction. Single-project and multi-project
-dashboards use the same routing boundary.
+The root handler is registered only for the exact `/` route. Unknown paths such
+as `/favicon.ico` and missing assets return a bounded `404` and must not fall
+through to Overview or Wall projection construction. Single-project and
+multi-project dashboards use the same routing boundary.
 
 Task detail records named timing blocks for core facts, sessions, project task
 context, activity, usage, active reconciliation, review policy,

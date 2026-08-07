@@ -272,7 +272,7 @@
     }
     if (prefix === "g" && event.key === "w") {
       event.preventDefault();
-      window.location.assign("/");
+      window.location.assign(document.body.dataset.wallHref || "/wall");
       return;
     }
     prefix = "";

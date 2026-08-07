@@ -1,0 +1,90 @@
+{{define "content"}}
+<main class="overview-layout">
+<section class="overview-hero">
+<div class="overview-promise">
+<p class="eyebrow">Engineering quality, made inspectable</p>
+<h1>Trust the engineering record,<br>not the agent&rsquo;s confidence.</h1>
+<p class="overview-lede">Fairway keeps intent, decisions, evidence, independent judgment, promotion state, and outcomes connected while agents and engineering tools perform the work.</p>
+<div class="overview-actions">
+<a class="btn overview-primary" href="#project-evidence">See current evidence</a>
+<a class="btn" href="/quality">Inspect Quality Records</a>
+</div>
+<div class="overview-guardrails" aria-label="Fairway product boundaries">
+<span>Provider neutral</span><span>Local first</span><span>No quality score</span><span>No autonomous approval</span>
+</div>
+</div>
+<div class="overview-lifecycle" aria-label="Fairway Quality Record lifecycle">
+<div class="overview-lifecycle-head"><span>One accountable record</span><small>from intent to outcome</small></div>
+<ol>
+<li><span>01</span><div><b>Define</b><small>intent, scope, risk</small></div></li>
+<li><span>02</span><div><b>Decide</b><small>alternatives and rationale</small></div></li>
+<li><span>03</span><div><b>Produce</b><small>sessions, commits, context</small></div></li>
+<li><span>04</span><div><b>Verify</b><small>evidence and checks</small></div></li>
+<li><span>05</span><div><b>Judge</b><small>independent review</small></div></li>
+<li><span>06</span><div><b>Promote</b><small>explicit external authority</small></div></li>
+<li><span>07</span><div><b>Learn</b><small>outcomes and improvement</small></div></li>
+</ol>
+</div>
+</section>
+
+<section class="overview-change" aria-labelledby="overview-change-title">
+<header><p class="eyebrow">What changes</p><h2 id="overview-change-title">The work remains understandable after the conversation ends.</h2></header>
+<div class="overview-change-grid">
+<article><span>01</span><h3>Context survives</h3><p>The task, decisions, checkpoints, and handbacks remain durable when a provider stops or a context window resets.</p></article>
+<article><span>02</span><h3>Claims cite facts</h3><p>Completion and readiness point to commands, artifacts, reviews, commits, and externally owned execution records.</p></article>
+<article><span>03</span><h3>Authority stays explicit</h3><p>Fairway can expose readiness and gaps without silently acquiring approval, merge, deploy, release, or risk authority.</p></article>
+</div>
+</section>
+
+<section class="overview-proof" id="project-evidence" aria-labelledby="project-evidence-title">
+<header class="overview-section-head"><div><p class="eyebrow">Live project readback</p><h2 id="project-evidence-title">Current Project Evidence</h2></div><p>Coverage facts from the active Fairway store. They describe recorded evidence, not product quality or causality.</p></header>
+<div class="overview-proof-grid">
+<article><b>{{.Summary.TotalTasks}}</b><span>bounded work items</span><small>intent and ownership in scope</small></article>
+<article><b>{{.Summary.EvidenceBacked}}</b><span>evidence-backed</span><small>one or more cited evidence rows</small></article>
+<article><b>{{.Summary.Reviewed}}</b><span>reviewed</span><small>one or more recorded judgments</small></article>
+<article><b>{{.Summary.Completed}}</b><span>completed</span><small>terminal work items</small></article>
+</div>
+<div class="overview-proof-context"><span>{{.Summary.Active}} active work item(s)</span><span>{{.Summary.ActiveProviders}} provider attachment(s)</span><span>{{.Summary.Blocked}} blocked work item(s)</span><a href="/wall">Open operational Wall</a></div>
+</section>
+
+{{if .FeaturedRecord.TaskID}}
+<section class="overview-trace" aria-labelledby="overview-trace-title">
+<header class="overview-section-head">
+<div><p class="eyebrow">Inspect one real record</p><h2 id="overview-trace-title">From intent to operational learning</h2></div>
+<div class="overview-trace-task"><a href="/tasks/{{.FeaturedTask.Definition.ID}}#quality-record"><b>{{.FeaturedTask.Definition.ID}}</b> {{.FeaturedTask.Definition.Title}}</a><span class="status-pill {{statusClass .FeaturedTask.Status}}">{{.FeaturedTask.Status}}</span></div>
+</header>
+<div class="overview-trace-grid" aria-label="Featured Quality Record stages">
+{{range .FeaturedRecord.Sections}}<a class="overview-trace-stage {{safeClass .State}}" href="/tasks/{{$.FeaturedTask.Definition.ID}}#quality-record"><span>{{.Title}}</span><b>{{qualityStateLabel .State}}</b><small>{{len .Facts}} cited fact(s)</small></a>{{end}}
+</div>
+<p class="overview-trace-summary">Present {{.FeaturedRecord.Summary.Present}} · Missing {{.FeaturedRecord.Summary.Missing}} · Unavailable {{.FeaturedRecord.Summary.Unavailable}} · Conflicting {{.FeaturedRecord.Summary.Conflicting}} · External {{.FeaturedRecord.Summary.ExternallyOwned}}</p>
+</section>
+{{end}}
+
+<section class="overview-authority" aria-labelledby="overview-authority-title">
+<header><p class="eyebrow">System boundaries</p><h2 id="overview-authority-title">Where authority stays</h2><p>Fairway connects the record. It does not replace the systems or people that own execution and judgment.</p></header>
+<div class="overview-authority-list">
+<article><span>Fairway</span><b>Accountable work record</b><p>Intent, decisions, evidence references, reviews, waits, readiness, outcomes, and lessons.</p></article>
+<article><span>Git and forge</span><b>Source and collaboration history</b><p>Commits, branches, pull requests, and remote promotion state remain authoritative there.</p></article>
+<article><span>CI/CD and runtime</span><b>Execution results</b><p>Builds, tests, deployments, releases, and operational state remain externally owned facts.</p></article>
+<article><span>People</span><b>Judgment and accountability</b><p>Review, approval, risk acceptance, promotion, credentials, and live actions stay with named humans and operators.</p></article>
+</div>
+</section>
+
+<section class="overview-explore" aria-labelledby="overview-explore-title">
+<header><p class="eyebrow">Choose the question</p><h2 id="overview-explore-title">Explore Fairway</h2></header>
+<nav aria-label="Explore Fairway views">
+<a href="/wall"><span>Live work</span><b>Wall</b><small>Which providers, lanes, waits, and handoffs are active now?</small></a>
+<a href="/board"><span>Bounded work</span><b>Board</b><small>What is moving, blocked, review-ready, or complete?</small></a>
+<a href="/quality"><span>Lifecycle evidence</span><b>Quality</b><small>Which stages are present, missing, unavailable, conflicting, or external?</small></a>
+<a href="/reports"><span>Delivery history</span><b>Reports</b><small>What changed, finished, failed, or created follow-up work?</small></a>
+<a href="/controls"><span>Measured controls</span><b>Controls</b><small>Which controls discriminate outcomes, and at what observed cost?</small></a>
+<a href="/board?tab=diagnostics"><span>Runtime machinery</span><b>Diagnostics</b><small>Are sessions, checkpoints, worktrees, and watchers healthy?</small></a>
+</nav>
+</section>
+
+<section class="overview-adopt">
+<div><p class="eyebrow">Start with one bounded work item</p><h2>Use the normal engineering workflow. Add an accountable record around it.</h2></div>
+<ol><li><code>fairway work start</code><span>bind intent and provider context</span></li><li><code>fairway work verify</code><span>record the supporting evidence</span></li><li><code>fairway work close</code><span>check readiness and preserve promotion context</span></li></ol>
+</section>
+</main>
+{{end}}

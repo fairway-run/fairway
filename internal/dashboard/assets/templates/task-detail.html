@@ -1,7 +1,7 @@
 {{define "content"}}
 <main class="detail-layout">
 <nav class="flow-bar" aria-label="Task flow">
-<a href="/">Wall</a>
+<a href="{{if multiProject .}}/{{else}}/wall{{end}}">Wall</a>
 <span>/</span>
 <a href="{{.BackHref}}">Board</a>
 <span>/</span>

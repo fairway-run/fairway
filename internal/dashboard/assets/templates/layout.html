@@ -8,19 +8,21 @@
 <link rel="stylesheet" href="/assets/css/tokens.css">
 <link rel="stylesheet" href="/assets/css/components.css">
 {{if eq .View "wall"}}<link rel="stylesheet" href="/assets/css/wall.css">{{end}}
+{{if eq .View "overview"}}<link rel="stylesheet" href="/assets/css/board.css"><link rel="stylesheet" href="/assets/css/overview.css">{{end}}
 {{if eq .View "board"}}<link rel="stylesheet" href="/assets/css/board.css">{{end}}
 {{if eq .View "reports"}}<link rel="stylesheet" href="/assets/css/board.css"><link rel="stylesheet" href="/assets/css/reports.css">{{end}}
 {{if eq .View "quality"}}<link rel="stylesheet" href="/assets/css/board.css"><link rel="stylesheet" href="/assets/css/reports.css"><link rel="stylesheet" href="/assets/css/quality.css">{{end}}
 {{if eq .View "controls"}}<link rel="stylesheet" href="/assets/css/board.css"><link rel="stylesheet" href="/assets/css/reports.css"><link rel="stylesheet" href="/assets/css/controls.css">{{end}}
 {{if eq .View "detail"}}<link rel="stylesheet" href="/assets/css/detail.css">{{end}}
 </head>
-<body>
-<header class="wall-header {{if eq .View "detail"}}detail-header{{end}}">
+<body data-wall-href="{{if multiProject .}}/{{else}}/wall{{end}}">
+<header class="wall-header {{if eq .View "detail"}}detail-header{{end}} {{if eq .View "overview"}}overview-header{{end}}">
 <a class="brand" href="/" aria-label="fairway dashboard">
 <img class="brand-mark" src="/assets/logo.svg" alt="" width="24" height="24">
 <span class="brand-name">fairway <small>dashboard</small></span>
 </a>
-{{if eq .View "detail"}}
+{{if eq .View "overview"}}
+{{else if eq .View "detail"}}
 <section class="headline detail-headline" aria-label="Detail context">
 <div class="stat"><b>Task</b><span>detail</span></div>
 </section>
@@ -43,7 +45,7 @@
 </div>
 {{end}}
 <nav class="view-toggle" aria-label="Dashboard view">
-<a class="{{if eq .View "wall"}}active{{end}}" href="/">Wall</a><a class="{{if or (eq .View "board") (eq .View "detail")}}active{{end}}" href="/board">Board</a>{{if not (multiProject .)}}<a class="{{if eq .View "quality"}}active{{end}}" href="/quality">Quality</a>{{end}}<a class="{{if eq .View "reports"}}active{{end}}" href="/reports">Reports</a>{{if not (multiProject .)}}<a class="{{if eq .View "controls"}}active{{end}}" href="/controls">Controls</a>{{end}}<a href="/board?tab=diagnostics">Diagnostics</a>
+{{if not (multiProject .)}}<a class="{{if eq .View "overview"}}active{{end}}" href="/">Overview</a>{{end}}<a class="{{if eq .View "wall"}}active{{end}}" href="{{if multiProject .}}/{{else}}/wall{{end}}">Wall</a><a class="{{if or (eq .View "board") (eq .View "detail")}}active{{end}}" href="/board">Board</a>{{if not (multiProject .)}}<a class="{{if eq .View "quality"}}active{{end}}" href="/quality">Quality</a>{{end}}<a class="{{if eq .View "reports"}}active{{end}}" href="/reports">Reports</a>{{if not (multiProject .)}}<a class="{{if eq .View "controls"}}active{{end}}" href="/controls">Controls</a>{{else}}<a href="/board?tab=diagnostics">Diagnostics</a>{{end}}
 </nav>
 <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark theme">light</button>
 </div>

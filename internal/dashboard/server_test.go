@@ -111,17 +111,20 @@ func TestDashboardRoutes(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.index(rec, req)
 	body := rec.Body.String()
-	if !strings.Contains(body, "wall-layout") {
-		t.Fatalf("/ did not render wall dashboard:\n%s", body)
+	if !strings.Contains(body, "overview-layout") {
+		t.Fatalf("/ did not render product overview:\n%s", body)
 	}
 	if !strings.Contains(body, `class="active" href="/"`) {
-		t.Fatalf("/ did not mark wall toggle active:\n%s", body)
+		t.Fatalf("/ did not mark overview toggle active:\n%s", body)
 	}
 
 	boardReq := httptest.NewRequest(http.MethodGet, "/board", nil)
 	boardRec := httptest.NewRecorder()
 	server.board(boardRec, boardReq)
 	boardBody := boardRec.Body.String()
+	if !strings.Contains(boardBody, `href="/wall">Wall</a>`) {
+		t.Fatalf("/board did not keep Wall navigation on /wall:\n%s", boardBody)
+	}
 	if !strings.Contains(boardBody, "board-layout") || !strings.Contains(boardBody, `class="active" href="/board"`) {
 		t.Fatalf("/board did not render board surface:\n%s", boardBody)
 	}
@@ -177,12 +180,12 @@ func TestDashboardRoutes(t *testing.T) {
 
 	wallReq := httptest.NewRequest(http.MethodGet, "/wall", nil)
 	wallRec := httptest.NewRecorder()
-	server.wallRedirect(wallRec, wallReq)
-	if wallRec.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("/wall status=%d, want %d", wallRec.Code, http.StatusTemporaryRedirect)
+	server.wall(wallRec, wallReq)
+	if wallRec.Code != http.StatusOK {
+		t.Fatalf("/wall status=%d, want %d", wallRec.Code, http.StatusOK)
 	}
-	if got := wallRec.Header().Get("Location"); got != "/" {
-		t.Fatalf("/wall Location=%q, want /", got)
+	if !strings.Contains(wallRec.Body.String(), "wall-layout") || !strings.Contains(wallRec.Body.String(), `class="active" href="/wall"`) {
+		t.Fatalf("/wall did not render operational wall:\n%s", wallRec.Body.String())
 	}
 }
 
@@ -3135,6 +3138,8 @@ func TestMultiDashboardBoardFiltersByProject(t *testing.T) {
 	for _, want := range []string{
 		"Workstream Dashboard",
 		`<b>Project</b> right-project`,
+		`data-wall-href="/"`,
+		`href="/">Wall</a>`,
 		"Project</a>",
 		"Right project task",
 		"right-project",
@@ -3706,7 +3711,7 @@ func TestDashboardAssetsServeViewToggleScripts(t *testing.T) {
 		{path: "/assets/js/board.js", want: []string{
 			`event.key === "g"`,
 			`event.key === "w"`,
-			`window.location.assign("/")`,
+			`document.body.dataset.wallHref || "/wall"`,
 			`setCursor(cursorIndex + 1)`,
 			`setCursor(cursorIndex - 1)`,
 			`input[data-board-search]`,

@@ -131,6 +131,12 @@ The dashboard opens on loopback by default. Shared/public access, detached
 lifecycle, multi-project mode, and identity-aware proxy setup are advanced
 operator topics, not first-run requirements.
 
+The single-project dashboard opens on Overview. It explains the accountability
+chain using current project coverage and one cited Quality Record. Continue to
+Wall for live provider activity, Board for bounded work, Quality for lifecycle
+coverage, Reports for delivery history, or Controls for measured control
+effectiveness.
+
 ## What To Learn Next
 
 Choose the next page by need:

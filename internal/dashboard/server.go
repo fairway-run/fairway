@@ -422,13 +422,13 @@ func (s *Server) ListenAndServe(addr string) error {
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", dashboardAssetHandler())
+	mux.HandleFunc("/wall", s.wall)
 	mux.HandleFunc("/board", s.board)
 	mux.HandleFunc("/board/panels/diagnostics", s.boardDiagnosticsPanel)
 	mux.HandleFunc("/board/export", s.boardExport)
 	mux.HandleFunc("/reports", s.reports)
 	mux.HandleFunc("/quality", s.quality)
 	mux.HandleFunc("/controls", s.controls)
-	mux.HandleFunc("/wall", s.wallRedirect)
 	mux.HandleFunc("/tasks/", s.task)
 	mux.HandleFunc("/evidence/artifact", s.artifact)
 	mux.HandleFunc("/actions/claim", s.claim)
@@ -444,7 +444,7 @@ func (s *Server) handler() http.Handler {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	s.wall(w, r)
+	s.overview(w, r)
 }
 
 func (s *Server) board(w http.ResponseWriter, r *http.Request) {
@@ -580,7 +580,7 @@ func (s *MultiServer) reports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) wallRedirect(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "/wall", http.StatusTemporaryRedirect)
 }
 
 func (s *MultiServer) wallRedirect(w http.ResponseWriter, r *http.Request) {
@@ -3426,6 +3426,12 @@ var boardTemplate = mustEmbeddedTemplateSet("board", []string{
 var reportsTemplate = mustEmbeddedTemplateSet("reports", []string{
 	"assets/templates/layout.html",
 	"assets/templates/reports.html",
+	"assets/templates/partials/provider-chip.html",
+}, dashboardTemplateFuncs())
+
+var overviewTemplate = mustEmbeddedTemplateSet("overview", []string{
+	"assets/templates/layout.html",
+	"assets/templates/overview.html",
 	"assets/templates/partials/provider-chip.html",
 }, dashboardTemplateFuncs())
 

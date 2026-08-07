@@ -50,6 +50,10 @@ fairway ready
 fairway dashboard
 ```
 
+The single-project dashboard opens with an evidence-backed product Overview,
+then links to live work, task navigation, Quality Records, delivery reports,
+control analysis, and diagnostics.
+
 Continue with the [quickstart](docs/quickstart.md) to complete one bounded work
 item and inspect its evidence and decision record. The clean-repository
 rehearsal completed the command path in less than one second of machine

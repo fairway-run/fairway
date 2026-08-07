@@ -10,7 +10,7 @@
 <span class="filtered-count">filtered: {{.Summary.Filtered}} / {{.Summary.Total}}</span>
 </header>
 <nav class="flow-bar" aria-label="Board flow">
-<a href="/">Wall</a>
+<a href="{{if multiProject .}}/{{else}}/wall{{end}}">Wall</a>
 {{if .Filters.Role}}<span>/</span><strong>{{.Filters.Role}}</strong>{{end}}
 {{if .Filters.Status}}<span>/</span><strong>{{.Filters.Status}}</strong>{{end}}
 </nav>
@@ -27,7 +27,7 @@
 {{if .FilterChips}}<a class="chip filter-chip clear-all" href="{{.ClearFiltersHref}}">Clear filters</a>{{end}}
 </div>
 <div class="tb-right">
-<a class="btn" href="/">Wall</a>
+<a class="btn" href="{{if multiProject .}}/{{else}}/wall{{end}}">Wall</a>
 <button class="btn" type="submit">Apply</button>
 </div>
 </form>

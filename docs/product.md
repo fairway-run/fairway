@@ -22,6 +22,9 @@ Fairway is local-first. Its default product shape is one Go binary, one SQLite
 execution store, a CLI, and read-oriented dashboards. The portfolio Quality
 workspace makes lifecycle-stage coverage and attention visible across tasks,
 while task detail retains the cited facts and authority boundaries.
+The single-project Overview gives first-time users a product-level path through
+the accountability chain, current project coverage, one cited record, system
+authority boundaries, and the specialist operational views.
 Coordination primitives
 such as sessions, checkpoints, handoffs, waits, notifications, lanes, and
 worktrees support the accountability model; they do not define the category.
