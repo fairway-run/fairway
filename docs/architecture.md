@@ -30,6 +30,27 @@
               └────────┘   └─────────┘   └────────┘
 ```
 
+Coding runtimes remain outside Fairway core. Provider/session adapters attach
+runtime facts through validated Fairway commands and store methods. A future
+optional Seaway adapter follows the same edge pattern:
+
+```text
+Fairway task/session/evidence APIs
+              ^
+              | correlated, sourced run facts
+              |
+optional Fairway-Seaway adapter
+              |
+              | public versioned run contract
+              v
+Seaway admission/events/results
+```
+
+The adapter owns version negotiation, correlation, cursors, deduplication, and
+translation. It does not read either product's database, merge their state
+machines, or gain task, review, cancellation, or promotion authority. See
+[Optional Seaway integration](design/seaway-integration.md).
+
 ## Package layout
 
 `cmd/fairway/` — CLI entrypoint. Thin: parses args via cobra, dispatches to `internal/*`. No business logic.
@@ -112,6 +133,7 @@ Markdown or JSON artifacts from task/config inputs.
 | Task DB writes | `internal/store` |
 | Migration runner | `internal/store/migrations` |
 | tmux / PID detection | `internal/session` |
+| Optional runtime integration | Edge adapter using public Fairway and runtime contracts; not a core package |
 | Worktree shellouts | `internal/git` |
 | Coordinator preflight/status/tick | `internal/coordinator` |
 | Context, bugfix, and watcher packet rendering | `internal/packet` |
