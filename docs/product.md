@@ -185,11 +185,23 @@ are evidence inputs, not evergreen product authority.
 | System | Owns | Fairway contribution |
 |---|---|---|
 | Coding agent or IDE | Code generation, investigation, provider interaction | Bounded task packet, durable attachment, checkpoint, evidence, and handback state |
+| Agent runtime or optional Seaway | Admission and execution of an individual run, including effective runtime policy, events, result, usage, and cost | Correlated run identity and facts without merging run state into task state |
 | Git and forge | Source history, branches, pull requests, remote collaboration | Worktree/branch posture, commit evidence, promotion and merge-readiness checks |
 | CI/CD | Build, test, package, deploy, release execution | Monitor state, evidence references, failure routing, release/deploy preflight and handback |
 | Issue tracker | Roadmap, stakeholder planning, backlog discussion | Import/link/export context while retaining execution truth in Fairway |
 | Agent orchestrator | Provider scheduling and steering | Deterministic next actions, waits, packets, capability checks, and authority guards |
 | Identity proxy | Authentication and access policy | Read-only/shared boundary metadata and fail-closed configuration; no replacement for the proxy |
+
+```text
+Fairway: task / lane / worktree / session / review / evidence / readiness
+                         |
+                         | zero or more correlated runs
+                         v
+Coding runtime or optional Seaway: run policy / events / result / usage / cost
+                         |
+                         v
+Coding harness / provider / tools / bounded execution environment
+```
 
 Fairway composes with these systems. It does not claim to replace them.
 

@@ -16,10 +16,10 @@ const accountability = [
 const productLayers = [
   {
     index: '01',
-    name: 'Execution control',
+    name: 'Work coordination',
     status: 'Implemented',
-    summary: 'Bound work to durable intent, ownership, decisions, evidence, review, and promotion state.',
-    detail: 'Quality Record · tasks · commits · evidence · outcomes'
+    summary: 'Keep tasks, lanes, worktrees, sessions, ownership, waits, and next actions durable across agent runs.',
+    detail: 'Tasks · lanes · worktrees · sessions · readiness'
   },
   {
     index: '02',
@@ -71,8 +71,8 @@ function ProductLayer({ index, name, status, summary, detail }) {
 export default function Home() {
   return (
     <Layout
-      title="Engineering quality records, continuity, and control"
-      description="Fairway projects cited quality records for agent-driven engineering and connects them with continuity, knowledge, rules, and assurance."
+      title="Durable coordination for agent-driven delivery"
+      description="Fairway coordinates tasks, lanes, worktrees, sessions, reviews, evidence, and readiness across coding agents and engineering systems."
     >
       <main>
         <section className={styles.hero}>
@@ -80,13 +80,12 @@ export default function Home() {
           <div className={styles.heroInner}>
             <img src="/img/logo-lockup.svg" alt="Fairway" className={styles.logo} />
             <Heading as="h1">Fairway</Heading>
-            <p className={styles.kicker}>Quality records, continuity, and control</p>
+            <p className={styles.kicker}>Durable coordination across agent runs</p>
             <p className={styles.lede}>
-              Keep agent-driven engineering governed, resumable, and
-              reviewable across providers, tools, and time. Fairway projects a
-              cited Quality Record and connects it with working memory, project
-              knowledge, reusable rules, and promotion evidence without taking
-              authority from the systems that perform the work.
+              Keep tasks, lanes, worktrees, sessions, reviews, evidence, and
+              readiness connected when agents stop, contexts compact, or work
+              moves between providers. Fairway is the local, harness-neutral
+              engineering record above individual runs.
             </p>
             <div className={styles.actions}>
               <Link className={clsx('button button--primary button--lg', styles.primary)} to="/docs/quickstart">
@@ -97,8 +96,8 @@ export default function Home() {
               </Link>
             </div>
             <p className={styles.heroBoundary}>
-              Local-first and provider-neutral. Fairway records control state;
-              it does not become your source-control, CI, identity, or deployment authority.
+              Coding agents and optional Seaway execute runs. Git, CI/CD,
+              trackers, and identity systems retain their own authority.
             </p>
           </div>
         </section>
@@ -106,11 +105,11 @@ export default function Home() {
         <section className={styles.productModel}>
           <div className={styles.modelHeading}>
             <div>
-              <span>One durable engineering record</span>
-              <Heading as="h2">Connect today&apos;s work to evidence, outcomes, and what comes next.</Heading>
+              <span>One durable coordination record</span>
+              <Heading as="h2">Connect concurrent agent work to evidence, review, and the next safe action.</Heading>
             </div>
             <p>
-              Fairway begins with accountable execution and extends into
+              Fairway begins with cross-run coordination and extends into
               continuity, operating knowledge, and evidence-backed assurance.
               Each layer has a distinct job and an explicit authority boundary.
             </p>
@@ -124,6 +123,40 @@ export default function Home() {
             <Link to="/docs/design/rule-packs">How reusable rules compose</Link>
             <Link to="/docs/quality-record-demo">Run the Quality Record demo</Link>
           </div>
+        </section>
+
+        <section className={styles.systemMap}>
+          <div className={styles.sectionHeading}>
+            <span>The system boundary</span>
+            <Heading as="h2">Coordinate the work without absorbing the systems that perform it.</Heading>
+            <p>
+              Fairway connects durable work to zero or more execution runs.
+              Facts cross the boundary; task, review, and promotion authority do not.
+            </p>
+          </div>
+          <div className={styles.mapFlow} aria-label="Fairway system relationship">
+            <article className={styles.mapPrimary}>
+              <strong>Fairway</strong>
+              <span>Tasks · lanes · worktrees · sessions · reviews · evidence · readiness</span>
+            </article>
+            <div className={styles.mapConnector}>bounded context ↓ correlated facts ↑</div>
+            <article>
+              <strong>Coding agents + optional Seaway</strong>
+              <span>Individual run admission · execution · policy · events · results · usage</span>
+            </article>
+            <div className={styles.mapConnector}>run execution ↓</div>
+            <article>
+              <strong>Models · tools · execution environments</strong>
+              <span>Provider interaction · filesystem · network · runtime capabilities</span>
+            </article>
+          </div>
+          <div className={styles.authorityGrid}>
+            <span><strong>Git and forges</strong> own source and merge</span>
+            <span><strong>CI/CD</strong> owns verification and deployment</span>
+            <span><strong>Trackers</strong> own stakeholder planning</span>
+            <span><strong>Identity systems</strong> own authentication and access</span>
+          </div>
+          <Link to="/docs/ecosystem">See the complete ecosystem boundary</Link>
         </section>
 
         <section className={styles.accountability}>

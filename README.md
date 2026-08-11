@@ -4,15 +4,15 @@
 
 # Fairway
 
-**Engineering quality records, continuity, and control for agent-driven delivery.**
+**Durable coordination for agent-driven software delivery.**
 
-Fairway keeps agent-driven engineering governed, resumable, and reviewable
-across providers, tools, and time. It projects a cited Quality Record from
-accountable execution facts and connects that record with working memory,
-source-grounded project knowledge, reusable rule packs, and evidence-backed
-assurance.
+Fairway is the local, harness-neutral coordination and engineering-record layer
+for work that spans coding agents, provider sessions, worktrees, source control,
+and CI/CD. It keeps tasks, ownership, decisions, evidence, reviews, waits, and
+readiness durable when an agent stops, a context window compacts, or execution
+moves to another tool.
 
-It gives a software team a durable answer to six questions:
+It gives a software team a durable answer to six practical questions:
 
 1. What work was authorized, and who owns it now?
 2. Which material decisions shaped the work?
@@ -21,9 +21,11 @@ It gives a software team a durable answer to six questions:
 5. Which independent judgment or promotion authority is still required?
 6. What outcome or controlled lesson was retained after promotion?
 
-Coding agents, source control, CI/CD, issue trackers, and orchestrators still do
-their own jobs. Fairway connects their engineering facts in a local execution
-record so delivery does not depend on chat memory or one provider session.
+Coding agents and runtimes execute individual runs. Source control owns commits
+and merges. CI/CD owns builds and deployments. Issue trackers own stakeholder
+planning, and identity systems own access. Fairway connects their engineering
+facts without taking their authority, so delivery does not depend on chat memory
+or one provider session.
 
 ## Start Here
 
@@ -50,8 +52,8 @@ fairway ready
 fairway dashboard
 ```
 
-The single-project dashboard opens with an evidence-backed product Overview,
-then links to live work, task navigation, Quality Records, delivery reports,
+The single-project dashboard opens with active work and evidence-backed project
+state, then links to task navigation, cited Quality Records, delivery reports,
 control analysis, and diagnostics.
 
 Continue with the [quickstart](docs/quickstart.md) to complete one bounded work
@@ -59,7 +61,7 @@ item and inspect its evidence and decision record. The clean-repository
 rehearsal completed the command path in less than one second of machine
 execution and documented the Git baseline and bootstrap-commit prerequisites.
 
-## The Accountability Chain
+## The Coordination Record
 
 Fairway keeps ordinary agent work connected to explicit engineering controls:
 
@@ -73,16 +75,17 @@ Fairway keeps ordinary agent work connected to explicit engineering controls:
 | Promotion | workflow, merge-ready, release, and deploy guards | Reversible implementation remains distinct from consequential release or live action. |
 | Outcomes and lessons | structured outcome, friction, and controlled-improvement links | Promotion is not treated as the end of the quality record. |
 
-Coordination is part of this chain. Sessions, checkpoints, handoffs, waits,
-notifications, lanes, and dashboards make ownership and next actions visible,
-but they are capabilities rather than Fairway's category definition.
+Sessions, checkpoints, handoffs, waits, notifications, lanes, worktrees, and
+dashboards make ownership and next actions visible across runs. Governance,
+assurance, and a cited Quality Record are useful consequences of this technical
+record; they are not Fairway's product category.
 
 ## The Product Model
 
-Fairway builds four distinct capabilities on one local engineering record:
+Fairway builds four distinct capabilities on one local coordination record:
 
-1. **Execution control:** intent, ownership, decisions, evidence, review, and
-   promotion state.
+1. **Work coordination:** tasks, lanes, worktrees, sessions, ownership, waits,
+   and deterministic next actions across runs.
 2. **Engineering continuity:** track memory, cold starts, waits, and handoffs
    that survive provider replacement and context loss.
 3. **Operating knowledge:** source-grounded project synthesis and reusable rule
@@ -136,6 +139,24 @@ default production behavior.
 - **Agent orchestrators** may start or steer provider work. Fairway supplies
   deterministic state, packets, waits, and guards; orchestration output does
   not become approval or provenance by itself.
+
+```text
+Fairway: tasks / lanes / worktrees / sessions / reviews / evidence / readiness
+                         |
+                         | bounded context and correlated facts
+                         v
+Coding agents and optional Seaway: individual run execution
+                         |
+                         v
+Models / tools / bounded execution environments
+
+Git and forges own source and merge. CI/CD owns verification and deployment.
+Trackers own planning. Identity systems own authentication and authorization.
+```
+
+[Seaway](docs/ecosystem.md#fairway-and-optional-seaway) is an optional run-control
+product, not a Fairway requirement. Fairway works directly with existing coding
+agents and execution surfaces; Seaway can serve other callers without Fairway.
 
 ## Authority Boundary
 

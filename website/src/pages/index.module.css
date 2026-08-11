@@ -185,6 +185,73 @@
   padding: 74px 28px 82px;
 }
 
+.systemMap {
+  margin: 0 auto;
+  max-width: 1240px;
+  padding: 74px 28px 20px;
+}
+
+.mapFlow {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  margin: 38px 0 24px;
+}
+
+.mapFlow article {
+  background: #eef2f4;
+  border: 1px solid #ccd6df;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 22px 24px;
+}
+
+.mapFlow .mapPrimary {
+  background: #172531;
+  border-color: #172531;
+  color: #f7fafb;
+}
+
+.mapFlow strong {
+  font-size: 1.02rem;
+}
+
+.mapFlow span {
+  color: #5a6a78;
+  line-height: 1.55;
+}
+
+.mapFlow .mapPrimary span {
+  color: #c6d1d8;
+}
+
+.mapConnector {
+  color: #657481;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.authorityGrid {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 24px;
+}
+
+.authorityGrid span {
+  background: #f5e9e6;
+  color: #5a4b48;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  padding: 16px;
+}
+
+.systemMap > a {
+  font-weight: 700;
+}
+
 .sectionHeading {
   max-width: 760px;
 }
@@ -373,6 +440,10 @@
   .authority {
     align-items: start;
   }
+
+  .authorityGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
@@ -399,6 +470,7 @@
   }
 
   .accountability,
+  .systemMap,
   .startBand {
     padding-left: 20px;
     padding-right: 20px;
@@ -427,6 +499,10 @@
 
   .accountability {
     padding-top: 30px;
+  }
+
+  .authorityGrid {
+    grid-template-columns: 1fr;
   }
 
   .steps {
