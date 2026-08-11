@@ -48,6 +48,13 @@ Seaway controls and reports only the individual run. A successful Seaway run
 is evidence about execution; it is never by itself a completed task, approved
 review, or authorized promotion.
 
+The proposed edge contract is defined in
+[Optional Seaway integration](design/seaway-integration.md). It covers version
+and capability negotiation, task/session/run correlation, idempotent event and
+terminal-result ingestion, approval handoff, cancellation, reconnect, and
+degraded operation. It intentionally selects no transport and schedules no
+adapter implementation.
+
 ## The Independent Record
 
 Fairway does not copy every external system into its DB. It stores the minimum
@@ -101,6 +108,7 @@ perform the consequential action.
 ## Where To Go Next
 
 - [Integrations](integrations.md): implemented adapters and technical setup
+- [Optional Seaway integration](design/seaway-integration.md): design-only edge contract and failure semantics
 - [Product boundaries](design/product-boundaries.md): durable authority limits
 - [Architecture](architecture.md): Fairway component and data flow
 - [Provider capability readiness](design/provider-surface-capability-readiness.md): capability probes and fail-closed provider routing
