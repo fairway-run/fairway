@@ -1,9 +1,9 @@
 # Fairway Ecosystem
 
-Fairway is the independent engineering record and control layer for
-agent-driven delivery. It composes with the systems that create, schedule,
-version, verify, discuss, secure, and promote software; it does not absorb
-their responsibilities.
+Fairway is the harness-neutral coordination and engineering-record layer for
+agent-driven delivery. It composes with the systems that execute, route,
+schedule, version, verify, discuss, secure, and promote software; it does not
+absorb their responsibilities.
 
 This page defines durable categories. It intentionally does not name, rank, or
 compare individual products.
@@ -13,12 +13,40 @@ compare individual products.
 | Category | Owns | Sends to Fairway | Receives from Fairway | Does not delegate to Fairway |
 |---|---|---|---|---|
 | Coding agent | Investigation, implementation, local testing, bounded review | Session lifecycle, checkpoints, evidence, handback, bounded usage metadata | Task packet, acceptance, cited facts, required checks, unresolved waits | Credentials, self-approval, risk acceptance, merge/deploy/live authority |
+| Agent runtime, including optional Seaway | Admission and execution of one run; effective capabilities; run-time tools, approvals, policy, events, result, usage, and cost | Correlated run identity, capability and policy facts, lifecycle events, terminal result, safe evidence and artifact references | Bounded task context, workspace/revision reference, requested capabilities, caller correlation | Task status, independent review, cross-run readiness, promotion authority |
+| AI gateway | Provider/model menu, request routing, caching, capacity, pricing, and spend enforcement | Effective provider/model, request usage, cache, routing, budget, and cost facts | Correlation fields and declared constraints when supported | Task ownership, worktree coordination, evidence acceptance, review or promotion |
 | Agent orchestrator | Provider scheduling, thread/process steering, capacity decisions | Delivery proof, provider state, exceptions | Ready work, deterministic next action, capability/routability status | Product truth, approval, hidden task mutation, automatic promotion |
 | Source control | Files, commits, branches, history, remote collaboration | Branch/commit/remote facts | Expected branch/worktree posture, promotion checks | Repository integrity, merge execution, access control |
 | CI/CD | Build, test, package, deploy, release execution | Run status, immutable links, result evidence, rollback/closeout | Expected validation, deploy-run packet, unresolved handback | Test execution, artifact signing, deploy authorization |
 | Issue system | Roadmap, stakeholder planning, discussion, prioritization | Imported definition or durable link | Execution status/export summary | Fairway runtime state, session truth, evidence, review materialization |
 | Identity and security controls | Authentication, authorization, secrets, network and origin policy | Verified actor/proxy facts and policy result | Required role/command boundary, audit context | Credential custody, identity proof generation, public gateway operation |
 | Fairway | Intent, decisions, evidence references, reviews, waits, execution attachment, control checks, promotion posture | Structured facts from every category | Deterministic read models, packets, reports, guards, handbacks | Implementation, CI execution, planning authority, IAM, autonomous promotion |
+
+## Fairway And Optional Seaway
+
+Seaway is an optional run-control product, not a required lower half of
+Fairway. Fairway can attach sessions and evidence from existing coding agents,
+shells, CI jobs, and orchestrators directly. Seaway can expose its run contract
+to an IDE, CLI, CI job, AI gateway, or another control plane without Fairway.
+
+When combined, the relationship is correlation rather than shared state:
+
+```text
+Fairway task / lane / worktree / review / readiness
+                      |
+                      | zero or more correlated runs
+                      v
+Seaway run / effective policy / events / result / usage / cost
+                      |
+                      v
+coding harness / provider / tools / bounded execution environment
+```
+
+Fairway records why the work exists, who owns the next action, which facts and
+reviews support it, and whether configured promotion conditions are satisfied.
+Seaway controls and reports only the individual run. A successful Seaway run
+is evidence about execution; it is never by itself a completed task, approved
+review, or authorized promotion.
 
 ## The Independent Record
 

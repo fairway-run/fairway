@@ -2,15 +2,25 @@
 
 ## Product Definition
 
-Fairway is the engineering control and accountability layer for agent-driven
-software delivery.
+Fairway is the local, harness-neutral coordination and engineering-record layer
+for agent-driven software delivery. It keeps concurrent work connected across
+tasks, lanes, worktrees, provider sessions, reviews, evidence, source control,
+and CI/CD without becoming the coding-agent runtime.
 
-Its supported Quality Record is a cited, read-only projection across intent,
+The technical problem is fragmented execution state. Provider conversations
+end, context windows compact, agents move between harnesses, and Git or CI can
+show what ran without showing which bounded task authorized it, who owns the
+next action, or which evidence and independent judgment remain missing.
+Fairway maintains that cross-system state and computes deterministic readbacks
+from it.
+
+The supported Quality Record is one cited, read-only projection of this
+engineering record across intent,
 material decisions, production context, evidence, automatic verification,
 human judgment, promotion, operational outcomes, and controlled lessons. Each
 stage reports `present`, `missing`, `unavailable`, `conflicting`, or
-`externally_owned`; it does not create a quality score or acquire approval
-authority.
+`externally_owned`. The projection is a product capability, not a development
+methodology, quality score, or source of approval authority.
 
 It keeps accountable intent, material decisions, evidence, independent
 judgment, and promotion state durable while coding agents and engineering tools
@@ -27,7 +37,40 @@ the accountability chain, current project coverage, one cited record, system
 authority boundaries, and the specialist operational views.
 Coordination primitives
 such as sessions, checkpoints, handoffs, waits, notifications, lanes, and
-worktrees support the accountability model; they do not define the category.
+worktrees are the technical control surface. Governance, compliance, and
+assurance are possible consequences of explicit facts and boundaries; they are
+not Fairway's primary category.
+
+## Boundary With Agent Execution
+
+Fairway coordinates work above individual agent runs. A coding harness or
+runtime executes the run. Seaway is a separately scoped, optional runtime
+product intended to provide a stable contract around one bounded agent run; it
+is not required by Fairway and is not an implemented Fairway subsystem.
+
+| Concern | Fairway | Coding runtime or optional Seaway |
+|---|---|---|
+| Unit of work | Task, lane, worktree assignment, review, and promotion record | One run or attempt against an explicit execution context |
+| Lifecycle | Cross-run ownership, waits, handbacks, evidence coverage, and readiness | Admission, start, observation, cancellation, reconnect, and terminal result |
+| Policy | Workflow gates, review domains, evidence expectations, and promotion boundaries | Provider/model eligibility, tools, credentials, files, network, data egress, and run-time approvals |
+| Facts | Links task intent to sessions, commits, CI, reviews, outcomes, and externally owned evidence | Emits run events, artifacts, evidence references, usage, cost, and failure facts |
+| Authority | Records and checks coordination and promotion posture without performing promotion | Controls only the execution capabilities its adapter or environment can honestly enforce |
+
+The products remain independently useful. Fairway can coordinate Codex,
+Claude Code, Gemini, Jcode, shell, CI, and other execution surfaces without
+Seaway. Seaway can serve a CLI, CI job, gateway, IDE, or another control plane
+without Fairway.
+
+The state models do not merge:
+
+- one Fairway task may have zero, one, or many runtime runs;
+- a successful run does not complete a Fairway task;
+- a run-time tool or egress approval is not an independent Fairway review;
+- cancelling or losing a run does not silently transition task state;
+- run evidence retains its source, integrity reference, and uncertainty when
+  linked into Fairway; and
+- a durable Fairway lane worktree and a disposable run workspace remain
+  distinct even when they point at the same repository revision.
 
 ## Operating Model: Durable Record, Temporary Execution
 
@@ -190,13 +233,14 @@ Fairway links those facts; it does not overwrite their ownership.
 
 ## Direction
 
-Current product work focuses on making the Quality Record and accountability
-chain easier to adopt, strengthening shared-team boundaries without abandoning
-local-first operation, and measuring whether specific controls discriminate
-useful outcomes at an acceptable cost. Coverage and observational limits remain
-visible; sparse data never becomes a reason to waive mandatory safety
+Current product work focuses on making the common multi-agent control loop
+direct: identify active and stale work, preserve task and worktree ownership,
+attach provider-neutral sessions, connect evidence and review, and expose the
+next safe action. The Quality Record, shared-team boundaries, and control
+analytics build on that technical record. Coverage and observational limits
+remain visible; sparse data never becomes a reason to waive mandatory safety
 invariants. "AI Engineering Quality System" remains a direction to evaluate,
-not a current completeness or certification claim.
+not Fairway's category, a current completeness claim, or certification.
 
 The versioned [product backlog](roadmap/fairway-product-backlog.yaml) records
 planned work. Release scope and implemented behavior are reported in

@@ -1,9 +1,10 @@
 # Product Boundaries
 
-Fairway is the engineering control and accountability layer for agent-driven
-delivery. It keeps accountable intent, material decisions, evidence,
-independent judgment, and promotion state explicit while agents and external
-engineering systems perform the work.
+Fairway is the local, harness-neutral coordination and engineering-record layer
+for agent-driven delivery. It keeps task and worktree ownership, execution
+attachments, material decisions, evidence, independent judgment, and promotion
+state explicit while coding runtimes and external engineering systems perform
+the work.
 
 Coordination is a Fairway capability, not a transfer of authority. Sessions,
 lanes, handoffs, waits, notifications, dashboards, and orchestrators can make
@@ -12,6 +13,41 @@ merge, deploy, release, credential, or live-operation authority.
 
 This page is the canonical product boundary. Other docs link here instead of
 restating or weakening it.
+
+## Boundary With Coding Runtimes And Seaway
+
+Fairway's durable unit is a task and its cross-system engineering record. A
+coding harness or runtime owns an individual run. Seaway is a separately scoped
+optional runtime product intended to normalize and bound one such run; Fairway
+does not require it, and Seaway must remain usable by callers that do not use
+Fairway.
+
+| Boundary | Fairway owns | Runtime or optional Seaway owns |
+|---|---|---|
+| Identity | Task, lane, role, worktree assignment, session attachment, review, and promotion correlation | Run, attempt, runtime, provider/model, execution environment, and caller correlation |
+| State | Task lifecycle, waits, checkpoints, handbacks, evidence coverage, review state, and readiness | Admission, effective run configuration, lifecycle events, cancellation, reconnect, and terminal result |
+| Policy | Evidence expectations, review domains, workflow guards, and promotion boundaries | Tool, command, path, credential, network, data-egress, provider/model, resource, and run-budget controls |
+| Output | Cited links across decisions, runs, commits, CI, reviews, outcomes, and external authorities | Ordered run events plus artifact, evidence, usage, cost, policy-decision, and failure facts |
+
+These invariants prevent authority or state from leaking across the boundary:
+
+- a Fairway task may correlate with zero, one, or many runs;
+- run success, failure, cancellation, or timeout never silently completes,
+  blocks, or closes a Fairway task;
+- a run-time approval permits only the named run operation and never satisfies
+  a Fairway review domain or promotion gate;
+- Fairway links runtime facts with their original source and uncertainty rather
+  than rewriting them as Fairway-generated proof;
+- Fairway coordinates durable lane worktrees, while a runtime may establish a
+  disposable execution workspace within its declared run boundary; and
+- unavailable or degraded runtime integration remains visible and does not
+  prevent Fairway from coordinating another execution surface.
+
+Any future Seaway adapter is an edge contract. It may map correlation IDs,
+capabilities, lifecycle events, terminal results, evidence references, usage,
+and cost facts. It must not merge the two state machines or convert advisory
+runtime output into task status, independent review, risk acceptance, or
+promotion authority.
 
 ## Responsibility And Authority
 
@@ -60,6 +96,10 @@ restating or weakening it.
 - Become a workflow/DAG engine. Fairway coordinates human-paced engineering
   lanes; it does not replace Temporal, Cadence, Argo Workflows, or similar
   systems.
+- Become a coding harness or agent runtime. Fairway does not own the model/tool
+  loop, select an effective provider or model for a run, sandbox execution,
+  inject credentials, enforce run-time filesystem or network access, or police
+  data egress.
 - Replace external planning tools. Plane, Jira, Linear, and GitHub Issues can
   mirror roadmap or stakeholder context; they do not own Fairway execution
   state.
@@ -136,6 +176,12 @@ Adapters are edge contracts. Core Fairway remains provider-neutral.
 Adapters may feed Fairway evidence, sessions, checkpoints, usage, and links.
 They do not decide task status, review approval, merge readiness, or release
 promotion on their own.
+
+An optional Seaway adapter follows the same rule. Seaway run admission,
+approval, cancellation, events, results, and cost records remain run-level
+facts. Fairway may correlate and report them but does not inherit Seaway's
+execution authority, and Seaway does not inherit Fairway's coordination or
+promotion authority.
 
 Provider thread steering is also an adapter boundary. Fairway may record that a
 handoff was recorded, a notification was delivered, or a provider thread was
