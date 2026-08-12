@@ -6811,3 +6811,22 @@ tasks:
       - "Release scope is limited to the coherent quality-record capability and its measured positioning."
       - "The qualified candidate process proves tests, provenance, signing, notarization, packaging, upgrade, rollback, and clean-install behavior on the exact release commit."
       - "Release notes state capability and claim boundaries without presenting observational control analytics as causal proof."
+
+  - id: FW-404
+    title: Define Fairway collaborative delegation model and consumer requirements
+    kind: task
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product-model
+    source_paths: [README.md, docs/product.md, docs/design/scope.md, docs/design/concepts.md, docs/design/dashboard-overview.md, docs/case-studies/ai-cloud.md, ../GPUasService/AGENTS.md, ../GPUasService/doc/showcase]
+    target_paths: [AGENTS.md, README.md, docs/product.md, docs/design/collaborative-delegation.md, docs/design/scope.md, docs/design/concepts.md, docs/design/dashboard-overview.md, docs/case-studies/ai-cloud.md, website/src/pages/index.jsx, website/sidebars.js]
+    review_domains: [arch]
+    risk_level: low
+    migration_type: product-positioning
+    acceptance_checks:
+      - "Canonical docs define Fairway as the durable control layer for moving between collaborative problem-solving and bounded delegation across the delivery lifecycle, not as another SDLC phase."
+      - "The model uses uncertainty, specifiability, and independent verification cost to choose collaboration or delegation without adding new Fairway roles, states, or authority."
+      - "Evidence and independent review can return delegated work to collaborative diagnosis while task status, review, merge, deploy, and live authority remain explicit."
+      - "README, product, scope, concepts, dashboard overview, AI Cloud case study, and public site use consistent category language and a GPUaaS example."
+      - "GPUaaS-derived requirements are classified as already supported, configurable or project-owned, or genuine Fairway product gaps; only genuine product gaps become follow-up work."

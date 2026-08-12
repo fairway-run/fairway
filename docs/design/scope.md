@@ -3,17 +3,25 @@
 ## Identity
 
 - **Name:** fairway
-- **Tagline:** traffic control for coding agents
-- **Metaphor:** maritime traffic control. Fairways are navigable channels under VTS coordination; agents transit worktree lanes under fairway's coordination.
+- **Tagline:** durable coordination for collaborative and delegated engineering
+- **Metaphor:** maritime traffic control. Fairways preserve navigable channels,
+  shared facts, and authority boundaries while different vessels enter, leave,
+  wait, and continue under their own control.
 
 ## What fairway is
 
-A standalone Go binary plus an embedded SQLite store that coordinates multiple coding agents working in parallel on a single repository. It provides:
+A standalone Go binary plus an embedded SQLite store that preserves the
+cross-run engineering record as humans, agents, and utilities move between
+collaborative problem-solving and bounded delegated execution. It operates
+across an existing delivery lifecycle rather than defining a new SDLC phase.
+It provides:
 
 - A task queue with definitions (immutable) and execution state (mutable).
 - A configurable state machine for task lifecycle.
 - Lane / worktree management for per-role isolation.
-- A handoff / evidence / review chain so work can be passed between roles with an audit trail.
+- A decision / handoff / evidence / review chain so a diagnosis can evolve,
+  bounded work can be delegated, and claims can be challenged with an audit
+  trail.
 - Session lifecycle tracking (PID, tmux pane, heartbeats).
 - Status, health, timing, task-detail, merge-readiness, and snapshot reports derived from the store.
 - Coordinator preflight/status/tick surfaces, context packets, watcher packets, and task checkpoints for bounded parallel work.
@@ -23,6 +31,9 @@ A standalone Go binary plus an embedded SQLite store that coordinates multiple c
 ## What fairway is not
 
 - **Not a workflow engine.** No DAG executor, no compensating transactions, no durable timers. If you need Temporal or Cadence semantics, use Temporal or Cadence.
+- **Not a software-development methodology.** Fairway does not prescribe
+  lifecycle phases, ceremonies, team topology, or a universal definition of
+  feature completeness. Projects retain those choices.
 - **Not an IAM tool.** No identity provider, no permissions model beyond OS user attribution.
 - **Not a CI runner.** Fairway records that work was done; it does not run pipelines.
 - **Not an LLM provider abstraction.** Fairway does not spawn agents, proxy
@@ -51,4 +62,7 @@ A standalone Go binary plus an embedded SQLite store that coordinates multiple c
 
 ## Audience
 
-Solo developers and small teams running 2–6 coding agents in parallel against one repository. Fairway is designed to be useful at one human plus three agents; it should not get in the way at that scale.
+Solo developers and small teams using coding agents across one repository,
+including work that is sequential, collaborative, delegated, or parallel.
+Fairway is designed to be useful at one human plus a few replaceable execution
+attachments; it should not get in the way at that scale.

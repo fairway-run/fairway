@@ -30,6 +30,17 @@ generated rationale, or the shared dashboard authoritative.
 
 ## Operating model
 
+AI Cloud describes its model as **collaborative problem-solving with governed
+delegation**. Product and architecture work stays collaborative while the user
+problem, full technical surface, ownership boundary, or proof is unsettled.
+Once one slice has explicit acceptance and can be independently verified, it is
+delegated to the smallest suitable execution attachment. Evidence and review
+can return the work to collaborative diagnosis before the next slice begins.
+
+The model operates across design, implementation, review, CI/CD, deployment,
+and operations; it is not a separate SDLC phase. Fairway preserves the control
+record that makes the transitions accountable.
+
 Fairway holds the task contract, lifecycle state, curated decisions, evidence
 references, reviews, waits, checkpoints, and provider-session attachments. Git
 records the implementation. CI and environment tools produce their own proof.
@@ -147,6 +158,14 @@ review enforcement while reducing lifecycle and closeout delay. Increased
 review and notification overhead remains a cost. The assessment therefore kept
 reversible intent-to-diff findings advisory because it lacked labeled precision
 and false-positive data.
+
+The GPUaaS terminal journey gives a smaller technical example. A delegated
+change treated the browser-terminal failure as a timeout problem. UAT disproved
+that diagnosis and moved ownership to worker-to-terminal reachability. The
+team returned to collaborative diagnosis, corrected the owning boundary, and
+then delegated and verified a new slice through node-agent preflight, gateway
+coverage, `session_ready`, and command-output evidence. A better prompt was not
+the control mechanism; independently checkable evidence changed the work.
 
 The independent read-only repeat pilot also established a supported bounded
 shape: one operator-controlled host, loopback origin, explicit binary/config/

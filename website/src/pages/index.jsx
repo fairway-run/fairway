@@ -5,12 +5,12 @@ import Heading from '@theme/Heading';
 import styles from './index.module.css';
 
 const accountability = [
-  { step: '01', title: 'Declare intent', body: 'Define the task, scope, risk, owner, and authority boundary before implementation starts.' },
-  { step: '02', title: 'Record decisions', body: 'Keep material choices and deviations durable without treating provider transcripts as provenance.' },
-  { step: '03', title: 'Attach evidence', body: 'Link tests, CI, environment proof, and artifacts to the work they support.' },
-  { step: '04', title: 'Apply judgment', body: 'Route independent review according to risk and retain findings, not just approval status.' },
-  { step: '05', title: 'Promote explicitly', body: 'Make merge, release, deploy, and live-operation boundaries visible without granting them to Fairway.' },
-  { step: '06', title: 'Observe outcomes', body: 'Link operational outcomes and controlled lessons instead of treating promotion as the end of quality.' }
+  { step: '01', title: 'Collaborate', body: 'Discover the product need, constraints, owning boundary, and proof while uncertainty remains.' },
+  { step: '02', title: 'Bound', body: 'Name the owner, dependencies, acceptance, risk, and independently checkable result.' },
+  { step: '03', title: 'Delegate', body: 'Attach one provider, subagent, thread, or utility to execute the bounded slice.' },
+  { step: '04', title: 'Verify', body: 'Link reproducible tests, CI, environment proof, and safe artifacts to the claim.' },
+  { step: '05', title: 'Challenge', body: 'Let independent review or conflicting evidence reopen the diagnosis when needed.' },
+  { step: '06', title: 'Promote', body: 'Cross merge, release, deploy, or live boundaries only through the authority that owns them.' }
 ];
 
 const productLayers = [
@@ -71,8 +71,8 @@ function ProductLayer({ index, name, status, summary, detail }) {
 export default function Home() {
   return (
     <Layout
-      title="Durable coordination for agent-driven delivery"
-      description="Fairway coordinates tasks, lanes, worktrees, sessions, reviews, evidence, and readiness across coding agents and engineering systems."
+      title="Collaborative problem-solving with governed delegation"
+      description="Fairway preserves the durable control record as engineering work moves between collaboration, bounded delegation, independent evidence, and explicit promotion."
     >
       <main>
         <section className={styles.hero}>
@@ -80,12 +80,12 @@ export default function Home() {
           <div className={styles.heroInner}>
             <img src="/img/logo-lockup.svg" alt="Fairway" className={styles.logo} />
             <Heading as="h1">Fairway</Heading>
-            <p className={styles.kicker}>Durable coordination across agent runs</p>
+            <p className={styles.kicker}>Collaborative problem-solving · governed delegation</p>
             <p className={styles.lede}>
-              Keep tasks, lanes, worktrees, sessions, reviews, evidence, and
-              readiness connected when agents stop, contexts compact, or work
-              moves between providers. Fairway is the local, harness-neutral
-              engineering record above individual runs.
+              Collaborate while the problem and proof are uncertain. Delegate
+              one bounded slice when its result can be independently checked.
+              Fairway keeps the decisions, sessions, evidence, reviews, and
+              authority boundaries durable across every run.
             </p>
             <div className={styles.actions}>
               <Link className={clsx('button button--primary button--lg', styles.primary)} to="/docs/quickstart">
@@ -105,19 +105,20 @@ export default function Home() {
         <section className={styles.productModel}>
           <div className={styles.modelHeading}>
             <div>
-              <span>One durable coordination record</span>
-              <Heading as="h2">Connect concurrent agent work to evidence, review, and the next safe action.</Heading>
+              <span>One durable control record</span>
+              <Heading as="h2">Move between collaboration and delegation without losing the engineering story.</Heading>
             </div>
             <p>
-              Fairway begins with cross-run coordination and extends into
-              continuity, operating knowledge, and evidence-backed assurance.
-              Each layer has a distinct job and an explicit authority boundary.
+              The model operates across architecture, implementation, review,
+              CI/CD, deployment, and operations. It is not another SDLC phase,
+              and it does not treat prompt length as task readiness.
             </p>
           </div>
           <div className={styles.productLayers}>
             {productLayers.map((item) => <ProductLayer key={item.index} {...item} />)}
           </div>
           <div className={styles.modelLinks}>
+            <Link to="/docs/design/collaborative-delegation">How collaboration becomes safe delegation</Link>
             <Link to="/docs/design/project-working-memory">How track memory works</Link>
             <Link to="/docs/design/engineering-knowledge">How engineering knowledge stays grounded</Link>
             <Link to="/docs/design/rule-packs">How reusable rules compose</Link>
@@ -161,11 +162,12 @@ export default function Home() {
 
         <section className={styles.accountability}>
           <div className={styles.sectionHeading}>
-            <span>The control path</span>
-            <Heading as="h2">From declared intent to observable outcomes</Heading>
+            <span>The working loop</span>
+            <Heading as="h2">Collaborate on the problem. Delegate the bounded work.</Heading>
             <p>
-              The same accountability chain applies whether one agent handles
-              a small fix or several providers execute a long-running program.
+              Verification cost—not model capability—sets the delegation
+              boundary. Evidence can challenge the result and return the work
+              to collaboration before promotion.
             </p>
           </div>
           <div className={styles.steps}>

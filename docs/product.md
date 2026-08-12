@@ -7,6 +7,16 @@ for agent-driven software delivery. It keeps concurrent work connected across
 tasks, lanes, worktrees, provider sessions, reviews, evidence, source control,
 and CI/CD without becoming the coding-agent runtime.
 
+Its working model is collaborative problem-solving with governed delegation.
+Teams collaborate while the problem, constraints, acceptance boundary, or
+verification method remains uncertain. They delegate a bounded slice when its
+owner, dependencies, acceptance, risk, and independent proof are clear.
+Evidence and review can reopen collaborative diagnosis; promotion remains an
+explicit action owned by the applicable external authority. This model operates
+across the delivery lifecycle and is not another SDLC phase or methodology.
+See [Collaborative problem-solving and governed
+delegation](design/collaborative-delegation.md).
+
 The technical problem is fragmented execution state. Provider conversations
 end, context windows compact, agents move between harnesses, and Git or CI can
 show what ran without showing which bounded task authorized it, who owns the
@@ -233,6 +243,9 @@ Fairway composes with these systems. It does not claim to replace them.
 11. **Small control plane, elastic execution.** Keep recurring control surfaces
     few and stable; create and retire execution attachments at the boundary of
     the work they serve.
+12. **Collaborate before unsafe delegation.** Do not treat model capability or
+    prompt length as evidence that intent is clear or verification is cheap.
+    Delegate only a bounded slice and allow evidence to reopen the diagnosis.
 
 ## Source Of Truth
 
@@ -245,10 +258,10 @@ Fairway links those facts; it does not overwrite their ownership.
 
 ## Direction
 
-Current product work focuses on making the common multi-agent control loop
-direct: identify active and stale work, preserve task and worktree ownership,
-attach provider-neutral sessions, connect evidence and review, and expose the
-next safe action. The Quality Record, shared-team boundaries, and control
+Current product work focuses on making the collaboration-to-delegation control
+loop direct: preserve the evolving problem, bound one verifiable slice, attach
+provider-neutral execution, connect evidence and independent review, and expose
+the next safe action. The Quality Record, shared-team boundaries, and control
 analytics build on that technical record. Coverage and observational limits
 remain visible; sparse data never becomes a reason to waive mandatory safety
 invariants. "AI Engineering Quality System" remains a direction to evaluate,
