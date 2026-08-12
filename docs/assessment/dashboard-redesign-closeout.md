@@ -129,11 +129,12 @@ Primary evidence:
 
 ### `FWRD-154` GPUaaS Operator Walkthrough And Feedback Capture
 
-Status: blocked.
+Status: superseded and closed.
 
-Reason: local Fairway dogfood walkthrough is documented, but named GPUaaS
-operator signoff is still pending. Do not represent this as external operator
-approval until the signoff section is completed or explicitly waived.
+Reason: the redesign-era record was consolidated into `FW-135`, which owns the
+current GPUaaS walkthrough and human operator signoff. The 2026-08-12 technical
+walkthrough passed against the real GPUaaS store; do not represent it as human
+operator approval until `FW-135` records the named signoff.
 
 Primary evidence:
 
