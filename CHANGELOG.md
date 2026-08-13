@@ -33,6 +33,13 @@ and uses semantic versioning.
 - GPUaaS operator evidence validates Overview, Wall, Board, Diagnostics,
   Quality, Reports, exports, and task detail against a real 1,920-task store.
 
+### Fixed
+
+- Review-notification projections now associate delivery state with the latest
+  durable handoff identity, avoiding nondeterministic status when wall-clock
+  timestamps do not preserve causal order; unbound historical rows retain a
+  compatibility fallback.
+
 ### Security
 
 - Fairway and optional Seaway retain separate lifecycle state and authority;

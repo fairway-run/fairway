@@ -30,6 +30,14 @@ must bind that SHA.
   disposition; and
 - named GPUaaS operator approval with no blocking dashboard gap identified.
 
+The first exact-SHA production rehearsal stopped before signing or tagging when
+repeated testing exposed a nondeterministic review-notification projection. The
+release candidate now matches notification state to the latest durable handoff
+identity instead of inferring causality only from wall-clock timestamps. Focused
+dashboard and projection regressions pass across 200 repetitions, and the full
+repository check passes on the amended candidate. The failed rehearsal created
+no tag, release, or published artifact.
+
 The documentation toolchain was updated to Docusaurus 3.10.2 and current React
 patch releases. Direct overrides remove every npm advisory with an available
 upstream fixed version. The remaining audit chain is the Docusaurus build-time
