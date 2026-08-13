@@ -7,6 +7,41 @@ and uses semantic versioning.
 
 ## Unreleased
 
+## v0.2.7 - 2026-08-12
+
+### Added
+
+- A read-only Product Overview connects the accountable engineering record,
+  live project evidence, system boundaries, execution-surface choices, and
+  adoption path without turning the dashboard into an approval console.
+- A Quality Workspace compares cited lifecycle stages across tasks and links
+  each state back to the underlying Quality Record.
+- A canonical collaborative-delegation model explains when to collaborate on
+  uncertainty, when to delegate bounded work, and how evidence can return work
+  to diagnosis before promotion.
+- An optional Fairway-Seaway integration contract defines run correlation,
+  idempotency, replay, degradation, and authority boundaries without requiring
+  either product to share state or depend on the other.
+
+### Changed
+
+- Public positioning now leads with collaborative problem-solving and governed
+  delegation across the delivery lifecycle rather than prompt-centric or
+  parallel-agent process language.
+- Dashboard execution-surface guidance now follows the collaboration, bounding,
+  verification, challenge, and renewed-collaboration loop.
+- GPUaaS operator evidence validates Overview, Wall, Board, Diagnostics,
+  Quality, Reports, exports, and task detail against a real 1,920-task store.
+
+### Security
+
+- Fairway and optional Seaway retain separate lifecycle state and authority;
+  runtime admission, results, or approvals cannot satisfy Fairway review or
+  promotion gates.
+- The integration design requires explicit source/version/stream cursor scope,
+  conflict-safe idempotency, and fail-visible unavailable or incompatible
+  runtime behavior before an adapter can be scheduled.
+
 ## v0.2.6 - 2026-08-05
 
 ### Added
