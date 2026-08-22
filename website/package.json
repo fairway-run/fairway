@@ -9,19 +9,24 @@
     "serve": "docusaurus serve --host 127.0.0.1"
   },
   "dependencies": {
-    "@docusaurus/core": "^3.8.1",
-    "@docusaurus/preset-classic": "^3.8.1",
+    "@docusaurus/core": "^3.10.2",
+    "@docusaurus/preset-classic": "^3.10.2",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.1.1",
     "prism-react-renderer": "^2.4.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "^3.8.1",
+    "@docusaurus/module-type-aliases": "^3.10.2",
     "wrangler": "4.113.0"
   },
   "overrides": {
+    "brace-expansion": "^5.0.9",
+    "fast-uri": "^4.1.2",
+    "js-yaml": "^5.2.3",
+    "nanoid": "^6.0.1",
+    "postcss": "^8.5.26",
     "serialize-javascript": "^7.0.5",
     "sharp": "0.35.3",
     "uuid": "^11.1.1"

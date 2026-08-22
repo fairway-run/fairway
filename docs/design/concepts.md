@@ -3,6 +3,20 @@
 This page owns Fairway's canonical vocabulary. Start with the common path and
 open advanced references only when the work crosses their boundary.
 
+## Working Modes Are Not States
+
+Fairway supports collaboration while intent, constraints, ownership, or
+verification remains uncertain, then bounded delegation when one slice can be
+executed and independently checked. Evidence and review may return the work to
+collaborative diagnosis before another bounded slice begins.
+
+`collaboration` and `delegation` are descriptions of how the team is working,
+not task states, roles, lanes, review verdicts, or promotion authority. Fairway
+does not infer that a task is safe to delegate from model capability or prompt
+length. See [Collaborative problem-solving and governed
+delegation](collaborative-delegation.md) for the selection model and GPUaaS
+requirements disposition.
+
 ## Common Path
 
 Most reversible work needs six concepts.
@@ -52,10 +66,11 @@ does not silently perform or authorize promotion.
 
 ```text
 task intent
-  -> provider or utility session
+  -> collaborate until the boundary and proof are clear
+  -> provider or utility session for one bounded slice
   -> material decision when direction changes
   -> reproducible evidence
-  -> independent review when policy requires it
+  -> independent review or renewed collaboration when policy requires it
   -> explicit promotion or local closeout
 ```
 

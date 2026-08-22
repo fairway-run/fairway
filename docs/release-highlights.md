@@ -1,8 +1,9 @@
-- Inspect one cited Quality Record across intent, evidence, verification,
-  judgment, promotion, outcomes, and lessons without generating a quality score
+- Move deliberately from collaborative problem-solving to bounded delegation,
+  independent verification, challenge, and explicit promotion without adding a
+  new SDLC phase or treating prompts as the durable work record.
+- Use the read-only Product Overview and Quality Workspace to inspect live
+  project facts and cited lifecycle records without generating a quality score
   or granting Fairway approval authority.
-- Connect tasks to delivered commits and retain structured outcomes and
-  attributable control friction for forward, evidence-based measurement.
-- Measure control coverage and signal through advisory CLI/dashboard reports
-  that suppress rankings when coverage, samples, or outcome integrity are
-  insufficient.
+- Compose Fairway with coding agents and optional Seaway through explicit system
+  and integration boundaries while Git, CI/CD, identity, review, and operators
+  retain their own authority.

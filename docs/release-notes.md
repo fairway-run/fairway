@@ -10,6 +10,56 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.2.7
+
+`v0.2.7` makes Fairway's working model and current product boundary visible in
+the product itself. Teams collaborate while intent, constraints, ownership, or
+proof remain uncertain. They delegate one bounded slice when its result can be
+checked independently, challenge the claim with evidence and review, and cross
+merge, release, deploy, or live boundaries only through the authority that owns
+them. These are working modes, not new Fairway task states or another SDLC
+phase.
+
+The dashboard now opens with a read-only Product Overview that connects the
+accountable engineering record to current project evidence, execution-surface
+selection, system boundaries, and the adoption path. The Quality Workspace
+compares cited lifecycle stages across tasks and links into the underlying
+Quality Record without producing a score or approval. A GPUaaS operator
+walkthrough exercised Overview, Wall, Board, Diagnostics, Quality, Reports,
+filtered exports, and task detail against a real 1,920-task store and found no
+blocking gap.
+
+Fairway remains the harness-neutral cross-run coordination record. Coding
+agents, subagents, provider threads, and utilities remain replaceable execution
+attachments. Seaway is defined as an optional, independently usable per-run
+admission, execution, policy, event, and result layer. The design specifies
+correlation, retry, approval-response idempotency, replay scope, degradation,
+and authority separation, but intentionally schedules no adapter until Seaway
+publishes a versioned contract and fixtures.
+
+### Upgrade
+
+1. Back up the project Fairway database and managed contract files.
+2. Install `v0.2.7`.
+3. Run `fairway config validate`, `fairway agent-contract status`, and
+   `fairway reconcile active --dry-run`.
+4. Open `fairway dashboard` and inspect Overview and Quality against the
+   project's own records.
+5. Continue using existing task, session, evidence, review, and promotion
+   commands. No new collaboration/delegation state or Seaway dependency is
+   introduced.
+
+### Known Limits
+
+- Fairway does not infer that a task is safe to delegate; specifiability,
+  verification cost, risk, and authority still require engineering judgment.
+- Seaway integration is a reviewed contract boundary, not a released adapter or
+  dependency.
+- Missing, unavailable, conflicting, and externally owned Quality Record facts
+  remain visible and are not converted into scores or generated conclusions.
+- This release does not claim sovereign deployment readiness, regulatory or
+  export classification, certification, or independent security assessment.
+
 ## v0.2.6
 
 `v0.2.6` makes Fairway's quality record inspectable and its governance

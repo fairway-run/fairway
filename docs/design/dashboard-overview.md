@@ -9,9 +9,10 @@ operator control room or a marketing landing page.
 
 The page follows five questions in order:
 
-1. **Understand:** What problem does Fairway solve and what does it preserve?
-2. **Operate:** Which execution surface fits the work without becoming a second
-   source of truth?
+1. **Understand:** How does Fairway preserve work as it moves between
+   collaboration and delegation across the delivery lifecycle?
+2. **Operate:** Is the problem still uncertain, or is one slice bounded and
+   independently verifiable enough for an execution attachment?
 3. **Inspect:** Can I follow one real work item from intent through outcome?
 4. **Trust:** Which claims are supported by current project records, and which
    authority remains elsewhere?
@@ -64,6 +65,13 @@ Fairway task states, roles, or automatic session policy. The section must also
 make clear that material delegated work requires a registered session and that
 a separate execution surface does not establish reviewer independence; routed
 reviewer identity and the configured review domain remain authoritative.
+
+The section must not present the surface selector as the whole operating model.
+It first explains the mode transition: collaborate while intent or proof is
+uncertain, delegate one bounded slice, verify and challenge the result, and
+return to collaboration when evidence changes the diagnosis. It states that
+this loop operates across existing lifecycle stages and does not create a new
+Fairway task state or SDLC phase.
 
 The proof section uses only current Fairway records:
 

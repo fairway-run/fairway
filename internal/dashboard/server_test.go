@@ -1854,10 +1854,11 @@ func TestTaskDetailRendersReviewNotificationStatus(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordHandoff(ctx, "T-001", store.Handoff{ToRole: "architecture", Payload: "please review"}); err != nil {
+	handoff, err := s.RecordHandoffWithID(ctx, "T-001", store.Handoff{ToRole: "architecture", Payload: "please review"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "T-001", Domain: "architecture", Provider: "codex", Target: "thread-arch", State: "notification_failed", Reason: "thread tool unavailable"}); err != nil {
+	if _, err := s.RecordNotification(ctx, store.Notification{TaskID: "T-001", HandoffID: &handoff.ID, Domain: "architecture", Provider: "codex", Target: "thread-arch", State: "notification_failed", Reason: "thread tool unavailable"}); err != nil {
 		t.Fatal(err)
 	}
 	server := New(s, config.Defaults(t.TempDir()), []string{"ui"}, nil)

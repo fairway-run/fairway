@@ -8,6 +8,7 @@ const sidebars = {
       label: 'Evaluate',
       items: [
         'product',
+        'design/collaborative-delegation',
         'case-studies/ai-cloud',
         'design/product-boundaries',
         'architecture',

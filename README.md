@@ -21,6 +21,28 @@ It gives a software team a durable answer to six practical questions:
 5. Which independent judgment or promotion authority is still required?
 6. What outcome or controlled lesson was retained after promotion?
 
+## The Working Model
+
+Fairway supports a deliberate shift between two ways of working:
+
+- collaborate while the problem, constraints, acceptance boundary, or
+  verification method still needs to be discovered; and
+- delegate when one slice has a clear owner, known dependencies, explicit
+  acceptance, and an independently checkable result.
+
+Evidence or independent review can send delegated work back into collaborative
+diagnosis. Promotion remains a separate action owned by Git, CI/CD, operators,
+or another accountable authority.
+
+```text
+collaborate -> bound -> delegate -> verify -> challenge -> promote -> retain
+```
+
+This model operates across architecture, implementation, review, integration,
+deployment, and operations. It is not another SDLC phase or a claim that a
+longer prompt makes ambiguous work safe to delegate. Read the canonical
+[collaborative delegation model](docs/design/collaborative-delegation.md).
+
 Coding agents and runtimes execute individual runs. Source control owns commits
 and merges. CI/CD owns builds and deployments. Issue trackers own stakeholder
 planning, and identity systems own access. Fairway connects their engineering

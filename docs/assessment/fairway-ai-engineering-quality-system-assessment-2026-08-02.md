@@ -87,8 +87,8 @@ both preserve this boundary.
 
 This is the strongest current Quality Record stage. It is defined in
 [Concepts](../design/concepts.md), covered by
-[CLI tests](../../cmd/fairway/main_test.go) and
-[store tests](../../internal/store/store_test.go), and exercised in the
+[CLI tests](https://github.com/fairway-run/fairway/blob/main/cmd/fairway/main_test.go) and
+[store tests](https://github.com/fairway-run/fairway/blob/main/internal/store/store_test.go), and exercised in the
 [common-path pilot](fairway-common-path-pilot-2026-07-11.md).
 
 **Limit:** intent quality is recorded, not automatically established. Fairway
@@ -107,8 +107,8 @@ Decision-quality assessment remains separate from approval and evidence.
 The current contract is documented in
 [Task decision memory](../design/task-decision-memory.md) and the authority
 limits are explicit in [Concepts](../design/concepts.md). Persistence and CLI
-behavior are covered in [store tests](../../internal/store/store_test.go) and
-[CLI tests](../../cmd/fairway/main_test.go).
+behavior are covered in [store tests](https://github.com/fairway-run/fairway/blob/main/internal/store/store_test.go) and
+[CLI tests](https://github.com/fairway-run/fairway/blob/main/cmd/fairway/main_test.go).
 
 **Limit:** Fairway checks record shape and citations; it does not prove that the
 decision was technically correct. Unrecorded decisions remain a coverage gap.
@@ -148,8 +148,8 @@ artifact-digest, signing, notarization, smoke, and promotion evidence across a
 real release boundary. The release evidence is summarized in
 [Release notes](../release-notes.md) and the
 [v0.2.4 release verification](fairway-v0.2.4-release-verification-2026-07-23.md).
-Record behavior is covered by [store tests](../../internal/store/store_test.go)
-and [CLI tests](../../cmd/fairway/main_test.go).
+Record behavior is covered by [store tests](https://github.com/fairway-run/fairway/blob/main/internal/store/store_test.go)
+and [CLI tests](https://github.com/fairway-run/fairway/blob/main/cmd/fairway/main_test.go).
 
 **Limit:** evidence records remain general facts. Claim-to-evidence semantics
 exist in bounded rule-pack and assurance-profile forms, but there is no general
@@ -178,9 +178,9 @@ The limits are material:
 The current boundary is stated in [Release notes](../release-notes.md),
 [Rule packs](../design/rule-packs.md), and
 [Assurance profiles](../design/assurance-profiles.md). Current implemented
-behavior is covered by [rule tests](../../internal/rules),
-[assurance profile tests](../../internal/assurance/profile_test.go), and
-[assurance verification tests](../../internal/assurance/verify_test.go).
+behavior is covered by [rule tests](https://github.com/fairway-run/fairway/tree/main/internal/rules),
+[assurance profile tests](https://github.com/fairway-run/fairway/blob/main/internal/assurance/profile_test.go), and
+[assurance verification tests](https://github.com/fairway-run/fairway/blob/main/internal/assurance/verify_test.go).
 
 ### 6. Human Judgment
 
@@ -190,9 +190,9 @@ Fairway records attributable review verdicts by configured domain, detects
 missing review, preserves changes-requested state, and separates configured
 review gates from evidence and promotion readiness. This record and gate
 behavior is covered by
-[review-policy tests](../../internal/reviewpolicy),
-[review-state tests](../../internal/reviewstate), and
-[coordinator tests](../../internal/coordinator/plan_test.go).
+[review-policy tests](https://github.com/fairway-run/fairway/tree/main/internal/reviewpolicy),
+[review-state tests](https://github.com/fairway-run/fairway/tree/main/internal/reviewstate), and
+[coordinator tests](https://github.com/fairway-run/fairway/blob/main/internal/coordinator/plan_test.go).
 
 **Limit:** current reviewer identity and domain are asserted at the CLI
 boundary. Fairway prevents some direct self-review cases and reports required
@@ -219,8 +219,8 @@ support promotion; it does not silently merge, deploy, accept risk, or grant
 credentials.
 
 The readiness behavior is covered by
-[coordinator tests](../../internal/coordinator/plan_test.go) and
-[CLI tests](../../cmd/fairway/main_test.go). Exact-commit release promotion was
+[coordinator tests](https://github.com/fairway-run/fairway/blob/main/internal/coordinator/plan_test.go) and
+[CLI tests](https://github.com/fairway-run/fairway/blob/main/cmd/fairway/main_test.go). Exact-commit release promotion was
 exercised in the
 [v0.2.4 release verification](fairway-v0.2.4-release-verification-2026-07-23.md).
 
@@ -245,7 +245,7 @@ rework links are incomplete. Fairway therefore cannot yet establish whether a
 specific control discriminates better outcomes.
 
 Current audit and delivery facts are covered by
-[audit tests](../../internal/audit) and repository command tests; no dated
+[audit tests](https://github.com/fairway-run/fairway/tree/main/internal/audit) and repository command tests; no dated
 assessment is treated as validation of control effectiveness.
 
 ### 9. Lessons And Controlled Improvement
@@ -283,14 +283,14 @@ separate architecture decision.
 | Capability | Current rating | Assessment |
 |---|---|---|
 | Coverage measurement | **Partial** | Work-coverage audit can compare recent commits and Fairway records, but a sustained representative coverage baseline has not been established across consumers. |
-| Risk-proportional assurance | **Implemented** | Profiles, risk metadata, review routes, rule severity, and promotion-specific controls support proportional checks while retaining mandatory invariants; current behavior is covered by [config](../../internal/config), [rules](../../internal/rules), and [assurance](../../internal/assurance) tests. |
+| Risk-proportional assurance | **Implemented** | Profiles, risk metadata, review routes, rule severity, and promotion-specific controls support proportional checks while retaining mandatory invariants; current behavior is covered by [config](https://github.com/fairway-run/fairway/tree/main/internal/config), [rules](https://github.com/fairway-run/fairway/tree/main/internal/rules), and [assurance](https://github.com/fairway-run/fairway/tree/main/internal/assurance) tests. |
 | Evaluations | **Missing as a general subsystem** | Tests and assurance checks exist; versioned eval cases, rubrics, evaluators, samples, and evaluation regressions do not form a supported general product model. |
 | Machine verifier qualification | **Missing; design-only** | Migration design names completeness and qualification, but current releases do not record verifier applicability or measured error behavior. |
 | Human reviewer qualification | **Missing in Fairway / deliberately external today** | Fairway records asserted reviewer and domain values and blocks some exact self-review cases; it does not authenticate identity, establish competence, authorize the asserted role, or grant organizational authority. |
 | Comparison classes and process capability | **Missing** | Delivery reports are descriptive. No supported runtime defines comparable repeated work and computes bounded capability with revision and uncertainty controls. |
 | Control effectiveness | **Planned** | The metric contract is reviewed; outcome linkage, reports, dashboard, and GPUaaS calibration remain backlog work under `FW-388`. |
-| Audit and provenance | **Implemented; validated practice** | Actor attribution, transitions, evidence, review, source/commit references, and signed release packets provide a strong provenance base, covered by [audit](../../internal/audit), [provenance](../../internal/provenance), and [offline-bundle](../../internal/offlinebundle) tests and the [v0.2.4 release verification](fairway-v0.2.4-release-verification-2026-07-23.md). External facts remain externally authoritative. |
-| Bounded export and package custody | **Implemented** | Assurance, provenance, audit, and offline-package paths constrain exported artifacts and are covered by [assurance](../../internal/assurance), [provenance](../../internal/provenance), and [offline-bundle](../../internal/offlinebundle) tests. |
+| Audit and provenance | **Implemented; validated practice** | Actor attribution, transitions, evidence, review, source/commit references, and signed release packets provide a strong provenance base, covered by [audit](https://github.com/fairway-run/fairway/tree/main/internal/audit), [provenance](https://github.com/fairway-run/fairway/tree/main/internal/provenance), and [offline-bundle](https://github.com/fairway-run/fairway/tree/main/internal/offlinebundle) tests and the [v0.2.4 release verification](fairway-v0.2.4-release-verification-2026-07-23.md). External facts remain externally authoritative. |
+| Bounded export and package custody | **Implemented** | Assurance, provenance, audit, and offline-package paths constrain exported artifacts and are covered by [assurance](https://github.com/fairway-run/fairway/tree/main/internal/assurance), [provenance](https://github.com/fairway-run/fairway/tree/main/internal/provenance), and [offline-bundle](https://github.com/fairway-run/fairway/tree/main/internal/offlinebundle) tests. |
 | General record-ingest privacy and retention | **Partial** | Fairway discourages transcript and credential custody, but general evidence input can retain command text, artifact paths, types, and notes without universal secret scanning or policy-based retention enforcement. |
 | Quality-system dashboard | **Missing** | Current dashboards are read-oriented execution projections. They do not present a unified Quality Record or qualified outcome/control-effectiveness view. |
 
@@ -388,9 +388,9 @@ empirical input, not as proof of the larger positioning.
 - [Common-path pilot](fairway-common-path-pilot-2026-07-11.md)
 - [v0.2.4 release verification](fairway-v0.2.4-release-verification-2026-07-23.md)
 - [Release notes and current known limits](../release-notes.md)
-- [CLI implementation tests](../../cmd/fairway/main_test.go)
-- [Store implementation tests](../../internal/store/store_test.go)
-- [Coordinator implementation tests](../../internal/coordinator/plan_test.go)
-- [Assurance implementation tests](../../internal/assurance)
-- [Audit implementation tests](../../internal/audit)
-- [Provenance implementation tests](../../internal/provenance)
+- [CLI implementation tests](https://github.com/fairway-run/fairway/blob/main/cmd/fairway/main_test.go)
+- [Store implementation tests](https://github.com/fairway-run/fairway/blob/main/internal/store/store_test.go)
+- [Coordinator implementation tests](https://github.com/fairway-run/fairway/blob/main/internal/coordinator/plan_test.go)
+- [Assurance implementation tests](https://github.com/fairway-run/fairway/tree/main/internal/assurance)
+- [Audit implementation tests](https://github.com/fairway-run/fairway/tree/main/internal/audit)
+- [Provenance implementation tests](https://github.com/fairway-run/fairway/tree/main/internal/provenance)

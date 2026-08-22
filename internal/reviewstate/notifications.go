@@ -53,7 +53,7 @@ func StatusesForTask(task store.Task, handoffs []store.Handoff, reviews []store.
 			status.Reason = "Fairway handoff exists, but no delivered reviewer notification or acknowledgement is recorded"
 			status.SuggestedAction = fmt.Sprintf("deliver handoff %d to %s reviewer and record notification delivery", handoff.ID, domain)
 		}
-		if notification, ok := latestNotificationForDomain(notifications, domain, status.LastHandoffAt); ok {
+		if notification, ok := latestNotificationForDomain(notifications, domain, status.HandoffID, status.LastHandoffAt); ok {
 			status.LastNotificationAt = notification.CreatedAt
 			status.LastState = notification.State
 			status.Provider = notification.Provider
@@ -140,27 +140,53 @@ func latestHandoffForDomain(handoffs []store.Handoff, domain string) (store.Hand
 		if strings.TrimSpace(handoff.ToRole) != domain {
 			continue
 		}
-		if latest.ID == 0 || handoff.CreatedAt >= latest.CreatedAt {
+		if latest.ID == 0 || handoff.CreatedAt > latest.CreatedAt ||
+			(handoff.CreatedAt == latest.CreatedAt && handoff.ID > latest.ID) {
 			latest = handoff
 		}
 	}
 	return latest, latest.ID != 0
 }
 
-func latestNotificationForDomain(notifications []store.Notification, domain, since string) (store.Notification, bool) {
+func latestNotificationForDomain(notifications []store.Notification, domain string, handoffID int64, since string) (store.Notification, bool) {
+	if handoffID != 0 {
+		var latest store.Notification
+		for _, notification := range notifications {
+			if strings.TrimSpace(notification.Domain) != domain || notification.HandoffID == nil || *notification.HandoffID != handoffID {
+				continue
+			}
+			if laterNotification(notification, latest) {
+				latest = notification
+			}
+		}
+		if latest.ID != 0 {
+			return latest, true
+		}
+	}
+
 	var latest store.Notification
 	for _, notification := range notifications {
 		if strings.TrimSpace(notification.Domain) != domain {
 			continue
 		}
+		// A notification explicitly bound to a different handoff cannot describe
+		// the current handoff. Unbound legacy rows retain timestamp fallback.
+		if handoffID != 0 && notification.HandoffID != nil {
+			continue
+		}
 		if since != "" && notification.CreatedAt < since {
 			continue
 		}
-		if latest.ID == 0 || notification.CreatedAt >= latest.CreatedAt {
+		if laterNotification(notification, latest) {
 			latest = notification
 		}
 	}
 	return latest, latest.ID != 0
+}
+
+func laterNotification(candidate, current store.Notification) bool {
+	return current.ID == 0 || candidate.CreatedAt > current.CreatedAt ||
+		(candidate.CreatedAt == current.CreatedAt && candidate.ID > current.ID)
 }
 
 func firstNonEmpty(values ...string) string {

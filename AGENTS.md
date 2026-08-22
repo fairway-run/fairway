@@ -4,7 +4,12 @@ Canonical orientation for any agent — Claude, Codex, Gemini, or human — work
 
 ## What fairway is
 
-A standalone Go binary that coordinates multiple coding agents working in parallel on a single repository. Read [README.md](README.md) and [docs/design/scope.md](docs/design/scope.md) before touching code.
+A standalone Go binary that preserves the durable control record as engineering
+work moves between collaborative problem-solving and bounded delegation across
+agents, provider sessions, worktrees, source control, and CI/CD. Read
+[README.md](README.md),
+[docs/design/collaborative-delegation.md](docs/design/collaborative-delegation.md),
+and [docs/design/scope.md](docs/design/scope.md) before touching code.
 
 ## How fairway dogfoods itself
 
