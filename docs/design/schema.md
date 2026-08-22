@@ -248,6 +248,23 @@ They extend the engineering record without replacing `task_evidence`,
 must be additive and must leave existing projects with no harness records fully
 functional.
 
+### `harness_external_runs`, `harness_observations`, and `harness_evaluator_results`
+
+Migration 018 implements the three append-only record families. All use a
+source-scoped primary identity, retain the canonical payload and its SHA-256
+idempotency digest, reference exactly one Fairway task, and sort readback by
+source time plus stable identity. External runs additionally make
+`submission_id` unique within a source. Observation and evaluator references
+store both the referenced source and record ID; both halves are null for a
+run-independent or observation-independent fact.
+
+`harness ingest` validates the full batch and all task, session, prior-run,
+run, and observation relationships before committing any row. A matching
+identity/digest is an existing replay. A matching identity with a different
+digest is `ErrIdempotencyConflict`. Existing stores migrate additively, and a
+project with no harness records receives empty readback rather than inferred
+history.
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | INTEGER PK | |

@@ -691,6 +691,31 @@ Supported utility states are `started`, `heartbeat`, `completed`, `failed`,
 evidence, watcher/session closure, and a `reconcile active --dry-run` handback.
 Use `--decision-required` when a human or agent must choose the next action.
 
+## Harness Observation And Evaluator Records
+
+Use harness records when an execution surface can report a bounded hypothesis,
+observation, or evaluator result more precisely than a checkpoint or generic
+evidence note. Inspect the privacy and compatibility contract first:
+
+```bash
+fairway contract harness-record --format json
+fairway harness ingest --file examples/session-adapters/harness-record.example.json
+fairway harness runs --task <task-id> --format json
+fairway harness record <external-run-id> --source <source-id> --format json
+```
+
+One task may retain zero, one, or many external runs. CI, scanner, artifact, or
+human observations may remain task-scoped without a synthetic run. All run and
+observation links are source-qualified, and replay is idempotent only when the
+canonical payload is identical. Conflicting identities fail without partially
+writing the batch.
+
+These records are sourced inputs to engineering judgment. They do not change
+task or session state, accept evidence, create a review, approve promotion,
+cancel execution, or send a redirect. Store safe summaries and artifact
+digests/references only; raw prompts, reasoning, transcripts, tool bodies,
+generated-content dumps, credentials, and secret-like material are rejected.
+
 ## Provider Usage Accounting
 
 Provider usage is attribution and planning telemetry, not a completion gate.

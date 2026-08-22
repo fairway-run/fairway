@@ -1,0 +1,60 @@
+{
+  "schema": "fairway.harness-record-batch.v1",
+  "external_runs": [
+    {
+      "schema": "fairway.harness.external-run.v1",
+      "source_id": "example-harness",
+      "source_version": "1.0",
+      "external_run_id": "replace-with-run-id",
+      "task_id": "REPLACE-WITH-TASK-ID",
+      "submission_id": "replace-with-submission-id",
+      "observed_at": "2026-08-21T00:00:00Z"
+    }
+  ],
+  "observations": [
+    {
+      "schema": "fairway.harness.execution-observation.v1",
+      "observation_id": "replace-with-observation-id",
+      "source_id": "example-harness",
+      "source_version": "1.0",
+      "task_id": "REPLACE-WITH-TASK-ID",
+      "external_run_ref": {
+        "source_id": "example-harness",
+        "id": "replace-with-run-id"
+      },
+      "kind": "experiment",
+      "subject_type": "task",
+      "subject_ref": "REPLACE-WITH-TASK-ID",
+      "summary": "Bounded, redacted observation summary",
+      "observed_at": "2026-08-21T00:01:00Z",
+      "outcome": "inconclusive",
+      "source_mode": "measured",
+      "hypothesis": "A bounded hypothesis",
+      "expected_observation": "The measurement expected if the hypothesis holds"
+    }
+  ],
+  "evaluator_results": [
+    {
+      "schema": "fairway.harness.evaluator-result.v1",
+      "evaluation_id": "replace-with-evaluation-id",
+      "source_id": "example-evaluator",
+      "source_version": "1.0",
+      "task_id": "REPLACE-WITH-TASK-ID",
+      "external_run_ref": {
+        "source_id": "example-harness",
+        "id": "replace-with-run-id"
+      },
+      "observation_ref": {
+        "source_id": "example-harness",
+        "id": "replace-with-observation-id"
+      },
+      "evaluator_id": "replace-with-evaluator-id",
+      "evaluator_version": "1.0",
+      "subject_type": "commit",
+      "subject_ref": "replace-with-commit-sha",
+      "result": "inconclusive",
+      "mode": "deterministic",
+      "evaluated_at": "2026-08-21T00:02:00Z"
+    }
+  ]
+}

@@ -189,13 +189,17 @@ Compatibility rules:
   before commit;
 - future timestamps outside the configured clock-skew allowance are rejected;
   and
-- raw/private or secret-like retained fields are rejected before persistence.
+- raw prompt, private reasoning, transcript, raw tool body, generated-content,
+  credential, and secret-like retained fields are rejected before persistence,
+  including when nested in namespaced metadata.
 
 Replay equality uses a canonical SHA-256 payload digest retained with every
 row. Fairway decodes the supported schema, rejects duplicate JSON object keys,
 normalizes field order through its typed representation, omits transport-only
 batch position, and encodes one compact UTF-8 JSON object with no insignificant
-whitespace. Explicit JSON values remain distinct from omitted optional fields.
+whitespace. Explicit `null`, empty-string, and empty-object optional values are
+rejected; omission is their only accepted absent representation, so field
+presence cannot collapse during typed canonicalization.
 Namespaced metadata is recursively key-sorted, depth/size bounded, and included
 in the digest. A matching identity and digest is an idempotent replay; a
 matching identity and different digest is a conflict. The digest is an

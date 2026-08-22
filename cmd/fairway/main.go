@@ -184,6 +184,8 @@ func run(ctx context.Context, args []string) error {
 		return cmdReviewPolicy(ctx, opts, args[1:])
 	case "contract":
 		return cmdContract(ctx, opts, args[1:])
+	case "harness":
+		return cmdHarness(ctx, opts, args[1:])
 	case "live-window":
 		return cmdLiveWindow(ctx, opts, args[1:])
 	case "wait":
@@ -9911,16 +9913,22 @@ var (
 
 func cmdContract(ctx context.Context, opts globalOptions, args []string) error {
 	if len(args) == 0 || isHelpOnly(args) {
-		subcommandUsage("contract", "agent-output")
+		subcommandUsage("contract", "agent-output|harness-record")
 		return nil
 	}
 	if len(args) > 1 && args[0] == "agent-output" && isHelpOnly(args[1:]) {
 		fmt.Println("fairway contract agent-output [--schema <schema-or-name>] [--format text|json]")
 		return nil
 	}
+	if len(args) > 1 && args[0] == "harness-record" && isHelpOnly(args[1:]) {
+		fmt.Println("fairway contract harness-record [--format text|json]")
+		return nil
+	}
 	switch args[0] {
 	case "agent-output":
 		return cmdContractAgentOutput(ctx, opts, args[1:])
+	case "harness-record":
+		return cmdContractHarnessRecord(opts, args[1:])
 	default:
 		return fmt.Errorf("unknown contract subcommand %q", args[0])
 	}
@@ -21576,7 +21584,7 @@ func usage() {
 	fmt.Println("Coordinator and readiness:")
 	fmt.Println("  coordinator plan|tick|status|preflight, doctor, readiness report, adoption artifact, parity artifact")
 	fmt.Println("Rules, packets, reports, and audits:")
-	fmt.Println("  rules, packet, contract agent-output, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export|verify, security advisory export|verify|acknowledge, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, control report, audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
+	fmt.Println("  rules, packet, contract agent-output|harness-record, harness ingest|runs|record, recipe extract|render|list, regression-pack, provenance report|prompt-packet, assurance profile validate|profiles list|evidence map|readiness|package export|verify, security advisory export|verify|acknowledge, explain code, advisory validate, notify notifiers|dry-run|send, automation candidates, rough-edge add|list, usage report|cost-report, delivery report|resources, control report, audit export|verify|work-coverage|ci-learning|failure-routing|notifications|docs-backlog, status-report, health-report, timing-report, completion-handback-report")
 	fmt.Println("Dashboard, release, and configuration:")
 	fmt.Println("  dashboard, server, binary, release verify, tracker, register, unregister, projects, db, config validate, tui, version")
 	fmt.Println()
@@ -21624,7 +21632,8 @@ func printCommandHelp(command string) bool {
 		"coordinator":                "fairway coordinator plan|tick|status|preflight\n  Print dry-run coordinator recommendations and stop conditions.",
 		"rules":                      "fairway rules validate <dir>|evidence-types|match <task-id>\n  Validate rule packs and inspect rule/evidence applicability.",
 		"packet":                     "fairway packet context|bugfix|retry|watcher|release-run|template|rules|architecture-map|boundary-guard|vertical-slice ...\n  Render bounded task, retry, release, rule, and profile packets; packets do not authorize execution.",
-		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\n  Print versioned agent-oriented JSON output contracts and privacy/authority boundaries.",
+		"contract":                   "fairway contract agent-output [--schema <schema-or-name>] [--format text|json]\nfairway contract harness-record [--format text|json]\n  Print versioned agent output or harness input contracts and privacy/authority boundaries.",
+		"harness":                    "fairway harness ingest --file <records.json>|--stdin\nfairway harness runs --task <task-id> [--format text|json]\nfairway harness record <external-run-id> --source <source-id> [--format text|json]\n  Append and inspect sourced harness observations and evaluator results without changing workflow authority.",
 		"provenance":                 "fairway provenance report [--task <task-id>|--since <duration>] [--format text|markdown|json] | fairway provenance prompt-packet --task <task-id> [--format markdown|json] | fairway provenance manifest --path <file>...\n  Export metadata-only supply-chain provenance, bounded task prompt packets, and content-free hash manifests.",
 		"assurance":                  "fairway assurance profile validate <path> [--format text|json]\nfairway assurance profile diff --from <path> --to <path> [--format text|json]\nfairway assurance profiles list --dir <path> [--format text|json]\nfairway assurance evidence map --profile <path> --task <task-id> [--at <RFC3339>] [--format text|json]\nfairway assurance readiness --profile <path> --scope <project|task_set|release> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--format text|json]\nfairway assurance package export --profile <path> --product-version <version> --scope <project|task_set|release> --out <dir> [--scope-id <id>] [--task <id>]... [--at <RFC3339>] [--signing-key-env <name>]\nfairway assurance package verify --dir <path> [--trusted-public-key-env <name>] [--format text|json]\nfairway assurance claims validate --path <markdown-or-text-file>... [--format text|json]\n  Validate and compare profiles, project facts, export bounded assessor evidence, verify packages offline, and reject unsupported public wording without granting certification or workflow authority.",
 		"security":                   "fairway security advisory export|verify|acknowledge ...\nfairway security rehearsal run ...\n  Handle bounded signed advisory packages or run an offline customer-key rehearsal without patch, deployment, credential, or certification authority.",

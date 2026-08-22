@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/harnessrecord"
 	"github.com/subashram/fairway/internal/provenance"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -542,6 +543,7 @@ func TestCLI_TopLevelCommandHelpCleanExit(t *testing.T) {
 		{"server", "fairway server --read-only [--listen <addr>]"},
 		{"lane", "fairway lane start|status|logs|stop"},
 		{"contract", "fairway contract agent-output"},
+		{"harness", "fairway harness ingest"},
 	} {
 		out := runCapture(t, tc.command, "--help")
 		assertContains(t, out, tc.want)
@@ -705,6 +707,46 @@ func TestCLI_AgentOutputContracts(t *testing.T) {
 	if _, err := captureRun("contract", "agent-output", "--schema", "fairway.agent.unknown.v1"); err == nil || !strings.Contains(err.Error(), "unknown agent output contract schema") {
 		t.Fatalf("unknown schema err=%v, want fail-closed schema error", err)
 	}
+}
+
+func TestCLI_HarnessRecords(t *testing.T) {
+	for _, args := range [][]string{{"harness", "ingest", "--help"}, {"harness", "runs", "--help"}, {"harness", "record", "--help"}, {"harness", "record", "run-1", "--help"}} {
+		out := runCapture(t, args...)
+		assertContains(t, out, "fairway harness")
+		assertNotContains(t, out, "Usage of")
+	}
+	repo := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	runOK(t, "init")
+	writeFile(t, "tasks.yaml", "- id: T-001\n  title: Harness record\n  role: backend\n")
+	runOK(t, "import", "tasks.yaml")
+	writeFile(t, "records.json", `{
+  "schema":"fairway.harness-record-batch.v1",
+  "external_runs":[{"schema":"fairway.harness.external-run.v1","source_id":"codex","source_version":"1","external_run_id":"run-1","task_id":"T-001","submission_id":"submit-1","observed_at":"2026-08-21T00:00:00Z"}],
+  "observations":[{"schema":"fairway.harness.execution-observation.v1","observation_id":"obs-1","source_id":"codex","source_version":"1","task_id":"T-001","external_run_ref":{"source_id":"codex","id":"run-1"},"kind":"experiment","subject_type":"task","subject_ref":"T-001","summary":"first approach failed","observed_at":"2026-08-21T00:01:00Z","outcome":"rejected","source_mode":"measured","hypothesis":"change works","expected_observation":"test passes"}],
+  "evaluator_results":[{"schema":"fairway.harness.evaluator-result.v1","evaluation_id":"eval-1","source_id":"ci","source_version":"1","task_id":"T-001","external_run_ref":{"source_id":"codex","id":"run-1"},"observation_ref":{"source_id":"codex","id":"obs-1"},"evaluator_id":"go-test","evaluator_version":"1","subject_type":"commit","subject_ref":"abc","result":"fail","mode":"deterministic","evaluated_at":"2026-08-21T00:02:00Z"}]
+}`)
+	first := runCapture(t, "--json", "harness", "ingest", "--file", "records.json")
+	for _, want := range []string{`"external_runs_inserted": 1`, `"observations_inserted": 1`, `"evaluator_results_inserted": 1`} {
+		assertContains(t, first, want)
+	}
+	replay := runCapture(t, "--json", "harness", "ingest", "--file", "records.json")
+	assertContains(t, replay, `"external_runs_existing": 1`)
+	record := runCapture(t, "--json", "harness", "record", "run-1", "--source", "codex")
+	assertContains(t, record, `"observation_id": "obs-1"`)
+	assertContains(t, record, `"evaluation_id": "eval-1"`)
+	runs := runCapture(t, "harness", "runs", "--task", "T-001")
+	assertContains(t, runs, "runs=1")
+	contract := runCapture(t, "--json", "contract", "harness-record")
+	assertContains(t, contract, `"schema": "fairway.harness-record-contracts.v1"`)
+	assertContains(t, contract, harnessrecord.ObservationSchema)
 }
 
 func TestCLI_UnknownCommandStillErrors(t *testing.T) {
@@ -2116,7 +2158,7 @@ required_features = ["managed_binary_cache"]
 `, pinned))
 
 	report := runCapture(t, "--json", "readiness", "capabilities")
-	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 17`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
+	for _, want := range []string{`"ok": true`, `"version": "0.1.12"`, `"applied": 18`, `"managed-binary-cache"`, `"binary status"`, `"managed_binary_cache"`} {
 		assertContains(t, report, want)
 	}
 

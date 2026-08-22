@@ -1010,19 +1010,22 @@ authority. See [Sovereign Customer Key Rehearsal](../operations/sovereign-custom
   deploy, release, or run live operations. Agents should consume `--format
   json` or global `--json`, ignore unknown fields unless a schema says
   otherwise, and treat human-formatted text as non-contractual.
-- The planned `harness ingest`, `harness runs`, and `harness record` surface is
+- `harness ingest`, `harness runs`, and `harness record` accept and project
   defined by [Harness interoperability and verified
   outcomes](harness-interoperability.md). It will accept versioned
   external-run, execution-observation, and evaluator-result facts through
   file/stdin ingestion with atomic validation, idempotent replay, conflict
   detection, and privacy rejection. It will not run a provider, import raw
   prompts or transcripts, mutate task state, create a review, accept evidence,
-  or grant promotion authority. These commands are not an implemented CLI
-  claim until release notes say otherwise.
-- The planned `contract harness-record` command prints the corresponding
+  or grant promotion authority. `harness ingest` requires exactly one of
+  `--file` or `--stdin`; validates the complete batch before an atomic append;
+  and treats an identical source-scoped identity and canonical payload as an
+  idempotent replay while rejecting conflicting payloads.
+- `contract harness-record` prints the corresponding
   versioned input-contract catalog. It is separate from `contract agent-output`,
   because one describes records accepted from execution surfaces and the other
-  describes read models Fairway emits for agents.
+  describes read models Fairway emits for agents. The implemented catalog is
+  `fairway.harness-record-contracts.v1`.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that
   ships in each release.
 
