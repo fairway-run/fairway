@@ -652,6 +652,21 @@ ready-task claim and batch-dispatch recommendations until Git visibility is
 restored. This does not emulate Git state: repository workflow commands
 continue to require the Git executable and fail closed when it is absent.
 
+## Harness Analysis On Task Detail
+
+Task detail renders the same deterministic `fairway.harness-analysis.v1`
+projection as `fairway harness report`. The read-only panel shows recorded
+attempts, actions, evaluator results, evaluator-backed outcomes, usage
+denominator coverage, and cited trajectory findings. It also shows why cost or
+a ratio is unavailable instead of turning missing telemetry into zero.
+
+The panel has no redirect, approve, accept-evidence, task-state, policy, or
+promotion control. A repeated pattern is a prompt for engineering judgment,
+not a command to the attached harness. Its cited record identities and explicit
+false-positive limit let a reviewer inspect the source facts before asking the
+owner to reframe a hypothesis, change execution strategy, or emit a progress
+observation.
+
 ## Multi-Project Mode
 
 `fairway dashboard --multi` aggregates registered projects via SQLite

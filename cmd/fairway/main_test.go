@@ -710,7 +710,7 @@ func TestCLI_AgentOutputContracts(t *testing.T) {
 }
 
 func TestCLI_HarnessRecords(t *testing.T) {
-	for _, args := range [][]string{{"harness", "ingest", "--help"}, {"harness", "runs", "--help"}, {"harness", "record", "--help"}, {"harness", "record", "run-1", "--help"}} {
+	for _, args := range [][]string{{"harness", "ingest", "--help"}, {"harness", "runs", "--help"}, {"harness", "record", "--help"}, {"harness", "record", "run-1", "--help"}, {"harness", "report", "--help"}} {
 		out := runCapture(t, args...)
 		assertContains(t, out, "fairway harness")
 		assertNotContains(t, out, "Usage of")
@@ -744,6 +744,11 @@ func TestCLI_HarnessRecords(t *testing.T) {
 	assertContains(t, record, `"evaluation_id": "eval-1"`)
 	runs := runCapture(t, "harness", "runs", "--task", "T-001")
 	assertContains(t, runs, "runs=1")
+	report := runCapture(t, "--json", "harness", "report", "--task", "T-001")
+	assertContains(t, report, `"schema": "fairway.harness-analysis.v1"`)
+	assertContains(t, report, `"evaluator_backed_outcomes": 1`)
+	assertContains(t, report, `"cost_status": "unavailable"`)
+	assertContains(t, report, `"authority_boundary": "advisory readback only`)
 	contract := runCapture(t, "--json", "contract", "harness-record")
 	assertContains(t, contract, `"schema": "fairway.harness-record-contracts.v1"`)
 	assertContains(t, contract, harnessrecord.ObservationSchema)

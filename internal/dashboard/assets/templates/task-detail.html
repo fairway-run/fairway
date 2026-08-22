@@ -49,6 +49,17 @@
 {{range .QualityRecord.Sections}}<tr><td><b>{{.Title}}</b><br><code>{{.ID}}</code></td><td><span class="status-pill {{statusClass .State}}">{{.State}}</span></td><td>{{range .Facts}}<div><b>{{.Name}}</b> {{.Value}}<br><small><code>{{.SourceRef}}</code></small></div>{{else}}<span class="muted">none recorded</span>{{end}}</td><td>{{range .Sources}}<div><code>{{.Ref}}</code><br><small>{{.RecordType}} / {{.Availability}}</small></div>{{end}}</td><td>{{if .Boundary}}{{.Boundary}}{{else}}none{{end}}</td></tr>{{end}}
 </tbody></table>
 </article>
+<article class="detail-panel wide" id="harness-analysis">
+<p class="eyebrow">Harness analysis / advisory</p>
+<h2>Verified outcomes and trajectory</h2>
+<p>{{.HarnessAnalysis.AuthorityBoundary}}</p>
+<p>Attempts {{.HarnessAnalysis.Attempts}} · Recorded actions {{.HarnessAnalysis.Actions}} · Evaluations {{.HarnessAnalysis.Evaluations}} · Evaluator-backed outcomes {{.HarnessAnalysis.VerifiedOutcomes}} · Efficiency {{.HarnessAnalysis.Efficiency.Status}}</p>
+<p>Cohort {{.HarnessAnalysis.Cohort.Status}}{{if .HarnessAnalysis.Cohort.Name}} · <code>{{.HarnessAnalysis.Cohort.Name}}</code>{{end}}{{range .HarnessAnalysis.Cohort.Missing}}<br><small>Missing: {{.}}</small>{{end}}</p>
+<p>Usage events {{.HarnessAnalysis.Usage.Events}} · Token denominators {{.HarnessAnalysis.Usage.KnownTokenEvents}} · Elapsed denominators {{.HarnessAnalysis.Usage.KnownElapsedEvents}} · Confidence {{.HarnessAnalysis.Usage.ConfidenceStatus}} · Attribution {{.HarnessAnalysis.Usage.AttributionStatus}} ({{.HarnessAnalysis.Usage.AttributionReason}}) · Cost {{.HarnessAnalysis.Usage.CostStatus}} ({{.HarnessAnalysis.Usage.CostReason}})</p>
+{{range .HarnessAnalysis.Efficiency.Missing}}<p class="muted">Efficiency unavailable: {{.}}</p>{{end}}
+{{range .HarnessAnalysis.Trajectory}}<div class="notice"><b>{{.Kind}}</b> — {{.Summary}}<br><span>Recommendation: {{.Recommendation}}</span><br><small>Sources: {{range .SourceRefs}}<code>{{.}}</code> {{end}}</small><br><small>Limit: {{.FalsePositiveLimit}}</small></div>{{else}}<p class="muted">No trajectory finding from recorded facts. This is not proof that the trajectory is healthy.</p>{{end}}
+{{range .HarnessAnalysis.Limitations}}<p class="muted">Limitation: {{.}}</p>{{end}}
+</article>
 {{if not .ReadOnly}}
 <article class="detail-panel">
 <h2>Status</h2>

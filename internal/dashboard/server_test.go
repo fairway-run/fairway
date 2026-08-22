@@ -19,6 +19,7 @@ import (
 
 	"github.com/subashram/fairway/internal/completionhandback"
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/harnessrecord"
 	"github.com/subashram/fairway/internal/identityproof"
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/reconcile"
@@ -1753,6 +1754,41 @@ func TestBoardFiltersActivityAndLimitsRows(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("limited dashboard body missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestTaskDetailRendersHarnessAnalysisAsReadOnlyAdvisory(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state.db"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "Task", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	batch := harnessrecord.Batch{
+		Schema: harnessrecord.BatchSchema,
+		Observations: []harnessrecord.Observation{
+			{Schema: harnessrecord.ObservationSchema, ObservationID: "obs-1", SourceID: "agent", SourceVersion: "1", TaskID: "T-001", Kind: "experiment", SubjectType: "task", SubjectRef: "T-001", Summary: "first", ObservedAt: "2026-08-21T00:00:00Z", Outcome: "rejected", SourceMode: "measured", Hypothesis: "same", ExpectedObservation: "pass", ActionFingerprint: "same-action"},
+			{Schema: harnessrecord.ObservationSchema, ObservationID: "obs-2", SourceID: "agent", SourceVersion: "1", TaskID: "T-001", Kind: "experiment", SubjectType: "task", SubjectRef: "T-001", Summary: "second", ObservedAt: "2026-08-21T00:01:00Z", Outcome: "inconclusive", SourceMode: "measured", Hypothesis: "same", ExpectedObservation: "pass", ActionFingerprint: "same-action"},
+		},
+	}
+	if _, err := s.IngestHarnessBatch(ctx, batch); err != nil {
+		t.Fatal(err)
+	}
+	server := New(s, config.Defaults(t.TempDir()), []string{"backend"}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/T-001", nil)
+	rec := httptest.NewRecorder()
+	server.task(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Harness analysis / advisory", "repeated_action", "observation:agent/obs-1", "advisory readback only", "Cost unavailable"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task detail missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Redirect execution") || strings.Contains(body, "Approve finding") {
+		t.Fatalf("read-only analysis exposed a mutation control:\n%s", body)
 	}
 }
 

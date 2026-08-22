@@ -1010,7 +1010,8 @@ authority. See [Sovereign Customer Key Rehearsal](../operations/sovereign-custom
   deploy, release, or run live operations. Agents should consume `--format
   json` or global `--json`, ignore unknown fields unless a schema says
   otherwise, and treat human-formatted text as non-contractual.
-- `harness ingest`, `harness runs`, and `harness record` accept and project
+- `harness ingest`, `harness runs`, `harness record`, and `harness report`
+  accept, project, and analyze the records
   defined by [Harness interoperability and verified
   outcomes](harness-interoperability.md). It will accept versioned
   external-run, execution-observation, and evaluator-result facts through
@@ -1021,6 +1022,19 @@ authority. See [Sovereign Customer Key Rehearsal](../operations/sovereign-custom
   `--file` or `--stdin`; validates the complete batch before an atomic append;
   and treats an identical source-scoped identity and canonical payload as an
   idempotent replay while rejecting conflicting payloads.
+- `harness report --task <id>` produces
+  `fairway.harness-analysis.v1`, a deterministic read-only projection of
+  attempts, recorded actions, evaluator-backed outcomes, complete token and
+  elapsed denominators, explicitly unavailable cost, and cited trajectory
+  patterns. Repeated evaluator failures, repeated rejected or inconclusive
+  action fingerprints, and an active checkpoint with no new durable fact for
+  the bounded threshold are recommendations to inspect or redirect work; they
+  never perform that redirect. Missing records remain missing rather than
+  becoming zero, and ratios are withheld when their denominator is incomplete.
+  The first version exposes one named compatible cohort and withholds ratios
+  when source versions, evaluator/subject identity/environment/completeness,
+  execution profile, usage profile/confidence, or run/session attribution are incompatible or
+  missing; it never averages those task-local populations together.
 - `contract harness-record` prints the corresponding
   versioned input-contract catalog. It is separate from `contract agent-output`,
   because one describes records accepted from execution surfaces and the other

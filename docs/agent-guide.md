@@ -702,6 +702,7 @@ fairway contract harness-record --format json
 fairway harness ingest --file examples/session-adapters/harness-record.example.json
 fairway harness runs --task <task-id> --format json
 fairway harness record <external-run-id> --source <source-id> --format json
+fairway harness report --task <task-id> --format json
 ```
 
 One task may retain zero, one, or many external runs. CI, scanner, artifact, or
@@ -715,6 +716,16 @@ task or session state, accept evidence, create a review, approve promotion,
 cancel execution, or send a redirect. Store safe summaries and artifact
 digests/references only; raw prompts, reasoning, transcripts, tool bodies,
 generated-content dumps, credentials, and secret-like material are rejected.
+
+`harness report` joins these records with task-scoped provider usage. It reports
+ratios only when a verified outcome and complete denominator exist. Fairway
+does not currently retain one comparable exact cost denominator, so cost is
+reported as unavailable rather than inferred. Trajectory findings cite the
+records that caused them and state a false-positive limit. Treat
+`reframe_hypothesis`, `change_execution_profile`, and
+`request_input` as advisory next questions, not commands:
+supervisors and providers still decide whether and how to redirect work, and
+normal review and promotion gates remain unchanged.
 
 ## Provider Usage Accounting
 

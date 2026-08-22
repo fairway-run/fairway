@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/subashram/fairway/internal/config"
+	"github.com/subashram/fairway/internal/harnessanalytics"
 	"github.com/subashram/fairway/internal/harnessrecord"
 	"github.com/subashram/fairway/internal/store"
 )
@@ -20,6 +21,7 @@ func cmdHarness(ctx context.Context, opts globalOptions, args []string) error {
 		fmt.Println("fairway harness ingest --file <records.json>|--stdin")
 		fmt.Println("fairway harness runs --task <task-id> [--format text|json]")
 		fmt.Println("fairway harness record <external-run-id> --source <source-id> [--format text|json]")
+		fmt.Println("fairway harness report --task <task-id> [--format text|json]")
 		return nil
 	}
 	switch args[0] {
@@ -29,9 +31,53 @@ func cmdHarness(ctx context.Context, opts globalOptions, args []string) error {
 		return cmdHarnessRuns(ctx, opts, args[1:])
 	case "record":
 		return cmdHarnessRecord(ctx, opts, args[1:])
+	case "report":
+		return cmdHarnessReport(ctx, opts, args[1:])
 	default:
 		return fmt.Errorf("unknown harness subcommand %q", args[0])
 	}
+}
+
+func cmdHarnessReport(ctx context.Context, opts globalOptions, args []string) error {
+	if isHelpOnly(args) {
+		fmt.Println("fairway harness report --task <task-id> [--format text|json]")
+		return nil
+	}
+	fs := flag.NewFlagSet("harness report", flag.ContinueOnError)
+	taskID := fs.String("task", "", "Fairway task id")
+	format := fs.String("format", "text", "text or json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 || strings.TrimSpace(*taskID) == "" {
+		return errors.New("harness report requires --task")
+	}
+	return withStore(ctx, opts, func(ctx context.Context, _ config.Config, _ string, s *store.Store) error {
+		report, err := harnessanalytics.Build(ctx, s, *taskID)
+		if err != nil {
+			return err
+		}
+		if opts.JSON || *format == "json" {
+			return printJSON(report)
+		}
+		if *format != "text" {
+			return fmt.Errorf("unsupported harness report format %q", *format)
+		}
+		fmt.Printf("harness_analysis task=%s attempts=%d actions=%d evaluations=%d evaluator_backed_outcomes=%d efficiency=%s\n", report.TaskID, report.Attempts, report.Actions, report.Evaluations, report.VerifiedOutcomes, report.Efficiency.Status)
+		fmt.Printf("cohort status=%s name=%s missing=%s\n", report.Cohort.Status, report.Cohort.Name, strings.Join(report.Cohort.Missing, "; "))
+		fmt.Printf("usage events=%d known_tokens=%d known_elapsed=%d confidence=%s attribution=%s reason=%s cost=%s reason=%s\n", report.Usage.Events, report.Usage.KnownTokenEvents, report.Usage.KnownElapsedEvents, report.Usage.ConfidenceStatus, report.Usage.AttributionStatus, report.Usage.AttributionReason, report.Usage.CostStatus, report.Usage.CostReason)
+		if len(report.Efficiency.Missing) > 0 {
+			fmt.Println("efficiency missing:", strings.Join(report.Efficiency.Missing, "; "))
+		}
+		for _, finding := range report.Trajectory {
+			fmt.Printf("- %s recommendation=%s refs=%s\n", finding.Kind, finding.Recommendation, strings.Join(finding.SourceRefs, ","))
+		}
+		for _, limitation := range report.Limitations {
+			fmt.Println("limitation:", limitation)
+		}
+		fmt.Println("authority:", report.AuthorityBoundary)
+		return nil
+	})
 }
 
 func cmdHarnessIngest(ctx context.Context, opts globalOptions, args []string) error {

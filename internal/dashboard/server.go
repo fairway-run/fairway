@@ -25,6 +25,7 @@ import (
 	coord "github.com/subashram/fairway/internal/coordinator"
 	"github.com/subashram/fairway/internal/evidencemodel"
 	fairwaygit "github.com/subashram/fairway/internal/git"
+	"github.com/subashram/fairway/internal/harnessanalytics"
 	"github.com/subashram/fairway/internal/livewindow"
 	"github.com/subashram/fairway/internal/qualityrecord"
 	"github.com/subashram/fairway/internal/reconcile"
@@ -383,6 +384,7 @@ type TaskDetailViewData struct {
 	ReadOnly             bool
 	Recommendation       CommonPathRecommendation
 	QualityRecord        qualityrecord.Record
+	HarnessAnalysis      harnessanalytics.Report
 }
 
 type TaskGateStatus struct {
@@ -2653,6 +2655,13 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	start = time.Now()
+	harnessAnalysis, err := harnessanalytics.Build(r.Context(), s.store, id)
+	timing.add("task_detail.harness_analysis", time.Since(start), fmt.Sprintf("attempts=%d findings=%d", harnessAnalysis.Attempts, len(harnessAnalysis.Trajectory)))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	data := TaskDetailViewData{
 		View:                 "detail",
 		Groups:               groupTasks(tasks, s.roles),
@@ -2689,6 +2698,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		ReadOnly:             s.cfg.Dashboard.ReadOnly,
 		Recommendation:       recommendation,
 		QualityRecord:        qualityRecord,
+		HarnessAnalysis:      harnessAnalysis,
 	}
 	start = time.Now()
 	_ = detailTemplate.ExecuteTemplate(w, "layout", data)
