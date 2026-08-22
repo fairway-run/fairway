@@ -10,6 +10,63 @@ workflow engine, CI runner, issue tracker replacement, LLM provider
 abstraction, credential store, or provider-cost gate. Release and adapter work
 must preserve the rules in [Product boundaries](design/product-boundaries.md).
 
+## v0.3.0
+
+`v0.3.0` makes Fairway a durable engineering control and evidence plane across
+replaceable agent harnesses. An execution system can now contribute versioned
+harness runs, task-scoped observations, and evaluator results without becoming
+the authority for Fairway task state, review, promotion, or release.
+
+The new harness record contract uses source-qualified identities, canonical
+payload replay checks, and atomic ingestion. The CLI can print the supported
+contract, ingest bounded JSON batches, inspect runs and individual records, and
+produce a task-scoped report. Task detail exposes the same cited record summary.
+Records retain safe hypotheses, expected observations, observed measurements,
+evaluator outcomes, artifact references, and digests; they reject raw prompts,
+reasoning, transcripts, tool bodies, generated-content dumps, credentials, and
+secret-like material.
+
+Outcome-efficiency ratios appear only when a verified outcome and complete
+denominator exist. Exact comparable cost is not currently retained, so Fairway
+reports cost as unavailable instead of estimating it. Repeated actions,
+stagnation, failed expectations, and evaluator regressions can produce cited
+trajectory findings, but `reframe_hypothesis`, `change_execution_profile`, and
+`request_input` remain advisory questions. They do not redirect a provider,
+cancel execution, approve work, or change task state.
+
+A bounded GPUaaS pilot validates contract ingestion, idempotent replay,
+readback, evaluator linkage, outcome-efficiency reporting, and trajectory
+signals against realistic engineering scenarios. The pilot demonstrates a
+consumer path and records false-positive limits; it does not establish causal
+control effectiveness, model superiority, or autonomous supervision.
+
+### Upgrade
+
+1. Back up the project Fairway database and managed contract files.
+2. Install `v0.3.0`.
+3. Run `fairway config validate` and `fairway reconcile active --dry-run`.
+4. Inspect the contract with `fairway contract harness-record --format json`.
+5. Ingest new prospective records only from a reviewed harness adapter, then
+   inspect them with `fairway harness runs --task <task-id>` and
+   `fairway harness report --task <task-id>`.
+6. Do not infer or backfill historical hypotheses, observations, evaluators,
+   denominators, or outcomes when no authoritative source exists.
+
+### Known Limits
+
+- Fairway does not execute, supervise, redirect, stop, or retry harness runs.
+- Trajectory findings are cited advisory signals and can have false positives;
+  they do not replace engineering judgment or independent review.
+- Exact comparable provider cost is unavailable, and unavailable denominators
+  remain unavailable rather than becoming zero.
+- The GPUaaS assessment is a bounded consumer pilot, not a benchmark or proof of
+  causal delivery improvement.
+- Seaway remains an optional design-level integration boundary; this release
+  does not include a Seaway adapter.
+- This release does not claim sovereign deployment readiness, regulatory
+  certification, independent security assessment, or a complete AI Quality
+  System.
+
 ## v0.2.7
 
 `v0.2.7` makes Fairway's working model and current product boundary visible in

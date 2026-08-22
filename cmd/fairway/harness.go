@@ -103,7 +103,7 @@ func cmdHarnessIngest(ctx context.Context, opts globalOptions, args []string) er
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		reader = file
 	}
 	batch, err := harnessrecord.DecodeBatch(reader)

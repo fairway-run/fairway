@@ -16,7 +16,7 @@ func TestBuildReportsEfficiencyAndRepeatedTrajectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	closeTestStore(t, s)
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "test", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestBuildExposesMissingDenominators(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	closeTestStore(t, s)
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "test", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestBuildAtReportsNoNewEvidenceWithoutMutatingTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	closeTestStore(t, s)
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "test", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestBuildWithholdsEfficiencyForIncompatibleEvaluatorCohorts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	closeTestStore(t, s)
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "test", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestNoNewEvidenceRequiresActiveSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	closeTestStore(t, s)
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "test", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestBuildWithholdsRunIndependentOutcomeEfficiency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	closeTestStore(t, s)
 	if err := s.ImportTasks(ctx, []store.TaskDefinition{{ID: "T-001", Title: "test", Role: "backend"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -206,4 +206,13 @@ func TestBuildWithholdsRunIndependentOutcomeEfficiency(t *testing.T) {
 	if report.Cohort.Status != "insufficient_attribution" || report.Efficiency.Status != "unavailable" {
 		t.Fatalf("report=%+v", report)
 	}
+}
+
+func closeTestStore(t *testing.T, s *store.Store) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close store: %v", err)
+		}
+	})
 }

@@ -7,6 +7,35 @@ and uses semantic versioning.
 
 ## Unreleased
 
+## v0.3.0 - 2026-08-22
+
+### Added
+
+- Versioned, source-qualified harness run, observation, and evaluator-result
+  records can be ingested atomically and inspected through the CLI and task
+  dashboard.
+- `fairway harness report` derives verified outcome efficiency and cited
+  trajectory findings only when the required outcome and denominator evidence
+  is present.
+- A bounded GPUaaS pilot and reusable adapter example demonstrate the record
+  contract without coupling Fairway to a provider, model, or harness runtime.
+
+### Changed
+
+- Public positioning now defines Fairway as a durable engineering control and
+  evidence plane across replaceable harnesses, with execution systems remaining
+  independently owned.
+- Harness observations are treated as inputs to engineering judgment; suggested
+  reframing, execution-profile changes, and requests for input remain advisory.
+
+### Security
+
+- Harness ingestion rejects secret-like content and excludes raw prompts,
+  reasoning, transcripts, tool bodies, and generated-content dumps from the
+  durable record.
+- Source-qualified identities, canonical-payload replay checks, and atomic
+  batches prevent ambiguous cross-harness correlation or partial ingestion.
+
 ## v0.2.7 - 2026-08-12
 
 ### Added

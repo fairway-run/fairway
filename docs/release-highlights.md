@@ -1,9 +1,7 @@
-- Move deliberately from collaborative problem-solving to bounded delegation,
-  independent verification, challenge, and explicit promotion without adding a
-  new SDLC phase or treating prompts as the durable work record.
-- Use the read-only Product Overview and Quality Workspace to inspect live
-  project facts and cited lifecycle records without generating a quality score
-  or granting Fairway approval authority.
-- Compose Fairway with coding agents and optional Seaway through explicit system
-  and integration boundaries while Git, CI/CD, identity, review, and operators
-  retain their own authority.
+- Preserve versioned run, observation, and evaluator-result records across
+  replaceable agent harnesses without storing prompts or transcripts.
+- Inspect verified outcome efficiency and cited trajectory findings while
+  keeping every redirect, review, and promotion decision explicitly human- or
+  system-owned.
+- Start from a documented GPUaaS pilot and provider-neutral adapter contract
+  instead of coupling Fairway to one model, agent, or execution runtime.

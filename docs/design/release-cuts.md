@@ -91,6 +91,12 @@ or CLI should require them.
 - `fairway tui` covers ready/claim/status/task-detail, status updates,
   evidence, merge-ready, and readiness reports for SSH/headless use.
 - Optional tracker import/link/export prototype exists behind dry-run defaults.
+- Versioned harness runs, observations, and evaluator results have an atomic,
+  idempotent, source-qualified ingestion and readback contract.
+- Outcome-efficiency and trajectory analysis stays cited, denominator-aware,
+  advisory, and unable to mutate execution, review, or promotion state.
+- One real consumer pilot demonstrates the harness contract and records its
+  false-positive and claim limits without becoming a benchmark.
 
 ## v1.0 Ships When
 

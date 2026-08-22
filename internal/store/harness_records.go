@@ -45,7 +45,7 @@ func (s *Store) IngestHarnessBatch(ctx context.Context, batch harnessrecord.Batc
 	if err != nil {
 		return HarnessIngestResult{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	tasks := map[string]bool{}
 	for _, run := range batch.ExternalRuns {
@@ -330,7 +330,7 @@ func queryHarnessJSON[T any](ctx context.Context, db *sql.DB, query string, args
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []T{}
 	for rows.Next() {
 		var raw string

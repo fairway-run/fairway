@@ -65,7 +65,11 @@ func TestHarnessRecordsAuditCountsAreTaskSpecific(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	t.Cleanup(func() {
+		if err := rows.Close(); err != nil {
+			t.Errorf("close audit rows: %v", err)
+		}
+	})
 	count := 0
 	for rows.Next() {
 		var taskID, detail string
