@@ -44,6 +44,30 @@ const productLayers = [
   }
 ];
 
+const harnessEvidence = [
+  {
+    index: '01',
+    name: 'Source-qualified records',
+    status: 'Implemented',
+    summary: 'Append external runs, bounded observations, and named evaluator results with atomic validation and replay-safe identities.',
+    detail: 'Zero / one / many runs · safe artifact references · privacy exclusions'
+  },
+  {
+    index: '02',
+    name: 'Verified-outcome readback',
+    status: 'Experimental',
+    summary: 'Report one compatible task-local cohort and expose missing, estimated, or unavailable usage denominators instead of inventing precision.',
+    detail: 'Attempts · explicit actions · evaluator outcomes · usage attribution'
+  },
+  {
+    index: '03',
+    name: 'Trajectory advisory',
+    status: 'Experimental',
+    summary: 'Cite repeated failures, repeated actions, or live-session evidence gaps so a supervisor can decide whether to change strategy.',
+    detail: 'Cited facts · false-positive limits · no automatic redirect'
+  }
+];
+
 function AccountabilityStep({ step, title, body }) {
   return (
     <article className={styles.step}>
@@ -84,8 +108,10 @@ export default function Home() {
             <p className={styles.lede}>
               Collaborate while the problem and proof are uncertain. Delegate
               one bounded slice when its result can be independently checked.
-              Fairway keeps the decisions, sessions, evidence, reviews, and
-              authority boundaries durable across every run.
+              Fairway keeps decisions, sessions, reviews, and authority
+              boundaries durable across runs. When an execution surface
+              explicitly submits source-qualified observations and evaluator
+              results, Fairway retains those facts too.
             </p>
             <div className={styles.actions}>
               <Link className={clsx('button button--primary button--lg', styles.primary)} to="/docs/quickstart">
@@ -143,7 +169,7 @@ export default function Home() {
             <div className={styles.mapConnector}>bounded context ↓ correlated facts ↑</div>
             <article>
               <strong>Coding agents + optional Seaway</strong>
-              <span>Individual run admission · execution · policy · events · results · usage</span>
+              <span>Individual run admission · execution · policy · events · results · usage · sourced observations</span>
             </article>
             <div className={styles.mapConnector}>run execution ↓</div>
             <article>
@@ -158,6 +184,29 @@ export default function Home() {
             <span><strong>Identity systems</strong> own authentication and access</span>
           </div>
           <Link to="/docs/ecosystem">See the complete ecosystem boundary</Link>
+        </section>
+
+        <section className={styles.productModel}>
+          <div className={styles.modelHeading}>
+            <div>
+              <span>Across replaceable harnesses</span>
+              <Heading as="h2">Keep the engineering facts when the model, provider, or execution loop changes.</Heading>
+            </div>
+            <p>
+              Fairway now accepts a small versioned record contract from
+              execution surfaces. Analysis stays task-local and read-only:
+              incompatible cohorts are not averaged, missing telemetry stays
+              missing, and evaluator output never becomes approval.
+            </p>
+          </div>
+          <div className={styles.productLayers}>
+            {harnessEvidence.map((item) => <ProductLayer key={item.index} {...item} />)}
+          </div>
+          <div className={styles.modelLinks}>
+            <Link to="/docs/design/harness-interoperability">Read the harness record contract</Link>
+            <Link to="/docs/assessment/gpuaas-harness-trajectory-pilot-2026-08-21">Inspect the bounded GPUaaS pilot</Link>
+            <Link to="/docs/product">See implemented, experimental, planned, and non-goal claims</Link>
+          </div>
         </section>
 
         <section className={styles.accountability}>

@@ -4,9 +4,9 @@
 
 # Fairway
 
-**Durable coordination for agent-driven software delivery.**
+**A durable engineering control and evidence plane across agent harnesses.**
 
-Fairway is the local, harness-neutral coordination and engineering-record layer
+Fairway is the local, harness-neutral coordination and engineering-record plane
 for work that spans coding agents, provider sessions, worktrees, source control,
 and CI/CD. It keeps tasks, ownership, decisions, evidence, reviews, waits, and
 readiness durable when an agent stops, a context window compacts, or execution
@@ -48,6 +48,29 @@ and merges. CI/CD owns builds and deployments. Issue trackers own stakeholder
 planning, and identity systems own access. Fairway connects their engineering
 facts without taking their authority, so delivery does not depend on chat memory
 or one provider session.
+
+## Across Replaceable Harnesses
+
+Fairway can now retain versioned, source-qualified external-run,
+execution-observation, and evaluator-result records from execution surfaces.
+One task may correlate with zero, one, or many runs without merging run state
+into task state. A shared CLI/dashboard projection reports named evaluator
+cohorts, explicit missing usage/cost denominators, and cited repeated-pattern
+advisories.
+
+```bash
+fairway contract harness-record --format json
+fairway harness ingest --file records.json
+fairway harness runs --task <task-id> --format json
+fairway harness report --task <task-id> --format json
+```
+
+The record ingestion is implemented. Outcome-efficiency and trajectory
+analysis are experimental and were validated only in one bounded GPUaaS
+consumer pilot. They do not redirect a provider, rank models, accept evidence,
+satisfy review, or authorize promotion. See the
+[interoperability contract](docs/design/harness-interoperability.md) and
+[pilot assessment](docs/assessment/gpuaas-harness-trajectory-pilot-2026-08-21.md).
 
 ## Start Here
 
@@ -136,6 +159,10 @@ The current binary provides:
 - local rule-pack loading, matching, lint, and evidence expectations;
 - assurance profiles and signed offline evidence packages with bounded claims;
 - provider-neutral adapters and structured packets with bounded authority;
+- versioned harness-run, observation, and evaluator-result ingestion with
+  privacy-bounded replay/conflict handling;
+- experimental named-cohort outcome-efficiency and cited trajectory advisory
+  readback shared by CLI and task detail;
 - read-only wall, board, task-detail, diagnostics, and report views;
 - multi-project and shared-team pilot surfaces with explicit identity and
   write-mode guards;

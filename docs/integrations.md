@@ -29,6 +29,21 @@ Use `fairway doctor` and provider capability readiness before relying on a
 provider surface for thread steering, Git, browser, network, or filesystem
 operations.
 
+## Harness Records And Evaluators
+
+| Surface | Status | Use | Boundary |
+|---|---|---|---|
+| `contract harness-record` | Implemented | Inspect the versioned external-run, observation, evaluator-result, and batch contracts | Describes accepted records; does not advertise a provider/protocol adapter |
+| `harness ingest`, `runs`, and `record` | Implemented | Append and inspect source-qualified facts from an execution surface | Does not run a harness, import private context, change task state, accept evidence, or create review |
+| `harness report` and task-detail analysis | Experimental | Project one named compatible evaluator cohort, missing denominators, and cited trajectory patterns | Report-only; no ranking, provider command, redirect, review, or promotion authority |
+| GPUaaS configured-packet fixture/pilot | Validated practice | Demonstrate replay, controlled repeated-pattern calibration, and a new passing evaluator observation | One bounded consumer; not general effectiveness or adapter availability proof |
+| MCP / ACP / A2A harness-record mapping | Design only | Describe how protocol-owned run/tool/task facts could map into the neutral record | No supported MCP, ACP, or A2A adapter is claimed |
+| OpenTelemetry harness-record mapping | Design only | Correlate trace identity or measurements to runs/observations | Separate from the implemented allow-listed provider-usage adapter above; no general OTel-to-harness-record adapter is claimed |
+| Fairway-Seaway adapter | Design only | Correlate optional Seaway admission/events/results to Fairway tasks and records | No released transport, shared state, runtime approval inheritance, or supported adapter |
+
+See [Harness interoperability](design/harness-interoperability.md) for the
+schema, privacy, compatibility, and authority contract.
+
 ## Source Control
 
 | Surface | Status | Use | Boundary |

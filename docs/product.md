@@ -2,7 +2,7 @@
 
 ## Product Definition
 
-Fairway is the local, harness-neutral coordination and engineering-record layer
+Fairway is the local, harness-neutral engineering control and evidence plane
 for agent-driven software delivery. It keeps concurrent work connected across
 tasks, lanes, worktrees, provider sessions, reviews, evidence, source control,
 and CI/CD without becoming the coding-agent runtime.
@@ -81,6 +81,54 @@ The state models do not merge:
   linked into Fairway; and
 - a durable Fairway lane worktree and a disposable run workspace remain
   distinct even when they point at the same repository revision.
+
+## Harness Interoperability And Evaluators
+
+Fairway implements a small provider-neutral input boundary for facts produced
+by execution systems:
+
+- `fairway.harness.external-run.v1` correlates one source-owned attempt to a
+  Fairway task;
+- `fairway.harness.execution-observation.v1` preserves one bounded hypothesis,
+  material observation, or explicit action identity; and
+- `fairway.harness.evaluator-result.v1` records how one named, versioned
+  evaluator judged a bounded subject.
+
+The records are append-only, source-qualified, privacy-bounded, and replay-safe.
+They may cite a session, revision, artifact, environment, confidence, and
+completeness without importing raw prompts, private reasoning, transcripts,
+tool bodies, generated-content dumps, or credentials. Ingestion never changes
+task state, accepts evidence, creates a Fairway review, or grants promotion
+authority.
+
+The first experimental analysis builds one task-local named compatibility
+cohort and reports attempts, explicit actions, evaluator-backed outcomes, and
+only those usage ratios whose attribution and denominators are present.
+Incompatible evaluator, subject identity, environment, source version,
+execution profile, completeness, or usage populations are not averaged.
+Repeated failure/action and no-new-evidence patterns cite the records and state
+their false-positive limits. A recommendation remains a question for a
+supervisor; Fairway does not send a redirect.
+
+| Term | Role in this product boundary | Current support claim |
+|---|---|---|
+| Fairway | Durable task, run-correlation, observation, evaluator, evidence, review, and readiness record across runs. | Implemented record ingestion/readback; experimental analysis. |
+| Harness | Provider-specific model context, tools, working memory, execution loop, and local supervision. | External and replaceable; not implemented by Fairway. |
+| Evaluator | Test, contract check, benchmark, scanner, UAT, human judgment, or other named mechanism that judges a bounded subject. | Versioned results can be recorded; a result is not a Fairway review or approval. |
+| Telemetry / OpenTelemetry | Trace identity and measurements that may support run correlation, observations, or usage. | Allow-listed provider-usage ingestion is implemented; general OpenTelemetry-to-harness-record mapping is design only. |
+| MCP | A tool/context protocol from which bounded execution facts may be mapped. | Mapping is designed; no supported MCP adapter is claimed. |
+| ACP | An editor/agent protocol from which run identity, modes, and artifacts may be mapped. | Mapping is designed; no supported ACP adapter is claimed. |
+| A2A | An agent task/status/artifact protocol from which bounded facts may be mapped. | Mapping is designed; no supported A2A adapter is claimed. |
+| Seaway | Optional admission, policy, event, and result boundary for one run. | Separate design; no released Fairway-Seaway adapter is claimed. |
+| External authority | Git/forge, CI/CD, identity, reviewers, operators, and environments that own consequential actions. | Remains authoritative; Fairway records/checks posture only. |
+
+The [harness interoperability contract](design/harness-interoperability.md)
+defines the exact schemas and non-goals. The
+[GPUaaS pilot](assessment/gpuaas-harness-trajectory-pilot-2026-08-21.md)
+validated replay, named-cohort readback, a controlled repeated-pattern
+calibration, a materially different passing observation, and correct missing
+usage/cost behavior. It is one bounded validation, not general effectiveness or
+adapter availability proof.
 
 ## Operating Model: Durable Record, Temporary Execution
 
@@ -180,9 +228,9 @@ These labels are mandatory in public and canonical Fairway documentation.
 
 | Label | Meaning | Current Fairway examples |
 |---|---|---|
-| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; cited task and portfolio Quality Record projections; task-to-commit, structured-outcome, and attributable-friction records; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; advisory control-effectiveness CLI/dashboard; read-oriented dashboards. |
-| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, memory/knowledge cold starts, review/release coordination, environment rehearsal, local shared-dashboard operation, and GPUaaS Quality Record/control-analytics data-quality calibration documented under `docs/assessment/`. |
-| **Experimental** | Implemented as an explicit pilot or advisory surface and not the default authority path. | Shared-team server/write pilots, advisory provider narratives, notifier adapters, Postgres compatibility rehearsal, and prototype operating profiles. |
+| **Implemented** | Present in the current source and covered by repository validation. | Local CLI/SQLite store; tasks, sessions, checkpoints, decisions, evidence, handoffs, reviews, waits, notifications; cited task and portfolio Quality Record projections; task-to-commit, structured-outcome, attributable-friction, and versioned harness run/observation/evaluator records; versioned agent contracts; track memory; deterministic engineering-knowledge packets; local rule-pack matching; assurance evidence mapping and offline release packaging; workflow and merge-readiness checks; advisory control-effectiveness CLI/dashboard; read-oriented dashboards. |
+| **Validated practice** | Used in a bounded real workflow with durable evidence, but not claimed as universal or externally certified. | Internal consumer provider replacement, memory/knowledge cold starts, review/release coordination, environment rehearsal, local shared-dashboard operation, GPUaaS Quality Record/control-analytics data-quality calibration, and one GPUaaS harness-record/trajectory pilot documented under `docs/assessment/`. |
+| **Experimental** | Implemented as an explicit pilot or advisory surface and not the default authority path. | Named-cohort harness outcome efficiency and cited trajectory advisory; shared-team server/write pilots; advisory provider narratives; notifier adapters; Postgres compatibility rehearsal; and prototype operating profiles. |
 | **Planned** | Designed or tracked but not implemented as a supported runtime capability. | Migration execution profiles, a production Postgres runtime adapter, broad tracker API adapters, and a reviewed shared-team production deployment path. |
 | **Non-goal** | Deliberately outside Fairway authority. | Autonomous approval, risk acceptance, merge, push, deploy, live mutation, credential custody, transcript-as-authority, or regulatory certification. |
 
@@ -260,12 +308,14 @@ Fairway links those facts; it does not overwrite their ownership.
 
 Current product work focuses on making the collaboration-to-delegation control
 loop direct: preserve the evolving problem, bound one verifiable slice, attach
-provider-neutral execution, connect evidence and independent review, and expose
-the next safe action. The Quality Record, shared-team boundaries, and control
-analytics build on that technical record. Coverage and observational limits
-remain visible; sparse data never becomes a reason to waive mandatory safety
-invariants. "AI Engineering Quality System" remains a direction to evaluate,
-not Fairway's category, a current completeness claim, or certification.
+provider-neutral execution, retain source-qualified observations and evaluator
+results across replaceable harnesses, connect evidence and independent review,
+and expose the next safe action. The Quality Record, shared-team boundaries,
+and control analytics build on that technical record. Coverage and
+observational limits remain visible; sparse data never becomes a reason to
+waive mandatory safety invariants. "AI Engineering Quality System" remains a
+direction to evaluate, not Fairway's category, a current completeness claim, or
+certification.
 
 The versioned [product backlog](roadmap/fairway-product-backlog.yaml) records
 planned work. Release scope and implemented behavior are reported in

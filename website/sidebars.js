@@ -88,6 +88,7 @@ const sidebars = {
       items: [
         'ecosystem',
         'integrations',
+        'design/harness-interoperability',
         'workstream-profile-guide',
         'design/provider-surface-capability-readiness',
         'design/provider-notifications',
