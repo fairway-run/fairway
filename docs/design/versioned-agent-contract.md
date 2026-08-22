@@ -109,3 +109,18 @@ revision change rather than an implicit binary-side prompt update.
 
 The contract remains provider-neutral. Codex, Claude, Gemini, shell, and future
 providers consume the same project contract and local extension.
+
+## Harness Record Contracts
+
+The managed project agent contract governs how an agent works inside a
+repository. Separate versioned harness-record contracts govern facts emitted by
+an execution surface. Those records use their own schema and source version;
+they do not inherit authority from the generated `AGENTS.md` contract or from
+the emitting provider.
+
+The initial schemas and compatibility rules are defined in
+[Harness interoperability and verified outcomes](harness-interoperability.md).
+They deliberately exclude raw prompts, private reasoning, transcripts, raw
+tool bodies, secrets, and generated-content dumps. A compatible harness record
+can be correlated with a task and evaluated without changing task state,
+creating a review, or granting promotion authority.

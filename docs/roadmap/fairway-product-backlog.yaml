@@ -6830,3 +6830,114 @@ tasks:
       - "Evidence and independent review can return delegated work to collaborative diagnosis while task status, review, merge, deploy, and live authority remain explicit."
       - "README, product, scope, concepts, dashboard overview, AI Cloud case study, and public site use consistent category language and a GPUaaS example."
       - "GPUaaS-derived requirements are classified as already supported, configurable or project-owned, or genuine Fairway product gaps; only genuine product gaps become follow-up work."
+
+  - id: FW-408
+    title: Evolve Fairway as the cross-harness engineering control plane
+    kind: epic
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: harness-interoperability
+    source_paths: [docs/product.md, docs/design/versioned-agent-contract.md, docs/design/seaway-integration.md, docs/design/control-effectiveness.md]
+    target_paths: [docs/design, internal, cmd/fairway, README.md, website]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: product-increment
+    acceptance_checks:
+      - "Fairway accepts and projects versioned execution observations, evaluator results, and external-run correlation without merging runtime state into task state."
+      - "Fairway links provider usage and trajectory facts to externally verified outcomes without producing autonomous approval or quality scores."
+      - "A bounded real adapter/pilot proves the contracts and product documentation describes only implemented or explicitly planned behavior."
+
+  - id: FW-409
+    title: Define cross-harness observation and evaluator contracts
+    kind: task
+    parent_id: FW-408
+    role: arch
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: harness-contracts
+    source_paths: [docs/product.md, docs/design/versioned-agent-contract.md, docs/design/seaway-integration.md, docs/design/provider-surface-capability-readiness.md, docs/design/control-effectiveness.md]
+    target_paths: [docs/design/harness-interoperability.md, docs/design/versioned-agent-contract.md, docs/design/schema.md, docs/design/cli.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [governance, backend]
+    risk_level: medium
+    migration_type: architecture-contract
+    acceptance_checks:
+      - "Define versioned execution-observation, evaluator-result, external-run correlation, idempotency, replay, source, confidence, uncertainty, privacy, and compatibility semantics."
+      - "Preserve zero/one/many runtime runs per Fairway task and prohibit runtime success, runtime approval, or evaluator output from mutating task, review, promotion, or policy authority."
+      - "Specify the smallest implementable CLI/store/readback slice and a provider-neutral adapter proof without selecting a mandatory transport."
+
+  - id: FW-410
+    title: Implement harness observation and evaluator result records
+    kind: task
+    parent_id: FW-408
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: harness-records
+    source_paths: [docs/design/harness-interoperability.md, internal/store, cmd/fairway]
+    target_paths: [internal/store, internal/store/migrations, internal/harnessrecord, cmd/fairway, docs/agent-guide.md, docs/design/cli.md, docs/design/schema.md, examples/session-adapters]
+    review_domains: [arch, governance]
+    risk_level: medium
+    migration_type: additive-schema
+    dependencies: [FW-409]
+    acceptance_checks:
+      - "Additive storage and CLI contracts record versioned external runs, observations, evaluator results, artifact digests, source, confidence, uncertainty, and terminal outcome with idempotent conflict handling."
+      - "Readback correlates zero/one/many external runs with a Fairway task/session and never changes task, review, merge, release, deploy, or policy state."
+      - "Focused migration, privacy, replay, incompatibility, and adapter tests prove existing stores and no-adapter operation remain compatible."
+
+  - id: FW-411
+    title: Add verified-outcome efficiency and trajectory advisory
+    kind: task
+    parent_id: FW-408
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: harness-analytics
+    source_paths: [docs/design/harness-interoperability.md, docs/design/control-effectiveness.md, internal/store, internal/controlanalytics]
+    target_paths: [internal/harnessanalytics, internal/store, cmd/fairway, internal/dashboard, docs/design/control-effectiveness.md, docs/design/dashboard.md]
+    review_domains: [arch, governance, ui]
+    risk_level: medium
+    migration_type: advisory-analytics
+    dependencies: [FW-410]
+    acceptance_checks:
+      - "A read-only report links time, cost, usage, attempts, and actions to evaluator-backed outcomes while exposing missing denominators and avoiding cross-task quality ranking."
+      - "A report-only trajectory detector identifies repeated failure/no-new-evidence patterns from durable facts, reports false-positive limits, and emits a redirect recommendation without cancelling runs or mutating workflow."
+      - "Dashboard and CLI projections share deterministic semantics and retain cited source records."
+
+  - id: FW-412
+    title: Refresh Fairway product pages for the cross-harness control plane
+    kind: docs
+    parent_id: FW-408
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: product-positioning
+    source_paths: [docs/design/harness-interoperability.md, docs/product.md, docs/assessment, README.md, website]
+    target_paths: [README.md, docs/product.md, docs, website]
+    review_domains: [arch, backend]
+    risk_level: low
+    migration_type: product-positioning
+    dependencies: [FW-413]
+    acceptance_checks:
+      - "Product pages explain Fairway as the durable engineering control and evidence plane above replaceable harnesses using concrete implemented capabilities and a bounded example."
+      - "Pages distinguish Fairway, Seaway, harness, MCP, ACP, A2A, telemetry, evaluator, and external authority boundaries without claiming protocol support that was not implemented."
+      - "Public claims label implemented, validated, experimental, planned, and non-goal capabilities consistently and first-time-user navigation remains coherent."
+
+  - id: FW-413
+    title: Pilot harness records and trajectory redirect in one consumer workflow
+    kind: task
+    parent_id: FW-408
+    role: governance
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: harness-consumer-pilot
+    source_paths: [docs/design/harness-interoperability.md, examples/session-adapters, ../GPUasService]
+    target_paths: [docs/assessment, docs/design/harness-interoperability.md, docs/roadmap/fairway-product-backlog.yaml]
+    review_domains: [arch, backend]
+    risk_level: medium
+    migration_type: consumer-pilot
+    dependencies: [FW-410, FW-411]
+    acceptance_checks:
+      - "One bounded consumer workflow records multiple attempts, an explicit hypothesis and expected observation, a failed or inconclusive approach, and a versioned evaluator-backed result through the public harness contract."
+      - "The pilot measures missing data, replay behavior, advisory-detector false positives, and whether a redirect produces a materially new evaluator-backed observation."
+      - "The assessment decides keep, narrow, redesign, instrument, or defer without treating the pilot as general effectiveness proof or product availability authority."

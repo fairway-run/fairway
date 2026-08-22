@@ -239,6 +239,15 @@ manifest. `fairway.offline-distribution-verification.v1` is a derived,
 read-only verification report. None of these schemas mutates task, release,
 deployment, or certification state.
 
+Harness interoperability adds append-only external-run, execution-observation,
+and evaluator-result records. Their stable identities, replay/conflict rules,
+privacy boundary, and authority invariants are defined in
+[Harness interoperability and verified outcomes](harness-interoperability.md).
+They extend the engineering record without replacing `task_evidence`,
+`task_reviews`, `task_outcomes`, or task state. The implementation migration
+must be additive and must leave existing projects with no harness records fully
+functional.
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | INTEGER PK | |
