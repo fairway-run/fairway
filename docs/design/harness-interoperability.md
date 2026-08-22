@@ -302,6 +302,22 @@ required for the first implementation slice.
 6. Consider protocol-specific or Seaway adapters only after a versioned
    external contract and fixtures exist.
 
+## First Consumer Pilot
+
+The first bounded consumer pilot used GPUaaS's configured trajectory-redirect
+packet. Three source-qualified attempts preserved two under-specified
+failed/inconclusive approaches and one materially different passing approach.
+Canonical replay inserted no duplicate facts. The shared report produced a
+compatible named evaluator cohort, cited both repeated-pattern findings, and
+withheld usage and cost ratios because the consumer had not correlated provider
+usage through a run session. No task, review, provider, or promotion state was
+mutated.
+
+The disposition is **keep and narrow**: the record and advisory surfaces are
+experimental manual integrations, not general effectiveness proof, automatic
+redirection, cross-provider ranking, or a supported adapter. See
+[GPUaaS Harness-Record And Trajectory Pilot](../assessment/gpuaas-harness-trajectory-pilot-2026-08-21.md).
+
 ## Non-Goals
 
 This increment does not add a model gateway, provider router, prompt manager,
