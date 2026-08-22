@@ -17,7 +17,7 @@ replaceable agent harnesses. An execution system can now contribute versioned
 harness runs, task-scoped observations, and evaluator results without becoming
 the authority for Fairway task state, review, promotion, or release.
 
-The new harness record contract uses source-qualified identities, canonical
+The new harness record contract uses source-qualified namespaces, canonical
 payload replay checks, and atomic ingestion. The CLI can print the supported
 contract, ingest bounded JSON batches, inspect runs and individual records, and
 produce a task-scoped report. Task detail exposes the same cited record summary.
@@ -29,10 +29,11 @@ secret-like material.
 Outcome-efficiency ratios appear only when a verified outcome and complete
 denominator exist. Exact comparable cost is not currently retained, so Fairway
 reports cost as unavailable instead of estimating it. Repeated actions,
-stagnation, failed expectations, and evaluator regressions can produce cited
-trajectory findings, but `reframe_hypothesis`, `change_execution_profile`, and
-`request_input` remain advisory questions. They do not redirect a provider,
-cancel execution, approve work, or change task state.
+stagnation, failed expectations, and repeated failed or inconclusive evaluator
+results can produce cited trajectory findings, but `reframe_hypothesis`,
+`change_execution_profile`, and `request_input` remain advisory questions. They
+do not redirect a provider, cancel execution, approve work, or change task
+state.
 
 A bounded GPUaaS pilot validates contract ingestion, idempotent replay,
 readback, evaluator linkage, outcome-efficiency reporting, and trajectory
@@ -55,6 +56,9 @@ control effectiveness, model superiority, or autonomous supervision.
 ### Known Limits
 
 - Fairway does not execute, supervise, redirect, stop, or retry harness runs.
+- `source_id` is a caller-asserted collision namespace, not authenticated
+  producer identity. Ingestion therefore requires a trusted local producer or
+  reviewed adapter boundary.
 - Trajectory findings are cited advisory signals and can have false positives;
   they do not replace engineering judgment or independent review.
 - Exact comparable provider cost is unavailable, and unavailable denominators

@@ -14,9 +14,9 @@ and uses semantic versioning.
 - Versioned, source-qualified harness run, observation, and evaluator-result
   records can be ingested atomically and inspected through the CLI and task
   dashboard.
-- `fairway harness report` derives verified outcome efficiency and cited
-  trajectory findings only when the required outcome and denominator evidence
-  is present.
+- `fairway harness report` derives outcome efficiency only when verified
+  outcomes and complete denominators are present, and separately reports cited
+  advisory trajectory findings.
 - A bounded GPUaaS pilot and reusable adapter example demonstrate the record
   contract without coupling Fairway to a provider, model, or harness runtime.
 
@@ -33,8 +33,9 @@ and uses semantic versioning.
 - Harness ingestion rejects secret-like content and excludes raw prompts,
   reasoning, transcripts, tool bodies, and generated-content dumps from the
   durable record.
-- Source-qualified identities, canonical-payload replay checks, and atomic
-  batches prevent ambiguous cross-harness correlation or partial ingestion.
+- Source-qualified namespaces, canonical-payload replay checks, and atomic
+  batches reject conflicting replay and partial ingestion. Source identifiers
+  remain caller-asserted and do not authenticate a harness producer.
 
 ## v0.2.7 - 2026-08-12
 

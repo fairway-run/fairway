@@ -15,18 +15,19 @@ This candidate groups one coherent product increment:
 - public positioning of Fairway as the durable engineering control and evidence
   plane across replaceable harnesses.
 
-The exact candidate source SHA is the reviewed and pushed release-preparation
-commit containing this assessment. Production rehearsal and the annotated tag
-must bind that SHA.
+The exact candidate source SHA will be the release-preparation commit containing
+this assessment after commit-bound review and push. Production rehearsal and
+the annotated tag must bind that SHA.
 
-## Qualification Completed Before Release Preparation
+## Underlying Increment Qualification
 
-- independent architecture, implementation, analysis, consumer-pilot, and
-  public-positioning reviews for `FW-409` through `FW-413`;
+- completed independent architecture, implementation, analysis,
+  consumer-pilot, and public-positioning reviews for `FW-409` through `FW-413`;
 - full Go tests, `go vet`, focused race tests, PostgreSQL compatibility, and
   Docusaurus production build on the integrated implementation;
-- contract checks for atomic replay, conflicting identity rejection, source
-  qualification, record linkage, and secret-like content rejection; and
+- contract checks for atomic replay, conflicting-record rejection, caller-
+  asserted namespace qualification, record linkage, and secret-like content
+  rejection; and
 - GPUaaS pilot readback showing verified outcome ratios only with complete
   denominators and cited advisory trajectory findings with explicit
   false-positive limits.
@@ -66,6 +67,12 @@ Migration `018_harness_records.sql` adds append-only harness record tables and
 does not rewrite existing task, evidence, review, session, or quality-record
 facts. Back up the project database before upgrade. Do not synthesize historical
 harness records.
+
+Consumer rollback uses the `v0.2.7` binary and the matching pre-upgrade database
+and managed-contract backup. In-place binary downgrade against a database that
+has applied migration 018 is not a supported rollback procedure. Stop Fairway,
+preserve any post-upgrade database separately for investigation or export,
+restore the pre-upgrade backup, and then start `v0.2.7`.
 
 Do not move or recreate an immutable tag. If rehearsal or promotion fails,
 leave the version untagged or the draft unpublished, fix the owning defect on
