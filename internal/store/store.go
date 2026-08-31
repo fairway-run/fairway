@@ -214,7 +214,6 @@ type TaskReviewFact struct {
 	Reviewer string `json:"reviewer"`
 	Domain   string `json:"domain,omitempty"`
 	Verdict  string `json:"verdict"`
-	Reason   string `json:"reason"`
 }
 
 type Notification struct {
@@ -2375,7 +2374,7 @@ func (s *Store) SourceFactTaskID(ctx context.Context, kind string, id int64) (st
 
 // TaskEvidenceFacts returns bounded evidence identities and summaries for a task.
 func (s *Store) TaskEvidenceFacts(ctx context.Context, taskID string) ([]TaskEvidenceFact, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(result, ''), COALESCE(artifact_type, ''), COALESCE(NULLIF(notes, ''), NULLIF(command_text, ''), NULLIF(artifact_path, ''), 'recorded evidence') FROM task_evidence WHERE project_id=? AND task_id=? ORDER BY created_at, id`, s.projectID, strings.TrimSpace(taskID))
+	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(result, ''), COALESCE(artifact_type, '') FROM task_evidence WHERE project_id=? AND task_id=? ORDER BY created_at, id`, s.projectID, strings.TrimSpace(taskID))
 	if err != nil {
 		return nil, err
 	}
@@ -2383,9 +2382,10 @@ func (s *Store) TaskEvidenceFacts(ctx context.Context, taskID string) ([]TaskEvi
 	var result []TaskEvidenceFact
 	for rows.Next() {
 		var fact TaskEvidenceFact
-		if err := rows.Scan(&fact.ID, &fact.Result, &fact.ArtifactType, &fact.Summary); err != nil {
+		if err := rows.Scan(&fact.ID, &fact.Result, &fact.ArtifactType); err != nil {
 			return nil, err
 		}
+		fact.Summary = "result=" + firstNonEmptyStore(strings.TrimSpace(fact.Result), "unknown") + " artifact_type=" + firstNonEmptyStore(strings.TrimSpace(fact.ArtifactType), "none")
 		result = append(result, fact)
 	}
 	return result, rows.Err()
@@ -2393,7 +2393,7 @@ func (s *Store) TaskEvidenceFacts(ctx context.Context, taskID string) ([]TaskEvi
 
 // TaskReviewFacts returns bounded review identities and summaries for a task.
 func (s *Store) TaskReviewFacts(ctx context.Context, taskID string) ([]TaskReviewFact, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, reviewer, COALESCE(review_domain, ''), verdict, COALESCE(notes, '') FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY created_at, id`, s.projectID, strings.TrimSpace(taskID))
+	rows, err := s.db.QueryContext(ctx, `SELECT id, reviewer, COALESCE(review_domain, ''), verdict FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY created_at, id`, s.projectID, strings.TrimSpace(taskID))
 	if err != nil {
 		return nil, err
 	}
@@ -2401,12 +2401,21 @@ func (s *Store) TaskReviewFacts(ctx context.Context, taskID string) ([]TaskRevie
 	var result []TaskReviewFact
 	for rows.Next() {
 		var fact TaskReviewFact
-		if err := rows.Scan(&fact.ID, &fact.Reviewer, &fact.Domain, &fact.Verdict, &fact.Reason); err != nil {
+		if err := rows.Scan(&fact.ID, &fact.Reviewer, &fact.Domain, &fact.Verdict); err != nil {
 			return nil, err
 		}
 		result = append(result, fact)
 	}
 	return result, rows.Err()
+}
+
+func firstNonEmptyStore(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func scanTrackMemory(row rowScanner, mem *TrackMemory) error {

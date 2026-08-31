@@ -228,13 +228,13 @@ func captureFacts(decisions []store.TaskDecision, evidence []store.TaskEvidenceF
 		facts = append(facts, knowledge.CaptureFact{Kind: "decision", ID: decision.ID, Summary: firstNonEmpty(strings.TrimSpace(decision.Chosen), strings.TrimSpace(decision.Decision), "recorded decision")})
 	}
 	for _, item := range evidence {
-		facts = append(facts, knowledge.CaptureFact{Kind: "evidence", ID: item.ID, Summary: strings.TrimSpace(firstNonEmpty(item.Result+" "+item.Summary, "recorded evidence"))})
+		facts = append(facts, knowledge.CaptureFact{Kind: "evidence", ID: item.ID, Summary: item.Summary})
 	}
 	for _, item := range reviews {
-		facts = append(facts, knowledge.CaptureFact{Kind: "review", ID: item.ID, Summary: strings.TrimSpace(firstNonEmpty(item.Verdict+" "+item.Reason, "recorded review"))})
+		facts = append(facts, knowledge.CaptureFact{Kind: "review", ID: item.ID, Summary: "verdict=" + item.Verdict + " domain=" + firstNonEmpty(item.Domain, "none") + " reviewer=" + item.Reviewer})
 	}
 	for _, item := range outcomes {
-		facts = append(facts, knowledge.CaptureFact{Kind: "outcome", ID: item.ID, Summary: strings.TrimSpace(firstNonEmpty(item.Kind+" "+item.SourceRef+" "+item.Notes, "recorded outcome"))})
+		facts = append(facts, knowledge.CaptureFact{Kind: "outcome", ID: item.ID, Summary: fmt.Sprintf("kind=%s related_task=%s transition_id=%d", item.Kind, firstNonEmpty(item.RelatedTaskID, "none"), item.TransitionID)})
 	}
 	for _, item := range commits {
 		facts = append(facts, knowledge.CaptureFact{Kind: "commit", ID: item.ID, Summary: item.CommitSHA + " " + item.AssociationKind})
@@ -423,19 +423,40 @@ func commandEmbedder(executable, model string) func(string) ([]float64, error) {
 		defer cancel()
 		command := exec.CommandContext(commandContext, strings.TrimSpace(executable))
 		command.Stdin = bytes.NewReader(request)
-		var stdout bytes.Buffer
+		stdout := boundedEmbeddingOutput{limit: 1 << 20}
 		command.Stdout = &stdout
 		if err := command.Run(); err != nil {
 			return nil, err
 		}
+		if stdout.overflow {
+			return nil, errors.New("embedding adapter output exceeds 1 MiB limit")
+		}
 		var response struct {
 			Embedding []float64 `json:"embedding"`
 		}
-		if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
+		if err := json.Unmarshal(stdout.buffer.Bytes(), &response); err != nil {
 			return nil, err
 		}
 		return response.Embedding, nil
 	}
+}
+
+type boundedEmbeddingOutput struct {
+	buffer   bytes.Buffer
+	limit    int
+	overflow bool
+}
+
+func (output *boundedEmbeddingOutput) Write(value []byte) (int, error) {
+	remaining := output.limit - output.buffer.Len()
+	if remaining < len(value) {
+		output.overflow = true
+		if remaining > 0 {
+			_, _ = output.buffer.Write(value[:remaining])
+		}
+		return len(value), nil
+	}
+	return output.buffer.Write(value)
 }
 
 func cmdKnowledgePromote(ctx context.Context, opts globalOptions, args []string) error {

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -69,7 +68,7 @@ func BuildSemanticIndex(opts SemanticIndexOptions) (SemanticIndexResult, error) 
 		return SemanticIndexResult{}, err
 	}
 	data = append(data, '\n')
-	path, err := resolveIndexPath(opts.ProjectRoot, opts.IndexPath)
+	path, err := resolveIndexPath(opts.IndexPath)
 	if err != nil {
 		return SemanticIndexResult{}, err
 	}
@@ -77,10 +76,7 @@ func BuildSemanticIndex(opts SemanticIndexOptions) (SemanticIndexResult, error) 
 	if !opts.Apply {
 		return result, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return SemanticIndexResult{}, errors.New("create knowledge index directory")
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := writeBoundProjectFile(paths, path, data, 0o600, true, "semantic_index_before_replace", opts.CustodyHook); err != nil {
 		return SemanticIndexResult{}, errors.New("write knowledge semantic index")
 	}
 	return result, nil
@@ -93,12 +89,16 @@ func semanticScores(opts QueryOptions, pages map[string][32]byte, query string) 
 	if opts.Embed == nil {
 		return nil, "semantic embedding adapter unavailable; lexical fallback used"
 	}
-	path, err := resolveIndexPath(opts.ProjectRoot, opts.SemanticIndexPath)
+	paths, err := resolvePaths(opts.ProjectRoot, opts.KnowledgeRoot, false)
+	if err != nil {
+		return nil, "semantic project custody is unavailable; lexical fallback used"
+	}
+	path, err := resolveIndexPath(opts.SemanticIndexPath)
 	if err != nil {
 		return nil, "semantic index path is unsafe; lexical fallback used"
 	}
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) > 32<<20 {
+	data, _, err := readBoundProjectFile(paths, path, 32<<20, "semantic_query_index_after_open", opts.CustodyHook)
+	if err != nil {
 		return nil, "semantic index unavailable; lexical fallback used"
 	}
 	var index semanticIndex
@@ -135,7 +135,7 @@ func firstNonEmptyIndex(values ...string) string {
 	return ""
 }
 
-func resolveIndexPath(projectRoot, requested string) (string, error) {
+func resolveIndexPath(requested string) (string, error) {
 	value := strings.TrimSpace(requested)
 	if value == "" {
 		value = ".fairway/knowledge-index.json"
@@ -143,7 +143,7 @@ func resolveIndexPath(projectRoot, requested string) (string, error) {
 	if filepath.IsAbs(value) || filepath.Clean(value) == ".." || strings.HasPrefix(filepath.Clean(value), ".."+string(filepath.Separator)) {
 		return "", errors.New("knowledge index path must be project-relative")
 	}
-	return filepath.Join(projectRoot, filepath.Clean(value)), nil
+	return filepath.ToSlash(filepath.Clean(value)), nil
 }
 
 func validVector(vector []float64) bool {

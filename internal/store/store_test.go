@@ -1337,6 +1337,35 @@ func TestTaskOutcomesAreStructuredAndProjectScoped(t *testing.T) {
 	}
 }
 
+func TestKnowledgeFactProjectionsExcludeFreeFormBodies(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if err := s.ImportTasks(ctx, []TaskDefinition{{ID: "KNOWLEDGE-901", Title: "Knowledge projection", Role: "backend"}}); err != nil {
+		t.Fatal(err)
+	}
+	const sentinel = "PRIVATE_FREE_FORM_SENTINEL"
+	if err := s.RecordEvidence(ctx, "KNOWLEDGE-901", Evidence{CommandText: sentinel, Result: "pass", ArtifactPath: sentinel, ArtifactType: "test", Notes: sentinel}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordReview(ctx, "KNOWLEDGE-901", Review{Reviewer: "arch", Domain: "arch", Verdict: "approve", Reason: sentinel}); err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := s.TaskEvidenceFacts(ctx, "KNOWLEDGE-901")
+	if err != nil || len(evidence) != 1 {
+		t.Fatalf("evidence=%+v err=%v", evidence, err)
+	}
+	if evidence[0].Summary != "result=pass artifact_type=test" || strings.Contains(evidence[0].Summary, sentinel) {
+		t.Fatalf("evidence projection copied free-form body: %+v", evidence[0])
+	}
+	reviews, err := s.TaskReviewFacts(ctx, "KNOWLEDGE-901")
+	if err != nil || len(reviews) != 1 {
+		t.Fatalf("reviews=%+v err=%v", reviews, err)
+	}
+	if reviews[0].Verdict != "approve" || reviews[0].Reviewer != "arch" || reviews[0].Domain != "arch" {
+		t.Fatalf("unexpected review projection: %+v", reviews[0])
+	}
+}
+
 func TestControlFrictionLifecycleAndUnavailableSemantics(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

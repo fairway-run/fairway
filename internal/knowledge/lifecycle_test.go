@@ -3,6 +3,9 @@ package knowledge
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,6 +151,13 @@ func TestSemanticIndexIsDisposableAndQueryFallsBackOrUsesHybrid(t *testing.T) {
 	if err != nil || fallback.RetrievalMode != "lexical" || len(fallback.Pages) != 1 || len(fallback.Warnings) == 0 {
 		t.Fatalf("fallback packet=%+v err=%v", fallback, err)
 	}
+	if _, err := BuildSemanticIndex(SemanticIndexOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, IndexPath: indexPath, Model: "test", Embed: embed, Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+	modelMismatch, err := Query(QueryOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, Topic: "accelerator", BudgetBytes: 4096, SemanticIndexPath: indexPath, SemanticModel: "different-model", Embed: embed})
+	if err != nil || modelMismatch.RetrievalMode != "lexical" || len(modelMismatch.Pages) != 1 || len(modelMismatch.Warnings) == 0 {
+		t.Fatalf("model mismatch did not fall back: %+v err=%v", modelMismatch, err)
+	}
 }
 
 func TestPortableBundleImportsOnlyUntrustedDrafts(t *testing.T) {
@@ -215,6 +225,190 @@ func TestPortableBundleRejectsArchiveTraversal(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(project, "escaped.md")); !os.IsNotExist(err) {
 		t.Fatal("knowledge import wrote traversal target")
 	}
+}
+
+func TestPortableBundleRequiresValidManifestAndCitations(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"architecture/node.md"}, "docs/source.md")
+	writePage(t, project, "architecture/node.md", "Node authority", "verified", "2026-12-31", revision, nil, "docs/source.md")
+	if _, err := ExportBundle(BundleExportOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, OutputPath: "valid.zip", Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	missingManifest := rewriteKnowledgeBundle(t, filepath.Join(project, "valid.zip"), func(files map[string][]byte, manifest *bundleManifestDocument) {
+		delete(files, bundlePagePrefix+DefaultSourceManifest)
+		kept := manifest.Files[:0]
+		for _, file := range manifest.Files {
+			if file.Kind != "source_manifest" {
+				kept = append(kept, file)
+			}
+		}
+		manifest.Files = kept
+	})
+	if err := os.WriteFile(filepath.Join(project, "missing-manifest.zip"), missingManifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportBundle(BundleImportOptions{Options: Options{ProjectRoot: project}, BundlePath: "missing-manifest.zip"}); err == nil {
+		t.Fatal("knowledge import accepted a bundle without exactly one source manifest")
+	}
+
+	unknownCitation := rewriteKnowledgeBundle(t, filepath.Join(project, "valid.zip"), func(files map[string][]byte, manifest *bundleManifestDocument) {
+		path := bundlePagePrefix + "architecture/node.md"
+		files[path] = []byte(strings.Replace(string(files[path]), "class: project-file", "class: unknown-class", 1))
+	})
+	if err := os.WriteFile(filepath.Join(project, "unknown-citation.zip"), unknownCitation, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportBundle(BundleImportOptions{Options: Options{ProjectRoot: project}, BundlePath: "unknown-citation.zip"}); err == nil {
+		t.Fatal("knowledge import accepted a page citing an unknown source class")
+	}
+}
+
+func TestPortableBundleRejectsExpandedSizeOverflow(t *testing.T) {
+	project := newKnowledgeProject(t)
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	entryData := bytes.Repeat([]byte("x"), 1<<20)
+	for index := 0; index < 33; index++ {
+		entry, err := writer.Create(filepath.ToSlash(filepath.Join("knowledge", "expanded", strings.Repeat("x", index%3)+string(rune('a'+index))+".md")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write(entryData); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "expanded.zip"), buffer.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportBundle(BundleImportOptions{Options: Options{ProjectRoot: project}, BundlePath: "expanded.zip"}); err == nil || !strings.Contains(err.Error(), "expanded content") {
+		t.Fatalf("knowledge import did not reject cumulative expanded size: %v", err)
+	}
+}
+
+func TestDerivedIndexAndBundlePathsRefuseSymlinks(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"architecture/node.md"}, "docs/source.md")
+	writePage(t, project, "architecture/node.md", "Node authority", "verified", "2026-12-31", revision, nil, "docs/source.md")
+	embed := func(string) ([]float64, error) { return []float64{1, 0}, nil }
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(project, ".fairway")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildSemanticIndex(SemanticIndexOptions{Options: Options{ProjectRoot: project, SourceRevision: revision}, Model: "test", Embed: embed, Apply: true}); err == nil {
+		t.Fatal("semantic index followed a symlinked output directory")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "knowledge-index.json")); !os.IsNotExist(err) {
+		t.Fatalf("semantic index escaped project custody: %v", err)
+	}
+	if err := os.Remove(filepath.Join(project, ".fairway")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(project, "dist")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExportBundle(BundleExportOptions{Options: Options{ProjectRoot: project, SourceRevision: revision}, OutputPath: "dist/knowledge.zip", Apply: true}); err == nil {
+		t.Fatal("knowledge export followed a symlinked output directory")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "knowledge.zip")); !os.IsNotExist(err) {
+		t.Fatalf("knowledge bundle escaped project custody: %v", err)
+	}
+}
+
+func TestDerivedIndexAndBundleInputsRefuseSymlinkFiles(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"architecture/node.md"}, "docs/source.md")
+	writePage(t, project, "architecture/node.md", "Node authority", "verified", "2026-12-31", revision, nil, "docs/source.md")
+	embed := func(string) ([]float64, error) { return []float64{1, 0}, nil }
+	if err := os.MkdirAll(filepath.Join(project, ".fairway"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	outsideIndex := filepath.Join(outside, "index.json")
+	if err := os.WriteFile(outsideIndex, []byte(`{"version":1,"model":"test","entries":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideIndex, filepath.Join(project, ".fairway", "linked-index.json")); err != nil {
+		t.Fatal(err)
+	}
+	packet, err := Query(QueryOptions{Options: Options{ProjectRoot: project, SourceRevision: revision}, Topic: "node", SemanticIndexPath: ".fairway/linked-index.json", SemanticModel: "test", Embed: embed})
+	if err != nil || packet.RetrievalMode != "lexical" || len(packet.Warnings) == 0 {
+		t.Fatalf("symlinked semantic index did not fall back safely: %+v err=%v", packet, err)
+	}
+	if _, err := ExportBundle(BundleExportOptions{Options: Options{ProjectRoot: project, SourceRevision: revision}, OutputPath: "real.zip", Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(project, "real.zip"), filepath.Join(project, "linked.zip")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportBundle(BundleImportOptions{Options: Options{ProjectRoot: project}, BundlePath: "linked.zip"}); err == nil {
+		t.Fatal("knowledge import followed a symlinked bundle input")
+	}
+}
+
+func rewriteKnowledgeBundle(t *testing.T, path string, mutate func(map[string][]byte, *bundleManifestDocument)) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{}
+	for _, file := range reader.File {
+		stream, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var content bytes.Buffer
+		if _, err := content.ReadFrom(stream); err != nil {
+			t.Fatal(err)
+		}
+		_ = stream.Close()
+		files[file.Name] = content.Bytes()
+	}
+	var manifest bundleManifestDocument
+	if err := json.Unmarshal(files[bundleManifest], &manifest); err != nil {
+		t.Fatal(err)
+	}
+	mutate(files, &manifest)
+	for index := range manifest.Files {
+		content := files[manifest.Files[index].Path]
+		digest := sha256.Sum256(content)
+		manifest.Files[index].Bytes = len(content)
+		manifest.Files[index].SHA256 = hex.EncodeToString(digest[:])
+	}
+	files[bundleManifest], err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	writer := zip.NewWriter(&output)
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	for _, name := range names {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write(files[name]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
 }
 
 func TestQuerySelectsRelevantPagesAndDeduplicatesProvenance(t *testing.T) {

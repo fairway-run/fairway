@@ -6950,7 +6950,7 @@ tasks:
     owning_domain: fairway
     owning_layer: engineering-knowledge
     source_paths: [docs/design/engineering-knowledge.md, docs/design/project-working-memory.md, internal/knowledge, cmd/fairway]
-    target_paths: [docs/design/engineering-knowledge.md, docs/design/project-working-memory.md, docs/design/cli.md, docs/config-reference.md, docs/roadmap/fairway-product-backlog.yaml, internal/knowledge, cmd/fairway]
+    target_paths: [cmd/fairway, internal/knowledge, internal/store, docs/agent-guide.md, docs/config-reference.md, docs/design, docs/assessment, docs/roadmap/fairway-product-backlog.yaml]
     review_domains: [arch, governance, security]
     risk_level: medium
     migration_type: learned-context-increment

@@ -9,11 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -100,12 +101,12 @@ func ExportBundle(opts BundleExportOptions) (BundleResult, error) {
 		pageCount++
 	}
 	if opts.IncludeIndex {
-		indexPath, pathErr := resolveIndexPath(opts.ProjectRoot, opts.DerivedIndexPath)
+		indexPath, pathErr := resolveIndexPath(opts.DerivedIndexPath)
 		if pathErr != nil {
 			return BundleResult{}, pathErr
 		}
-		data, readErr := os.ReadFile(indexPath)
-		if readErr != nil || len(data) > maxBundleBytes {
+		data, _, readErr := readBoundProjectFile(paths, indexPath, maxBundleBytes, "bundle_export_index_after_open", opts.CustodyHook)
+		if readErr != nil {
 			return BundleResult{}, errors.New("read optional derived knowledge index")
 		}
 		files[bundleIndexPrefix+"knowledge-index.json"] = data
@@ -151,7 +152,7 @@ func ExportBundle(opts BundleExportOptions) (BundleResult, error) {
 	if buffer.Len() > maxBundleBytes {
 		return BundleResult{}, errors.New("knowledge bundle exceeds size limit")
 	}
-	output, err := resolvePortablePath(opts.ProjectRoot, opts.OutputPath)
+	output, err := resolvePortablePath(opts.OutputPath)
 	if err != nil {
 		return BundleResult{}, err
 	}
@@ -159,33 +160,24 @@ func ExportBundle(opts BundleExportOptions) (BundleResult, error) {
 	if !opts.Apply {
 		return result, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
-		return BundleResult{}, err
-	}
-	file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
+	if err := writeBoundProjectFile(paths, output, buffer.Bytes(), 0o600, false, "bundle_export_before_create", opts.CustodyHook); err != nil {
 		return BundleResult{}, errors.New("knowledge bundle output already exists or is unsafe")
-	}
-	if _, err := file.Write(buffer.Bytes()); err != nil {
-		_ = file.Close()
-		_ = os.Remove(output)
-		return BundleResult{}, errors.New("write knowledge bundle")
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(output)
-		return BundleResult{}, errors.New("close knowledge bundle")
 	}
 	return result, nil
 }
 
 // ImportBundle validates a portable bundle and proposes untrusted draft pages under imports/.
 func ImportBundle(opts BundleImportOptions) (BundleResult, error) {
-	bundlePath, err := resolvePortablePath(opts.ProjectRoot, opts.BundlePath)
+	paths, err := resolvePaths(opts.ProjectRoot, opts.KnowledgeRoot, false)
 	if err != nil {
 		return BundleResult{}, err
 	}
-	data, err := os.ReadFile(bundlePath)
-	if err != nil || len(data) > maxBundleBytes {
+	bundlePath, err := resolvePortablePath(opts.BundlePath)
+	if err != nil {
+		return BundleResult{}, err
+	}
+	data, _, err := readBoundProjectFile(paths, bundlePath, maxBundleBytes, "bundle_import_after_open", opts.CustodyHook)
+	if err != nil {
 		return BundleResult{}, errors.New("read bounded knowledge bundle")
 	}
 	digest := sha256.Sum256(data)
@@ -199,6 +191,9 @@ func ImportBundle(opts BundleImportOptions) (BundleResult, error) {
 	for _, file := range reader.File {
 		if !safeBundlePath(file.Name) || file.UncompressedSize64 > uint64(effectivePageLimit(opts.MaxPageBytes)) {
 			return BundleResult{}, errors.New("knowledge bundle contains an unsafe path or file")
+		}
+		if _, duplicate := archive[file.Name]; duplicate {
+			return BundleResult{}, errors.New("knowledge bundle contains a duplicate entry")
 		}
 		stream, openErr := file.Open()
 		if openErr != nil {
@@ -222,8 +217,7 @@ func ImportBundle(opts BundleImportOptions) (BundleResult, error) {
 	if err := validateBundleManifest(manifest, archive); err != nil {
 		return BundleResult{}, err
 	}
-	paths, err := resolvePaths(opts.ProjectRoot, opts.KnowledgeRoot, false)
-	if err != nil {
+	if err := validateBundledKnowledge(manifest, archive); err != nil {
 		return BundleResult{}, err
 	}
 	indexData, _, err := readBoundProjectFile(paths, filepath.ToSlash(filepath.Join(paths.relRoot, "index.md")), effectivePageLimit(opts.MaxPageBytes), "bundle_import_index_after_open", opts.CustodyHook)
@@ -301,6 +295,60 @@ func validateBundleManifest(manifest bundleManifestDocument, archive map[string]
 	return nil
 }
 
+func validateBundledKnowledge(manifest bundleManifestDocument, archive map[string][]byte) error {
+	const sourceManifestPath = bundlePagePrefix + DefaultSourceManifest
+	manifestCount := 0
+	for _, file := range manifest.Files {
+		if file.Kind == "source_manifest" {
+			manifestCount++
+			if file.Path != sourceManifestPath {
+				return errors.New("knowledge bundle source manifest path is invalid")
+			}
+		}
+	}
+	if manifestCount != 1 {
+		return errors.New("knowledge bundle requires exactly one source manifest")
+	}
+
+	var sources SourceManifest
+	decoder := yaml.NewDecoder(bytes.NewReader(archive[sourceManifestPath]))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&sources); err != nil || validateSourceManifest(sources, DefaultRoot) != nil {
+		return errors.New("knowledge bundle source manifest is invalid")
+	}
+	for _, file := range manifest.Files {
+		if file.Kind != "knowledge_page" {
+			continue
+		}
+		if !strings.HasPrefix(file.Path, bundlePagePrefix) || !strings.EqualFold(filepath.Ext(file.Path), ".md") {
+			return errors.New("knowledge bundle page path is invalid")
+		}
+		meta, _, err := splitPage(archive[file.Path])
+		if err != nil || meta.Status != "verified" || !shaPattern.MatchString(meta.SourceSHA) || len(meta.Sources) == 0 {
+			return errors.New("knowledge bundle page is not a structurally verified page")
+		}
+		for _, source := range meta.Sources {
+			class, ok := sources.Classes[source.Class]
+			if !ok {
+				return errors.New("knowledge bundle page cites an unknown source class")
+			}
+			switch class.Kind {
+			case "project_file":
+				if source.Path == "" || source.Fairway != nil || !sourceWithinAllowedRoots(source.Path, class.Roots, DefaultRoot) {
+					return errors.New("knowledge bundle page has an invalid project-file citation")
+				}
+			case "fairway":
+				if source.Path != "" || source.Fairway == nil || source.Fairway.Kind != class.FairwayKind || !fairwayIDPattern.MatchString(source.Fairway.ID) {
+					return errors.New("knowledge bundle page has an invalid Fairway citation")
+				}
+			default:
+				return errors.New("knowledge bundle page cites an unsupported source class")
+			}
+		}
+	}
+	return nil
+}
+
 func applyImportedPages(paths resolvedPaths, pages map[string][]byte, indexOld, indexNext []byte, hook func(string)) error {
 	keys := make([]string, 0, len(pages))
 	for path := range pages {
@@ -354,17 +402,47 @@ func applyImportedPages(paths resolvedPaths, pages map[string][]byte, indexOld, 
 	return nil
 }
 
+func writeBoundProjectFile(paths resolvedPaths, relativePath string, data []byte, mode uint32, replace bool, stage string, hook func(string)) error {
+	dirRel, name, err := splitBoundPath(relativePath)
+	if err != nil {
+		return err
+	}
+	dir, err := openBoundDirectory(paths.project, dirRel, true)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	exists, err := boundFileExists(dir, name)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if hook != nil && stage != "" {
+			hook(stage)
+		}
+		return createBoundFile(dir, name, data, mode)
+	}
+	if !replace {
+		return errors.New("bound project file already exists")
+	}
+	current, _, err := readBoundFileAt(dir, name, int64(max(len(data), maxBundleBytes))+1, "", nil)
+	if err != nil {
+		return err
+	}
+	return replaceBoundFile(dir, name, current, data, mode, stage, hook)
+}
+
 func safeBundlePath(path string) bool {
 	clean := filepath.ToSlash(filepath.Clean(path))
 	return clean == path && path != "" && !filepath.IsAbs(path) && clean != ".." && !strings.HasPrefix(clean, "../") && !strings.Contains(path, "\\")
 }
 
-func resolvePortablePath(projectRoot, requested string) (string, error) {
+func resolvePortablePath(requested string) (string, error) {
 	value := strings.TrimSpace(requested)
 	if value == "" || filepath.IsAbs(value) || filepath.Clean(value) == ".." || strings.HasPrefix(filepath.Clean(value), ".."+string(filepath.Separator)) {
 		return "", errors.New("knowledge portable path must be project-relative")
 	}
-	return filepath.Join(projectRoot, filepath.Clean(value)), nil
+	return filepath.ToSlash(filepath.Clean(value)), nil
 }
 
 func firstNonEmptyBundle(values ...string) string {
