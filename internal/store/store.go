@@ -106,6 +106,14 @@ type Evidence struct {
 	CreatedAt       string
 }
 
+// TaskEvidenceFact is a source-qualified evidence projection for knowledge capture.
+type TaskEvidenceFact struct {
+	ID           int64  `json:"id"`
+	Result       string `json:"result"`
+	ArtifactType string `json:"artifact_type,omitempty"`
+	Summary      string `json:"summary"`
+}
+
 type TaskOutcome struct {
 	ID            int64  `json:"id"`
 	TaskID        string `json:"task_id"`
@@ -198,6 +206,15 @@ type Review struct {
 	Reason    string
 	Commit    string
 	CreatedAt string
+}
+
+// TaskReviewFact is a source-qualified review projection for knowledge capture.
+type TaskReviewFact struct {
+	ID       int64  `json:"id"`
+	Reviewer string `json:"reviewer"`
+	Domain   string `json:"domain,omitempty"`
+	Verdict  string `json:"verdict"`
+	Reason   string `json:"reason"`
 }
 
 type Notification struct {
@@ -2338,6 +2355,10 @@ func (s *Store) SourceFactTaskID(ctx context.Context, kind string, id int64) (st
 		table = "task_reviews"
 	case "decision":
 		table = "task_decisions"
+	case "outcome":
+		table = "task_outcomes"
+	case "commit":
+		table = "task_commits"
 	default:
 		return "", fmt.Errorf("unsupported source fact kind %q", kind)
 	}
@@ -2350,6 +2371,42 @@ func (s *Store) SourceFactTaskID(ctx context.Context, kind string, id int64) (st
 		return "", err
 	}
 	return taskID, nil
+}
+
+// TaskEvidenceFacts returns bounded evidence identities and summaries for a task.
+func (s *Store) TaskEvidenceFacts(ctx context.Context, taskID string) ([]TaskEvidenceFact, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(result, ''), COALESCE(artifact_type, ''), COALESCE(NULLIF(notes, ''), NULLIF(command_text, ''), NULLIF(artifact_path, ''), 'recorded evidence') FROM task_evidence WHERE project_id=? AND task_id=? ORDER BY created_at, id`, s.projectID, strings.TrimSpace(taskID))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []TaskEvidenceFact
+	for rows.Next() {
+		var fact TaskEvidenceFact
+		if err := rows.Scan(&fact.ID, &fact.Result, &fact.ArtifactType, &fact.Summary); err != nil {
+			return nil, err
+		}
+		result = append(result, fact)
+	}
+	return result, rows.Err()
+}
+
+// TaskReviewFacts returns bounded review identities and summaries for a task.
+func (s *Store) TaskReviewFacts(ctx context.Context, taskID string) ([]TaskReviewFact, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, reviewer, COALESCE(review_domain, ''), verdict, COALESCE(notes, '') FROM task_reviews WHERE project_id=? AND task_id=? ORDER BY created_at, id`, s.projectID, strings.TrimSpace(taskID))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []TaskReviewFact
+	for rows.Next() {
+		var fact TaskReviewFact
+		if err := rows.Scan(&fact.ID, &fact.Reviewer, &fact.Domain, &fact.Verdict, &fact.Reason); err != nil {
+			return nil, err
+		}
+		result = append(result, fact)
+	}
+	return result, rows.Err()
 }
 
 func scanTrackMemory(row rowScanner, mem *TrackMemory) error {

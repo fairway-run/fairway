@@ -89,6 +89,21 @@ classes:
     authority: evidence
     fairway_kind: evidence
     requires_store_validation: true
+  fairway-review:
+    kind: fairway
+    authority: operational
+    fairway_kind: review
+    requires_store_validation: true
+  fairway-outcome:
+    kind: fairway
+    authority: operational
+    fairway_kind: outcome
+    requires_store_validation: true
+  fairway-commit:
+    kind: fairway
+    authority: evidence
+    fairway_kind: commit
+    requires_store_validation: true
 `,
 }
 

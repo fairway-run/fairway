@@ -1040,6 +1040,29 @@ authority. See [Sovereign Customer Key Rehearsal](../operations/sovereign-custom
   because one describes records accepted from execution surfaces and the other
   describes read models Fairway emits for agents. The implemented catalog is
   `fairway.harness-record-contracts.v1`.
+- `knowledge capture --task <id> --page <path> --owner <owner> --review-by
+  <date> [--lesson <text>] [--apply]` proposes a short Markdown lesson from a
+  terminal task's durable decisions, evidence, reviews, outcomes, and commit
+  associations. Preview is the default; apply creates a normal Git diff and
+  grants no review or promotion authority.
+- `knowledge index --embed-command <executable> --embedding-model <id>
+  [--output <path>] [--apply]` builds a disposable local embedding cache. The
+  explicit executable reads one JSON request from stdin and returns one vector.
+  `knowledge query --semantic-index <path> --embed-command <executable>
+  --embedding-model <id> [--semantic-min-score <0..1>]` uses hybrid ranking.
+  The default `0.55` threshold governs semantic-only admission. Missing, stale, incompatible,
+  or failed semantic state reports a warning and falls back to lexical
+  selection.
+- `knowledge export --output <zip> [--include-index] [--apply]` packages
+  verified current Markdown, the source manifest, a checksum manifest, and an
+  optional derived index. `knowledge import --bundle <zip> [--apply]` validates
+  paths, sizes, checksums, and page metadata before proposing an isolated
+  `imports/<bundle-id>/` namespace. Imported pages are always rewritten as
+  untrusted drafts with local authority, citations, ownership, verification,
+  and promotion removed.
+- `memory cold-start --knowledge-auto` derives optional knowledge terms from
+  the Fairway task and track metadata. Execution memory renders first and the
+  learned-context packet retains its separate byte budget.
 - See [release-cuts.md](release-cuts.md) for the subset of this surface that
   ships in each release.
 

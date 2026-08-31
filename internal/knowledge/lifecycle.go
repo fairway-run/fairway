@@ -121,6 +121,121 @@ func Ingest(opts IngestOptions) (IngestResult, error) {
 	return result, nil
 }
 
+// Capture proposes a short source-grounded lesson from durable Fairway facts.
+func Capture(opts CaptureOptions) (CaptureResult, error) {
+	if err := validateLifecycleInputs(opts.TaskID, opts.PagePath, opts.Title, opts.Owner, opts.ReviewBy, opts.Lesson, opts.AppliesWhen, opts.DoesNotApplyWhen); err != nil {
+		return CaptureResult{}, err
+	}
+	if strings.TrimSpace(opts.TaskID) == "" || strings.TrimSpace(opts.PagePath) == "" || strings.TrimSpace(opts.Title) == "" || strings.TrimSpace(opts.Owner) == "" || strings.TrimSpace(opts.Lesson) == "" {
+		return CaptureResult{}, errors.New("knowledge capture requires task, page, title, owner, and lesson")
+	}
+	if strings.TrimSpace(opts.SourceRevision) == "" || !shaPattern.MatchString(opts.SourceRevision) {
+		return CaptureResult{}, errors.New("knowledge capture requires a valid source revision")
+	}
+	if _, err := parseDate(opts.ReviewBy); err != nil {
+		return CaptureResult{}, errors.New("knowledge capture review-by must use YYYY-MM-DD")
+	}
+	if len(opts.Facts) == 0 || len(opts.Facts) > 64 {
+		return CaptureResult{}, errors.New("knowledge capture requires between 1 and 64 durable facts")
+	}
+	paths, err := resolvePaths(opts.ProjectRoot, opts.KnowledgeRoot, false)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	manifest, err := readManifest(paths, opts.Options)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	pageRel, pageAbs, err := resolveKnowledgePage(paths, opts.PagePath, false)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	if _, err := os.Lstat(pageAbs); err == nil {
+		return CaptureResult{}, errors.New("knowledge capture target already exists")
+	} else if !os.IsNotExist(err) {
+		return CaptureResult{}, errors.New("inspect knowledge capture target")
+	}
+	facts := append([]CaptureFact{}, opts.Facts...)
+	for index := range facts {
+		facts[index].Kind = strings.TrimSpace(facts[index].Kind)
+		facts[index].Summary = strings.TrimSpace(facts[index].Summary)
+	}
+	sort.Slice(facts, func(i, j int) bool {
+		if facts[i].Kind != facts[j].Kind {
+			return facts[i].Kind < facts[j].Kind
+		}
+		return facts[i].ID < facts[j].ID
+	})
+	sources := make([]Source, 0, len(facts))
+	seen := map[string]bool{}
+	for _, fact := range facts {
+		if fact.ID <= 0 || fact.Summary == "" {
+			return CaptureResult{}, errors.New("knowledge capture facts require positive ids and summaries")
+		}
+		if err := validateLifecycleInputs(fact.Kind, fact.Summary); err != nil {
+			return CaptureResult{}, err
+		}
+		className := "fairway-" + fact.Kind
+		class, ok := manifest.Classes[className]
+		if !ok || class.Kind != "fairway" || class.FairwayKind != fact.Kind || !class.RequiresStoreValidation {
+			return CaptureResult{}, fmt.Errorf("knowledge capture source class %q is unavailable", className)
+		}
+		key := fmt.Sprintf("%s:%d", fact.Kind, fact.ID)
+		if seen[key] {
+			return CaptureResult{}, errors.New("knowledge capture facts contain a duplicate identity")
+		}
+		seen[key] = true
+		requirement := FairwayReferenceRequirement{PagePath: pageRel, SourceClass: className, Reference: FairwayReference{Kind: fact.Kind, ID: fmt.Sprint(fact.ID)}}
+		if opts.ValidateFairwayReference == nil || opts.ValidateFairwayReference(requirement) != nil {
+			return CaptureResult{}, fmt.Errorf("knowledge capture fact %s is not valid in the current Fairway store", key)
+		}
+		sources = append(sources, Source{Class: className, Fairway: &FairwayReference{Kind: fact.Kind, ID: fmt.Sprint(fact.ID)}})
+	}
+	meta := PageMetadata{
+		KnowledgeVersion: 1, Title: strings.TrimSpace(opts.Title), Status: "draft", Owner: strings.TrimSpace(opts.Owner),
+		LastVerified: dateOnly(opts.NowOrCurrent()).Format("2006-01-02"), ReviewBy: strings.TrimSpace(opts.ReviewBy),
+		SourceSHA: opts.SourceRevision, Sources: sources, Supersedes: []string{},
+	}
+	var body strings.Builder
+	fmt.Fprintf(&body, "# %s\n\n", meta.Title)
+	fmt.Fprintf(&body, "Task: `%s`\n\n## Lesson\n\n%s\n", strings.TrimSpace(opts.TaskID), strings.TrimSpace(opts.Lesson))
+	if strings.TrimSpace(opts.AppliesWhen) != "" {
+		fmt.Fprintf(&body, "\n## Applies when\n\n%s\n", strings.TrimSpace(opts.AppliesWhen))
+	}
+	if strings.TrimSpace(opts.DoesNotApplyWhen) != "" {
+		fmt.Fprintf(&body, "\n## Does not apply when\n\n%s\n", strings.TrimSpace(opts.DoesNotApplyWhen))
+	}
+	body.WriteString("\n## Durable facts to re-check\n")
+	for _, fact := range facts {
+		fmt.Fprintf(&body, "\n- `fairway:%s:%d` — %s", fact.Kind, fact.ID, fact.Summary)
+	}
+	body.WriteString("\n\nThis page is a draft synthesis. Re-check the cited Fairway facts before reuse or verification.\n")
+	pageData, err := renderPage(meta, body.String())
+	if err != nil || containsSecret(pageData) {
+		return CaptureResult{}, errors.New("knowledge capture proposal is unsafe")
+	}
+	indexData, _, err := readBoundProjectFile(paths, filepath.ToSlash(filepath.Join(paths.relRoot, "index.md")), effectivePageLimit(opts.MaxPageBytes), "capture_index_after_open", opts.CustodyHook)
+	if err != nil {
+		return CaptureResult{}, errors.New("read knowledge index")
+	}
+	indexNext, err := appendIndexLink(indexData, pageRel, meta.Title)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	if int64(len(pageData)) > effectivePageLimit(opts.MaxPageBytes) || int64(len(indexNext)) > effectivePageLimit(opts.MaxPageBytes) {
+		return CaptureResult{}, errors.New("knowledge capture proposal exceeds configured page size limit")
+	}
+	result := CaptureResult{Applied: opts.Apply, Preview: !opts.Apply, TaskID: strings.TrimSpace(opts.TaskID), SourceRevision: opts.SourceRevision, Facts: facts,
+		Changes: []Change{describeChange(pageRel, "create", pageData, string(pageData)), describeChange("index.md", "update", indexNext, fmt.Sprintf("append: - [%s](%s)", meta.Title, pageRel))}}
+	if !opts.Apply {
+		return result, nil
+	}
+	if err := applyNewPageAndIndex(paths, pageRel, pageData, indexData, indexNext, opts.CustodyHook); err != nil {
+		return CaptureResult{}, err
+	}
+	return result, nil
+}
+
 // Query returns deterministic, bounded page projections with deduplicated
 // provenance. Selection uses the topic and caller-supplied task terms.
 func Query(opts QueryOptions) (QueryPacket, error) {
@@ -145,6 +260,12 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 	if opts.BudgetBytes > maxQueryBudget || opts.BudgetBytes < 1024 {
 		return QueryPacket{}, fmt.Errorf("knowledge query budget must be between 1024 and %d bytes", maxQueryBudget)
 	}
+	if opts.SemanticMinScore == 0 {
+		opts.SemanticMinScore = 0.55
+	}
+	if opts.SemanticMinScore < 0 || opts.SemanticMinScore > 1 {
+		return QueryPacket{}, errors.New("knowledge query semantic minimum score must be between 0 and 1")
+	}
 	report, err := Lint(opts.Options)
 	if err != nil {
 		return QueryPacket{}, err
@@ -161,6 +282,11 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		return QueryPacket{}, err
 	}
 	terms := queryTerms(opts.Topic, opts.TaskID, opts.TaskTerms)
+	pageDigests := map[string][32]byte{}
+	for _, page := range report.Pages {
+		pageDigests[page.Path] = page.contentDigest
+	}
+	semantic, semanticWarning := semanticScores(opts, pageDigests, strings.Join(terms, " "))
 	type candidate struct {
 		page    QueryPage
 		sources []QuerySource
@@ -192,17 +318,19 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 			continue
 		}
 		excerpt := pageExcerpt(data, queryExcerptBytes)
-		score := relevanceScore(terms, page.Path+" "+page.Metadata.Title+" "+excerpt)
-		if score == 0 {
+		lexicalScore := relevanceScore(terms, page.Path+" "+page.Metadata.Title+" "+excerpt)
+		semanticScore := semantic[page.Path]
+		if lexicalScore == 0 && semanticScore < opts.SemanticMinScore {
 			continue
 		}
+		score := lexicalScore*1000 + int(maxFloat(semanticScore, 0)*100)
 		findings := findingsForPath(report.Findings, page.Path)
 		verified := page.Metadata.Status == "verified" && !hasBlockingKnowledgeFinding(findings)
 		projected := QueryPage{
 			Path: page.Path, Title: page.Metadata.Title, Status: page.Metadata.Status,
 			Owner: page.Metadata.Owner, ReviewBy: page.Metadata.ReviewBy, SourceSHA: page.Metadata.SourceSHA,
 			SourceFreshness: sourceFreshness(page.Metadata.SourceSHA, report.SourceRevision, findings),
-			Excerpt:         excerpt, Score: score, SourceCount: len(page.Metadata.Sources),
+			Excerpt:         excerpt, Score: score, SemanticScore: semanticScore, SourceCount: len(page.Metadata.Sources),
 			Verified: verified, Conflict: page.Metadata.Status == "conflicted", Stale: page.Metadata.Status == "stale" || hasStaleFinding(findings),
 		}
 		candidates = append(candidates, candidate{page: projected, sources: projectQuerySources(page.Path, page.Metadata.Sources, manifest, verified)})
@@ -220,7 +348,13 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		Schema: "fairway.knowledge-query.v1", Topic: strings.TrimSpace(opts.Topic),
 		TaskID: strings.TrimSpace(opts.TaskID), RepositoryRevision: report.SourceRevision,
 		Pages: []QueryPage{}, Sources: []QuerySource{},
-		BudgetBytes: opts.BudgetBytes, Bounded: true, ReadOnly: true,
+		BudgetBytes: opts.BudgetBytes, Bounded: true, ReadOnly: true, RetrievalMode: "lexical",
+	}
+	if len(semantic) > 0 {
+		packet.RetrievalMode = "hybrid"
+	}
+	if semanticWarning != "" {
+		packet.Warnings = append(packet.Warnings, semanticWarning)
 	}
 	excludedUnsafe := 0
 	for _, finding := range report.Findings {
@@ -267,6 +401,13 @@ func Query(opts QueryOptions) (QueryPacket, error) {
 		return QueryPacket{}, errors.New("knowledge query packet exceeded budget")
 	}
 	return packet, nil
+}
+
+func maxFloat(left, right float64) float64 {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func sourceFreshness(sourceRevision, repositoryRevision string, findings []Finding) string {
@@ -424,7 +565,7 @@ func validateSourceManifest(manifest SourceManifest, knowledgeRoot string) error
 				}
 			}
 		case "fairway":
-			if len(class.Roots) != 0 || (class.FairwayKind != "decision" && class.FairwayKind != "evidence") || !class.RequiresStoreValidation {
+			if len(class.Roots) != 0 || !supportedFairwaySourceKind(class.FairwayKind) || !class.RequiresStoreValidation {
 				return errors.New("Fairway source class is invalid")
 			}
 		default:
@@ -432,6 +573,15 @@ func validateSourceManifest(manifest SourceManifest, knowledgeRoot string) error
 		}
 	}
 	return nil
+}
+
+func supportedFairwaySourceKind(kind string) bool {
+	switch kind {
+	case "decision", "evidence", "review", "outcome", "commit", "checkpoint":
+		return true
+	default:
+		return false
+	}
 }
 
 func validatePromotionSourcesBound(paths resolvedPaths, manifest SourceManifest, meta PageMetadata, opts PromoteOptions) error {

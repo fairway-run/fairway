@@ -37,6 +37,14 @@ write only with explicit `--apply`; the configured root grants no canonical
 documentation or review authority. `knowledge lint` fails on errors;
 `knowledge lint --fail-on-warning` also fails on overdue review and other
 warning findings when a project deliberately chooses that stricter CI policy.
+`knowledge capture` creates only a reviewed Markdown proposal. `knowledge
+index` writes a disposable project-relative cache only with `--apply` and an
+explicit local embedding adapter. `knowledge query --semantic-index` falls
+back to lexical selection when that cache or adapter is unavailable; Fairway
+configuration requires no embedding endpoint, model, or vector store.
+Portable `knowledge export` and `knowledge import` paths are project-relative
+invocation flags. Both are preview-first. Import never accepts external
+verification, ownership, promotion, or authority fields as local truth.
 
 Supply-chain provenance exports are derived from existing task, evidence,
 review, session, checkpoint, batch, usage, and release records. There is no

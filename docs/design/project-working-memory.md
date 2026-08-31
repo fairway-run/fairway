@@ -61,6 +61,18 @@ When records disagree, use this order:
 No memory record grants review, merge, push, deploy, release, credential,
 public-exposure, or live-operation authority.
 
+Working memory and learned context meet only at the cold-start packet. Track
+memory answers "what is true and actionable for this execution now?" Learned
+context answers "which reviewed cross-task lessons may help with this bounded
+work?" The former always renders first. The latter is optional, separately
+budgeted, source-labelled, and safe to omit when retrieval is unavailable.
+
+Task completion does not automatically copy working memory into engineering
+knowledge. A capture proposal must cite durable task facts and pass normal
+Markdown review. This prevents transient blockers, abandoned next actions, and
+provider narration from becoming reusable guidance merely because a task
+reached a terminal state.
+
 ## Canonical Track-Memory Contract
 
 The existing Fairway record is the canonical working-memory schema:

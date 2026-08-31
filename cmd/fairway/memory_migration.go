@@ -180,6 +180,7 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 	olderThan := fs.Duration("older-than", 24*time.Hour, "age that creates a stale warning")
 	knowledgeTopics := multiStringFlag{}
 	fs.Var(&knowledgeTopics, "knowledge-topic", "optional relevant engineering knowledge topic; repeatable")
+	autoKnowledge := fs.Bool("knowledge-auto", false, "select relevant engineering knowledge from task and track metadata")
 	knowledgeBudget := fs.Int("knowledge-budget-bytes", 12*1024, "separate optional engineering knowledge budget")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -246,11 +247,19 @@ func cmdMemoryColdStart(ctx context.Context, opts globalOptions, args []string) 
 			return err
 		}
 		report := memoryColdStart{Schema: "fairway.memory-cold-start.v1", Packet: packet, Git: gitReadback, Warnings: warnings, Bounded: true, ReadOnly: true}
-		if len(knowledgeTopics) > 0 {
+		if len(knowledgeTopics) > 0 || *autoKnowledge {
+			taskTerms := []string{memory.Title, memory.Purpose, memory.ActiveScope, memory.CurrentObjective}
+			if *autoKnowledge {
+				if derived, termsErr := knowledgeTaskTerms(ctx, s, memory.TrackID); termsErr == nil {
+					taskTerms = append(taskTerms, derived...)
+				} else {
+					report.Warnings = append(report.Warnings, "knowledge auto-selection used track metadata because the track is not a Fairway task")
+				}
+			}
 			query, queryErr := knowledge.Query(knowledge.QueryOptions{
 				Options: knowledgeStoreOptions(ctx, cfg, root, "", s),
 				Topic:   strings.Join(knowledgeTopics, " "), TaskID: memory.TrackID,
-				TaskTerms:   []string{memory.Title, memory.Purpose, memory.ActiveScope, memory.CurrentObjective},
+				TaskTerms:   taskTerms,
 				BudgetBytes: *knowledgeBudget,
 			})
 			if queryErr != nil {

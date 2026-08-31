@@ -174,14 +174,50 @@ type IngestResult struct {
 	Changes        []Change `json:"changes"`
 }
 
+// CaptureFact is one durable Fairway fact used by a lesson proposal.
+type CaptureFact struct {
+	Kind    string `json:"kind"`
+	ID      int64  `json:"id"`
+	Summary string `json:"summary"`
+}
+
+// CaptureOptions controls preview-first learned-context capture.
+type CaptureOptions struct {
+	Options
+	TaskID           string
+	PagePath         string
+	Title            string
+	Owner            string
+	ReviewBy         string
+	Lesson           string
+	AppliesWhen      string
+	DoesNotApplyWhen string
+	Facts            []CaptureFact
+	Apply            bool
+}
+
+// CaptureResult reports a bounded learned-context proposal.
+type CaptureResult struct {
+	Applied        bool          `json:"applied"`
+	Preview        bool          `json:"preview"`
+	TaskID         string        `json:"task_id"`
+	SourceRevision string        `json:"source_revision"`
+	Facts          []CaptureFact `json:"facts"`
+	Changes        []Change      `json:"changes"`
+}
+
 // QueryOptions controls deterministic task/topic-aware knowledge selection.
 type QueryOptions struct {
 	Options
-	Topic       string
-	TaskID      string
-	TaskTerms   []string
-	MaxResults  int
-	BudgetBytes int
+	Topic             string
+	TaskID            string
+	TaskTerms         []string
+	MaxResults        int
+	BudgetBytes       int
+	SemanticIndexPath string
+	SemanticModel     string
+	SemanticMinScore  float64
+	Embed             func(string) ([]float64, error)
 }
 
 // QuerySource is a deduplicated provenance reference.
@@ -206,19 +242,20 @@ type QuerySourceCitation struct {
 
 // QueryPage is a bounded selected-page projection.
 type QueryPage struct {
-	Path            string `json:"path"`
-	Title           string `json:"title"`
-	Status          string `json:"status"`
-	Owner           string `json:"owner"`
-	ReviewBy        string `json:"review_by"`
-	SourceSHA       string `json:"source_sha"`
-	SourceFreshness string `json:"source_freshness"`
-	Excerpt         string `json:"excerpt,omitempty"`
-	Score           int    `json:"score"`
-	SourceCount     int    `json:"source_count"`
-	Verified        bool   `json:"verified"`
-	Conflict        bool   `json:"conflict"`
-	Stale           bool   `json:"stale"`
+	Path            string  `json:"path"`
+	Title           string  `json:"title"`
+	Status          string  `json:"status"`
+	Owner           string  `json:"owner"`
+	ReviewBy        string  `json:"review_by"`
+	SourceSHA       string  `json:"source_sha"`
+	SourceFreshness string  `json:"source_freshness"`
+	Excerpt         string  `json:"excerpt,omitempty"`
+	Score           int     `json:"score"`
+	SemanticScore   float64 `json:"semantic_score,omitempty"`
+	SourceCount     int     `json:"source_count"`
+	Verified        bool    `json:"verified"`
+	Conflict        bool    `json:"conflict"`
+	Stale           bool    `json:"stale"`
 }
 
 // QueryPacket is the stable bounded retrieval surface.
@@ -234,6 +271,25 @@ type QueryPacket struct {
 	Bytes              int           `json:"bytes"`
 	Bounded            bool          `json:"bounded"`
 	ReadOnly           bool          `json:"read_only"`
+	RetrievalMode      string        `json:"retrieval_mode"`
+}
+
+// SemanticIndexOptions controls creation of a disposable local embedding index.
+type SemanticIndexOptions struct {
+	Options
+	IndexPath string
+	Model     string
+	Embed     func(string) ([]float64, error)
+	Apply     bool
+}
+
+// SemanticIndexResult reports a rebuildable index proposal.
+type SemanticIndexResult struct {
+	Applied bool     `json:"applied"`
+	Preview bool     `json:"preview"`
+	Model   string   `json:"model"`
+	Pages   int      `json:"pages"`
+	Changes []Change `json:"changes"`
 }
 
 // PromoteOptions controls preview-first promotion recording.

@@ -30,6 +30,80 @@ contract around project knowledge:
 Knowledge pages are derived and non-canonical unless a project explicitly
 promotes their content through its normal documentation review process.
 
+## Learned Context Increment
+
+Fairway should make a completed task's reusable lesson easy to retain without
+turning the provider transcript into memory. The supported flow is:
+
+```text
+durable task facts
+  -> bounded lesson proposal
+  -> normal Markdown review
+  -> verified knowledge page
+  -> optional derived retrieval index
+  -> bounded task or cold-start selection
+```
+
+The proposal may summarize task decisions, evidence, reviews, outcomes, and
+commit associations already present in the Fairway store. Every material claim
+must identify those durable facts. Raw prompts, reasoning traces, transcripts,
+tool bodies, and uncited generated conclusions are excluded. Capture is
+preview-first; apply creates only a normal Git diff and grants no review,
+promotion, or execution authority.
+
+The useful unit is a short lesson with a clear reuse boundary, not a task
+history dump. A maintained lesson should answer:
+
+- what was learned;
+- when the lesson applies and when it does not;
+- which failed or superseded approach matters;
+- what observation or evidence changed the decision; and
+- which source facts a future contributor must re-check.
+
+### Retrieval tiers
+
+Retrieval remains useful without a model or index:
+
+1. deterministic lexical selection from reviewed Markdown and task metadata;
+2. optional local semantic similarity over a rebuildable index; and
+3. hybrid ranking that retains lexical matches and uses semantic similarity to
+   improve ordering or recover vocabulary mismatches.
+
+The semantic index is a cache. It stores page identity, content digest,
+embedding-model identity, and vectors derived from safe bounded page text. It
+does not replace Markdown, copy Fairway authority, or make a page verified.
+Deleting it loses performance only. A missing, stale, incompatible, or failed
+index must fall back to deterministic lexical query and report that fallback.
+Embedding generation is an explicit local adapter boundary rather than a
+required Fairway dependency.
+
+### Cold-start composition
+
+When the selected track is also a Fairway task, cold-start may derive knowledge
+terms from its title, domain, layer, acceptance boundary, source paths, target
+paths, and curated track memory. Explicit topics remain available to narrow or
+override that selection. Execution memory renders first under its existing
+budget. Learned context has a separate budget and cannot displace current task
+state, blockers, stop conditions, authority labels, freshness, or provenance.
+
+### Portable exchange
+
+A portable knowledge bundle contains reviewed Markdown, the source manifest, a
+bundle manifest, and SHA-256 checksums. It may include a clearly labelled
+derived index. Export does not upgrade authority. Import validates paths,
+sizes, checksums, metadata, and citations in preview mode before proposing any
+Git diff. External status, authority, verification, or promotion fields are
+untrusted until the receiving project revalidates them against its own sources
+and Fairway store.
+
+### Measurement before automation
+
+The GPUaaS pilot is the first qualification boundary. It measures retrieval
+relevance, missed reusable lessons, packet bytes, stale findings, maintenance
+effort, and incorrect authority choices. Those observations decide whether
+automatic capture suggestions or default semantic retrieval are justified;
+task volume, token volume, and generated-page count are not success measures.
+
 ## Ownership Split
 
 | Owner | Responsibility |

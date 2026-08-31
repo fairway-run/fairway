@@ -6941,3 +6941,23 @@ tasks:
       - "One bounded consumer workflow records multiple attempts, an explicit hypothesis and expected observation, a failed or inconclusive approach, and a versioned evaluator-backed result through the public harness contract."
       - "The pilot measures missing data, replay behavior, advisory-detector false positives, and whether a redirect produces a materially new evaluator-backed observation."
       - "The assessment decides keep, narrow, redesign, instrument, or defer without treating the pilot as general effectiveness proof or product availability authority."
+
+  - id: FW-415
+    title: Add learned-context capture and hybrid knowledge retrieval
+    kind: task
+    role: backend
+    profile: fairway-adoption
+    owning_domain: fairway
+    owning_layer: engineering-knowledge
+    source_paths: [docs/design/engineering-knowledge.md, docs/design/project-working-memory.md, internal/knowledge, cmd/fairway]
+    target_paths: [docs/design/engineering-knowledge.md, docs/design/project-working-memory.md, docs/design/cli.md, docs/config-reference.md, docs/roadmap/fairway-product-backlog.yaml, internal/knowledge, cmd/fairway]
+    review_domains: [arch, governance, security]
+    risk_level: medium
+    migration_type: learned-context-increment
+    dependencies: [FW-375, FW-376]
+    acceptance_checks:
+      - "A task-scoped capture command proposes a short governed Markdown lesson from cited Fairway decisions, evidence, reviews, outcomes, and commits; preview is default and apply remains an explicit Git-reviewed change."
+      - "Knowledge query supports optional rebuildable local hybrid semantic retrieval with deterministic lexical fallback; Markdown and cited Fairway facts remain authoritative and deleting the index loses no knowledge."
+      - "Cold-start packets can select relevant learned context without displacing task state, blockers, stop conditions, authority labels, freshness, or source provenance."
+      - "Portable export emits reviewed Markdown, a manifest, checksums, and an optional derived index; import is preview-first and treats external fields as untrusted non-authoritative input."
+      - "A GPUaaS pilot measures retrieval relevance, missed lessons, context bytes, stale findings, maintenance cost, and incorrect authority choices before broader automation."

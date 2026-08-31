@@ -322,7 +322,11 @@ fairway knowledge status
 fairway knowledge lint
 fairway knowledge lint --fail-on-warning
 fairway knowledge ingest --source docs/design/example.md --page architecture/example.md --owner architecture --review-by 2026-10-22
+fairway knowledge capture --task FW-375 --page incidents-and-lessons/knowledge-custody.md --owner architecture --review-by 2026-10-22 --lesson "Bind derived knowledge to durable source facts before reuse"
+fairway knowledge index --embed-command ./scripts/local-embed --embedding-model local-model --apply
 fairway knowledge query --task FW-375 --topic "knowledge lifecycle" --format packet
+fairway knowledge export --output dist/knowledge.zip --include-index --apply
+fairway knowledge import --bundle dist/knowledge.zip
 fairway knowledge promote architecture/example.md --target docs/design/example.md --reviewed-commit <sha>
 ```
 
@@ -333,7 +337,20 @@ into a CI gate. A canonical source class conflicts with source frontmatter that
 declares `source_of_truth: false`; canonical sources that declare
 `implementation_state: not-assessed` remain queryable but produce a warning.
 Neither command approves architecture, risk, merge, release, or deployment.
-Ingest and promotion are preview-first and write only with explicit `--apply`.
+Ingest, capture, and promotion are preview-first and write only with explicit
+`--apply`. Capture requires a terminal task and cites its durable decisions,
+evidence, reviews, outcomes, and commit associations. The optional semantic
+index is disposable local derived state. Its explicit adapter receives
+`{"model":"...","input":"..."}` on stdin and returns
+`{"embedding":[...]}`. A missing, stale, or invalid index falls back to
+deterministic lexical retrieval with a warning.
+Semantic-only pages require the explicit `--semantic-min-score` admission
+threshold (default `0.55`); lexical matches remain available independently.
+Portable export contains only verified, current, reachable Markdown plus the
+source manifest, checksums, and an optional derived index. Import validates the
+bounded archive and defaults to a preview. Apply writes isolated `imports/`
+pages with `draft`, `import-review-required`, empty local citations, and an
+explicit untrusted warning; external authority fields never survive import.
 Ingest creates a source-linked draft and index entry without copying source
 content. Query selects a bounded set of indexed pages with status and
 deduplicated provenance labels. Its packet reports the current repository
@@ -353,6 +370,8 @@ rendered once: when knowledge cites evidence already named by track memory, the
 knowledge provenance entry owns the rendered identity, carries
 `memory_referenced: true`, and preserves its highest authority label. The
 embedded memory packet omits only that duplicate evidence ID.
+Use `--knowledge-auto` when the track is also a Fairway task and task/track
+metadata should select relevant pages without an explicit topic.
 
 Use the active backlog selected by `.fairway/config.toml` as the implementation
 queue. In this repository that is

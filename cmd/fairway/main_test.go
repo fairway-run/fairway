@@ -803,7 +803,7 @@ func TestCLI_GroupHelpAliases(t *testing.T) {
 		{[]string{"memory", "cold-start", "--help"}, "fairway memory cold-start --track <track-id>"},
 		{[]string{"memory", "reconcile", "--help"}, "fairway memory reconcile [--track <track-id>]"},
 		{[]string{"memory", "retire-file", "--help"}, "fairway memory retire-file --file <tmp-ux-memory.md> --track <track-id> --reason <text>"},
-		{[]string{"knowledge", "--help"}, "fairway knowledge init|status|lint|ingest|query|promote"},
+		{[]string{"knowledge", "--help"}, "fairway knowledge init|status|lint|ingest|capture|index|query|export|import|promote"},
 		{[]string{"wait", "--help"}, "fairway wait add|ack|list|tick|resolve|wake"},
 		{[]string{"wait", "add", "--help"}, "fairway wait add --task <task-id> --track <track-id> --on <condition>"},
 		{[]string{"wait", "ack", "--help"}, "fairway wait ack <wait-id>"},
@@ -4916,6 +4916,32 @@ func TestCLI_KnowledgeIngestTaskQueryAndColdStartComposition(t *testing.T) {
 	if strings.Index(coldStart, `"packet"`) > strings.Index(coldStart, `"knowledge"`) {
 		t.Fatalf("knowledge rendered before execution memory:\n%s", coldStart)
 	}
+	autoColdStart := runCapture(t, "--json", "memory", "cold-start", "--track", "K-001", "--knowledge-auto", "--knowledge-budget-bytes", "4096")
+	assertContains(t, autoColdStart, `"path": "architecture/node-trust.md"`)
+
+	runOK(t, "add", "K-002", "--title", "Retain node trust lesson", "--role", "backend")
+	runOK(t, "claim", "K-002")
+	runOK(t, "record", "evidence", "K-002", "--command-text", "verify node trust", "--result", "pass")
+	runOK(t, "set-status", "K-002", "done")
+	capturePreview := runCapture(t, "--json", "knowledge", "capture", "--task", "K-002", "--page", "incidents-and-lessons/node-trust.md", "--owner", "security", "--review-by", "2099-01-01", "--lesson", "Revalidate node identity evidence before reusing the trust decision")
+	assertContains(t, capturePreview, `"applied": false`)
+	assertContains(t, capturePreview, `"kind": "evidence"`)
+	runOK(t, "knowledge", "capture", "--task", "K-002", "--page", "incidents-and-lessons/node-trust.md", "--owner", "security", "--review-by", "2099-01-01", "--lesson", "Revalidate node identity evidence before reusing the trust decision", "--apply")
+
+	embedder := filepath.Join(repo, "embedder.sh")
+	if err := os.WriteFile(embedder, []byte("#!/bin/sh\ncat >/dev/null\nprintf '{\"embedding\":[1,0]}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	indexPreview := runCapture(t, "--json", "knowledge", "index", "--embed-command", embedder, "--embedding-model", "test")
+	assertContains(t, indexPreview, `"applied": false`)
+	runOK(t, "knowledge", "index", "--embed-command", embedder, "--embedding-model", "test", "--apply")
+
+	exportPreview := runCapture(t, "--json", "knowledge", "export", "--output", "dist/knowledge.zip")
+	assertContains(t, exportPreview, `"external_untrusted": true`)
+	runOK(t, "knowledge", "export", "--output", "dist/knowledge.zip", "--include-index", "--apply")
+	importPreview := runCapture(t, "--json", "knowledge", "import", "--bundle", "dist/knowledge.zip")
+	assertContains(t, importPreview, `"applied": false`)
+	assertContains(t, importPreview, `"external_untrusted": true`)
 }
 
 func TestTrackMemoryReconcileFindings(t *testing.T) {

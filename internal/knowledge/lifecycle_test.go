@@ -1,6 +1,8 @@
 package knowledge
 
 import (
+	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +78,142 @@ func TestIngestIsPreviewFirstAndDoesNotCopySourceBody(t *testing.T) {
 	}
 	if _, err := Ingest(options); err == nil {
 		t.Fatal("second ingest overwrote existing page")
+	}
+}
+
+func TestCaptureIsPreviewFirstAndCitesDurableFacts(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "draft", "2026-12-31", revision, nil, "docs/source.md")
+	options := CaptureOptions{
+		Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22"), ValidateFairwayReference: func(FairwayReferenceRequirement) error { return nil }},
+		TaskID:  "T-101", PagePath: "incidents-and-lessons/retry.md", Title: "Bound retry after stale observation", Owner: "platform", ReviewBy: "2026-10-22",
+		Lesson: "Re-check the observed state before retrying a failed mutation.", AppliesWhen: "A prior attempt may have completed after the client timed out.",
+		DoesNotApplyWhen: "The operation is not idempotent.", Facts: []CaptureFact{{Kind: "decision", ID: 12, Summary: "bounded retry selected"}, {Kind: "evidence", ID: 19, Summary: "reconciliation passed"}},
+	}
+	preview, err := Capture(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Applied || !preview.Preview || len(preview.Changes) != 2 || !strings.Contains(preview.Changes[0].Preview, "fairway:decision:12") {
+		t.Fatalf("capture preview=%+v", preview)
+	}
+	if _, err := os.Stat(filepath.Join(project, DefaultRoot, options.PagePath)); !os.IsNotExist(err) {
+		t.Fatal("capture preview wrote a page")
+	}
+	options.Apply = true
+	if _, err := Capture(options); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(project, DefaultRoot, options.PagePath))
+	if err != nil || !strings.Contains(string(data), "class: fairway-decision") || !strings.Contains(string(data), "Does not apply when") {
+		t.Fatalf("captured page=%s err=%v", data, err)
+	}
+}
+
+func TestSemanticIndexIsDisposableAndQueryFallsBackOrUsesHybrid(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"architecture/accelerator.md"}, "docs/source.md")
+	writePage(t, project, "architecture/accelerator.md", "Accelerator placement", "verified", "2026-12-31", revision, nil, "docs/source.md")
+	embed := func(input string) ([]float64, error) {
+		if strings.Contains(input, "invoice") {
+			return []float64{0.5, 0.8660254}, nil
+		}
+		return []float64{1, 0}, nil
+	}
+	indexPath := ".fairway/test-knowledge-index.json"
+	preview, err := BuildSemanticIndex(SemanticIndexOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, IndexPath: indexPath, Model: "test", Embed: embed})
+	if err != nil || preview.Applied || preview.Pages != 1 {
+		t.Fatalf("index preview=%+v err=%v", preview, err)
+	}
+	if _, err := os.Stat(filepath.Join(project, indexPath)); !os.IsNotExist(err) {
+		t.Fatal("index preview wrote derived state")
+	}
+	if _, err := BuildSemanticIndex(SemanticIndexOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, IndexPath: indexPath, Model: "test", Embed: embed, Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+	packet, err := Query(QueryOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, Topic: "capacity", BudgetBytes: 4096, SemanticIndexPath: indexPath, SemanticModel: "test", Embed: embed})
+	if err != nil || packet.RetrievalMode != "hybrid" || len(packet.Pages) != 1 || packet.Pages[0].SemanticScore == 0 {
+		t.Fatalf("hybrid packet=%+v err=%v", packet, err)
+	}
+	negative, err := Query(QueryOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, Topic: "invoice", BudgetBytes: 4096, SemanticIndexPath: indexPath, SemanticModel: "test", Embed: embed})
+	if err != nil || negative.RetrievalMode != "hybrid" || len(negative.Pages) != 0 {
+		t.Fatalf("semantic admission accepted unrelated page: %+v err=%v", negative, err)
+	}
+	if err := os.Remove(filepath.Join(project, indexPath)); err != nil {
+		t.Fatal(err)
+	}
+	fallback, err := Query(QueryOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, Topic: "accelerator", BudgetBytes: 4096, SemanticIndexPath: indexPath, SemanticModel: "test", Embed: embed})
+	if err != nil || fallback.RetrievalMode != "lexical" || len(fallback.Pages) != 1 || len(fallback.Warnings) == 0 {
+		t.Fatalf("fallback packet=%+v err=%v", fallback, err)
+	}
+}
+
+func TestPortableBundleImportsOnlyUntrustedDrafts(t *testing.T) {
+	project := newKnowledgeProject(t)
+	revision := gitRevision(t, project)
+	writePage(t, project, "index.md", "Index", "verified", "2026-12-31", revision, []string{"architecture/node.md"}, "docs/source.md")
+	writePage(t, project, "architecture/node.md", "Node authority", "verified", "2026-12-31", revision, nil, "docs/source.md")
+	bundlePath := "dist/knowledge.zip"
+	preview, err := ExportBundle(BundleExportOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, OutputPath: bundlePath})
+	if err != nil || preview.Applied || preview.Pages != 1 {
+		t.Fatalf("export preview=%+v err=%v", preview, err)
+	}
+	if _, err := os.Stat(filepath.Join(project, bundlePath)); !os.IsNotExist(err) {
+		t.Fatal("export preview wrote bundle")
+	}
+	if _, err := ExportBundle(BundleExportOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, OutputPath: bundlePath, Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+	importPreview, err := ImportBundle(BundleImportOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, BundlePath: bundlePath})
+	if err != nil || importPreview.Applied || !importPreview.ExternalUntrusted || importPreview.Pages != 1 {
+		t.Fatalf("import preview=%+v err=%v", importPreview, err)
+	}
+	target := filepath.Join(project, DefaultRoot, "imports", importPreview.BundleID, "architecture", "node.md")
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("import preview wrote page")
+	}
+	if _, err := ImportBundle(BundleImportOptions{Options: Options{ProjectRoot: project, SourceRevision: revision, Now: mustDate(t, "2026-07-22")}, BundlePath: bundlePath, Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"status: draft", "owner: import-review-required", "sources: []", "Imported, untrusted draft"} {
+		if !strings.Contains(string(data), expected) {
+			t.Fatalf("imported page missing %q:\n%s", expected, data)
+		}
+	}
+	if strings.Contains(string(data), "status: verified") || strings.Contains(string(data), "owner: platform") {
+		t.Fatal("import trusted external authority fields")
+	}
+}
+
+func TestPortableBundleRejectsArchiveTraversal(t *testing.T) {
+	project := newKnowledgeProject(t)
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	entry, err := writer.Create("../escaped.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("unsafe")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(project, "malicious.zip")
+	if err := os.WriteFile(bundle, buffer.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportBundle(BundleImportOptions{Options: Options{ProjectRoot: project}, BundlePath: "malicious.zip"}); err == nil {
+		t.Fatal("knowledge import accepted archive traversal")
+	}
+	if _, err := os.Stat(filepath.Join(project, "escaped.md")); !os.IsNotExist(err) {
+		t.Fatal("knowledge import wrote traversal target")
 	}
 }
 

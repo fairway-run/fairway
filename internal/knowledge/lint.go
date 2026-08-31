@@ -150,8 +150,8 @@ func (s *scanState) loadSourceManifest() {
 			if len(class.Roots) != 0 {
 				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "fairway source class cannot define file roots")
 			}
-			if class.FairwayKind != "decision" && class.FairwayKind != "evidence" {
-				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "fairway source class requires decision or evidence kind")
+			if !supportedFairwaySourceKind(class.FairwayKind) {
+				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "fairway source class requires a supported durable fact kind")
 			}
 			if !class.RequiresStoreValidation {
 				s.add("source_class_invalid", SeverityError, DefaultSourceManifest, "fairway source class must require store validation")
